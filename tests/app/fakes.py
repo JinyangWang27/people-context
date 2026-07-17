@@ -8,11 +8,14 @@ without the SQLite adapter.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from typing import Any
 
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
+from people_context.domain.organization import Affiliation, Organization
 from people_context.domain.person import Person
+from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.shared import normalize_name
 from people_context.domain.trait import Trait
@@ -166,3 +169,103 @@ class FakeContextReader:
             for record in self.reminders
             if record.person_id == person_id and record.status == ReminderStatus.ACTIVE
         ]
+
+
+class FakeRecordStore:
+    """In-memory RecordReader + RecordWriter for write-use-case tests."""
+
+    def __init__(self) -> None:
+        self.records: dict[tuple[str, str], Any] = {}
+
+    def save_relationship(self, relationship: Relationship) -> None:
+        self.records[("relationship", relationship.id)] = relationship
+
+    def save_affiliation(self, affiliation: Affiliation) -> None:
+        self.records[("affiliation", affiliation.id)] = affiliation
+
+    def save_fact(self, fact: Fact) -> None:
+        self.records[("fact", fact.id)] = fact
+
+    def save_observation(self, observation: Observation) -> None:
+        self.records[("observation", observation.id)] = observation
+
+    def save_trait(self, trait: Trait) -> None:
+        self.records[("trait", trait.id)] = trait
+
+    def save_interaction(self, interaction: Interaction) -> None:
+        self.records[("interaction", interaction.id)] = interaction
+
+    def save_reminder(self, reminder: Reminder) -> None:
+        self.records[("reminder", reminder.id)] = reminder
+
+    def get_record(self, entity_type: str, entity_id: str) -> Any | None:
+        return self.records.get((entity_type, entity_id))
+
+    def update_record_fields(self, entity_type: str, entity_id: str, fields: dict[str, Any]) -> Any | None:
+        current = self.get_record(entity_type, entity_id)
+        if current is None:
+            return None
+        data = current.model_dump()
+        if "valid_from" in fields or "valid_to" in fields:
+            period = current.period.model_dump()
+            period.update({key: value for key, value in fields.items() if key in ("valid_from", "valid_to")})
+            data["period"] = period
+        data.update({key: value for key, value in fields.items() if key not in ("valid_from", "valid_to")})
+        updated = type(current).model_validate(data)
+        self.records[(entity_type, entity_id)] = updated
+        return updated
+
+    def list_reminders(
+        self,
+        person_id: str | None = None,
+        due_before: datetime | None = None,
+        status: ReminderStatus | None = ReminderStatus.ACTIVE,
+    ) -> list[Reminder]:
+        reminders = [record for (entity_type, _), record in self.records.items() if entity_type == "reminder"]
+        reminders = [
+            reminder
+            for reminder in reminders
+            if (person_id is None or reminder.person_id == person_id)
+            and (due_before is None or (reminder.due_at is not None and reminder.due_at <= due_before))
+            and (status is None or reminder.status == status)
+        ]
+        return sorted(
+            reminders,
+            key=lambda reminder: (
+                reminder.due_at is None,
+                reminder.due_at or datetime.max.replace(tzinfo=UTC),
+                reminder.id,
+            ),
+        )
+
+
+class FakeOrganizationStore:
+    """In-memory organization store."""
+
+    def __init__(self) -> None:
+        self.organizations: dict[str, Organization] = {}
+
+    def get(self, org_id: str) -> Organization | None:
+        return self.organizations.get(org_id)
+
+    def get_by_normalized_name(self, normalized_name: str) -> Organization | None:
+        return next(
+            (org for org in self.organizations.values() if normalize_name(org.name) == normalized_name),
+            None,
+        )
+
+    def save(self, organization: Organization) -> None:
+        self.organizations[organization.id] = organization
+
+
+class FakePreferencesStore:
+    """In-memory string preference store."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    def get(self, key: str) -> str | None:
+        return self.values.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self.values[key] = value

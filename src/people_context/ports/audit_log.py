@@ -1,4 +1,11 @@
-"""Audit-log port: append-only changelog of mutations."""
+"""Audit-log port: append-only changelog of mutations.
+
+Payload convention: one row mutation produces one entry. Create payloads describe
+the resulting row; ordinary updates describe changed values; corrections and
+status transitions use ``before``, ``after``, and sorted ``fields`` keys. Payloads
+must be JSON-compatible and omit secret/full preference text where a concise
+summary is sufficient.
+"""
 
 from __future__ import annotations
 

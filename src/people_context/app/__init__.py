@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from people_context.app.add_alias import AddAlias, AddAliasInput
+from people_context.app.complete_reminder import CompleteReminder, CompleteReminderInput
+from people_context.app.correct_record import CorrectRecord, CorrectRecordInput
 from people_context.app.get_person_context import (
     GetPersonContext,
     PersonAffiliationContext,
@@ -17,17 +20,55 @@ from people_context.app.record import (
     RememberPersonResult,
     SelfAlreadyExistsError,
 )
+from people_context.app.record_fact import RecordFact, RecordFactInput
+from people_context.app.record_interaction import RecordInteraction, RecordInteractionInput
+from people_context.app.record_observation import RecordObservation, RecordObservationInput
+from people_context.app.record_trait import RecordTrait, RecordTraitInput
 from people_context.app.resolve_person import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
 from people_context.app.search_people import SearchPeople
+from people_context.app.set_affiliation import SetAffiliation, SetAffiliationInput
+from people_context.app.set_communication_philosophy import (
+    SetCommunicationPhilosophy,
+    SetCommunicationPhilosophyInput,
+)
+from people_context.app.set_relationship import SetRelationship, SetRelationshipInput
+from people_context.app.set_reminder import SetReminder, SetReminderInput
+from people_context.app.write_support import (
+    InvalidCorrectionError,
+    InvalidReminderError,
+    OrganizationNotFoundError,
+    PersonNotFoundError,
+    RecordNotFoundError,
+    ReminderNotActiveError,
+)
 
 __all__ = [
     "AliasInput",
+    "AddAlias",
+    "AddAliasInput",
     "AmbiguousPersonError",
     "GetPersonContext",
+    "CompleteReminder",
+    "CompleteReminderInput",
+    "CorrectRecord",
+    "CorrectRecordInput",
+    "InvalidCorrectionError",
+    "InvalidReminderError",
+    "OrganizationNotFoundError",
     "PersonAffiliationContext",
     "PersonContextResult",
     "PersonIdentity",
     "PersonRelationshipContext",
+    "PersonNotFoundError",
+    "RecordFact",
+    "RecordFactInput",
+    "RecordInteraction",
+    "RecordInteractionInput",
+    "RecordNotFoundError",
+    "RecordObservation",
+    "RecordObservationInput",
+    "RecordTrait",
+    "RecordTraitInput",
     "RememberPerson",
     "RememberPersonInput",
     "RememberPersonResult",
@@ -36,5 +77,14 @@ __all__ = [
     "ResolutionResult",
     "ResolvePerson",
     "SearchPeople",
+    "SetAffiliation",
+    "SetAffiliationInput",
+    "SetCommunicationPhilosophy",
+    "SetCommunicationPhilosophyInput",
+    "SetRelationship",
+    "SetRelationshipInput",
+    "SetReminder",
+    "SetReminderInput",
     "SelfAlreadyExistsError",
+    "ReminderNotActiveError",
 ]
