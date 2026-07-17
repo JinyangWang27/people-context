@@ -69,10 +69,7 @@ class FakePeopleRepository:
     # -- reader ------------------------------------------------------------
 
     def get(self, person_id: str) -> Person | None:
-        person = self._people.get(person_id)
-        if person is None or person.deleted_at is not None:
-            return None
-        return person
+        return self._people.get(person_id)
 
     def get_self(self) -> Person | None:
         for person in self._people.values():

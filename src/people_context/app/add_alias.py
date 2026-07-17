@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import PersonNotFoundError, audit_mutation
+from people_context.app.write_support import audit_mutation, require_active_person
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
@@ -36,9 +36,7 @@ class AddAlias:
 
     def execute(self, data: AddAliasInput) -> Person:
         """Return person with alias present exactly once by normalized value."""
-        person = self._people.get(data.person_id)
-        if person is None:
-            raise PersonNotFoundError(data.person_id)
+        person = require_active_person(self._people, data.person_id)
         normalized_names = {normalize_name(name) for name in person.all_names()}
         added = normalize_name(data.value) not in normalized_names
         if added:

@@ -8,12 +8,14 @@ from people_context.app.write_support import (
     RecordNotFoundError,
     ReminderNotActiveError,
     audit_mutation,
+    require_active_person,
     snapshot,
 )
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.records import RecordReader, RecordWriter
+from people_context.ports.repository import PersonReader
 
 
 class CompleteReminderInput(BaseModel):
@@ -28,17 +30,27 @@ class CompleteReminderInput(BaseModel):
 class CompleteReminder:
     """Transition an active reminder to completed and audit before/after."""
 
-    def __init__(self, records: RecordReader, writer: RecordWriter, audit: AuditLog, clock: Clock) -> None:
+    def __init__(
+        self,
+        records: RecordReader,
+        writer: RecordWriter,
+        audit: AuditLog,
+        clock: Clock,
+        people: PersonReader | None = None,
+    ) -> None:
         self._records = records
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._people = people
 
     def execute(self, data: CompleteReminderInput) -> Reminder:
         """Complete one reminder, rejecting repeated completion."""
         current = self._records.get_record("reminder", data.reminder_id)
         if not isinstance(current, Reminder):
             raise RecordNotFoundError("reminder", data.reminder_id)
+        if self._people is not None:
+            require_active_person(self._people, current.person_id)
         if current.status != ReminderStatus.ACTIVE:
             raise ReminderNotActiveError(current.id, current.status.value)
         before = snapshot(current)

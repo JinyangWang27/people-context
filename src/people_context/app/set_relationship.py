@@ -6,7 +6,7 @@ from datetime import date
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import PersonNotFoundError, audit_mutation, provenance, snapshot
+from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
 from people_context.domain.relationship import Relationship
 from people_context.domain.shared import Confidence, ValidityPeriod
 from people_context.ports.audit_log import AuditLog
@@ -42,8 +42,7 @@ class SetRelationship:
     def execute(self, data: SetRelationshipInput) -> Relationship:
         """Create and audit a directed relationship."""
         for person_id in (data.subject_id, data.object_id):
-            if self._people.get(person_id) is None:
-                raise PersonNotFoundError(person_id)
+            require_active_person(self._people, person_id)
         relationship = Relationship(
             subject_id=data.subject_id,
             object_id=data.object_id,

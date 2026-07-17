@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from people_context.app.write_support import PersonNotFoundError, audit_mutation, provenance, snapshot
+from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
 from people_context.domain.interaction import Interaction
 from people_context.domain.shared import Sensitivity
 from people_context.ports.audit_log import AuditLog
@@ -41,8 +41,7 @@ class RecordInteraction:
         """Persist and audit a deduplicated-participant interaction."""
         participant_ids = list(dict.fromkeys(data.participant_ids))
         for person_id in participant_ids:
-            if self._people.get(person_id) is None:
-                raise PersonNotFoundError(person_id)
+            require_active_person(self._people, person_id)
         interaction = Interaction(
             summary=data.summary,
             participant_ids=participant_ids,

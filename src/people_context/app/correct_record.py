@@ -7,14 +7,24 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from people_context.app.write_support import InvalidCorrectionError, RecordNotFoundError, audit_mutation, snapshot
+from people_context.app.write_support import (
+    InvalidCorrectionError,
+    RecordNotFoundError,
+    audit_mutation,
+    require_active_person,
+    snapshot,
+)
 from people_context.domain.fact import Fact
+from people_context.domain.interaction import Interaction
+from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation
 from people_context.domain.relationship import Relationship
+from people_context.domain.reminder import Reminder
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.records import Record, RecordReader, RecordWriter
+from people_context.ports.repository import PersonReader
 
 _CORRECTABLE_FIELDS: dict[str, set[str]] = {
     "fact": {"predicate", "value", "valid_from", "valid_to", "confidence", "sensitivity"},
@@ -41,11 +51,19 @@ class CorrectRecordInput(BaseModel):
 class CorrectRecord:
     """Validate, update, and audit supported assertion fields."""
 
-    def __init__(self, records: RecordReader, writer: RecordWriter, audit: AuditLog, clock: Clock) -> None:
+    def __init__(
+        self,
+        records: RecordReader,
+        writer: RecordWriter,
+        audit: AuditLog,
+        clock: Clock,
+        people: PersonReader | None = None,
+    ) -> None:
         self._records = records
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._people = people
 
     def execute(self, data: CorrectRecordInput) -> Record:
         """Correct one record in place with a lossless audit snapshot."""
@@ -56,6 +74,9 @@ class CorrectRecord:
         current = self._records.get_record(data.entity_type, data.entity_id)
         if current is None:
             raise RecordNotFoundError(data.entity_type, data.entity_id)
+        if self._people is not None:
+            for person_id in _linked_person_ids(current):
+                require_active_person(self._people, person_id)
         try:
             validated_fields = _validate_fields(current, data.fields)
         except (ValidationError, ValueError, TypeError):
@@ -100,3 +121,13 @@ def _validate_fields(current: Record, fields: dict[str, Any]) -> dict[str, Any]:
         else:
             result[field] = validated_data[field]
     return result
+
+
+def _linked_person_ids(record: Record) -> list[str]:
+    if isinstance(record, Relationship):
+        return [record.subject_id, record.object_id]
+    if isinstance(record, Interaction):
+        return record.participant_ids
+    if isinstance(record, (Fact, Observation, Trait, Affiliation, Reminder)):
+        return [record.person_id]
+    return []

@@ -138,9 +138,9 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
         record_observation=RecordObservation(repository, record_store, audit, clock),
         record_trait=RecordTrait(repository, record_store, audit, clock),
         record_interaction=RecordInteraction(repository, record_store, audit, clock),
-        correct_record=CorrectRecord(record_store, record_store, audit, clock),
+        correct_record=CorrectRecord(record_store, record_store, audit, clock, people=repository),
         set_reminder=SetReminder(repository, record_store, audit, clock),
-        complete_reminder=CompleteReminder(record_store, record_store, audit, clock),
+        complete_reminder=CompleteReminder(record_store, record_store, audit, clock, people=repository),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences_store, audit, clock),
         get_communication_guidance=GetCommunicationGuidance(
             repository, context_reader, preferences_store, clock

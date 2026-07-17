@@ -78,6 +78,8 @@ class SqlitePeopleRepository:
 
     def _refresh_search_rows(self, person: Person) -> None:
         self._conn.execute("DELETE FROM person_search WHERE person_id = ?", (person.id,))
+        if person.deleted_at is not None:
+            return
         self._conn.executemany(
             "INSERT INTO person_search (name, person_id) VALUES (?, ?)",
             [(name, person.id) for name in person.all_names()],
