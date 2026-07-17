@@ -62,30 +62,56 @@ def test_model_mismatch_refuses_before_embedding() -> None:
     assert provider.calls == []
 
 
-def test_search_merges_kinds_by_score_then_entity_id_and_skips_stale_entities() -> None:
+def test_search_merges_kinds_by_score_then_kind_then_entity_id() -> None:
     use_case, provider, index, entities = _search(SemanticIndexMetadata(model_id=_MODEL_ID, dimension=3))
     index.search_hits = {
-        "person": [
-            VectorSearchHit(entity_id="person-b", distance=0.1),
-            VectorSearchHit(entity_id="stale", distance=0.05),
+        "person": [VectorSearchHit(entity_id="a", distance=0.1)],
+        "interaction": [
+            VectorSearchHit(entity_id="z", distance=0.1),
+            VectorSearchHit(entity_id="y", distance=0.1),
         ],
-        "interaction": [VectorSearchHit(entity_id="interaction-a", distance=0.1)],
     }
     entities.entities = {
-        ("person", "person-b"): SemanticEntity(
-            kind="person", entity_id="person-b", title="Bob", summary="SQL engineer"
-        ),
-        ("interaction", "interaction-a"): SemanticEntity(
-            kind="interaction", entity_id="interaction-a", title="Interaction", summary="SQL review"
-        ),
+        ("person", "a"): SemanticEntity(kind="person", entity_id="a", title="Alice", summary="SQL engineer"),
+        ("interaction", "y"): SemanticEntity(kind="interaction", entity_id="y", title="Y", summary="SQL review"),
+        ("interaction", "z"): SemanticEntity(kind="interaction", entity_id="z", title="Z", summary="SQL review"),
     }
 
-    result = use_case.execute("SQL engineer", limit=2)
+    result = use_case.execute("SQL engineer", limit=3)
 
     assert result.status == "ok"
     assert provider.calls == [["SQL engineer"]]
-    assert [hit.entity_id for hit in result.hits] == ["interaction-a", "person-b"]
-    assert [hit.score for hit in result.hits] == pytest.approx([0.9, 0.9])
+    assert [(hit.kind, hit.entity_id) for hit in result.hits] == [
+        ("interaction", "y"),
+        ("interaction", "z"),
+        ("person", "a"),
+    ]
+    assert [hit.score for hit in result.hits] == pytest.approx([0.9, 0.9, 0.9])
+
+
+def test_search_fetches_deeper_candidates_when_stale_hits_would_underfill_limit() -> None:
+    use_case, _, index, entities = _search(SemanticIndexMetadata(model_id=_MODEL_ID, dimension=3))
+    index.search_hits = {
+        "person": [
+            VectorSearchHit(entity_id="stale-a", distance=0.01),
+            VectorSearchHit(entity_id="stale-b", distance=0.02),
+            VectorSearchHit(entity_id="person-a", distance=0.03),
+            VectorSearchHit(entity_id="person-b", distance=0.04),
+        ]
+    }
+    entities.entities = {
+        ("person", "person-a"): SemanticEntity(
+            kind="person", entity_id="person-a", title="Alice", summary="SQL engineer"
+        ),
+        ("person", "person-b"): SemanticEntity(
+            kind="person", entity_id="person-b", title="Bob", summary="Database engineer"
+        ),
+    }
+
+    result = use_case.execute("SQL engineer", kinds=["person"], limit=2)
+
+    assert result.status == "ok"
+    assert [hit.entity_id for hit in result.hits] == ["person-a", "person-b"]
 
 
 @pytest.mark.parametrize(
