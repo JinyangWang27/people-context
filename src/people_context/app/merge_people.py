@@ -58,7 +58,7 @@ class MergePeople:
         if duplicate.is_self and not primary.is_self:
             raise MergePeopleError("self_merge_direction", "the self person must be the primary merge target")
 
-        self._merge_identity(primary, duplicate)
+        aliases_added = self._merge_identity(primary, duplicate)
         primary.updated_at = self._clock.now()
 
         def audit_factory(counts: dict[str, int]) -> AuditEntry:
@@ -70,6 +70,7 @@ class MergePeople:
                 entity_id=primary.id,
                 payload={
                     "duplicate_id": duplicate.id,
+                    "aliases_added": aliases_added,
                     "moved": moved,
                     "self_loops_removed": counts["self_loops_removed"],
                 },
@@ -83,14 +84,17 @@ class MergePeople:
         return MergePeopleResult(person=primary, moved=moved, self_loops_removed=counts["self_loops_removed"])
 
     @staticmethod
-    def _merge_identity(primary: Person, duplicate: Person) -> None:
+    def _merge_identity(primary: Person, duplicate: Person) -> list[str]:
         known = {normalize_name(name) for name in primary.all_names()}
         candidates = [Alias(value=duplicate.canonical_name, kind=AliasKind.FORMER_NAME), *duplicate.aliases]
+        aliases_added: list[str] = []
         for alias in candidates:
             normalized = normalize_name(alias.value)
             if not normalized or normalized in known:
                 continue
             known.add(normalized)
             primary.aliases.append(alias.model_copy(deep=True))
-        if primary.summary is None:
+            aliases_added.append(alias.value)
+        if not primary.summary:
             primary.summary = duplicate.summary
+        return aliases_added

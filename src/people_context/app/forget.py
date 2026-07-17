@@ -70,6 +70,8 @@ class Forget:
         return entity_type, entity_id
 
     def _audit_factory(self, scope: str, target: str):
+        """Use the forget scope as entity type and the person id or concrete record target as entity id."""
+
         def create(deleted: dict[str, int]) -> AuditEntry:
             return AuditEntry(
                 ts=self._clock.now(),

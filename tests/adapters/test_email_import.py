@@ -75,6 +75,7 @@ def test_email_import_stages_headers_filters_self_and_commits_with_provenance() 
     staged = review.execute(batch.batch_id)
 
     assert batch.candidate_count == 3
+    assert batch.skipped_message_ids == []
     person_rows = [row for row in staged.candidates if row.candidate["type"] == "person"]
     assert [row.candidate["name"] for row in person_rows] == ["Alice Example", "Bob"]
     assert person_rows[0].candidate["aliases"][-1]["value"] == "Alice E."
@@ -167,6 +168,7 @@ def test_mbox_deduplicates_people_and_omits_interaction_for_invalid_date(tmp_pat
     batch = import_content.execute("mbox", path=str(mbox_path))
     rows = review.execute(batch.batch_id).candidates
 
+    assert batch.skipped_message_ids == ["<message-1@example.com>", "<message-2@example.com>"]
     assert len([row for row in rows if row.candidate["type"] == "person"]) == 4
     assert len([row for row in rows if row.candidate["type"] == "interaction"]) == 1
     assert _BODY_SENTINEL not in _all_ordinary_text(conn)

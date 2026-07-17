@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -38,7 +39,7 @@ def test_merge_people_reparents_rows_resolves_collisions_and_refreshes_search() 
     conn = open_db(":memory:")
     people = SqlitePeopleRepository(conn)
     records = SqliteRecordStore(conn)
-    primary = _person("Alice", summary=None)
+    primary = _person("Alice", summary="")
     primary.aliases.append(Alias(value="Ally", kind=AliasKind.NICKNAME))
     duplicate = _person("Alice Smith", summary="Engineer")
     duplicate.aliases.extend([Alias(value="ally"), Alias(value="A. Smith")])
@@ -76,6 +77,7 @@ def test_merge_people_reparents_rows_resolves_collisions_and_refreshes_search() 
 
     assert result.person.summary == "Engineer"
     assert [alias.value for alias in result.person.aliases] == ["Ally", "Alice Smith", "A. Smith"]
+    assert result.person.aliases[1].kind == AliasKind.FORMER_NAME
     assert result.moved.facts == 1
     assert result.moved.relationships == 1
     assert result.moved.interaction_participations == 1
@@ -86,8 +88,9 @@ def test_merge_people_reparents_rows_resolves_collisions_and_refreshes_search() 
     assert records.get_record("interaction", interaction.id).participant_ids == [primary.id]  # type: ignore[union-attr]
     assert people.get(duplicate.id).deleted_at == _NOW  # type: ignore[union-attr]
     assert people.search_names("Alice Smith")[0].person.id == primary.id
-    audit_rows = conn.execute("SELECT op, entity_id FROM audit_log").fetchall()
+    audit_rows = conn.execute("SELECT op, entity_id, payload_json FROM audit_log").fetchall()
     assert [(row["op"], row["entity_id"]) for row in audit_rows] == [("merge", primary.id)]
+    assert json.loads(audit_rows[0]["payload_json"])["aliases_added"] == ["Alice Smith", "A. Smith"]
 
 
 def test_merge_people_rolls_back_every_change_when_audit_checkpoint_fails() -> None:

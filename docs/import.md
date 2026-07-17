@@ -18,7 +18,9 @@ Import is a four-step flow, split across three MCP tools (see [docs/mcp-interfac
 1. **`import_content(source_type, content | path)`** — the email adapter parses headers with the standard
    library's default email policy and deterministically extracts person and interaction candidates. Candidates are written to
    `import_staging` as `candidate_json`, grouped by `batch_id`. The raw source is parsed **in-memory only**
-   and discarded once candidates are extracted — it is never written to any table.
+   and discarded once candidates are extracted — it is never written to any table. Its result includes
+   `skipped_message_ids` for messages that had external correspondents but no valid `Date`, making every
+   omitted interaction with a Message-ID visible before review.
 2. **`review_import(batch_id)`** — returns the staged candidates for a batch so the user (or an agent acting
    on the user's behalf) can inspect exactly what would be written before anything touches the real tables.
 3. **`commit_import(batch_id, accepted_ids)`** — writes only accepted people and resolvable interactions,
@@ -74,4 +76,5 @@ by the shared app-layer import use cases. This means:
 Delivered in **M3**. Extraction uses only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;
 correspondents are deduplicated by normalized address across a batch, self handle aliases are filtered, and
 missing/invalid dates retain person candidates while omitting the interaction. Successful staging ids are
-idempotent, and unresolved interactions remain pending for a later partial commit.
+idempotent, and unresolved interactions remain pending for a later partial commit. Omitted interactions are
+reported in deterministic input order through `import_content.skipped_message_ids` when a Message-ID is available.

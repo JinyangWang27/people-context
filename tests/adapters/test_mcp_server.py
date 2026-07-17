@@ -116,6 +116,28 @@ def test_import_content_returns_structured_error_for_empty_email(tmp_path: Path)
     assert payload["error"] == "no_candidates"
 
 
+def test_import_content_reports_skipped_dateless_interaction(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "t.db")
+    content = "\n".join(
+        [
+            "From: Alice <alice@example.com>",
+            "To: Bob <bob@example.com>",
+            "Date: invalid",
+            "Message-ID: <dateless@example.com>",
+            "",
+        ]
+    )
+
+    async def call(client: ClientSession) -> dict[str, Any]:
+        result = await client.call_tool("import_content", {"source_type": "email", "content": content})
+        assert result.structuredContent is not None
+        return result.structuredContent
+
+    payload = _run(server, call)
+    assert payload["candidate_count"] == 2
+    assert payload["skipped_message_ids"] == ["<dateless@example.com>"]
+
+
 def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path) -> None:
     db_path = tmp_path / "merge.db"
     conn = open_db(db_path)

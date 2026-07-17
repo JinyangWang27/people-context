@@ -29,6 +29,7 @@ class ImportBatchResult(BaseModel):
 
     batch_id: str
     candidate_count: int
+    skipped_message_ids: list[str] = Field(default_factory=list)
 
 
 class ImportReviewRow(BaseModel):
@@ -131,7 +132,11 @@ class ImportContent:
         ]
         rows = [*person_rows, *interaction_rows]
         self._staging.stage_batch(rows)
-        return ImportBatchResult(batch_id=batch_id, candidate_count=len(rows))
+        return ImportBatchResult(
+            batch_id=batch_id,
+            candidate_count=len(rows),
+            skipped_message_ids=extracted.skipped_message_ids,
+        )
 
     def _match_existing(self, email: str, name: str) -> Person | None:
         for value in (email, name):

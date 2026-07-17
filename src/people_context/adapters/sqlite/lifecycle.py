@@ -250,6 +250,8 @@ class SqliteLifecycleStore:
         )
 
     def _redact_audits(self, entity_id: str, forgotten_person_id: str | None) -> None:
+        # Payload references can be nested at arbitrary depths. Decode every audit rather than using SQL LIKE,
+        # which cannot distinguish exact scalar IDs and would miss JSON structure semantics.
         rows = self._conn.execute("SELECT id, entity_id, payload_json FROM audit_log").fetchall()
         for row in rows:
             payload = json.loads(row["payload_json"])

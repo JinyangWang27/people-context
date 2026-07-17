@@ -221,7 +221,11 @@ privacy-preserving summary where full content is unnecessary. In particular, com
 audits store only before/after character lengths, never the philosophy text. Organization auto-creation and
 affiliation creation are two row mutations and therefore produce one audit entry each. Atomic `merge` and
 `forget` are intentional exceptions: each multi-row lifecycle transaction produces exactly one aggregate
-entry so the audit cannot describe a partial operation that never committed.
+entry so the audit cannot describe a partial operation that never committed. A merge audit records the
+duplicate id, every adopted alias value in `aliases_added`, moved-row counts, and removed self-loop count;
+the duplicate canonical name is adopted as a `former_name` alias. Forget tombstones intentionally use the
+scope (`person` or `record`) as `entity_type`; their `entity_id` is the person id for person scope or the
+validated `concrete_type:id` target for record scope.
 
 ## FTS5 tables
 
