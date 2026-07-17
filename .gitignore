@@ -11,6 +11,9 @@ build/
 .coverage
 htmlcov/
 
+# Node
+node_modules/
+
 # Data (local SQLite store — never commit user data)
 *.db
 *.db-wal

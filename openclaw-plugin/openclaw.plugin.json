@@ -1,0 +1,27 @@
+{
+  "id": "people-context",
+  "name": "People Context",
+  "description": "Resolve and retrieve contextual knowledge about people the user mentions.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "baseUrl": {
+        "type": "string",
+        "description": "Base URL of the people-context HTTP bridge or MCP HTTP server.",
+        "default": "http://127.0.0.1:8765"
+      }
+    }
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "people_resolve",
+      "people_context",
+      "people_communication_guidance",
+      "people_remember"
+    ]
+  }
+}
