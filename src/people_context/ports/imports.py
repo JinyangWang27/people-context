@@ -35,6 +35,9 @@ class ExtractedImport:
     people: list[ImportPersonCandidate]
     interactions: list[ImportInteractionCandidate]
     skipped_message_ids: list[str] = field(default_factory=list)
+    skipped_without_id: int = 0
+    candidates: list[dict[str, Any]] = field(default_factory=list)
+    skipped_cards: list[dict[str, int | str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

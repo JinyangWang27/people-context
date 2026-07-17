@@ -36,6 +36,18 @@ def register(mcp: FastMCP, deps: ToolDeps) -> None:
             return {"error": "invalid_path", "message": str(exc), "path": path}
 
     @mcp.tool(annotations=_WRITE)
+    def stage_candidates(source: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+        """Validate and atomically stage agent-extracted people, interactions, affiliations, and facts.
+
+        Use this after extracting concise candidates from user-provided notes or other agent-visible text.
+        References are batch-local; raw notes and source text must not be included in candidate fields.
+        """
+        try:
+            return deps.stage_candidates.execute(source, candidates).model_dump(mode="json")
+        except ImportPipelineError as exc:
+            return _error(exc)
+
+    @mcp.tool(annotations=_WRITE)
     def review_import(batch_id: str) -> dict[str, Any]:
         """Return staged candidates and statuses for one batch."""
         try:

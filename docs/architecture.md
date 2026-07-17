@@ -19,8 +19,8 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
                          │    db.py                server.py            │
                          │    migrations/*.sql     tools/*.py           │
                          │    repository.py                             │
-                         │    audit_log.py       adapters/importers/    │
-                         │                          (email, M3+)        │
+                         │    semantic.py        email_import.py        │
+                         │                       vcard_import.py        │
                          │                                              │
                          │  cli.py                config.py             │
                          └───────────────────┬─────────────────────────┘
@@ -63,16 +63,16 @@ module (SRP).
 ### `app`
 
 Use cases: one class per module, each depending only on `ports` (never on a concrete adapter). Examples:
-`ResolvePerson`, `SearchPeople`, `RememberPerson` (implemented in M0); `PersonContext`, `Communication`,
-`Importing`, `Curate`, `Export` (planned, per [docs/roadmap.md](roadmap.md)). Use cases orchestrate domain
+`ResolvePerson`, `SearchPeople`, `RememberPerson`, `SemanticSearch`, `CandidateStager`, and the lifecycle,
+guidance, import, curation, and export use cases. Use cases orchestrate domain
 objects and ports; they contain the only place application-level policy (e.g. the ambiguity threshold in
 identity resolution, or the minimal-disclosure cap in context assembly) is allowed to live.
 
 ### `ports`
 
 `typing.Protocol` interfaces, split narrowly by concern rather than one fat repository interface:
-`PersonReader` and `PersonWriter` (`ports/repository.py`), `AuditLog` (`ports/audit_log.py`), `Clock`
-(`ports/clock.py`). Splitting read/write/audit/clock means a use case that only reads people never has to
+`PersonReader` and `PersonWriter` (`ports/repository.py`), semantic embedding/vector/rebuild ports
+(`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), and `Clock` (`ports/clock.py`). Splitting concerns means a use case that only reads people never has to
 depend on write or audit capability — Interface Segregation in practice.
 
 ### `adapters`
@@ -84,8 +84,10 @@ Concrete implementations of the ports, plus anything that talks to the outside w
   (`SqliteAuditLog`).
 - `adapters/mcp/` — `server.py` (`build_server`/`main`, tool registration and annotations), `tools/` (one
   module per tool group).
-- `adapters/importers/` — source-specific extractors (email `.eml`/mbox first; see
-  [docs/import.md](import.md)), planned for M3.
+- `adapters/email_import.py` and `adapters/vcard_import.py` — source-specific, stdlib-backed extraction;
+  both feed the shared candidate staging use case described in [docs/import.md](import.md).
+- `adapters/model2vec_embeddings.py`, `adapters/semantic_indexing.py`, and `adapters/sqlite/semantic.py` —
+  optional cached embeddings, best-effort lifecycle refresh decorators, and same-file cosine vec0 storage.
 - `cli.py` — the `people-context` CLI, built on the same `app` use cases as the MCP tools.
 - `config.py` — DB path resolution (flag → env → config file → agent workspace → XDG); this is itself an
   adapter concern (it reads environment and filesystem) but is small enough to live at the package root.
@@ -107,14 +109,13 @@ an import-linter contract) may be added later to enforce it mechanically. Any mo
 
 Because `app` only depends on `ports`, adding a new way to reach the core is purely additive:
 
-- **Streamable HTTP (planned, M4).** A new adapter, e.g. `adapters/http/server.py`, constructs the same
-  `PersonReader`/`PersonWriter`/`AuditLog`/`Clock` implementations and the same `app` use cases as
-  `adapters/mcp/server.py` does today, and exposes them over a localhost HTTP transport instead of stdio. No
-  change to `domain` or `app` is required.
-- **New importers (contacts/vCard, notes, etc.).** Each importer is a module under `adapters/importers/`
-  that parses one source format into candidate assertions and stages them via the `Importing` use case
-  (`app/importing.py`). The use case, the staging table, and the review/commit flow are shared; only the
-  format-specific extraction logic differs.
+- **Streamable HTTP (delivered, M4).** `build_server()` remains the sole construction and registration path.
+  `main()` alone selects the default stdio transport or configures loopback Streamable HTTP, so transport
+  choice never duplicates use-case or tool wiring.
+- **New importers (delivered pattern).** Email/mbox and vCard adapters parse source formats into the same
+  strict person/interaction/affiliation/fact candidate shapes. `stage_candidates` exposes that same path to
+  agents extracting concise facts from notes; format parsing differs, while validation, matching, local-ref
+  rewriting, atomic staging, review, and commit remain shared.
 - **New repository backends.** Anything implementing `PersonReader`/`PersonWriter` (an in-memory fake for
   tests, a different embedded database) is a drop-in substitute for `SqlitePeopleRepository` — this is the
   Liskov Substitution Principle applied to the repository port, and it is what makes `app`-level tests
@@ -127,7 +128,8 @@ never inside `domain` or `app`:
 
 - `adapters/mcp/server.py:build_server()` resolves the DB path, opens the SQLite connection, constructs
   `SqlitePeopleRepository`, `SqliteAuditLog`, and `SystemClock`, builds the `app` use cases from them, and
-  registers MCP tools that call into those use cases. `main()` parses `--db` and runs the server over stdio.
+  registers MCP tools that call into those use cases. `main()` parses `--db` plus transport flags; it runs
+  stdio by default or applies loopback HTTP settings before `run(transport="streamable-http")`.
 - `cli.py:main()` performs the equivalent wiring for the CLI, so CLI commands and MCP tools call the exact
   same use case classes and therefore obey the exact same audit/provenance rules.
 - `__main__.py` (`python -m people_context`) is a thin alias to the stdio server entrypoint.

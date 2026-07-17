@@ -16,7 +16,11 @@ own code (see [docs/cli.md](../cli.md)).
 ## Decision
 
 Use **SQLite**, in a single user-owned file, with `PRAGMA journal_mode=WAL` for safe concurrent
-reader/writer access and FTS5 virtual tables (`person_search`, `interaction_search`) for ranked text search.
+reader/writer access and FTS5 virtual tables for lexical search. When the optional `semantic` extra is
+installed, load `sqlite-vec` into the existing connection only long enough to register the extension, then
+immediately disable extension loading. Its dynamically created same-file vec0 table declares
+`entity_id TEXT PRIMARY KEY`, `kind TEXT PARTITION KEY`, and
+`embedding FLOAT[256] DISTANCE_METRIC=cosine`.
 Schema changes are applied through a small migration runner keyed off `PRAGMA user_version`, with migration
 SQL files under `adapters/sqlite/migrations/`. Accessed only through the standard library `sqlite3` module —
 no external database driver.
@@ -34,9 +38,10 @@ no external database driver.
 - SQLite has no native encryption; the file is plaintext on disk. Mitigated today by recommending OS-level
   disk encryption, with SQLCipher noted as a possible future option if that changes — see
   [docs/privacy-and-safety.md](../privacy-and-safety.md#threat-model-notes).
-- Because everything is one file, `sqlite-vec` (an embeddings extension for SQLite) can be added later,
-  in the same file, for semantic person/interaction retrieval (M4 — see [docs/roadmap.md](../roadmap.md)),
-  without a storage migration.
+- Semantic vectors are derived, optional, and stored in the same file without a base-schema migration.
+  Model id/dimension preferences are replaced atomically with the vectors; portable export retains the
+  preferences but excludes derived vec0 storage. Incremental failures never roll back primary data and are
+  repaired by `people-context reindex --semantic`.
 
 ## Alternatives considered
 
@@ -49,6 +54,6 @@ no external database driver.
   in practice, a small graph (a single user's network of people) — SQLite's relational model handles the
   actual query patterns (direct relationship lookups, affiliation history, fact retrieval) without needing
   general graph-traversal machinery, and keeps the "one plain file" property intact.
-- **`sqlite-vec` embeddings from the start** — deferred rather than rejected: useful for semantic retrieval,
-  but not needed for the v1 exact/normalized/FTS/fuzzy resolution pipeline, so it is picked up later (M4) in
-  the same SQLite file rather than adding an embedding dependency to the initial scaffold.
+- **Mandatory embeddings in the base install** — rejected. Exact/normalized/FTS/fuzzy resolution remains
+  dependency-free; M4 adds `model2vec` and `sqlite-vec` only through the optional `semantic` extra, with an
+  explicit model download and same-file derived index.

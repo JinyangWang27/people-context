@@ -9,10 +9,11 @@ minimal-disclosure behaviour of `get_person_context`. For the underlying schema,
 
 ## Transport
 
-The server runs over **stdio** today (`people-context-mcp` / `python -m people_context`), which is what
-`build_server(db_path).run()` starts. A localhost **Streamable HTTP** transport is planned for M4 (see
-[docs/roadmap.md](roadmap.md)) as an additional adapter — the tool definitions and use cases underneath do
-not change; only the transport adapter is added. The server registers itself under the name
+The server runs over **stdio** by default (`people-context-mcp` / `python -m people_context`). The same
+`build_server()` construction/registration path can run loopback **Streamable HTTP** with
+`people-context-mcp --http --host 127.0.0.1 --port 8765`; `main()` alone selects and configures transport.
+The HTTP endpoint is `/mcp`, unauthenticated, restricted to loopback, and protected by allowed Host/Origin
+checks for `127.0.0.1` and `localhost`. The server registers itself under the name
 `"people-context"` and logs the resolved database path to stderr at startup (never stdout, since stdio
 carries the protocol itself).
 
@@ -32,6 +33,7 @@ Every tool carries an MCP `ToolAnnotations` value that tells clients how to gate
 |---|---|---|---|---|
 | `resolve_person` | Resolve a name/query to one or more candidate people, with scores and match reasons. | `query: str`, `hints?: {org?: str, role?: str, relationship?: str}`, `limit: int = 5` | `ResolutionResult`: `query`, `candidates: list[ResolutionCandidate]` (each with `person_id`, `canonical_name`, `score`, `match_reason`, `aliases`, `summary`), `ambiguous: bool` | **Implemented (M1)** |
 | `search_people` | Free-text search over people (broader than resolution — for browsing/lookup rather than pinning down one identity). | `query: str`, `filters?` | `list[ResolutionCandidate]` | **Implemented (M0)** |
+| `semantic_search` | Optional multilingual cosine retrieval over active people and public/personal interaction summaries. | `query: nonblank str`, `kinds: ["person" | "interaction"] = both`, `limit: 1..100 = 10` | Success: `{"status":"ok","model_id", "hits":[{"kind","entity_id","score","title","summary"}]}`. Missing package/model/index returns `not_available`; stored model mismatch returns `model_mismatch`, both with repair instructions. | **Implemented (M4)** |
 | `get_person_context` | Minimal-disclosure context bundle for a person: narrow identity, active relationships/roles, and top-ranked facts/interactions. | `person_id: str`, `purpose?: str`, `max_items: int = 10`, `include_sensitive: bool = false` | `PersonContextResult`, with the stable shape documented below. | **Implemented (M1)** |
 | `get_communication_guidance` | Structured bundle for composing communication advice: sensitivity-gated traits, active relationship/role context, up to five newest interaction summaries, active `communication_note` reminders, and the user's communication philosophy text. Observations are never returned. | `person_id: str`, `situation?: str` | `CommunicationGuidanceResult`: `found`, `person_id`, echoed `situation`, `traits: {category: list[Trait]}`, `relationships`, `affiliations`, `friction_notes: list[str]`, `reminders`, `communication_philosophy: str \| null`, `philosophy_set: bool`. | **Implemented (M2)** |
 | `list_reminders` | List reminders, optionally filtered, so agents can surface due follow-ups/occasions on their own schedule (pull-based; no server-side scheduler). | `person_id?: str`, `due_before?: ISO datetime`, `status?: ReminderStatus` (defaults to `active`) | `{"reminders": list[Reminder]}`; due-dated items ordered by `due_at` ascending, then undated communication notes. | **Implemented (M2)** |
@@ -54,9 +56,10 @@ Annotated as writes (not read-only); MCP clients apply their normal approval flo
 | `set_reminder` | Create a kind-validated reminder for an existing person. | `person_id`, `text`, `kind`, `due_at?`, `recurrence?` | `Reminder` | **Implemented (M2)** |
 | `complete_reminder` | Transition an active reminder to completed. | `reminder_id` | Updated `Reminder` | **Implemented (M2)** |
 | `set_communication_philosophy` | Store/update the user's free-text communication guidance framework. | `text: str` | `CommunicationPhilosophy`; audit contains lengths only. | **Implemented (M2)** |
-| `import_content` | Deterministically extract person/interaction candidates from `.eml` content/path or an mbox path. Message bodies are never accessed or stored. | `source_type: "email" \| "mbox"`, exactly one of `content`/`path` for email; path only for mbox | `{"batch_id": str, "candidate_count": int, "skipped_message_ids": [str]}` | **Implemented (M3)** |
+| `import_content` | Deterministically extract candidates from `.eml`/mbox headers or vCard 3.0/4.0. Message bodies and ignored vCard fields are never stored. | `source_type: "email" \| "mbox" \| "vcard"`; email/vCard accept exactly one of content/path, mbox accepts path | `{"batch_id", "candidate_count", "skipped_message_ids", "skipped_without_id", "skipped_cards"}` | **Implemented (M4)** |
+| `stage_candidates` | Atomically stage strict agent-extracted people, interactions, affiliations, and facts after parsing user-provided notes or other visible text. Raw notes are not accepted as a field. | `source: nonblank str`, `candidates: list[discriminated candidate]`; batch-local `ref` values connect dependencies | Normal `ImportBatchResult`; validation returns `invalid_candidates` with Pydantic details, allowed types, and valid fields. | **Implemented (M4)** |
 | `review_import` | Return the staged candidates and current statuses for a batch. | `batch_id` | `{"batch_id": str, "candidates": [{"id", "source", "status", "candidate"}]}` | **Implemented (M3)** |
-| `commit_import` | Commit accepted people and resolvable interactions with `import/email` or `import/mbox` provenance. | `batch_id`, `accepted_ids` | `{"batch_id", "committed_ids", "unresolved_ids", "skipped_ids"}` | **Implemented (M3)** |
+| `commit_import` | Commit accepted people and resolvable interactions/affiliations/facts with file or `import/agent:<source>` provenance. | `batch_id`, `accepted_ids` | `{"batch_id", "committed_ids", "unresolved_ids", "skipped_ids"}` | **Implemented (M4)** |
 
 ## Destructive tools
 
@@ -75,6 +78,21 @@ Lifecycle/import failures are structured result objects. Merge adds `same_person
 `record_not_found`. Import adds `invalid_source`, `invalid_source_type`, `invalid_path`, `no_candidates`,
 `batch_not_found`, and `candidate_not_in_batch`. Each result starts with `error` and `message`; target-specific
 fields such as `person_id`, `entity_type`, `entity_id`, `batch_id`, or `candidate_ids` are included when useful.
+
+M4 adds stable vCard per-card reasons (`missing_fn`, `unsupported_version`, `malformed_card`) using one-based
+indexes. `stage_candidates` accepts only extra-forbidden discriminated shapes: person (`ref`, `name`,
+aliases and optional summary/provenance fields), interaction (`summary`, `participant_refs`, `date` and
+optional channel/message/sensitivity), affiliation (`person_ref`, `org`, `role`, optional validity/confidence),
+and fact (`person_ref`, `predicate`, `value`, optional validity/confidence/sensitivity). Duplicate or unknown
+batch-local refs reject the whole batch before staging.
+
+## Semantic availability and scoring
+
+The vec0 column explicitly declares `DISTANCE_METRIC=cosine`; API score is `1.0 - distance`. Results from
+requested kinds merge by descending score, then entity id, and are rehydrated against current primary data
+so deleted people and newly sensitive/restricted interactions cannot leak through stale vectors. Search
+checks stored model id/dimension before embedding and never downloads. Run
+`uv sync --extra semantic` followed by `uv run people-context reindex --semantic` to install and rebuild.
 
 ## M2 write errors
 

@@ -19,10 +19,10 @@ persistence with provenance, confidence, sensitivity, audit, and forget/merge/ex
 
 ## Status
 
-**M3 — lifecycle and import delivered.** The complete documented MCP surface is SQLite-backed: identity,
-retrieval, writes, guidance, reminders, atomic merge/forget, portable export, and staged email/mbox import.
-The companion CLI includes inspection plus audited edit, alias, preference, delete, and reindex commands.
-See [docs/roadmap.md](docs/roadmap.md) for the remaining milestone plan.
+**M4 — transport and retrieval upgrades delivered.** In addition to the complete M3 lifecycle surface, the
+server now supports opt-in loopback Streamable HTTP, optional multilingual semantic retrieval, staged vCard
+imports, and strict agent-side candidate staging for notes or other user-provided text. See
+[docs/roadmap.md](docs/roadmap.md) for the remaining M5 design milestone.
 
 ## Features overview
 
@@ -30,6 +30,8 @@ See [docs/roadmap.md](docs/roadmap.md) for the remaining milestone plan.
   scores, alias support, organization/role/relationship hint boosting, and an explicit ambiguity contract.
 - **Minimal-disclosure retrieval** — stable person context containing active relationships/affiliations and
   a single ranked facts/interactions budget, with sensitivity and purpose gates.
+- **Optional multilingual semantic retrieval** — cosine search across active people and public/personal
+  interaction summaries, using a pinned local Model2Vec model and same-file `sqlite-vec` index.
 - **Relationships and organisations** — directed, typed, time-bounded edges between people, and
   affiliations (role + period) with organisations.
 - **Facts vs. observations vs. traits** — objective, time-aware facts are kept separate from subjective
@@ -38,7 +40,10 @@ See [docs/roadmap.md](docs/roadmap.md) for the remaining milestone plan.
   own communication philosophy text); the client LLM composes advice in the user's own voice.
 - **Reminders** — follow-ups, occasions, and standing communication notes, pulled by clients on demand.
 - **Provenance, confidence, sensitivity, audit** on every assertive record, plus forget, merge, and export.
-- **Local SQLite persistence** — a single, plain, user-owned file; no network calls, no server-side accounts.
+- **Reviewable imports** — email/mbox headers, vCard contacts, and strict agent-extracted candidates are
+  staged atomically; raw messages, vCard notes, and source notes are not persisted.
+- **Local SQLite persistence** — a single, plain, user-owned file; no server-side accounts. Stdio is the
+  default transport, with an explicit unauthenticated loopback-only HTTP option.
 
 ## Quick start
 
@@ -55,6 +60,34 @@ Run the server directly (stdio transport):
 ```bash
 uv run people-context-mcp
 ```
+
+For a local HTTP client, opt into Streamable HTTP on loopback:
+
+```bash
+uv run people-context-mcp --http --host 127.0.0.1 --port 8765
+```
+
+The HTTP endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and intentionally binds only to
+`127.0.0.1`; every process running as any local user that can reach loopback should be treated as a potential
+client. DNS-rebinding checks restrict accepted hosts and browser origins to `127.0.0.1` and `localhost`.
+Remote binding and authenticated HTTP access are deferred.
+
+### Optional semantic search
+
+The base install does not include embedding dependencies and never downloads a model. Opt in and explicitly
+build the derived index with:
+
+```bash
+uv sync --extra semantic
+uv run people-context reindex --semantic
+```
+
+The command announces the pinned
+[`minishlab/potion-multilingual-128M`](https://huggingface.co/minishlab/potion-multilingual-128M/tree/73908c3438cf03b6a01bcb9611d62b23d0726f08)
+revision, its Hugging Face URL, the
+approximately 512 MB download, and the resolved cache directory before any network access. The model covers
+101 languages, including Chinese. Ordinary server startup and `semantic_search` are cache-only and never
+download; a missing package/model/index returns an actionable `not_available` result.
 
 ### Wire into Claude Code
 
@@ -112,14 +145,16 @@ uv run people-context add-alias PERSON VALUE [--kind KIND]
 uv run people-context set communication_philosophy VALUE
 uv run people-context delete PERSON [--yes]
 uv run people-context reindex
+uv run people-context reindex --semantic
 ```
 
 See [docs/cli.md](docs/cli.md) for the full reference, including direct SQLite access for power users.
 
 ## Design principles
 
-- **Local-first.** Everything lives in a single SQLite file the user owns; no network access is required or
-  performed.
+- **Local-first, with no surprise network activity.** Everything lives in a single SQLite file the user
+  owns. Only the explicit `reindex --semantic` command may download the optional pinned embedding model;
+  serving and searching are cache-only.
 - **Minimal disclosure.** Context tools return capped, ranked, sensitivity-filtered slices — never full dumps
   of a person's record.
 - **Facts vs. observations.** Objective, time-stamped facts are kept structurally separate from subjective
@@ -142,7 +177,7 @@ the MCP SDK or `sqlite3`, surrounded by adapters that plug the core into the out
 ```
               ┌─────────────────────────────────────┐
               │              adapters                │
-              │  sqlite/   mcp/   importers/   cli.py │
+              │ sqlite/  mcp/  email/vcard  cli.py    │
               └───────────────┬───────────────────────┘
                                │ implements ports
               ┌────────────────▼──────────────────────┐
@@ -162,9 +197,9 @@ the MCP SDK or `sqlite3`, surrounded by adapters that plug the core into the out
               └─────────────────────────────────────────┘
 ```
 
-Dependencies point inward only: `domain` and `app` never import `adapters` or `mcp`. New transports
-(a future localhost Streamable HTTP server) and new importers (contacts, vCard, notes) slot in as additional
-adapters without touching the core. See [docs/architecture.md](docs/architecture.md) for the full rationale,
+Dependencies point inward only: `domain` and `app` never import `adapters` or `mcp`. One `build_server()`
+registers tools for both stdio and localhost Streamable HTTP; source adapters feed one shared staging path.
+See [docs/architecture.md](docs/architecture.md) for the full rationale,
 including the SOLID mapping and the "self as a person row" and "audit log as sync foundation" decisions.
 
 ## Documentation index
@@ -176,7 +211,7 @@ including the SOLID mapping and the "self as a person row" and "audit log as syn
 | [docs/mcp-interface.md](docs/mcp-interface.md) | Full MCP tool surface, parameters, return shapes, annotations, implementation status |
 | [docs/identity-resolution.md](docs/identity-resolution.md) | The 5-stage resolution pipeline, scoring, ambiguity contract |
 | [docs/communication-guidance.md](docs/communication-guidance.md) | Traits, communication philosophy, reminders, privacy treatment |
-| [docs/import.md](docs/import.md) | Extract-and-stage import pipeline (email first), no-raw-content rule |
+| [docs/import.md](docs/import.md) | Shared staged email/mbox, vCard, and agent-candidate pipeline; no-raw-content rule |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Minimal disclosure, sensitivity, audit, forget, threat model |
 | [docs/cli.md](docs/cli.md) | `people-context` CLI reference, DB location resolution, direct SQLite access |
 | [docs/roadmap.md](docs/roadmap.md) | M0 through M5 milestones |

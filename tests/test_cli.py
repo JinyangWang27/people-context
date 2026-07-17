@@ -306,3 +306,44 @@ def test_reindex_restores_search_after_manual_fts_corruption(
         conn.close()
     assert cli.main(["--db", str(db_file), "search", "Ally"]) == 0
     assert person.id in capsys.readouterr().out
+
+
+def test_semantic_reindex_is_explicit_and_preserves_metadata_on_download_failure(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_file = tmp_path / "people.db"
+    _seed(db_file, "Alice")
+    conn = open_db(db_file)
+    try:
+        with conn:
+            conn.executemany(
+                "INSERT INTO user_preferences (key, value_json, updated_at) VALUES (?, ?, ?)",
+                [
+                    ("semantic_embedding_model_id", '"prior/model"', "2026-01-01T00:00:00+00:00"),
+                    ("semantic_embedding_dimension", "256", "2026-01-01T00:00:00+00:00"),
+                ],
+            )
+    finally:
+        conn.close()
+
+    def fail_download() -> None:
+        raise OSError("offline")
+
+    monkeypatch.setattr(cli, "download_embedding_provider", fail_download)
+
+    assert cli.main(["--db", str(db_file), "reindex", "--semantic"]) == 1
+    captured = capsys.readouterr()
+    assert "minishlab/potion-multilingual-128M@73908c" in captured.out
+    assert "approximately 512 MB" in captured.out
+    assert "Cache directory:" in captured.out
+    assert "offline" in captured.err
+    conn = open_db(db_file)
+    try:
+        stored = conn.execute(
+            "SELECT value_json FROM user_preferences WHERE key = 'semantic_embedding_model_id'"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert stored == '"prior/model"'

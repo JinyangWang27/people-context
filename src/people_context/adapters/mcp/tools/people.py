@@ -18,6 +18,7 @@ from people_context.app import (
     RememberPersonInput,
     ResolutionHints,
     SelfAlreadyExistsError,
+    SemanticSearchValidationError,
 )
 
 if TYPE_CHECKING:
@@ -76,6 +77,22 @@ def register(mcp: FastMCP, deps: ToolDeps) -> None:
         """
         results = deps.search_people.execute(query, limit=limit)
         return {"query": query, "results": [candidate.model_dump(mode="json") for candidate in results]}
+
+    @mcp.tool(annotations=_READ_ONLY)
+    def semantic_search(
+        query: str,
+        kinds: list[str] | None = None,
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        """Search active people and safe interaction summaries by multilingual semantic similarity.
+
+        This optional local search requires an explicit `people-context reindex --semantic` first. It never
+        downloads a model while serving a query and refuses to mix vectors from different model revisions.
+        """
+        try:
+            return deps.semantic_search.execute(query, kinds=kinds, limit=limit).model_dump(mode="json")
+        except SemanticSearchValidationError as exc:
+            return {"error": exc.code, "message": str(exc)}
 
     @mcp.tool(annotations=_WRITE)
     def remember_person(

@@ -9,6 +9,18 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from people_context.adapters.model2vec_embeddings import (
+    MODEL_DOWNLOAD_SIZE,
+    MODEL_ID,
+    MODEL_URL,
+    download_embedding_provider,
+    semantic_cache_dir,
+)
+from people_context.adapters.semantic_indexing import (
+    IndexingLifecycleStore,
+    IndexingPeopleRepository,
+    create_local_semantic_updater,
+)
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteContextReader,
@@ -16,6 +28,8 @@ from people_context.adapters.sqlite import (
     SqliteLifecycleStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
+    SqliteSemanticDocumentReader,
+    create_sqlite_vector_index,
     open_db,
 )
 from people_context.app import (
@@ -30,6 +44,7 @@ from people_context.app import (
     PersonNameCollisionError,
     PreviewForget,
     ReindexPeople,
+    ReindexSemantic,
     ResolvePerson,
     SearchPeople,
     SetCommunicationPhilosophy,
@@ -48,25 +63,42 @@ class CliContext:
     """Per-invocation composition of the adapters a DB-backed command needs."""
 
     conn: sqlite3.Connection
-    repo: SqlitePeopleRepository
+    repo: SqlitePeopleRepository | IndexingPeopleRepository
     context_reader: SqliteContextReader
     clock: Clock
     export_reader: SqliteExportReader
     audit: SqliteAuditLog
-    lifecycle: SqliteLifecycleStore
+    lifecycle: SqliteLifecycleStore | IndexingLifecycleStore
     preferences: SqlitePreferencesStore
 
 
 def _open_context(db: str | None) -> CliContext:
     conn = open_db(resolve_db_path(db))
+    repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
+    lifecycle: SqliteLifecycleStore | IndexingLifecycleStore = SqliteLifecycleStore(conn)
+    try:
+        semantic_updater = create_local_semantic_updater(conn)
+    except Exception as exc:  # noqa: BLE001 - optional derived index cannot block primary CLI operations
+        print(
+            f"Warning: semantic index maintenance is unavailable: {exc}. "
+            "Run `uv run people-context reindex --semantic`.",
+            file=sys.stderr,
+        )
+        semantic_updater = None
+    if semantic_updater is not None:
+        def warn(message: str) -> None:
+            print(f"Warning: {message}", file=sys.stderr)
+
+        repo = IndexingPeopleRepository(repo, semantic_updater, warn)
+        lifecycle = IndexingLifecycleStore(lifecycle, semantic_updater, warn)
     return CliContext(
         conn=conn,
-        repo=SqlitePeopleRepository(conn),
+        repo=repo,
         context_reader=SqliteContextReader(conn),
         clock=SystemClock(),
         export_reader=SqliteExportReader(conn),
         audit=SqliteAuditLog(conn),
-        lifecycle=SqliteLifecycleStore(conn),
+        lifecycle=lifecycle,
         preferences=SqlitePreferencesStore(conn),
     )
 
@@ -114,7 +146,12 @@ def build_parser() -> argparse.ArgumentParser:
     delete.add_argument("person", help="An active person id, or a name to resolve.")
     delete.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
 
-    subparsers.add_parser("reindex", help="Rebuild active-person full-text search rows.")
+    reindex = subparsers.add_parser("reindex", help="Rebuild active-person full-text search rows.")
+    reindex.add_argument(
+        "--semantic",
+        action="store_true",
+        help="Explicitly download/cache the pinned multilingual model and atomically rebuild semantic vectors.",
+    )
 
     return parser
 
@@ -146,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "delete":
             return _cmd_delete(ctx, args)
         if args.command == "reindex":
-            return _cmd_reindex(ctx)
+            return _cmd_reindex(ctx, args)
         parser.error(f"unknown command: {args.command}")
         return 2
     finally:
@@ -352,7 +389,28 @@ def _cmd_delete(ctx: CliContext, args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_reindex(ctx: CliContext) -> int:
+def _cmd_reindex(ctx: CliContext, args: argparse.Namespace) -> int:
     result = ReindexPeople(ctx.repo).execute()
     print(f"Reindexed {result.people} people and {result.names} names.")
+    if not args.semantic:
+        return 0
+    print(f"Semantic model: {MODEL_ID}")
+    print(f"Pinned artifact: {MODEL_URL}")
+    print(f"Download size: {MODEL_DOWNLOAD_SIZE}")
+    print(f"Cache directory: {semantic_cache_dir()}")
+    try:
+        provider = download_embedding_provider()
+        semantic_result = ReindexSemantic(
+            SqliteSemanticDocumentReader(ctx.conn),
+            provider,
+            create_sqlite_vector_index(ctx.conn),
+        ).execute()
+    except Exception as exc:  # noqa: BLE001 - preserve prior index on package, download, or embedding failures
+        print(f"Semantic reindex failed: {exc}", file=sys.stderr)
+        return 1
+    print(
+        f"Reindexed {semantic_result.entities} semantic entities "
+        f"({semantic_result.people} people, {semantic_result.interactions} interactions) "
+        f"with {semantic_result.model_id}."
+    )
     return 0

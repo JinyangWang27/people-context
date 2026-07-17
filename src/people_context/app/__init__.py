@@ -17,14 +17,21 @@ from people_context.app.get_person_context import (
     PersonRelationshipContext,
 )
 from people_context.app.import_content import (
+    AffiliationCandidateInput,
+    CandidateAlias,
+    CandidateStager,
     CommitImport,
     CommitImportResult,
+    FactCandidateInput,
     ImportBatchResult,
     ImportContent,
     ImportPipelineError,
     ImportReviewResult,
     ImportReviewRow,
+    InteractionCandidateInput,
+    PersonCandidateInput,
     ReviewImport,
+    StageCandidates,
 )
 from people_context.app.list_reminders import ListReminders, ListRemindersInput
 from people_context.app.merge_people import MergeMovedCounts, MergePeople, MergePeopleError, MergePeopleResult
@@ -41,8 +48,17 @@ from people_context.app.record_interaction import RecordInteraction, RecordInter
 from people_context.app.record_observation import RecordObservation, RecordObservationInput
 from people_context.app.record_trait import RecordTrait, RecordTraitInput
 from people_context.app.reindex_people import ReindexPeople, ReindexPeopleResult
+from people_context.app.reindex_semantic import ReindexSemantic, ReindexSemanticResult
 from people_context.app.resolve_person import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
 from people_context.app.search_people import SearchPeople
+from people_context.app.semantic_search import (
+    SemanticSearch,
+    SemanticSearchHit,
+    SemanticSearchModelMismatch,
+    SemanticSearchNotAvailable,
+    SemanticSearchOk,
+    SemanticSearchValidationError,
+)
 from people_context.app.set_affiliation import SetAffiliation, SetAffiliationInput
 from people_context.app.set_communication_philosophy import (
     SetCommunicationPhilosophy,
@@ -60,10 +76,13 @@ from people_context.app.write_support import (
 )
 
 __all__ = [
+    "AffiliationCandidateInput",
     "AliasInput",
     "AddAlias",
     "AddAliasInput",
     "AmbiguousPersonError",
+    "CandidateAlias",
+    "CandidateStager",
     "GetPersonContext",
     "CommunicationGuidanceResult",
     "GetCommunicationGuidance",
@@ -76,6 +95,7 @@ __all__ = [
     "ImportPipelineError",
     "ImportReviewResult",
     "ImportReviewRow",
+    "InteractionCandidateInput",
     "ListReminders",
     "ListRemindersInput",
     "MergeMovedCounts",
@@ -102,6 +122,7 @@ __all__ = [
     "PreviewForget",
     "PersonNotFoundError",
     "PersonNameCollisionError",
+    "PersonCandidateInput",
     "RecordFact",
     "RecordFactInput",
     "RecordInteraction",
@@ -116,12 +137,21 @@ __all__ = [
     "RememberPersonResult",
     "ReindexPeople",
     "ReindexPeopleResult",
+    "ReindexSemantic",
+    "ReindexSemanticResult",
     "ResolutionCandidate",
     "ResolutionHints",
     "ResolutionResult",
     "ReviewImport",
+    "StageCandidates",
     "ResolvePerson",
     "SearchPeople",
+    "SemanticSearch",
+    "SemanticSearchHit",
+    "SemanticSearchModelMismatch",
+    "SemanticSearchNotAvailable",
+    "SemanticSearchOk",
+    "SemanticSearchValidationError",
     "SetAffiliation",
     "SetAffiliationInput",
     "SetCommunicationPhilosophy",
@@ -132,4 +162,5 @@ __all__ = [
     "SetReminderInput",
     "SelfAlreadyExistsError",
     "ReminderNotActiveError",
+    "FactCandidateInput",
 ]

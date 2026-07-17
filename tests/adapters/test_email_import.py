@@ -14,11 +14,20 @@ from people_context.adapters.email_import import EmailImportExtractor, ImportExt
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteImportStagingStore,
+    SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
     open_db,
 )
-from people_context.app import CommitImport, ImportContent, RecordInteraction, RememberPerson, ReviewImport
+from people_context.app import (
+    CommitImport,
+    ImportContent,
+    RecordFact,
+    RecordInteraction,
+    RememberPerson,
+    ReviewImport,
+    SetAffiliation,
+)
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.ports.imports import StagedImportRow
 
@@ -38,12 +47,14 @@ def _use_cases(conn):
     staging = SqliteImportStagingStore(conn)
     remember = RememberPerson(people, people, audit, _Clock())
     interactions = RecordInteraction(people, records, audit, _Clock())
+    affiliations = SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, _Clock())
+    facts = RecordFact(people, records, audit, _Clock())
     return (
         people,
         records,
         ImportContent(people, EmailImportExtractor(), staging, _Clock()),
         ReviewImport(staging),
-        CommitImport(people, staging, remember, interactions),
+        CommitImport(people, staging, remember, interactions, affiliations, facts),
     )
 
 
@@ -172,6 +183,37 @@ def test_mbox_deduplicates_people_and_omits_interaction_for_invalid_date(tmp_pat
     assert len([row for row in rows if row.candidate["type"] == "person"]) == 4
     assert len([row for row in rows if row.candidate["type"] == "interaction"]) == 1
     assert _BODY_SENTINEL not in _all_ordinary_text(conn)
+
+
+def test_dateless_message_without_id_preserves_people_and_reports_counter() -> None:
+    content = "\n".join(
+        [
+            "From: Alice Example <alice@example.com>",
+            "To: Bob Example <bob@example.com>",
+            "Subject: Dateless message",
+            "",
+            _BODY_SENTINEL,
+        ]
+    )
+    extracted = EmailImportExtractor().extract(
+        "email",
+        content=content,
+        path=None,
+        self_addresses=set(),
+    )
+
+    assert [person.email for person in extracted.people] == ["alice@example.com", "bob@example.com"]
+    assert extracted.interactions == []
+    assert extracted.skipped_message_ids == []
+    assert extracted.skipped_without_id == 1
+
+    conn = open_db(":memory:")
+    _, _, import_content, review, _ = _use_cases(conn)
+    batch = import_content.execute("email", content=content)
+
+    assert batch.candidate_count == 2
+    assert batch.skipped_without_id == 1
+    assert len(review.execute(batch.batch_id).candidates) == 2
 
 
 def test_source_validation_and_atomic_stage_rollback() -> None:

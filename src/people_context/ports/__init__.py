@@ -9,6 +9,18 @@ from people_context.ports.export import ExportReader, ExportSnapshot
 from people_context.ports.lifecycle import LifecycleStore
 from people_context.ports.records import OrganizationStore, PreferencesStore, Record, RecordReader, RecordWriter
 from people_context.ports.repository import PersonReader, PersonSearchIndexer, PersonWriter, SearchHit
+from people_context.ports.semantic import (
+    EmbeddingProvider,
+    SemanticDocument,
+    SemanticDocumentReader,
+    SemanticEntity,
+    SemanticEntityReader,
+    SemanticIndexMetadata,
+    SemanticIndexMetadataReader,
+    SemanticIndexRebuilder,
+    VectorIndex,
+    VectorSearchHit,
+)
 
 __all__ = [
     "AuditEntry",
@@ -17,6 +29,7 @@ __all__ = [
     "Clock",
     "ExportReader",
     "ExportSnapshot",
+    "EmbeddingProvider",
     "LifecycleStore",
     "PersonReader",
     "PersonSearchIndexer",
@@ -28,6 +41,15 @@ __all__ = [
     "RecordReader",
     "RecordWriter",
     "SearchHit",
+    "SemanticDocument",
+    "SemanticDocumentReader",
+    "SemanticEntity",
+    "SemanticEntityReader",
+    "SemanticIndexMetadata",
+    "SemanticIndexMetadataReader",
+    "SemanticIndexRebuilder",
     "RelationshipRecord",
     "SystemClock",
+    "VectorIndex",
+    "VectorSearchHit",
 ]

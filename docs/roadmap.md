@@ -81,6 +81,12 @@ are transactional, email/mbox extraction is header-only, and the CLI shares the 
   SQLite file (see [docs/decisions/0002-sqlite.md](decisions/0002-sqlite.md)).
 - More importers: contacts/vCard, notes.
 
+**Status:** Delivered. Stdio remains the default and the same registered server can run as unauthenticated,
+loopback-only Streamable HTTP. The optional semantic extra uses the pinned multilingual Model2Vec model and
+a cosine `sqlite-vec` table in the primary SQLite file; only explicit semantic reindex may download it.
+vCard 3.0/4.0 imports report per-card skips, while `stage_candidates` lets an agent extract strict candidates
+from user-provided notes without persisting the notes themselves.
+
 ## M5 — Sync groundwork
 
 **Goals:** lay the design groundwork for syncing data across devices or, eventually, users — without
