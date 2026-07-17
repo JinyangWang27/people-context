@@ -40,21 +40,17 @@ jobs:
 
       - name: Format and lint Python
         run: |
-          uv run ruff check --fix \
-            src/people_context/adapters/mcp/security.py \
-            src/people_context/adapters/mcp/tools/people.py \
-            src/people_context/adapters/mcp/tools/portability.py \
-            src/people_context/app/import_content.py \
-            tests/adapters/test_mcp_server.py \
+          FILES=(
+            src/people_context/adapters/mcp/security.py
+            src/people_context/adapters/mcp/tools/people.py
+            src/people_context/adapters/mcp/tools/portability.py
+            src/people_context/app/import_content.py
+            tests/adapters/test_mcp_server.py
             tests/adapters/test_email_import.py
-          uv run ruff format \
-            src/people_context/adapters/mcp/security.py \
-            src/people_context/adapters/mcp/tools/people.py \
-            src/people_context/adapters/mcp/tools/portability.py \
-            src/people_context/app/import_content.py \
-            tests/adapters/test_mcp_server.py \
-            tests/adapters/test_email_import.py
-          uv run ruff check .
+          )
+          uv run ruff check --fix "${FILES[@]}"
+          uv run ruff format "${FILES[@]}"
+          uv run ruff check "${FILES[@]}"
 
       - name: Run Python tests
         run: uv run pytest
