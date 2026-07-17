@@ -5,6 +5,7 @@ from __future__ import annotations
 from people_context.app.add_alias import AddAlias, AddAliasInput
 from people_context.app.complete_reminder import CompleteReminder, CompleteReminderInput
 from people_context.app.correct_record import CorrectRecord, CorrectRecordInput
+from people_context.app.get_communication_guidance import CommunicationGuidanceResult, GetCommunicationGuidance
 from people_context.app.get_person_context import (
     GetPersonContext,
     PersonAffiliationContext,
@@ -12,6 +13,7 @@ from people_context.app.get_person_context import (
     PersonIdentity,
     PersonRelationshipContext,
 )
+from people_context.app.list_reminders import ListReminders, ListRemindersInput
 from people_context.app.record import (
     AliasInput,
     AmbiguousPersonError,
@@ -48,6 +50,10 @@ __all__ = [
     "AddAliasInput",
     "AmbiguousPersonError",
     "GetPersonContext",
+    "CommunicationGuidanceResult",
+    "GetCommunicationGuidance",
+    "ListReminders",
+    "ListRemindersInput",
     "CompleteReminder",
     "CompleteReminderInput",
     "CorrectRecord",

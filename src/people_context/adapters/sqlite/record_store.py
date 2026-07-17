@@ -189,7 +189,7 @@ class SqliteRecordStore:
             clauses.append("person_id = ?")
             params.append(person_id)
         if due_before is not None:
-            clauses.append("due_at IS NOT NULL AND due_at <= ?")
+            clauses.append("((due_at IS NOT NULL AND due_at <= ?) OR (due_at IS NULL AND kind = 'communication_note'))")
             params.append(due_before.isoformat())
         if status is not None:
             clauses.append("status = ?")

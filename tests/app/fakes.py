@@ -226,7 +226,11 @@ class FakeRecordStore:
             reminder
             for reminder in reminders
             if (person_id is None or reminder.person_id == person_id)
-            and (due_before is None or (reminder.due_at is not None and reminder.due_at <= due_before))
+            and (
+                due_before is None
+                or (reminder.due_at is not None and reminder.due_at <= due_before)
+                or (reminder.due_at is None and reminder.kind.value == "communication_note")
+            )
             and (status is None or reminder.status == status)
         ]
         return sorted(

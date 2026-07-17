@@ -126,7 +126,7 @@ def test_organization_preferences_and_reminder_filters() -> None:
     assert orgs.get_by_normalized_name(normalize_name("Cafe Team")) == organization
     assert preferences.get("communication_philosophy") == "道可道，非常道"
     assert [item.id for item in store.list_reminders(person_id="p2")] == [due.id, note.id]
-    assert store.list_reminders(due_before=datetime(2025, 6, 1, tzinfo=UTC)) == []
+    assert [item.id for item in store.list_reminders(due_before=datetime(2025, 6, 1, tzinfo=UTC))] == [note.id]
 
     writer: RecordWriter = store
     reader: RecordReader = store
