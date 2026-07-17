@@ -9,9 +9,9 @@ from pydantic import BaseModel
 
 from people_context.app.write_support import (
     OrganizationNotFoundError,
-    PersonNotFoundError,
     audit_mutation,
     provenance,
+    require_active_person,
     snapshot,
 )
 from people_context.domain.organization import Affiliation, Organization
@@ -57,8 +57,7 @@ class SetAffiliation:
 
     def execute(self, data: SetAffiliationInput) -> Affiliation:
         """Create and audit an affiliation, auditing organization creation separately."""
-        if self._people.get(data.person_id) is None:
-            raise PersonNotFoundError(data.person_id)
+        require_active_person(self._people, data.person_id)
         organization = self._organizations.get(data.org)
         if organization is None and _ULID_PATTERN.fullmatch(data.org):
             raise OrganizationNotFoundError(data.org)

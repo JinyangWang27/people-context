@@ -112,6 +112,43 @@ def test_all_person_targeted_writes_reject_unknown_person(write_deps: tuple) -> 
     assert audit.entries == []
 
 
+def test_all_person_targeted_writes_reject_soft_deleted_person(write_deps: tuple) -> None:
+    people, records, audit, clock, self_person, deleted = write_deps
+    deleted.deleted_at = _NOW
+    organizations = FakeOrganizationStore()
+    cases = [
+        (AddAlias(people, people, audit, clock), AddAliasInput(person_id=deleted.id, value="x")),
+        (
+            SetRelationship(people, records, audit, clock),
+            SetRelationshipInput(subject_id=self_person.id, object_id=deleted.id, type="friend_of"),
+        ),
+        (
+            SetAffiliation(people, organizations, records, audit, clock),
+            SetAffiliationInput(person_id=deleted.id, org="Acme", role="Engineer"),
+        ),
+        (RecordFact(people, records, audit, clock), RecordFactInput(person_id=deleted.id, predicate="p", value="v")),
+        (RecordObservation(people, records, audit, clock), RecordObservationInput(person_id=deleted.id, text="x")),
+        (
+            RecordTrait(people, records, audit, clock),
+            RecordTraitInput(person_id=deleted.id, category=TraitCategory.VALUES, value="x"),
+        ),
+        (
+            RecordInteraction(people, records, audit, clock),
+            RecordInteractionInput(summary="x", participant_ids=[deleted.id]),
+        ),
+        (
+            SetReminder(people, records, audit, clock),
+            SetReminderInput(person_id=deleted.id, text="x", kind=ReminderKind.FOLLOW_UP, due_at=_NOW),
+        ),
+    ]
+
+    for use_case, data in cases:
+        with pytest.raises(PersonNotFoundError):
+            use_case.execute(data)
+    assert people.get(deleted.id) is deleted
+    assert audit.entries == []
+
+
 def test_relationship_affiliation_and_direct_records(write_deps: tuple) -> None:
     people, records, audit, clock, self_person, other = write_deps
     organizations = FakeOrganizationStore()
@@ -180,7 +217,7 @@ def test_correct_fact_updates_in_place_and_rejects_identity_or_provenance(write_
     fact = RecordFact(people, records, audit, clock).execute(
         RecordFactInput(person_id=other.id, predicate="location", value="Dubia")
     )
-    correct = CorrectRecord(records, records, audit, clock)
+    correct = CorrectRecord(records, records, audit, clock, people=people)
 
     updated = correct.execute(CorrectRecordInput(entity_type="fact", entity_id=fact.id, fields={"value": "Dubai"}))
 
@@ -200,7 +237,7 @@ def test_correct_fact_updates_in_place_and_rejects_identity_or_provenance(write_
 def test_reminder_transitions_and_kind_validation(write_deps: tuple) -> None:
     people, records, audit, clock, _, other = write_deps
     set_reminder = SetReminder(people, records, audit, clock)
-    complete = CompleteReminder(records, records, audit, clock)
+    complete = CompleteReminder(records, records, audit, clock, people=people)
     reminder = set_reminder.execute(
         SetReminderInput(person_id=other.id, text="Follow up", kind=ReminderKind.FOLLOW_UP, due_at=_NOW)
     )
@@ -214,6 +251,26 @@ def test_reminder_transitions_and_kind_validation(write_deps: tuple) -> None:
     with pytest.raises(InvalidReminderError):
         set_reminder.execute(
             SetReminderInput(person_id=other.id, text="Note", kind=ReminderKind.COMMUNICATION_NOTE, due_at=_NOW)
+        )
+
+
+def test_record_correction_and_reminder_completion_reject_deleted_owner(write_deps: tuple) -> None:
+    people, records, audit, clock, _, other = write_deps
+    fact = RecordFact(people, records, audit, clock).execute(
+        RecordFactInput(person_id=other.id, predicate="location", value="Dubai")
+    )
+    reminder = SetReminder(people, records, audit, clock).execute(
+        SetReminderInput(person_id=other.id, text="Follow up", kind=ReminderKind.FOLLOW_UP, due_at=_NOW)
+    )
+    other.deleted_at = _NOW
+
+    with pytest.raises(PersonNotFoundError):
+        CorrectRecord(records, records, audit, clock, people=people).execute(
+            CorrectRecordInput(entity_type="fact", entity_id=fact.id, fields={"value": "Abu Dhabi"})
+        )
+    with pytest.raises(PersonNotFoundError):
+        CompleteReminder(records, records, audit, clock, people=people).execute(
+            CompleteReminderInput(reminder_id=reminder.id)
         )
 
 

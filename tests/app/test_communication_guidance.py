@@ -127,6 +127,18 @@ def test_guidance_not_found_and_unset_philosophy_have_stable_shape() -> None:
     }
 
 
+def test_guidance_treats_soft_deleted_person_as_not_found() -> None:
+    people = FakePeopleRepository()
+    person = Person(canonical_name="Deleted", deleted_at=_NOW)
+    people.save_person(person)
+
+    result = GetCommunicationGuidance(
+        people, FakeContextReader(), FakePreferencesStore(), FakeClock(_NOW)
+    ).execute(person.id)
+
+    assert result.found is False
+
+
 def test_list_reminders_filters_due_items_and_keeps_communication_notes_last() -> None:
     records = FakeRecordStore()
     due_soon = Reminder(

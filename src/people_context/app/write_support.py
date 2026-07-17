@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from people_context.domain.shared import Provenance
 from people_context.ports.audit_log import AuditEntry, AuditLog
 from people_context.ports.clock import Clock
+from people_context.ports.repository import PersonReader
 
 
 class PersonNotFoundError(Exception):
@@ -57,6 +58,14 @@ class ReminderNotActiveError(Exception):
 
 class InvalidReminderError(Exception):
     """Raised when reminder kind and scheduling fields conflict."""
+
+
+def require_active_person(people: PersonReader, person_id: str):
+    """Return an active person or raise the common not-found error."""
+    person = people.get(person_id)
+    if person is None or person.deleted_at is not None:
+        raise PersonNotFoundError(person_id)
+    return person
 
 
 def provenance(source: str, session: str | None, stated_by: str | None) -> Provenance:

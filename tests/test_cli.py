@@ -8,9 +8,10 @@ from pathlib import Path
 import pytest
 
 from people_context import cli
-from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, open_db
+from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, SqlitePreferencesStore, open_db
 from people_context.app import AliasInput, RememberPerson, RememberPersonInput
 from people_context.domain.person import Person
+from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.ports.clock import SystemClock
 
 
@@ -184,3 +185,124 @@ def test_export_to_file_includes_soft_deleted(tmp_path: Path, capsys: pytest.Cap
     ids = {p["id"] for p in document["people"]}
     assert live.id in ids
     assert gone.id in ids
+
+
+# -- curation ---------------------------------------------------------------
+
+
+def test_edit_requires_a_field_updates_person_and_audits_before_after(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Alice", summary="Old")
+
+    assert cli.main(["--db", str(db_file), "edit", person.id]) == 2
+    assert "requires" in capsys.readouterr().err
+    assert cli.main(
+        ["--db", str(db_file), "edit", person.id, "--name", "Alice Smith", "--summary", "New"]
+    ) == 0
+
+    conn = open_db(db_file)
+    try:
+        updated = SqlitePeopleRepository(conn).get(person.id)
+        entry = next(item for item in SqliteAuditLog(conn).list_entries() if item.entity_id == person.id)
+    finally:
+        conn.close()
+    assert updated is not None
+    assert updated.canonical_name == "Alice Smith"
+    assert entry.payload["before"]["canonical_name"] == "Alice"
+    assert entry.payload["after"]["summary"] == "New"
+    assert entry.payload["fields"] == ["canonical_name", "summary"]
+
+
+def test_edit_rejects_canonical_collision_and_shared_resolver_keeps_ambiguous_exit_code(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    alice = _seed(db_file, "Alice")
+    _seed(db_file, "Bob")
+    first = _seed(db_file, "Ally One", aliases=[AliasInput(value="Ally")])
+    second = _seed(db_file, "Ally Two", aliases=[AliasInput(value="Ally")])
+
+    assert cli.main(["--db", str(db_file), "edit", alice.id, "--name", "bob"]) == 1
+    assert "already belongs" in capsys.readouterr().err
+    assert cli.main(["--db", str(db_file), "add-alias", "Ally", "Alias"]) == 2
+    err = capsys.readouterr().err
+    assert first.id in err and second.id in err
+
+
+def test_add_alias_and_set_preference_use_application_writes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Alice")
+
+    assert cli.main(
+        ["--db", str(db_file), "add-alias", person.id, "Ally", "--kind", "nickname", "--lang", "en"]
+    ) == 0
+    assert cli.main(["--db", str(db_file), "set", "unsupported", "x"]) == 2
+    assert "Unsupported" in capsys.readouterr().err
+    assert cli.main(
+        ["--db", str(db_file), "set", PREF_COMMUNICATION_PHILOSOPHY, "Prefer concise updates"]
+    ) == 0
+
+    conn = open_db(db_file)
+    try:
+        updated = SqlitePeopleRepository(conn).get(person.id)
+        philosophy = SqlitePreferencesStore(conn).get(PREF_COMMUNICATION_PHILOSOPHY)
+    finally:
+        conn.close()
+    assert updated is not None
+    assert [(alias.value, alias.kind.value, alias.lang) for alias in updated.aliases] == [
+        ("Ally", "nickname", "en")
+    ]
+    assert philosophy == "Prefer concise updates"
+
+
+def test_delete_abort_is_non_mutating_and_confirmation_forgets_person(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Alice")
+    monkeypatch.setattr("builtins.input", lambda _: "no")
+
+    assert cli.main(["--db", str(db_file), "delete", person.id]) == 0
+    assert "Aborted." in capsys.readouterr().out
+    conn = open_db(db_file)
+    try:
+        assert SqlitePeopleRepository(conn).get(person.id) is not None
+    finally:
+        conn.close()
+
+    assert cli.main(["--db", str(db_file), "delete", person.id, "--yes"]) == 0
+    assert "Deleted." in capsys.readouterr().out
+    conn = open_db(db_file)
+    try:
+        assert SqlitePeopleRepository(conn).get(person.id) is None
+    finally:
+        conn.close()
+
+
+def test_reindex_restores_search_after_manual_fts_corruption(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Alice", aliases=[AliasInput(value="Ally")])
+    conn = open_db(db_file)
+    try:
+        with conn:
+            conn.execute("DELETE FROM person_search WHERE person_id = ?", (person.id,))
+    finally:
+        conn.close()
+
+    assert cli.main(["--db", str(db_file), "reindex"]) == 0
+    assert "2 names" in capsys.readouterr().out
+    conn = open_db(db_file)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM person_search WHERE person_id = ?", (person.id,)).fetchone()[0] == 2
+    finally:
+        conn.close()
+    assert cli.main(["--db", str(db_file), "search", "Ally"]) == 0
+    assert person.id in capsys.readouterr().out

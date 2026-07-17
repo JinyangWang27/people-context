@@ -19,12 +19,10 @@ persistence with provenance, confidence, sensitivity, audit, and forget/merge/ex
 
 ## Status
 
-**M1 — identity and retrieval delivered.** `resolve_person`, `search_people`, `remember_person`, and
-`get_person_context` are implemented against the real SQLite store. Resolution includes guarded fuzzy
-matching and organization/role/relationship hint boosting; context retrieval is ranked, sensitivity-filtered,
-and disclosure-bounded. Later M2/M3 tools described in [docs/mcp-interface.md](docs/mcp-interface.md) remain
-registered stubs returning `{"status": "not_implemented", "planned_milestone": "..."}`. See
-[docs/roadmap.md](docs/roadmap.md) for the full milestone plan.
+**M3 — lifecycle and import delivered.** The complete documented MCP surface is SQLite-backed: identity,
+retrieval, writes, guidance, reminders, atomic merge/forget, portable export, and staged email/mbox import.
+The companion CLI includes inspection plus audited edit, alias, preference, delete, and reindex commands.
+See [docs/roadmap.md](docs/roadmap.md) for the remaining milestone plan.
 
 ## Features overview
 
@@ -109,6 +107,11 @@ uv run people-context list [--all]
 uv run people-context search <query>
 uv run people-context show <person>
 uv run people-context export [--output FILE]
+uv run people-context edit PERSON [--name NAME] [--summary TEXT]
+uv run people-context add-alias PERSON VALUE [--kind KIND]
+uv run people-context set communication_philosophy VALUE
+uv run people-context delete PERSON [--yes]
+uv run people-context reindex
 ```
 
 See [docs/cli.md](docs/cli.md) for the full reference, including direct SQLite access for power users.

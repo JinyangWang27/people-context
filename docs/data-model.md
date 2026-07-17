@@ -214,29 +214,32 @@ Append-only record of every mutation. See
 | `payload_json` | TEXT (JSON) | Op-specific detail. |
 | `source` | TEXT | Provenance source string of the mutation. |
 
-Audit payloads follow one convention across use cases: one mutated row produces one audit entry. Create
+Audit payloads normally follow one convention across use cases: one mutated row produces one audit entry. Create
 payloads describe the resulting row; ordinary updates describe changed values; corrections and status
 transitions carry `before`, `after`, and a sorted `fields` list. Payloads are JSON-compatible and may use a
 privacy-preserving summary where full content is unnecessary. In particular, communication-philosophy
 audits store only before/after character lengths, never the philosophy text. Organization auto-creation and
-affiliation creation are two row mutations and therefore produce one audit entry each.
+affiliation creation are two row mutations and therefore produce one audit entry each. Atomic `merge` and
+`forget` are intentional exceptions: each multi-row lifecycle transaction produces exactly one aggregate
+entry so the audit cannot describe a partial operation that never committed. A merge audit records the
+duplicate id, every adopted alias value in `aliases_added`, moved-row counts, and removed self-loop count;
+the duplicate canonical name is adopted as a `former_name` alias. Forget tombstones intentionally use the
+scope (`person` or `record`) as `entity_type`; their `entity_id` is the person id for person scope or the
+validated `concrete_type:id` target for record scope.
 
 ## FTS5 tables
 
-Two SQLite FTS5 virtual tables provide ranked, tokenized search, maintained by the repository on every
+One SQLite FTS5 virtual table provides ranked, tokenized search, maintained by the repository on every
 write (not by database triggers, so all maintenance logic lives in `adapters/sqlite/repository.py`):
 
 - **`person_search`** — indexes `canonical_name` plus every alias `value` for a person, associated back to
   `person_id` (stored `UNINDEXED` in the FTS row so it can be selected without being tokenized). This is
   what backs stage 3 (FTS prefix/token match) of identity resolution and the `search_people`/`show` /
   `search` CLI paths — see [docs/identity-resolution.md](identity-resolution.md).
-- **`interaction_search`** — indexes interaction `summary` text, for retrieving relevant past interactions
-  by keyword.
-
 Whenever a person or their aliases change, the repository deletes and re-inserts that person's `person_search`
 rows so the index never drifts from the source tables. If a user edits the database directly with an
-external SQL tool, the index can go stale — `docs/cli.md` documents a planned `people-context reindex`
-command to rebuild it (M3).
+external SQL tool, the index can go stale — `people-context reindex` atomically rebuilds it from active
+people and aliases.
 
 ## Bitemporal-lite
 
@@ -278,8 +281,8 @@ we distilled, and how should that shape communication." See
 - **Soft-delete** (`persons.deleted_at`) marks a person as no longer active without removing any row. Soft-
   deleted people are excluded from normal reads (`list_people(include_deleted=False)` by default,
   `resolve_person` excludes them) but remain in the database and in exports until forgotten.
-- **Forget** (the `forget` MCP tool / future CLI command) is a **hard delete**: rows are actually removed,
-  and a tombstone entry is written to `audit_log` recording that the delete happened (op, entity type,
-  entity id, timestamp) without retaining the deleted content itself. This is the mechanism for genuinely
-  removing data the user no longer wants stored, as opposed to merely hiding it. See
+- **Forget** (the MCP tool and CLI delete command) is a **hard delete**: rows are actually removed, prior
+  audits naming the target are replaced with exactly `{"redacted": true}`, and a minimal aggregate tombstone
+  records only the scope and pluralized deletion counts. This is the mechanism for genuinely removing data
+  the user no longer wants stored, as opposed to merely hiding it. See
   [docs/privacy-and-safety.md](privacy-and-safety.md) for the full forget semantics.

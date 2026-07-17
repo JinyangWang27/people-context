@@ -5,6 +5,9 @@ from __future__ import annotations
 from people_context.app.add_alias import AddAlias, AddAliasInput
 from people_context.app.complete_reminder import CompleteReminder, CompleteReminderInput
 from people_context.app.correct_record import CorrectRecord, CorrectRecordInput
+from people_context.app.edit_person import EditPerson, EditPersonInput, PersonNameCollisionError
+from people_context.app.export_data import ExportData, ExportDocument
+from people_context.app.forget import Forget, ForgetError, ForgetPreview, ForgetResult, PreviewForget
 from people_context.app.get_communication_guidance import CommunicationGuidanceResult, GetCommunicationGuidance
 from people_context.app.get_person_context import (
     GetPersonContext,
@@ -13,7 +16,18 @@ from people_context.app.get_person_context import (
     PersonIdentity,
     PersonRelationshipContext,
 )
+from people_context.app.import_content import (
+    CommitImport,
+    CommitImportResult,
+    ImportBatchResult,
+    ImportContent,
+    ImportPipelineError,
+    ImportReviewResult,
+    ImportReviewRow,
+    ReviewImport,
+)
 from people_context.app.list_reminders import ListReminders, ListRemindersInput
+from people_context.app.merge_people import MergeMovedCounts, MergePeople, MergePeopleError, MergePeopleResult
 from people_context.app.record import (
     AliasInput,
     AmbiguousPersonError,
@@ -26,6 +40,7 @@ from people_context.app.record_fact import RecordFact, RecordFactInput
 from people_context.app.record_interaction import RecordInteraction, RecordInteractionInput
 from people_context.app.record_observation import RecordObservation, RecordObservationInput
 from people_context.app.record_trait import RecordTrait, RecordTraitInput
+from people_context.app.reindex_people import ReindexPeople, ReindexPeopleResult
 from people_context.app.resolve_person import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
 from people_context.app.search_people import SearchPeople
 from people_context.app.set_affiliation import SetAffiliation, SetAffiliationInput
@@ -52,12 +67,31 @@ __all__ = [
     "GetPersonContext",
     "CommunicationGuidanceResult",
     "GetCommunicationGuidance",
+    "Forget",
+    "ForgetError",
+    "ForgetPreview",
+    "ForgetResult",
+    "ImportBatchResult",
+    "ImportContent",
+    "ImportPipelineError",
+    "ImportReviewResult",
+    "ImportReviewRow",
     "ListReminders",
     "ListRemindersInput",
+    "MergeMovedCounts",
+    "MergePeople",
+    "MergePeopleError",
+    "MergePeopleResult",
     "CompleteReminder",
     "CompleteReminderInput",
+    "CommitImport",
+    "CommitImportResult",
     "CorrectRecord",
     "CorrectRecordInput",
+    "EditPerson",
+    "EditPersonInput",
+    "ExportData",
+    "ExportDocument",
     "InvalidCorrectionError",
     "InvalidReminderError",
     "OrganizationNotFoundError",
@@ -65,7 +99,9 @@ __all__ = [
     "PersonContextResult",
     "PersonIdentity",
     "PersonRelationshipContext",
+    "PreviewForget",
     "PersonNotFoundError",
+    "PersonNameCollisionError",
     "RecordFact",
     "RecordFactInput",
     "RecordInteraction",
@@ -78,9 +114,12 @@ __all__ = [
     "RememberPerson",
     "RememberPersonInput",
     "RememberPersonResult",
+    "ReindexPeople",
+    "ReindexPeopleResult",
     "ResolutionCandidate",
     "ResolutionHints",
     "ResolutionResult",
+    "ReviewImport",
     "ResolvePerson",
     "SearchPeople",
     "SetAffiliation",

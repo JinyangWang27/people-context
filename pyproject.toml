@@ -11,7 +11,11 @@ people-context-mcp = "people_context.adapters.mcp.server:main"
 people-context = "people_context.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = [
+    "ipykernel>=7.3.0",
+    "pytest>=8",
+    "ruff>=0.6",
+]
 
 [build-system]
 requires = ["hatchling"]

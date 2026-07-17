@@ -51,8 +51,7 @@ includes fake use-case tests, SQLite hydration, in-memory MCP tests, and a real 
 - Audit log polish (consistent payload shapes across all op types).
 
 **Status:** Delivered. All M2 tools are SQLite-backed and covered by fake-port unit tests, real-SQLite
-integration tests, in-memory MCP tests, and a real stdio write-to-read round trip. M3 lifecycle/import/CLI
-editing remains out of scope and registered as typed stubs.
+integration tests, in-memory MCP tests, and a real stdio write-to-read round trip.
 
 ## M3 — Lifecycle and import
 
@@ -67,6 +66,9 @@ bring in the first external content source.
   see [docs/import.md](import.md).
 - Full CLI edit/curation commands: `edit`, `add-alias`, `set`, `delete`, `reindex` — see
   [docs/cli.md](cli.md).
+
+**Status:** Delivered. All six lifecycle/import MCP tools are implemented, destructive multi-row operations
+are transactional, email/mbox extraction is header-only, and the CLI shares the same application use cases.
 
 ## M4 — Transport and retrieval upgrades
 

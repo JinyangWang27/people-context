@@ -78,19 +78,18 @@ Two distinct deletion mechanisms exist, and they are not interchangeable:
   physically removing any data. It is reversible and is the default outcome of ordinary "this person is no
   longer relevant" bookkeeping.
 - **Forget** (the `forget` tool) is a **hard delete**: the targeted rows are actually removed from the
-  database, and a tombstone entry is written to `audit_log` recording that the delete happened — without
-  retaining the deleted content itself in that tombstone. This is the mechanism for a user who wants data
-  genuinely gone, not merely hidden.
+  database. Earlier audit rows whose entity id is deleted, or whose nested payload contains the forgotten
+  person id as an exact scalar, are replaced with `{"redacted": true}`. The new tombstone contains only the
+  scope and pluralized deletion counts — no names, values, summaries, or ids in its payload.
 
 See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-level detail.
 
 ## Export for portability
 
-`export_data` produces a full JSON export of the dataset on demand, so the user's data is never locked into
-this tool — it can be inspected, migrated, or backed up independently of the SQLite file itself. Export is
-read-only by nature but is listed among the destructive-tier tools in
-[docs/mcp-interface.md](mcp-interface.md) purely because it is grouped with the lifecycle-management tools
-(`merge_people`, `forget`) that ship together in M3; it does not mutate any data.
+`export_data` produces a deterministic, domain-shaped JSON export of the full portable dataset on demand,
+including soft-deleted people, interaction participant ids, preference text, and decoded audit payloads.
+Derived `person_search` rows and pending `import_staging` candidates are excluded. Export does not mutate
+data, but remains write-gated because it is a maximal-disclosure operation.
 
 ## Writes and destructive operations are annotated for client-side gating
 

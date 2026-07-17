@@ -6,7 +6,7 @@ from datetime import date
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import PersonNotFoundError, audit_mutation, provenance, snapshot
+from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
 from people_context.domain.fact import Fact
 from people_context.domain.shared import Confidence, Sensitivity, ValidityPeriod
 from people_context.ports.audit_log import AuditLog
@@ -41,8 +41,7 @@ class RecordFact:
 
     def execute(self, data: RecordFactInput) -> Fact:
         """Persist and audit a fact."""
-        if self._people.get(data.person_id) is None:
-            raise PersonNotFoundError(data.person_id)
+        require_active_person(self._people, data.person_id)
         fact = Fact(
             person_id=data.person_id,
             predicate=data.predicate,

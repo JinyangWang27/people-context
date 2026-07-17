@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import PersonNotFoundError, audit_mutation, provenance, snapshot
+from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
 from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import Trait, TraitCategory
 from people_context.ports.audit_log import AuditLog
@@ -38,8 +38,7 @@ class RecordTrait:
 
     def execute(self, data: RecordTraitInput) -> Trait:
         """Persist and audit a validated trait category."""
-        if self._people.get(data.person_id) is None:
-            raise PersonNotFoundError(data.person_id)
+        require_active_person(self._people, data.person_id)
         trait = Trait(
             person_id=data.person_id,
             category=data.category,

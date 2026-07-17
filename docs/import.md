@@ -1,8 +1,8 @@
 # Import
 
 This document describes the extract-and-stage import pipeline for bringing external content — email first —
-into `people-context-mcp` without ever persisting raw source material. Import is planned for **M3** (see
-[docs/roadmap.md](roadmap.md)); the `import_staging` table already exists in the M0 schema (see
+into `people-context-mcp` without ever persisting raw source material. Import was delivered in **M3** (see
+[docs/roadmap.md](roadmap.md)); the `import_staging` table lives in the initial schema (see
 [docs/data-model.md](data-model.md#import_staging)).
 
 ## Extract-and-stage model
@@ -15,16 +15,17 @@ Import is a four-step flow, split across three MCP tools (see [docs/mcp-interfac
                 import_content              review_import            commit_import
 ```
 
-1. **`import_content(source_type, content | path)`** — an importer adapter
-   (`adapters/importers/`) parses the source file, and the client LLM or a heuristic extractor proposes
-   candidate person/alias/fact/interaction-summary records from it. Candidates are written to
+1. **`import_content(source_type, content | path)`** — the email adapter parses headers with the standard
+   library's default email policy and deterministically extracts person and interaction candidates. Candidates are written to
    `import_staging` as `candidate_json`, grouped by `batch_id`. The raw source is parsed **in-memory only**
-   and discarded once candidates are extracted — it is never written to any table.
+   and discarded once candidates are extracted — it is never written to any table. Its result includes
+   `skipped_message_ids` for messages that had external correspondents but no valid `Date`, making every
+   omitted interaction with a Message-ID visible before review.
 2. **`review_import(batch_id)`** — returns the staged candidates for a batch so the user (or an agent acting
    on the user's behalf) can inspect exactly what would be written before anything touches the real tables.
-3. **`commit_import(batch_id, accepted_ids)`** — writes only the accepted candidates into the real tables
-   (`persons`, `aliases`, `facts`, `interactions`, etc.), tagged with provenance `source: "import/<type>"`
-   (e.g. `"import/email"`). Rejected candidates are simply never committed.
+3. **`commit_import(batch_id, accepted_ids)`** — writes only accepted people and resolvable interactions,
+   tagged with provenance `source: "import/<type>"` (e.g. `"import/email"`). An accepted interaction whose
+   new-person references were not accepted stays pending and is returned in `unresolved_ids`; it can be retried later.
 
 Nothing enters the real dataset without an explicit accept step — this is the same approval-gating
 philosophy applied to all writes (see [docs/privacy-and-safety.md](privacy-and-safety.md)), just staged one
@@ -59,8 +60,8 @@ reach the real tables:
 
 ## Importers are adapters
 
-Import parsing lives entirely under `adapters/importers/`, one module per source format, each producing the
-same candidate shape consumed by the shared `Importing` use case (`app/importing.py`). This means:
+Import parsing lives in the `adapters/email_import.py` adapter, which produces plain candidate DTOs consumed
+by the shared app-layer import use cases. This means:
 
 - The staging/review/commit flow, the `import_staging` schema, and the provenance rules are shared across
   every source type.
@@ -72,6 +73,8 @@ same candidate shape consumed by the shared `Importing` use case (`app/importing
 
 ## Status
 
-Planned for **M3**, alongside `merge_people`, `forget`, `export_data`, and the full CLI curation command set
-(see [docs/roadmap.md](roadmap.md)). In M0, `import_content`, `review_import`, and `commit_import` are
-registered as stub MCP tools returning `{"status": "not_implemented", "planned_milestone": "M3"}`.
+Delivered in **M3**. Extraction uses only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;
+correspondents are deduplicated by normalized address across a batch, self handle aliases are filtered, and
+missing/invalid dates retain person candidates while omitting the interaction. Successful staging ids are
+idempotent, and unresolved interactions remain pending for a later partial commit. Omitted interactions are
+reported in deterministic input order through `import_content.skipped_message_ids` when a Message-ID is available.

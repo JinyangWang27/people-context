@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import InvalidReminderError, PersonNotFoundError, audit_mutation, snapshot
+from people_context.app.write_support import InvalidReminderError, audit_mutation, require_active_person, snapshot
 from people_context.domain.reminder import Reminder, ReminderKind
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -38,8 +38,7 @@ class SetReminder:
 
     def execute(self, data: SetReminderInput) -> Reminder:
         """Persist and audit a reminder."""
-        if self._people.get(data.person_id) is None:
-            raise PersonNotFoundError(data.person_id)
+        require_active_person(self._people, data.person_id)
         if data.kind == ReminderKind.COMMUNICATION_NOTE and (data.due_at is not None or data.recurrence is not None):
             raise InvalidReminderError("communication_note reminders cannot have due_at or recurrence")
         if data.kind in (ReminderKind.FOLLOW_UP, ReminderKind.OCCASION) and data.due_at is None:

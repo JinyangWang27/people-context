@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import mailbox
 import shutil
 import subprocess
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
@@ -160,6 +162,55 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
     assert len(entries) == 10
     philosophy_entry = next(entry for entry in entries if entry.entity_type == "preference")
     assert philosophy not in str(philosophy_entry.payload)
+
+
+def test_real_stdio_mbox_import_commit_and_resolve(tmp_path: Path) -> None:
+    uv = shutil.which("uv")
+    assert uv is not None
+    project_root = Path(__file__).parents[2]
+    db_path = tmp_path / "m3-stdio.db"
+    mbox_path = tmp_path / "mailbox.mbox"
+    box = mailbox.mbox(mbox_path)
+    try:
+        message = EmailMessage()
+        message["From"] = "Alice Example <alice@example.com>"
+        message["To"] = "Bob Example <bob@example.com>"
+        message["Date"] = "Wed, 04 Mar 2026 09:06:00 +0400"
+        message["Subject"] = "Project update"
+        message["Message-ID"] = "<stdio-message@example.com>"
+        message.set_content("body is intentionally discarded")
+        box.add(message)
+        box.flush()
+    finally:
+        box.close()
+    parameters = StdioServerParameters(
+        command=uv,
+        args=["run", "people-context-mcp", "--db", str(db_path)],
+        cwd=project_root,
+    )
+
+    async def flow() -> tuple[dict[str, Any], dict[str, Any]]:
+        async with (
+            stdio_client(parameters) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as client,
+        ):
+            await client.initialize()
+            imported = await client.call_tool("import_content", {"source_type": "mbox", "path": str(mbox_path)})
+            batch_id = imported.structuredContent["batch_id"]
+            reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
+            accepted_ids = [row["id"] for row in reviewed.structuredContent["candidates"]]
+            committed = await client.call_tool(
+                "commit_import",
+                {"batch_id": batch_id, "accepted_ids": accepted_ids},
+            )
+            resolved = await client.call_tool("resolve_person", {"query": "alice@example.com"})
+            return committed.structuredContent, resolved.structuredContent
+
+    committed, resolved = anyio.run(flow)
+
+    assert len(committed["committed_ids"]) == 3
+    assert committed["unresolved_ids"] == []
+    assert resolved["candidates"][0]["canonical_name"] == "Alice Example"
 
 
 def _seed_context(db_path: Path, person_id: str) -> None:

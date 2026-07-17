@@ -8,17 +8,21 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from people_context.app.person_context_models import (
+    PersonAffiliationContext,
+    PersonRelationshipContext,
+    affiliation_context,
+    relationship_context,
+)
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
-from people_context.domain.organization import Affiliation
 from people_context.domain.person import Person
-from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind
 from people_context.domain.shared import Sensitivity
 from people_context.domain.trait import Trait
 from people_context.ports.clock import Clock
-from people_context.ports.context import AffiliationRecord, PersonContextReader, RelationshipRecord
+from people_context.ports.context import PersonContextReader
 from people_context.ports.repository import PersonReader
 
 
@@ -30,21 +34,6 @@ class PersonIdentity(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
     is_self: bool
-
-
-class PersonRelationshipContext(BaseModel):
-    """A relationship plus the other endpoint's id and display name."""
-
-    relationship: Relationship
-    other_person_id: str
-    other_person_name: str
-
-
-class PersonAffiliationContext(BaseModel):
-    """An affiliation plus its organization's display name."""
-
-    affiliation: Affiliation
-    organization_name: str
 
 
 class PersonContextResult(BaseModel):
@@ -103,10 +92,10 @@ class GetPersonContext:
 
         as_of = self._clock.now().date()
         relationships = [
-            _relationship_context(record) for record in self._context.list_active_relationships(person_id, as_of)
+            relationship_context(record) for record in self._context.list_active_relationships(person_id, as_of)
         ]
         affiliations = [
-            _affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
+            affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
         ]
         facts, interactions = self._rank_disclosure_records(person_id, max_items, include_sensitive)
         traits = self._communication_traits(person_id, purpose, include_sensitive)
@@ -182,21 +171,6 @@ def _identity(person: Person) -> PersonIdentity:
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,
         is_self=person.is_self,
-    )
-
-
-def _relationship_context(record: RelationshipRecord) -> PersonRelationshipContext:
-    return PersonRelationshipContext(
-        relationship=record.relationship,
-        other_person_id=record.other_person_id,
-        other_person_name=record.other_person_name,
-    )
-
-
-def _affiliation_context(record: AffiliationRecord) -> PersonAffiliationContext:
-    return PersonAffiliationContext(
-        affiliation=record.affiliation,
-        organization_name=record.organization_name,
     )
 
 

@@ -1,8 +1,4 @@
-"""Command-line interface: read/search commands over the same app-layer use cases as the MCP server.
-
-M1 scope: db-path, list, search, context-backed show, and export. Edit/delete/reindex are documented as
-planned (M3) and are intentionally not implemented here yet (see docs/cli.md).
-"""
+"""Command-line inspection and curation over shared app-layer use cases."""
 
 from __future__ import annotations
 
@@ -13,11 +9,36 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from people_context.adapters.sqlite import SqliteContextReader, SqlitePeopleRepository, open_db
-from people_context.app import GetPersonContext, PersonContextResult, ResolvePerson, SearchPeople
+from people_context.adapters.sqlite import (
+    SqliteAuditLog,
+    SqliteContextReader,
+    SqliteExportReader,
+    SqliteLifecycleStore,
+    SqlitePeopleRepository,
+    SqlitePreferencesStore,
+    open_db,
+)
+from people_context.app import (
+    AddAlias,
+    AddAliasInput,
+    EditPerson,
+    EditPersonInput,
+    ExportData,
+    Forget,
+    GetPersonContext,
+    PersonContextResult,
+    PersonNameCollisionError,
+    PreviewForget,
+    ReindexPeople,
+    ResolvePerson,
+    SearchPeople,
+    SetCommunicationPhilosophy,
+    SetCommunicationPhilosophyInput,
+)
 from people_context.config import describe_resolution, resolve_db_path
-from people_context.domain.person import Person
-from people_context.ports.clock import SystemClock
+from people_context.domain.person import AliasKind, Person
+from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
+from people_context.ports.clock import Clock, SystemClock
 
 _SUMMARY_WIDTH = 40
 
@@ -29,7 +50,11 @@ class CliContext:
     conn: sqlite3.Connection
     repo: SqlitePeopleRepository
     context_reader: SqliteContextReader
-    clock: SystemClock
+    clock: Clock
+    export_reader: SqliteExportReader
+    audit: SqliteAuditLog
+    lifecycle: SqliteLifecycleStore
+    preferences: SqlitePreferencesStore
 
 
 def _open_context(db: str | None) -> CliContext:
@@ -39,6 +64,10 @@ def _open_context(db: str | None) -> CliContext:
         repo=SqlitePeopleRepository(conn),
         context_reader=SqliteContextReader(conn),
         clock=SystemClock(),
+        export_reader=SqliteExportReader(conn),
+        audit=SqliteAuditLog(conn),
+        lifecycle=SqliteLifecycleStore(conn),
+        preferences=SqlitePreferencesStore(conn),
     )
 
 
@@ -65,6 +94,28 @@ def build_parser() -> argparse.ArgumentParser:
     export = subparsers.add_parser("export", help="JSON dump of all people.")
     export.add_argument("--output", default=None, help="Write to this file instead of stdout.")
 
+    edit = subparsers.add_parser("edit", help="Edit a person's canonical name or summary.")
+    edit.add_argument("person", help="An active person id, or a name to resolve.")
+    edit.add_argument("--name", default=None, help="New canonical name.")
+    edit.add_argument("--summary", default=None, help="New summary.")
+
+    add_alias = subparsers.add_parser("add-alias", help="Add an alias to a person.")
+    add_alias.add_argument("person", help="An active person id, or a name to resolve.")
+    add_alias.add_argument("value")
+    add_alias.add_argument("--kind", choices=[kind.value for kind in AliasKind], default=AliasKind.OTHER.value)
+    add_alias.add_argument("--lang", default=None)
+    add_alias.add_argument("--script", default=None)
+
+    set_cmd = subparsers.add_parser("set", help="Set a supported user preference.")
+    set_cmd.add_argument("key")
+    set_cmd.add_argument("value")
+
+    delete = subparsers.add_parser("delete", help="Permanently forget a person and their linked data.")
+    delete.add_argument("person", help="An active person id, or a name to resolve.")
+    delete.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+
+    subparsers.add_parser("reindex", help="Rebuild active-person full-text search rows.")
+
     return parser
 
 
@@ -86,6 +137,16 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_show(ctx, args)
         if args.command == "export":
             return _cmd_export(ctx, args)
+        if args.command == "edit":
+            return _cmd_edit(ctx, args)
+        if args.command == "add-alias":
+            return _cmd_add_alias(ctx, args)
+        if args.command == "set":
+            return _cmd_set(ctx, args)
+        if args.command == "delete":
+            return _cmd_delete(ctx, args)
+        if args.command == "reindex":
+            return _cmd_reindex(ctx)
         parser.error(f"unknown command: {args.command}")
         return 2
     finally:
@@ -142,32 +203,12 @@ def _cmd_search(ctx: CliContext, args: argparse.Namespace) -> int:
 
 
 def _cmd_show(ctx: CliContext, args: argparse.Namespace) -> int:
-    person = ctx.repo.get(args.person)
-    if person is not None and person.deleted_at is None:
-        context = GetPersonContext(ctx.repo, ctx.context_reader, ctx.clock).execute(person.id, include_sensitive=True)
-        _print_context(context)
-        return 0
-
-    result = ResolvePerson(ctx.repo, ctx.context_reader, ctx.clock).execute(args.person)
-    if not result.candidates:
-        print(f"No person found matching '{args.person}'.", file=sys.stderr)
-        return 1
-
-    if result.ambiguous:
-        print(f"Ambiguous match for '{args.person}'; candidates:", file=sys.stderr)
-        for candidate in result.candidates:
-            print(
-                f"  {candidate.score:.2f}  {candidate.canonical_name}  ({candidate.person_id})",
-                file=sys.stderr,
-            )
-        return 2
-
+    person, exit_code = _resolve_person(ctx, args.person)
+    if person is None:
+        return exit_code
     context = GetPersonContext(ctx.repo, ctx.context_reader, ctx.clock).execute(
-        result.candidates[0].person_id, include_sensitive=True
+        person.id, include_sensitive=True
     )
-    if not context.found:
-        print(f"No person found matching '{args.person}'.", file=sys.stderr)
-        return 1
     _print_context(context)
     return 0
 
@@ -218,16 +259,100 @@ def _print_section(title: str, items: list[str]) -> None:
 
 
 def _cmd_export(ctx: CliContext, args: argparse.Namespace) -> int:
-    people = ctx.repo.list_people(include_deleted=True)
-    document = {
-        "format": "people-context-export",
-        "version": 1,
-        "exported_at": SystemClock().now().isoformat(),
-        "people": [person.model_dump(mode="json") for person in people],
-    }
-    text = json.dumps(document, indent=2)
+    document = ExportData(ctx.export_reader, ctx.clock).execute().model_dump(mode="json")
+    text = json.dumps(document, indent=2, ensure_ascii=False)
     if args.output:
         Path(args.output).write_text(text + "\n", encoding="utf-8")
     else:
         print(text)
+    return 0
+
+
+def _resolve_person(ctx: CliContext, reference: str) -> tuple[Person | None, int]:
+    person = ctx.repo.get(reference)
+    if person is not None and person.deleted_at is None:
+        return person, 0
+    result = ResolvePerson(ctx.repo, ctx.context_reader, ctx.clock).execute(reference)
+    if not result.candidates:
+        print(f"No person found matching '{reference}'.", file=sys.stderr)
+        return None, 1
+    if result.ambiguous:
+        print(f"Ambiguous match for '{reference}'; candidates:", file=sys.stderr)
+        for candidate in result.candidates:
+            print(f"  {candidate.score:.2f}  {candidate.canonical_name}  ({candidate.person_id})", file=sys.stderr)
+        return None, 2
+    resolved = ctx.repo.get(result.candidates[0].person_id)
+    if resolved is None or resolved.deleted_at is not None:
+        print(f"No person found matching '{reference}'.", file=sys.stderr)
+        return None, 1
+    return resolved, 0
+
+
+def _cmd_edit(ctx: CliContext, args: argparse.Namespace) -> int:
+    if args.name is None and args.summary is None:
+        print("edit requires at least one of --name or --summary.", file=sys.stderr)
+        return 2
+    person, exit_code = _resolve_person(ctx, args.person)
+    if person is None:
+        return exit_code
+    try:
+        updated = EditPerson(ctx.repo, ctx.repo, ctx.audit, ctx.clock).execute(
+            EditPersonInput(person_id=person.id, name=args.name, summary=args.summary)
+        )
+    except PersonNameCollisionError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"Updated {updated.canonical_name} ({updated.id}).")
+    return 0
+
+
+def _cmd_add_alias(ctx: CliContext, args: argparse.Namespace) -> int:
+    person, exit_code = _resolve_person(ctx, args.person)
+    if person is None:
+        return exit_code
+    updated = AddAlias(ctx.repo, ctx.repo, ctx.audit, ctx.clock).execute(
+        AddAliasInput(
+            person_id=person.id,
+            value=args.value,
+            kind=AliasKind(args.kind),
+            lang=args.lang,
+            script=args.script,
+            source="cli",
+        )
+    )
+    print(f"Alias recorded for {updated.canonical_name} ({updated.id}).")
+    return 0
+
+
+def _cmd_set(ctx: CliContext, args: argparse.Namespace) -> int:
+    if args.key != PREF_COMMUNICATION_PHILOSOPHY:
+        print(f"Unsupported preference key: {args.key}", file=sys.stderr)
+        return 2
+    SetCommunicationPhilosophy(ctx.preferences, ctx.audit, ctx.clock).execute(
+        SetCommunicationPhilosophyInput(text=args.value, source="cli")
+    )
+    print(f"Set {args.key}.")
+    return 0
+
+
+def _cmd_delete(ctx: CliContext, args: argparse.Namespace) -> int:
+    person, exit_code = _resolve_person(ctx, args.person)
+    if person is None:
+        return exit_code
+    preview = PreviewForget(ctx.repo, ctx.lifecycle).execute(person.id)
+    print(f"Delete {preview.canonical_name} ({preview.person_id}) permanently?")
+    for entity_type, count in preview.deleted.items():
+        if count:
+            print(f"  {entity_type}: {count}")
+    if not args.yes and input("Proceed? [y/N] ").strip().casefold() not in {"y", "yes"}:
+        print("Aborted.")
+        return 0
+    Forget(ctx.repo, ctx.lifecycle, ctx.clock).execute(person.id, "person")
+    print("Deleted.")
+    return 0
+
+
+def _cmd_reindex(ctx: CliContext) -> int:
+    result = ReindexPeople(ctx.repo).execute()
+    print(f"Reindexed {result.people} people and {result.names} names.")
     return 0

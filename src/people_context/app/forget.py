@@ -1,0 +1,109 @@
+"""Atomic hard-delete and audit-redaction orchestration."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+from people_context.app.write_support import PersonNotFoundError, RecordNotFoundError, require_active_person
+from people_context.ports.audit_log import AuditEntry
+from people_context.ports.clock import Clock
+from people_context.ports.lifecycle import LifecycleStore, LifecycleTargetNotFoundError
+from people_context.ports.repository import PersonReader
+
+_RECORD_TYPES = {"relationship", "affiliation", "fact", "observation", "trait", "interaction", "reminder"}
+
+
+class ForgetError(Exception):
+    """Raised for invalid forget scopes or record targets."""
+
+    def __init__(self, code: str, message: str, **details: str) -> None:
+        self.code = code
+        self.details = details
+        super().__init__(message)
+
+
+class ForgetResult(BaseModel):
+    """Confirmation and per-table hard-delete counts."""
+
+    scope: str
+    target: str
+    deleted: dict[str, int]
+
+
+class Forget:
+    """Validate and execute irreversible person or record deletion."""
+
+    def __init__(self, people: PersonReader, lifecycle: LifecycleStore, clock: Clock) -> None:
+        self._people = people
+        self._lifecycle = lifecycle
+        self._clock = clock
+
+    def execute(self, target: str, scope: str) -> ForgetResult:
+        """Forget one stored person or one validated record target atomically."""
+        if scope == "person":
+            if self._people.get(target) is None:
+                raise PersonNotFoundError(target)
+            deleted = self._lifecycle.forget_person(target, self._audit_factory(scope, target))
+            return ForgetResult(scope=scope, target=target, deleted=deleted)
+        if scope != "record":
+            raise ForgetError("invalid_scope", "scope must be 'person' or 'record'", scope=scope)
+        entity_type, entity_id = self._parse_record_target(target)
+        try:
+            deleted = self._lifecycle.forget_record(
+                entity_type,
+                entity_id,
+                self._audit_factory(scope, target),
+            )
+        except LifecycleTargetNotFoundError:
+            raise RecordNotFoundError(entity_type, entity_id) from None
+        return ForgetResult(scope=scope, target=target, deleted=deleted)
+
+    @staticmethod
+    def _parse_record_target(target: str) -> tuple[str, str]:
+        entity_type, separator, entity_id = target.partition(":")
+        if not separator or entity_type not in _RECORD_TYPES or not entity_id:
+            raise ForgetError(
+                "invalid_target",
+                "record target must be a supported entity_type:entity_id",
+                target=target,
+            )
+        return entity_type, entity_id
+
+    def _audit_factory(self, scope: str, target: str):
+        """Use the forget scope as entity type and the person id or concrete record target as entity id."""
+
+        def create(deleted: dict[str, int]) -> AuditEntry:
+            return AuditEntry(
+                ts=self._clock.now(),
+                op="forget",
+                entity_type=scope,
+                entity_id=target,
+                payload={"scope": scope, "deleted": deleted},
+                source="agent",
+            )
+
+        return create
+
+
+class ForgetPreview(BaseModel):
+    """Person deletion preview for confirmation UIs."""
+
+    person_id: str
+    canonical_name: str
+    deleted: dict[str, int]
+
+
+class PreviewForget:
+    """Return a non-mutating person-scope deletion preview."""
+
+    def __init__(self, people: PersonReader, lifecycle: LifecycleStore) -> None:
+        self._people = people
+        self._lifecycle = lifecycle
+
+    def execute(self, person_id: str) -> ForgetPreview:
+        person = require_active_person(self._people, person_id)
+        return ForgetPreview(
+            person_id=person.id,
+            canonical_name=person.canonical_name,
+            deleted=self._lifecycle.preview_person_forget(person.id),
+        )

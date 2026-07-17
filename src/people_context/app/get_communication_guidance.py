@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from people_context.app.get_person_context import (
+from people_context.app.person_context_models import (
     PersonAffiliationContext,
     PersonRelationshipContext,
-    _affiliation_context,
-    _relationship_context,
+    affiliation_context,
+    relationship_context,
 )
+from people_context.app.write_support import PersonNotFoundError, require_active_person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.domain.reminder import Reminder, ReminderKind
 from people_context.domain.shared import Sensitivity
@@ -59,8 +60,9 @@ class GetCommunicationGuidance:
         friction_notes_limit: int = DEFAULT_FRICTION_NOTES_LIMIT,
     ) -> CommunicationGuidanceResult:
         """Assemble communication signal for one known person."""
-        person = self._people.get(person_id)
-        if person is None:
+        try:
+            require_active_person(self._people, person_id)
+        except PersonNotFoundError:
             return CommunicationGuidanceResult(found=False, person_id=person_id, situation=situation)
         as_of = self._clock.now().date()
         traits = self._group_traits(person_id)
@@ -84,10 +86,10 @@ class GetCommunicationGuidance:
             situation=situation,
             traits=traits,
             relationships=[
-                _relationship_context(record) for record in self._context.list_active_relationships(person_id, as_of)
+                relationship_context(record) for record in self._context.list_active_relationships(person_id, as_of)
             ],
             affiliations=[
-                _affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
+                affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
             ],
             friction_notes=[interaction.summary for interaction in interactions[:friction_notes_limit]],
             reminders=reminders,

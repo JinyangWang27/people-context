@@ -20,28 +20,19 @@ regardless of which surface was used to make a change.
 | `people-context list` | List known people: `id`, `canonical_name`, alias count, summary excerpt, as a table. | `--all` includes soft-deleted people. |
 | `people-context search QUERY` | Ranked search results for `QUERY`, via the same `SearchPeople` use case `search_people` uses. | |
 | `people-context show PERSON` | Show identity, aliases, active relationships, affiliations/roles, the ranked facts/interactions slice, and active communication reminders. | `PERSON` may be an id or a name; it is resolved via `ResolvePerson`. If resolution is ambiguous, the command errors and lists candidates instead of guessing. Uses `GetPersonContext` with `max_items=10` and `include_sensitive=true`. |
-| `people-context export [--output FILE]` | JSON dump of all people (later: the full dataset) to stdout, or to `FILE` if given. | |
+| `people-context export [--output FILE]` | Domain-shaped JSON dump of the full portable dataset to stdout, or to `FILE` if given. | Includes soft-deleted people and decoded preferences/audits. |
+| `people-context edit PERSON --name/--summary` | Edit canonical identity fields. | Requires at least one field and rejects another active person's canonical name. |
+| `people-context add-alias PERSON VALUE [--kind/--lang/--script]` | Add a normalized-deduplicated alias. | |
+| `people-context set communication_philosophy VALUE` | Set the supported free-text user preference. | Other keys are rejected. |
+| `people-context delete PERSON [--yes]` | Preview and permanently forget a person graph. | Without `--yes`, only `y`/`yes` confirms. |
+| `people-context reindex` | Atomically rebuild `person_search` from active people and aliases. | Does not index interactions. |
 
 All output is plain text (tables for `list`/`search`, structured text for `show`); no third-party formatting
 dependency is used.
 
-### Planned (M3)
-
-Edit and curation commands reuse the same app-layer use cases as the MCP write/destructive tools, so they
-carry identical audit/provenance behaviour:
-
-| Command | Purpose |
-|---|---|
-| `people-context edit` | Modify an existing record. |
-| `people-context add-alias` | Add an alias to a person. |
-| `people-context set` | Set a fact/relationship/affiliation/trait field. |
-| `people-context delete` | Remove a record (soft-delete or forget, depending on scope). |
-| `people-context reindex` | Rebuild the FTS5 search indexes (`person_search`, `interaction_search`) after manual, out-of-band edits to the SQLite file — see Direct database access below. |
-
-A basic read/search command set (`db-path`, `list`, `search`, `export`) landed in **M0**; M1 upgraded `show`
-to the shared context-retrieval use case. The full curation surface above lands in **M3** alongside
-`merge_people`/`forget`/import (see
-[docs/roadmap.md](roadmap.md)).
+The curation commands reuse the same app-layer use cases as MCP writes/destructive tools, so they carry the
+same audit, validation, and provenance behaviour. `show`, `edit`, `add-alias`, and `delete` share one resolver:
+active id first, then `ResolvePerson`; unknown names exit 1 and ambiguous names exit 2 with candidates.
 
 ## Database location resolution order
 
@@ -79,10 +70,9 @@ Direct SQL edits are legal — it is the user's data, and there is no proprietar
 - write the corresponding `audit_log` entries automatically, preserving the accountability trail described
   in [docs/privacy-and-safety.md](privacy-and-safety.md).
 
-If a person, alias, or interaction row is edited directly with an external SQL tool, the FTS index for that
-row can go stale until it is rebuilt. The planned `people-context reindex` command (M3, listed above) exists
-specifically to rebuild both FTS5 tables from the current contents of `persons`/`aliases`/`interactions`
-after this kind of manual edit; direct SQL changes do not, on their own, get an `audit_log` entry, since the
+If a person or alias row is edited directly with an external SQL tool, the FTS index for that row can go
+stale until it is rebuilt. `people-context reindex` rebuilds the person-only `person_search` table from
+active `persons` and `aliases`; direct SQL changes do not, on their own, get an `audit_log` entry, since the
 CLI/MCP layer is what writes those.
 
 See [docs/data-model.md](data-model.md) for the full schema reference these tools operate on.

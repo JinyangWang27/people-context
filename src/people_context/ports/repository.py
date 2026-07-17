@@ -38,3 +38,10 @@ class PersonWriter(Protocol):
     """Write-side access to stored persons."""
 
     def save_person(self, person: Person) -> None: ...
+
+
+@runtime_checkable
+class PersonSearchIndexer(Protocol):
+    """Rebuild the derived active-person name index atomically."""
+
+    def rebuild_person_search(self) -> tuple[int, int]: ...

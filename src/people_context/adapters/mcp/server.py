@@ -17,10 +17,14 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from people_context.adapters.email_import import EmailImportExtractor
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteContextReader,
+    SqliteExportReader,
+    SqliteImportStagingStore,
+    SqliteLifecycleStore,
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
@@ -29,17 +33,23 @@ from people_context.adapters.sqlite import (
 )
 from people_context.app import (
     AddAlias,
+    CommitImport,
     CompleteReminder,
     CorrectRecord,
+    ExportData,
+    Forget,
     GetCommunicationGuidance,
     GetPersonContext,
+    ImportContent,
     ListReminders,
+    MergePeople,
     RecordFact,
     RecordInteraction,
     RecordObservation,
     RecordTrait,
     RememberPerson,
     ResolvePerson,
+    ReviewImport,
     SearchPeople,
     SetAffiliation,
     SetCommunicationPhilosophy,
@@ -87,6 +97,12 @@ class ToolDeps:
     set_communication_philosophy: SetCommunicationPhilosophy
     get_communication_guidance: GetCommunicationGuidance
     list_reminders: ListReminders
+    merge_people: MergePeople
+    forget: Forget
+    export_data: ExportData
+    import_content: ImportContent
+    review_import: ReviewImport
+    commit_import: CommitImport
 
 
 def _configure_logging() -> logging.Logger:
@@ -124,28 +140,39 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     organization_store = SqliteOrganizationStore(conn)
     preferences_store = SqlitePreferencesStore(conn)
     audit = SqliteAuditLog(conn)
+    lifecycle_store = SqliteLifecycleStore(conn)
+    export_reader = SqliteExportReader(conn)
+    import_staging = SqliteImportStagingStore(conn)
     clock = SystemClock()
+    remember_person = RememberPerson(repository, repository, audit, clock)
+    record_interaction = RecordInteraction(repository, record_store, audit, clock)
 
     deps = ToolDeps(
         resolve_person=ResolvePerson(repository, context_reader, clock),
         get_person_context=GetPersonContext(repository, context_reader, clock),
         search_people=SearchPeople(repository),
-        remember_person=RememberPerson(repository, repository, audit, clock),
+        remember_person=remember_person,
         add_alias=AddAlias(repository, repository, audit, clock),
         set_relationship=SetRelationship(repository, record_store, audit, clock),
         set_affiliation=SetAffiliation(repository, organization_store, record_store, audit, clock),
         record_fact=RecordFact(repository, record_store, audit, clock),
         record_observation=RecordObservation(repository, record_store, audit, clock),
         record_trait=RecordTrait(repository, record_store, audit, clock),
-        record_interaction=RecordInteraction(repository, record_store, audit, clock),
-        correct_record=CorrectRecord(record_store, record_store, audit, clock),
+        record_interaction=record_interaction,
+        correct_record=CorrectRecord(record_store, record_store, audit, clock, people=repository),
         set_reminder=SetReminder(repository, record_store, audit, clock),
-        complete_reminder=CompleteReminder(record_store, record_store, audit, clock),
+        complete_reminder=CompleteReminder(record_store, record_store, audit, clock, people=repository),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences_store, audit, clock),
         get_communication_guidance=GetCommunicationGuidance(
             repository, context_reader, preferences_store, clock
         ),
         list_reminders=ListReminders(record_store),
+        merge_people=MergePeople(repository, lifecycle_store, clock),
+        forget=Forget(repository, lifecycle_store, clock),
+        export_data=ExportData(export_reader, clock),
+        import_content=ImportContent(repository, EmailImportExtractor(), import_staging, clock),
+        review_import=ReviewImport(import_staging),
+        commit_import=CommitImport(repository, import_staging, remember_person, record_interaction),
     )
 
     mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)

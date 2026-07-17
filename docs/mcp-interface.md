@@ -54,9 +54,9 @@ Annotated as writes (not read-only); MCP clients apply their normal approval flo
 | `set_reminder` | Create a kind-validated reminder for an existing person. | `person_id`, `text`, `kind`, `due_at?`, `recurrence?` | `Reminder` | **Implemented (M2)** |
 | `complete_reminder` | Transition an active reminder to completed. | `reminder_id` | Updated `Reminder` | **Implemented (M2)** |
 | `set_communication_philosophy` | Store/update the user's free-text communication guidance framework. | `text: str` | `CommunicationPhilosophy`; audit contains lengths only. | **Implemented (M2)** |
-| `import_content` | Extract candidate person/alias/fact/interaction records from a source (e.g. an `.eml`/mbox file) into staging. Raw content is parsed in-memory and discarded — never persisted. | `source_type`, `content` or `path` | Staging batch summary (`batch_id`, candidate count) | Stub — planned **M3** |
-| `review_import` | Return the staged candidates for a batch for user review. | `batch_id` | List of staged candidates | Stub — planned **M3** |
-| `commit_import` | Write the accepted staged candidates into the real tables, with provenance `source: import/<type>`. | `batch_id`, `accepted_ids` | Summary of records written | Stub — planned **M3** |
+| `import_content` | Deterministically extract person/interaction candidates from `.eml` content/path or an mbox path. Message bodies are never accessed or stored. | `source_type: "email" \| "mbox"`, exactly one of `content`/`path` for email; path only for mbox | `{"batch_id": str, "candidate_count": int, "skipped_message_ids": [str]}` | **Implemented (M3)** |
+| `review_import` | Return the staged candidates and current statuses for a batch. | `batch_id` | `{"batch_id": str, "candidates": [{"id", "source", "status", "candidate"}]}` | **Implemented (M3)** |
+| `commit_import` | Commit accepted people and resolvable interactions with `import/email` or `import/mbox` provenance. | `batch_id`, `accepted_ids` | `{"batch_id", "committed_ids", "unresolved_ids", "skipped_ids"}` | **Implemented (M3)** |
 
 ## Destructive tools
 
@@ -64,13 +64,17 @@ Annotated `destructiveHint: true`.
 
 | Tool | Purpose | Parameters | Return shape | Status |
 |---|---|---|---|---|
-| `merge_people` | Merge a duplicate person record into a primary one; re-parents all related rows, keeps a full audit trail. | `primary_id`, `duplicate_id` | Merged `Person` | Stub — planned **M3** |
-| `forget` | Hard delete a target (person or narrower scope) and write a tombstone audit entry. | `target`, `scope` | Confirmation of what was deleted | Stub — planned **M3** |
-| `export_data` | Full JSON export of the dataset, for portability. | (none) | JSON document of all records | Stub — planned **M3** |
+| `merge_people` | Atomically merge an active duplicate into an active primary, re-parent linked rows, remove resulting self-loops, and soft-delete the duplicate. The duplicate canonical name is retained as a `former_name` alias. | `primary_id`, `duplicate_id` | `{"person": Person, "moved": {facts, observations, traits, reminders, affiliations, relationships, interaction_participations}, "self_loops_removed": int}` | **Implemented (M3)** |
+| `forget` | Atomically hard-delete a person graph or one `entity_type:entity_id` record, redact identifying prior audits, and append a minimal tombstone. | `target`, `scope: "person" \| "record"` | `{"scope": str, "target": str, "deleted": {plural_type: count}}` | **Implemented (M3)** |
+| `export_data` | Full domain-shaped JSON export, including soft-deleted people and decoded audit/preference values. | (none) | Versioned envelope with `format`, `version`, `exported_at`, and every portable domain collection | **Implemented (M3)** |
 
-Remaining M3 stub tools return a fixed shape:
-`{"status": "not_implemented", "planned_milestone": "M3"}`, so the lifecycle/import surface remains
-visible in MCP clients without implying implementation.
+## M3 lifecycle and import errors
+
+Lifecycle/import failures are structured result objects. Merge adds `same_person` and
+`self_merge_direction`; forget adds `invalid_scope` and `invalid_target` and reuses `person_not_found` /
+`record_not_found`. Import adds `invalid_source`, `invalid_source_type`, `invalid_path`, `no_candidates`,
+`batch_not_found`, and `candidate_not_in_batch`. Each result starts with `error` and `message`; target-specific
+fields such as `person_id`, `entity_type`, `entity_id`, `batch_id`, or `candidate_ids` are included when useful.
 
 ## M2 write errors
 
