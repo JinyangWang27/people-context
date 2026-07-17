@@ -72,6 +72,18 @@ The HTTP endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and inte
 client. DNS-rebinding checks restrict accepted hosts and browser origins to `127.0.0.1` and `localhost`.
 Remote binding and authenticated HTTP access are deferred.
 
+### Security model
+
+Installing an integration that starts this project through `uv` executes local Python code with your user
+account's filesystem permissions; it is not a sandboxed extension. The database is plaintext SQLite, so rely
+on normal filesystem permissions and full-disk encryption for at-rest protection. Prefer stdio. Loopback HTTP
+is unauthenticated and reachable by other local processes.
+
+Ordinary MCP discovery excludes sensitive/restricted context and complete export. An operator may deliberately
+restart an elevated server with `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE=1` and/or
+`PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1`; models cannot enable these capabilities through tool arguments. Routine
+full export remains available through the human-operated `people-context export` CLI.
+
 ### Optional semantic search
 
 The base install does not include embedding dependencies and never downloads a model. Opt in and explicitly
@@ -163,7 +175,8 @@ See [docs/cli.md](docs/cli.md) for the full reference, including direct SQLite a
   trait, relationship, affiliation — carries who/what asserted it, how confident that assertion is, and how
   sensitive it is.
 - **No raw emails, transcripts, or conversation logs.** Interaction records are concise summaries only;
-  imports extract and stage distilled candidates and never persist source content.
+  imports extract and stage distilled candidates and never persist source content. Email Subject values are
+  replaced with a fixed neutral summary before staging.
 - **Approval-gated writes.** Every write and destructive MCP tool is annotated accordingly, so MCP clients
   can apply their own approval flows before mutating the store.
 - **The user owns the data.** The database is a plain, documented SQLite file, directly accessible with

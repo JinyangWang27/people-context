@@ -23,7 +23,7 @@ Every tool carries an MCP `ToolAnnotations` value that tells clients how to gate
 
 | Annotation | Meaning | Applies to |
 |---|---|---|
-| `readOnlyHint: true` | Tool only reads; safe to call without approval in most clients. | Resolution/search/context/reminder-listing/guidance tools. |
+| `readOnlyHint: true` | Tool does not mutate state. This is advisory metadata, not proof that disclosure is low-risk. | Resolution/search/context/reminder-listing/guidance tools. |
 | (default, `readOnlyHint: false`) | Tool writes new or modified data; clients should apply their normal write-approval flow. | `remember_person`, `add_alias`, `set_relationship`, etc. |
 | `destructiveHint: true` (implies `readOnlyHint: false`) | Tool can irreversibly delete or restructure data. | `merge_people`, `forget`. |
 
@@ -34,9 +34,19 @@ Every tool carries an MCP `ToolAnnotations` value that tells clients how to gate
 | `resolve_person` | Resolve a name/query to one or more candidate people, with scores and match reasons. | `query: str`, `hints?: {org?: str, role?: str, relationship?: str}`, `limit: int = 5` | `ResolutionResult`: `query`, `candidates: list[ResolutionCandidate]` (each with `person_id`, `canonical_name`, `score`, `match_reason`, `aliases`, `summary`), `ambiguous: bool` | **Implemented (M1)** |
 | `search_people` | Free-text search over people (broader than resolution — for browsing/lookup rather than pinning down one identity). | `query: str`, `filters?` | `list[ResolutionCandidate]` | **Implemented (M0)** |
 | `semantic_search` | Optional multilingual cosine retrieval over active people and public/personal interaction summaries. | `query: nonblank str`, `kinds: ["person" | "interaction"] = both`, `limit: 1..100 = 10` | Success: `{"status":"ok","model_id", "hits":[{"kind","entity_id","score","title","summary"}]}`. Missing package/model/index returns `not_available`; stored model mismatch returns `model_mismatch`, both with repair instructions. | **Implemented (M4)** |
-| `get_person_context` | Minimal-disclosure context bundle for a person: narrow identity, active relationships/roles, and top-ranked facts/interactions. | `person_id: str`, `purpose?: str`, `max_items: int = 10`, `include_sensitive: bool = false` | `PersonContextResult`, with the stable shape documented below. | **Implemented (M1)** |
+| `get_person_context` | Minimal-disclosure context bundle for a person: narrow identity, active relationships/roles, and top-ranked public/personal facts/interactions. | `person_id: str`, `purpose?: str`, `max_items: int = 10` | `PersonContextResult`, with the stable shape documented below. Sensitive and restricted rows are never returned. | **Implemented (M1)** |
 | `get_communication_guidance` | Structured bundle for composing communication advice: sensitivity-gated traits, active relationship/role context, up to five newest interaction summaries, active `communication_note` reminders, and the user's communication philosophy text. Observations are never returned. | `person_id: str`, `situation?: str` | `CommunicationGuidanceResult`: `found`, `person_id`, echoed `situation`, `traits: {category: list[Trait]}`, `relationships`, `affiliations`, `friction_notes: list[str]`, `reminders`, `communication_philosophy: str \| null`, `philosophy_set: bool`. | **Implemented (M2)** |
 | `list_reminders` | List reminders, optionally filtered, so agents can surface due follow-ups/occasions on their own schedule (pull-based; no server-side scheduler). | `person_id?: str`, `due_before?: ISO datetime`, `status?: ReminderStatus` (defaults to `active`) | `{"reminders": list[Reminder]}`; due-dated items ordered by `due_at` ascending, then undated communication notes. | **Implemented (M2)** |
+
+## Operator-elevated high-disclosure reads
+
+These tools are absent from normal discovery. They are registered only when the operator configures the MCP
+server process before startup; prompt content cannot enable them.
+
+| Tool | Process capability | Purpose |
+|---|---|---|
+| `get_sensitive_person_context` | `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE=1` | Same bounded response shape as `get_person_context`, but may include sensitive and restricted records. |
+| `export_data` | `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1` | Complete portable dataset, including soft-deleted people and decoded audit/preference values. Prefer the `people-context export` CLI. |
 
 ## Write tools
 
@@ -69,7 +79,6 @@ Annotated `destructiveHint: true`.
 |---|---|---|---|---|
 | `merge_people` | Atomically merge an active duplicate into an active primary, re-parent linked rows, remove resulting self-loops, and soft-delete the duplicate. The duplicate canonical name is retained as a `former_name` alias. | `primary_id`, `duplicate_id` | `{"person": Person, "moved": {facts, observations, traits, reminders, affiliations, relationships, interaction_participations}, "self_loops_removed": int}` | **Implemented (M3)** |
 | `forget` | Atomically hard-delete a person graph or one `entity_type:entity_id` record, redact identifying prior audits, and append a minimal tombstone. | `target`, `scope: "person" \| "record"` | `{"scope": str, "target": str, "deleted": {plural_type: count}}` | **Implemented (M3)** |
-| `export_data` | Full domain-shaped JSON export, including soft-deleted people and decoded audit/preference values. | (none) | Versioned envelope with `format`, `version`, `exported_at`, and every portable domain collection | **Implemented (M3)** |
 
 ## M3 lifecycle and import errors
 
@@ -126,15 +135,14 @@ on top of.
   which the use case can use to decide which record types are relevant.
 - `max_items?` — a "disclosure budget": the caller states how many items it actually needs, and the server
   returns only the top-ranked slice within that budget, rather than every fact/interaction on file.
-- `include_sensitive?` — sensitive-tagged items are excluded from the response unless this is explicitly
-  set, keeping the default response safe to hand to a general-purpose coding agent that has no particular
-  need for a person's more private information.
+Sensitive and restricted rows are never eligible for `get_person_context`. The separate
+`get_sensitive_person_context` tool is registered only after process-level operator elevation.
 
 `max_items` may be zero and must not be negative. Facts and interactions compete in one combined pool, so
 `len(facts) + len(interactions) <= max_items`. Records are first ordered newest-first and assigned ordinal
 recency from `1` down to `0`, then ranked by `0.7 * recency + 0.3 * confidence`; interactions use confidence
 `1.0`. Ties break by newest timestamp, record kind, then id. Public and personal records are eligible by
-default; `include_sensitive=true` also admits sensitive and restricted records.
+default. Sensitive and restricted records require the separately registered elevated tool.
 
 Relationships and affiliations are active, fully hydrated, and outside the disclosure budget. Observations
 remain empty in M1. Traits are returned only when `purpose` contains `"communication"` case-insensitively,
