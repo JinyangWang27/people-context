@@ -6,6 +6,12 @@ requires-python = ">=3.11"
 license = "MIT"
 dependencies = ["mcp>=1.2", "pydantic>=2.7", "python-ulid>=2.2"]
 
+[project.optional-dependencies]
+semantic = [
+    "model2vec>=0.8.2,<0.9",
+    "sqlite-vec>=0.1.9,<0.2",
+]
+
 [project.scripts]
 people-context-mcp = "people_context.adapters.mcp.server:main"
 people-context = "people_context.cli:main"
@@ -15,6 +21,8 @@ dev = [
     "ipykernel>=7.3.0",
     "pytest>=8",
     "ruff>=0.6",
+    "model2vec>=0.8.2,<0.9",
+    "sqlite-vec>=0.1.9,<0.2",
 ]
 
 [build-system]

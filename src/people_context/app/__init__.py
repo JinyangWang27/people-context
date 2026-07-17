@@ -41,6 +41,7 @@ from people_context.app.record_interaction import RecordInteraction, RecordInter
 from people_context.app.record_observation import RecordObservation, RecordObservationInput
 from people_context.app.record_trait import RecordTrait, RecordTraitInput
 from people_context.app.reindex_people import ReindexPeople, ReindexPeopleResult
+from people_context.app.reindex_semantic import ReindexSemantic, ReindexSemanticResult
 from people_context.app.resolve_person import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
 from people_context.app.search_people import SearchPeople
 from people_context.app.set_affiliation import SetAffiliation, SetAffiliationInput
@@ -116,6 +117,8 @@ __all__ = [
     "RememberPersonResult",
     "ReindexPeople",
     "ReindexPeopleResult",
+    "ReindexSemantic",
+    "ReindexSemanticResult",
     "ResolutionCandidate",
     "ResolutionHints",
     "ResolutionResult",

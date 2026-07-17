@@ -20,6 +20,12 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context.adapters.email_import import EmailImportExtractor
 from people_context.adapters.mcp.tools import register_all
+from people_context.adapters.semantic_indexing import (
+    IndexingLifecycleStore,
+    IndexingPeopleRepository,
+    IndexingRecordStore,
+    create_local_semantic_updater,
+)
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteContextReader,
@@ -145,6 +151,19 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     export_reader = SqliteExportReader(conn)
     import_staging = SqliteImportStagingStore(conn)
     clock = SystemClock()
+    try:
+        semantic_updater = create_local_semantic_updater(conn)
+    except Exception as exc:  # noqa: BLE001 - optional derived index cannot block the server
+        logger.warning(
+            "Semantic index maintenance is unavailable: %s. Run `uv run people-context reindex --semantic`.",
+            exc,
+        )
+        semantic_updater = None
+    if semantic_updater is not None:
+        warn = logger.warning
+        repository = IndexingPeopleRepository(repository, semantic_updater, warn)
+        record_store = IndexingRecordStore(record_store, semantic_updater, warn)
+        lifecycle_store = IndexingLifecycleStore(lifecycle_store, semantic_updater, warn)
     remember_person = RememberPerson(repository, repository, audit, clock)
     record_interaction = RecordInteraction(repository, record_store, audit, clock)
 
