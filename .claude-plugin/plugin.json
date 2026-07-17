@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "people-context",
+  "displayName": "People Context",
+  "version": "0.1.0",
+  "description": "Give Claude Code local, durable context about the people in your life through people-context-mcp.",
+  "author": {
+    "name": "Jinyang Wang",
+    "url": "https://github.com/JinyangWang27"
+  },
+  "homepage": "https://github.com/JinyangWang27/people-context-mcp/blob/main/docs/claude-code-plugin.md",
+  "repository": "https://github.com/JinyangWang27/people-context-mcp",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "people",
+    "context",
+    "memory",
+    "local-first"
+  ],
+  "mcpServers": "./.mcp.json"
+}
