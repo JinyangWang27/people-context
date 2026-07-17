@@ -72,8 +72,9 @@ identity resolution, or the minimal-disclosure cap in context assembly) is allow
 
 `typing.Protocol` interfaces, split narrowly by concern rather than one fat repository interface:
 `PersonReader` and `PersonWriter` (`ports/repository.py`), semantic embedding/vector/rebuild ports
-(`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), and `Clock` (`ports/clock.py`). Splitting concerns means a use case that only reads people never has to
-depend on write or audit capability — Interface Segregation in practice.
+(`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), and `Clock` (`ports/clock.py`). Splitting concerns
+means a use case that only reads people never has to depend on write or audit capability — Interface
+Segregation in practice.
 
 ### `adapters`
 
@@ -142,10 +143,10 @@ choices are made once, at the edge, in the entrypoint that happens to be running
 | Principle | How it is applied here |
 |---|---|
 | **S**ingle Responsibility | One use case per `app/` module; one entity per `domain/` module. |
-| **O**pen/Closed | New tools, importers, and transports are added as new adapters; `domain`/`app` are not modified to support them. |
-| **L**iskov Substitution | Any `PersonReader`/`PersonWriter` implementation (SQLite, an in-memory test fake) is substitutable behind the same Protocol. |
-| **I**nterface Segregation | Ports are split narrowly by concern — reader, writer, audit log, clock — rather than one fat repository interface. |
-| **D**ependency Inversion | `domain`/`app` depend only on `ports`; adapters implement those ports; wiring happens exclusively at entrypoints. |
+| **O**pen/Closed | New adapters add tools, importers, and transports without changing core policy. |
+| **L**iskov Substitution | SQLite and in-memory implementations substitute behind the same ports. |
+| **I**nterface Segregation | Reader, writer, audit, and clock ports stay narrow. |
+| **D**ependency Inversion | Core depends on ports; adapters implement them; entrypoints wire choices. |
 
 ## "Self as a person row"
 
@@ -157,29 +158,39 @@ concept elsewhere in the schema or API. Consequences:
   "user relationships" table or API is needed.
 - Every tool, query, and CLI command that operates on a person works identically whether or not that person
   is the user.
-- It keeps the door open for a future multi-user mode (see [docs/roadmap.md](roadmap.md), M5): a second
-  self-flagged person, scoped by owner, would not require a schema redesign.
+- It keeps the door open for a future multi-user mode: a second self-flagged person, scoped by owner, would
+  not require a separate relationship model. Ownership and the per-owner uniqueness rule still require a
+  migration; see [the sync design](design/sync.md#7-multi-user-considerations).
 
-## Append-only audit log as future sync foundation
+<a id="append-only-audit-log-as-future-sync-foundation"></a>
+## Audit log and future sync
 
 Every mutation — create, update, merge, forget — writes an `AuditEntry` (`ports/audit_log.py`) before or
-alongside the write itself. In M0 this exists purely for local accountability (see
-[docs/privacy-and-safety.md](privacy-and-safety.md)), but the append-only, ordered structure is deliberately
-shaped so a future changelog-based export/replication mechanism (see [docs/roadmap.md](roadmap.md), M5) can
-be built directly on top of it, without committing to CRDTs, vector clocks, or any specific sync protocol
-today. The audit log is the single point where "what changed and when" is captured; a sync design only has
-to decide how to ship that log elsewhere.
+alongside the write itself. The audit log exists for local accountability and deliberately permits concise,
+privacy-preserving payloads. Forget also redacts matching earlier payloads in place, so the log is
+append-oriented during ordinary writes but is not immutable.
+
+The M5 fitness assessment found that the audit log alone is not a sufficient replication source. Some payloads
+are intentionally lossy, merge and forget summarize multi-row transactions, entries have no device or causal
+ordering metadata, and ULID ordering depends on wall clocks. A future implementation should add a dedicated,
+full-fidelity changelog in the same transaction as the primary write and audit entry. See
+[the sync design](design/sync.md#2-fitness-of-the-current-audit-log-as-a-replication-source) and proposed ADR
+[0004](decisions/0004-changelog-vs-audit-log.md).
 
 ## Single-user now, multi-user-safe choices
 
-The product is single-user in M0–M4. Two choices keep multi-user extension cheap without paying for it now:
+The product is single-user through M5. Several existing choices reduce the cost of future multi-user work
+without solving it:
 
-- **IDs are ULIDs**, not auto-increment integers. ULIDs are globally unique and lexically sortable by
-  creation time, so records created independently by two future users (or two future replicas of the same
-  user's data) never collide and can still be merged in time order.
-- **The audit log is the changelog.** Because every mutation is already recorded as an ordered, append-only
-  entry, a future multi-user or multi-device design can reason about "what happened, in what order" without
-  retrofitting change tracking onto tables that were not designed to be diffed.
+- **IDs are ULIDs**, not auto-increment integers. Their large random component makes collisions across devices
+  or users extremely unlikely. Their timestamp prefix is useful for diagnostics, but must not be treated as a
+  causal order or global replication cursor when clocks can differ.
+- **Self is a person row.** The relationship model remains uniform when `is_self` becomes unique per owner.
+- **Assertive records carry provenance and sensitivity.** These columns provide useful attribution and
+  disclosure vocabulary, although provenance strings are not authenticated actors.
+- **Hexagonal boundaries isolate transports and persistence.** Authenticated transport, sync storage, and
+  policy adapters can be added without moving protocol concerns into the domain.
 
-Neither choice implies any multi-user implementation commitment today — see
-[docs/roadmap.md](roadmap.md) M5 for where this is picked back up.
+Future multi-user support still needs owner and actor identities, ownership/sharing grants, per-owner `is_self`,
+and an inter-user sensitivity policy. The audit log is not the changelog. Full analysis is in
+[the sync design](design/sync.md#7-multi-user-considerations).

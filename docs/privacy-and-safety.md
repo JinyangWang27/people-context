@@ -15,6 +15,9 @@ printing its identity, URL, approximately 512 MB size, and cache directory. Sear
 `local_files_only=True`; missing cache state returns `not_available` instead of downloading. This preserves
 the no-surprise-network rule while keeping semantic retrieval optional.
 
+M5 documents a possible future sync design. It adds no network path, account, relay, device registration, or
+background process to the current software.
+
 ## Minimal disclosure
 
 Context-returning tools never dump full records. Responses are:
@@ -37,10 +40,10 @@ Every assertive record (facts, observations, traits, interactions, relationships
 
 | Level | Meaning | Default inclusion in context responses |
 |---|---|---|
-| `public` | Freely shareable information (e.g. a public job title). | Included by default. |
-| `personal` | Ordinary personal information not meant for broad disclosure but not especially sensitive. | Included by default. This is the default sensitivity for observations, facts, and traits when not otherwise specified. |
-| `sensitive` | Information the user would not want casually surfaced (health, family conflict, finances, etc.). | Excluded from the ordinary MCP surface. |
-| `restricted` | The most guarded tier. | Excluded from the ordinary MCP surface. |
+| `public` | Freely shareable information, such as a public job title. | Included by default. |
+| `personal` | Ordinary personal information not meant for broad disclosure. | Included by default. |
+| `sensitive` | Information not to surface casually, such as health or finances. | Excluded. |
+| `restricted` | The most guarded tier. | Excluded. |
 
 ## Facts and observations, kept separate
 
@@ -72,12 +75,16 @@ notes themselves.
 
 ## Audit of every mutation
 
-Every create, update, merge, and forget operation writes an entry to the append-only `audit_log` table
-(`op`, `entity_type`, `entity_id`, `payload_json`, `source`, timestamp) before or alongside the mutation
-itself — see [docs/data-model.md](data-model.md#audit_log). This gives the user a complete, chronological
-record of what the system was told and when, independent of the current state of any given row. It also
-happens to be the substrate the future changelog-based sync design (M5) would build on — see
-[docs/architecture.md](architecture.md#append-only-audit-log-as-future-sync-foundation).
+Every create, update, merge, and forget operation writes an entry to `audit_log` (`op`, `entity_type`,
+`entity_id`, `payload_json`, `source`, timestamp) before or alongside the mutation itself — see
+[docs/data-model.md](data-model.md#audit_log). The audit trail is for local accountability and deliberately
+uses privacy-preserving summaries for some operations.
+
+Forget replaces matching earlier payloads with `{"redacted": true}`. The log is therefore append-oriented for
+ordinary writes, but not immutable. M5 concludes that it is not sufficient by itself for replication: replay
+also needs full payloads, device identity, deterministic ordering, and exact lifecycle outcomes. A future
+implementation should add a dedicated changelog alongside the audit trail. See
+[the sync design](design/sync.md#2-fitness-of-the-current-audit-log-as-a-replication-source).
 
 ## Forget vs. soft delete
 
@@ -114,13 +121,32 @@ See [docs/mcp-interface.md](mcp-interface.md#annotations).
 
 ## Threat model notes
 
+### Sync threat model (design stage)
+
+No sync implementation exists in M5. The design in [docs/design/sync.md](design/sync.md) assumes direct
+encrypted file exchange or an optional dumb relay that stores opaque batches.
+
+- **Relay trust is deliberately narrow.** End-to-end authenticated encryption is expected before a batch
+  leaves a device. Relay TLS is useful in transit but is not a substitute because the relay must not receive
+  plaintext personal data or dataset keys. The relay may still observe metadata such as timing and batch size.
+- **Relay retention is outside the local database guarantee.** A relay should support deletion and bounded
+  retention, but backups may retain ciphertext. Future key rotation should make retired epochs unreadable.
+- **Forget propagates when replicas reconnect.** A forget tombstone instructs each replica to hard-delete
+  primary rows, redact local audit and changelog payloads, and suppress stale operations for the target.
+- **A permanently offline device cannot be remotely erased.** A device that never reconnects keeps its copy.
+  Retirement prevents future sync and should rotate keys, but it cannot delete data already stored there.
+- **Inter-user sharing is a separate boundary.** `restricted` data must not sync to another user by default.
+  Ownership, authenticated actors, sharing grants, and per-user `is_self` semantics require a later design.
+
+The right to forget takes precedence over retaining a complete replicated history, but it cannot guarantee
+physical deletion from an unreachable device or third-party backup.
+
 - **Installed integrations execute local code.** A Claude Code/OpenClaw/Codex integration that starts this
   project through `uv` executes the repository's Python code with the user's normal filesystem permissions.
   It is not a sandboxed data-only extension. Install only from a repository and revision you trust.
 - **Sensitive MCP reads require operator elevation.** `get_person_context` never returns `sensitive` or
   `restricted` rows. `get_sensitive_person_context` exists only when the server process starts with
   `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE=1`; models cannot enable it through tool arguments.
-
 - **Loopback HTTP is unauthenticated.** `people-context-mcp --http` binds only to `127.0.0.1` and enables
   DNS-rebinding protection for `127.0.0.1`/`localhost` hosts and HTTP origins. This prevents remote binding
   and common browser rebinding attacks, but it is not process isolation: every local process able to reach
@@ -129,7 +155,6 @@ See [docs/mcp-interface.md](mcp-interface.md#annotations).
 - **Semantic vectors are sensitivity-filtered derived data.** Only active people and public/personal
   interaction summaries are indexed. Search rechecks primary rows during hydration, so a stale vector for a
   deleted person or newly sensitive interaction is not returned. Reindex remains the repair path.
-
 - **The database file is plaintext SQLite.** Anyone with filesystem read access to the `.db` file (and its
   `-wal`/`-shm` companions while the server is running) can read its contents directly — there is no
   application-level encryption in v1. This is a deliberate trade-off for a plain, user-inspectable,

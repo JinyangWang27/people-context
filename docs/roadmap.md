@@ -21,6 +21,9 @@ proving the architecture holds together.
 - A view/search `people-context` CLI (`db-path`, `list`, `search`, `show`, `export`).
 - Tests: domain value objects, resolution pipeline stages, SQLite repository round-trips.
 
+**Status:** Delivered. The initial scaffold established the complete schema, hexagonal boundaries, stdio MCP
+surface, CLI, and tested SQLite vertical slice on which M1–M5 build.
+
 ## M1 — Identity and retrieval (delivered)
 
 **Goals:** complete identity resolution and bring context retrieval up to its designed minimal-disclosure
@@ -89,12 +92,29 @@ from user-provided notes without persisting the notes themselves.
 
 ## M5 — Sync groundwork
 
-**Goals:** lay the design groundwork for syncing data across devices or, eventually, users — without
-committing to an implementation yet.
+**Goals:** lay the design groundwork for syncing one user's data across devices and, eventually, sharing data
+between users, without committing to an implementation.
 
 **Deliverables:**
-- Changelog-based export/replication design, building on the append-only `audit_log` (see
-  [docs/architecture.md](architecture.md#append-only-audit-log-as-future-sync-foundation)).
-- Multi-user considerations (the `is_self` person model and ULID ids already keep this cheap — see
-  [docs/architecture.md](architecture.md#single-user-now-multi-user-safe-choices)) — design only, no
-  implementation commitment at this stage.
+- A replication design grounded in the current audit, lifecycle, export, and privacy behaviour — see
+  [docs/design/sync.md](design/sync.md).
+- A proposed dedicated changelog because the current accountability audit is intentionally lossy and is
+  rewritten by forget — see
+  [docs/decisions/0004-changelog-vs-audit-log.md](decisions/0004-changelog-vs-audit-log.md).
+- A proposed conservative conflict policy that preserves identity correctness and makes forget dominant — see
+  [docs/decisions/0005-conflict-resolution-strategy.md](decisions/0005-conflict-resolution-strategy.md).
+- Multi-user ownership, actor, `is_self`, and sensitivity considerations, design only.
+
+**Status:** Delivered as a design. M5 adds documentation and proposed ADRs only; it includes no sync runtime,
+transport, schema migration, dependency, or multi-user implementation.
+
+## Post-roadmap candidates
+
+The following are candidates for future work, not commitments:
+
+- sync implementation;
+- multi-user ownership and sharing;
+- authenticated remote transport;
+- SQLCipher at rest;
+- reminder notification daemon;
+- PyPI packaging and a v1.0 release.

@@ -19,10 +19,9 @@ persistence with provenance, confidence, sensitivity, audit, and forget/merge/ex
 
 ## Status
 
-**M4 — transport and retrieval upgrades delivered.** In addition to the complete M3 lifecycle surface, the
-server now supports opt-in loopback Streamable HTTP, optional multilingual semantic retrieval, staged vCard
-imports, and strict agent-side candidate staging for notes or other user-provided text. See
-[docs/roadmap.md](docs/roadmap.md) for the remaining M5 design milestone.
+**M5 — sync groundwork delivered as design.** M0–M4 behaviour is unchanged. The
+[sync design](docs/design/sync.md) concludes that the current audit log alone is not a replayable replication
+source and proposes a dedicated changelog; M5 adds no sync runtime, transport, dependency, or schema migration.
 
 ## Features overview
 
@@ -95,11 +94,12 @@ uv run people-context reindex --semantic
 ```
 
 The command announces the pinned
-[`minishlab/potion-multilingual-128M`](https://huggingface.co/minishlab/potion-multilingual-128M/tree/73908c3438cf03b6a01bcb9611d62b23d0726f08)
-revision, its Hugging Face URL, the
-approximately 512 MB download, and the resolved cache directory before any network access. The model covers
-101 languages, including Chinese. Ordinary server startup and `semantic_search` are cache-only and never
-download; a missing package/model/index returns an actionable `not_available` result.
+[`minishlab/potion-multilingual-128M`](
+https://huggingface.co/minishlab/potion-multilingual-128M/tree/73908c3438cf03b6a01bcb9611d62b23d0726f08
+) revision, its Hugging Face URL, the approximately 512 MB download, and the resolved cache directory before
+any network access. The model covers 101 languages, including Chinese. Ordinary server startup and
+`semantic_search` are cache-only and never download; a missing package/model/index returns an actionable
+`not_available` result.
 
 ### Wire into Claude Code
 
@@ -135,9 +135,9 @@ and using the first one that resolves (full detail in [docs/cli.md](docs/cli.md)
 |---|---|---|
 | 1 | `--db` flag (CLI) / server argument | Explicit, always wins. |
 | 2 | `PEOPLE_CONTEXT_DB` environment variable | |
-| 3 | `db_path` key in `~/.config/people-context/config.toml` (or `$XDG_CONFIG_HOME`) | |
-| 4 | Agent workspace auto-detect | `OPENCLAW_WORKSPACE` env var, else `~/.openclaw/workspace`, first existing dir wins; stored as `people-context/people.db` inside it. |
-| 5 | XDG data fallback | `~/.local/share/people-context/people.db` (or `$XDG_DATA_HOME`). |
+| 3 | `db_path` in `~/.config/people-context/config.toml` or `$XDG_CONFIG_HOME` | |
+| 4 | Agent workspace | `OPENCLAW_WORKSPACE`, then `~/.openclaw/workspace`; stores `people-context/people.db`. |
+| 5 | XDG data fallback | `~/.local/share/people-context/people.db` or `$XDG_DATA_HOME`. |
 
 The chosen path is logged to stderr at startup and can be inspected at any time with `people-context db-path`
 (add `-v` to see which source won and why).
@@ -212,23 +212,24 @@ the MCP SDK or `sqlite3`, surrounded by adapters that plug the core into the out
 
 Dependencies point inward only: `domain` and `app` never import `adapters` or `mcp`. One `build_server()`
 registers tools for both stdio and localhost Streamable HTTP; source adapters feed one shared staging path.
-See [docs/architecture.md](docs/architecture.md) for the full rationale,
-including the SOLID mapping and the "self as a person row" and "audit log as sync foundation" decisions.
+See [docs/architecture.md](docs/architecture.md) for the full rationale, including the SOLID mapping,
+the "self as a person row" choice, and the audit log's assessed limits as a sync foundation.
 
 ## Documentation index
 
 | Document | Contents |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Hexagonal layering, dependency rule, SOLID mapping, entrypoint wiring |
-| [docs/data-model.md](docs/data-model.md) | Every table, common metadata columns, FTS5, bitemporal-lite, soft-delete vs. forget |
-| [docs/mcp-interface.md](docs/mcp-interface.md) | Full MCP tool surface, parameters, return shapes, annotations, implementation status |
-| [docs/identity-resolution.md](docs/identity-resolution.md) | The 5-stage resolution pipeline, scoring, ambiguity contract |
-| [docs/communication-guidance.md](docs/communication-guidance.md) | Traits, communication philosophy, reminders, privacy treatment |
-| [docs/import.md](docs/import.md) | Shared staged email/mbox, vCard, and agent-candidate pipeline; no-raw-content rule |
-| [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Minimal disclosure, sensitivity, audit, forget, threat model |
-| [docs/cli.md](docs/cli.md) | `people-context` CLI reference, DB location resolution, direct SQLite access |
-| [docs/roadmap.md](docs/roadmap.md) | M0 through M5 milestones |
-| [docs/decisions/](docs/decisions/) | Architecture decision records (ADRs) |
+| [docs/data-model.md](docs/data-model.md) | Tables, metadata, FTS5, bitemporal-lite, soft-delete vs. forget |
+| [docs/design/sync.md](docs/design/sync.md) | M5 multi-device replication and multi-user design |
+| [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools, parameters, return shapes, annotations, status |
+| [docs/identity-resolution.md](docs/identity-resolution.md) | Resolution pipeline, scoring, ambiguity contract |
+| [docs/communication-guidance.md](docs/communication-guidance.md) | Traits, philosophy, reminders, privacy |
+| [docs/import.md](docs/import.md) | Staged email/mbox, vCard, and agent-candidate import |
+| [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, sensitivity, audit, forget, threat model |
+| [docs/cli.md](docs/cli.md) | CLI reference, DB location resolution, direct SQLite access |
+| [docs/roadmap.md](docs/roadmap.md) | M0 through M5 milestones and post-roadmap candidates |
+| [docs/decisions/](docs/decisions/) | Architecture decision records |
 
 ## Contributing
 
