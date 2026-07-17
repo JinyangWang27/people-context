@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from people_context.app.record import AliasInput, RememberPerson, RememberPersonInput
+from people_context.app.record_fact import RecordFact, RecordFactInput
 from people_context.app.record_interaction import RecordInteraction, RecordInteractionInput
+from people_context.app.set_affiliation import SetAffiliation, SetAffiliationInput
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.shared import new_id, normalize_name
 from people_context.ports.clock import Clock
@@ -83,10 +86,24 @@ class ImportContent:
             path=path,
             self_addresses=self._self_addresses(),
         )
-        if not extracted.people and not extracted.interactions:
-            raise ImportPipelineError("no_candidates", "source contains no external import candidates")
+        if not extracted.people and not extracted.interactions and not extracted.candidates:
+            raise ImportPipelineError(
+                "no_candidates",
+                "source contains no external import candidates",
+                skipped_cards=extracted.skipped_cards,
+            )
         batch_id = new_id()
         now = self._clock.now()
+        if extracted.candidates:
+            rows = self._candidate_rows(batch_id, source, extracted.candidates, now)
+            self._staging.stage_batch(rows)
+            return ImportBatchResult(
+                batch_id=batch_id,
+                candidate_count=len(rows),
+                skipped_message_ids=extracted.skipped_message_ids,
+                skipped_without_id=extracted.skipped_without_id,
+                skipped_cards=extracted.skipped_cards,
+            )
         person_rows: list[StagedImportRow] = []
         email_to_candidate_id: dict[str, str] = {}
         for candidate in extracted.people:
@@ -139,10 +156,73 @@ class ImportContent:
             candidate_count=len(rows),
             skipped_message_ids=extracted.skipped_message_ids,
             skipped_without_id=extracted.skipped_without_id,
+            skipped_cards=extracted.skipped_cards,
         )
 
+    def _candidate_rows(
+        self,
+        batch_id: str,
+        source: str,
+        candidates: list[dict[str, Any]],
+        now: datetime,
+    ) -> list[StagedImportRow]:
+        references: dict[str, str] = {}
+        for candidate in candidates:
+            if candidate.get("type") != "person":
+                continue
+            ref = str(candidate["ref"])
+            if ref in references:
+                raise ImportPipelineError("invalid_candidates", "duplicate person reference", ref=ref)
+            references[ref] = new_id()
+        rows: list[StagedImportRow] = []
+        for candidate in candidates:
+            staged = dict(candidate)
+            candidate_type = staged.get("type")
+            if candidate_type == "person":
+                ref = str(staged.pop("ref"))
+                row_id = references[ref]
+                aliases = list(staged.get("aliases", []))
+                handles = [alias["value"] for alias in aliases if alias.get("kind") == AliasKind.HANDLE.value]
+                matched = self._match_existing_values([*handles, str(staged["name"])])
+                staged["matched_person_id"] = matched.id if matched else None
+            else:
+                row_id = new_id()
+                person_ref = staged.pop("person_ref", None)
+                if person_ref is not None:
+                    if person_ref not in references:
+                        raise ImportPipelineError(
+                            "invalid_candidates",
+                            "unknown person reference",
+                            ref=person_ref,
+                        )
+                    staged["person_candidate_id"] = references[person_ref]
+                participant_refs = staged.pop("participant_refs", None)
+                if participant_refs is not None:
+                    unknown = [ref for ref in participant_refs if ref not in references]
+                    if unknown:
+                        raise ImportPipelineError(
+                            "invalid_candidates",
+                            "unknown participant reference",
+                            refs=unknown,
+                        )
+                    staged["participant_candidate_ids"] = [references[ref] for ref in participant_refs]
+            rows.append(
+                StagedImportRow(
+                    id=row_id,
+                    batch_id=batch_id,
+                    source=source,
+                    candidate=staged,
+                    status="pending",
+                    created_at=now,
+                )
+            )
+        return rows
+
     def _match_existing(self, email: str, name: str) -> Person | None:
-        for value in (email, name):
+        return self._match_existing_values([email, name])
+
+    def _match_existing_values(self, values: list[str]) -> Person | None:
+        for value in values:
             matches = self._people.find_by_normalized_name(normalize_name(value))
             if len(matches) == 1:
                 return matches[0]
@@ -183,11 +263,15 @@ class CommitImport:
         staging: ImportStagingStore,
         remember_person: RememberPerson,
         record_interaction: RecordInteraction,
+        set_affiliation: SetAffiliation,
+        record_fact: RecordFact,
     ) -> None:
         self._people = people
         self._staging = staging
         self._remember_person = remember_person
         self._record_interaction = record_interaction
+        self._set_affiliation = set_affiliation
+        self._record_fact = record_fact
 
     def execute(self, batch_id: str, accepted_ids: list[str]) -> CommitImportResult:
         rows = self._staging.list_batch(batch_id)
@@ -212,6 +296,45 @@ class CommitImport:
             resolution[row.id] = self._commit_person(row)
             committed.append(row.id)
         unresolved: list[str] = []
+        for row in rows:
+            if row.id not in accepted or row.status == "committed":
+                continue
+            candidate_type = row.candidate.get("type")
+            if candidate_type not in {"affiliation", "fact"}:
+                continue
+            person_candidate_id = row.candidate["person_candidate_id"]
+            person_id = resolution.get(person_candidate_id)
+            if person_id is None:
+                unresolved.append(row.id)
+                continue
+            if candidate_type == "affiliation":
+                self._set_affiliation.execute(
+                    SetAffiliationInput(
+                        person_id=person_id,
+                        org=row.candidate["org"],
+                        role=row.candidate["role"],
+                        valid_from=row.candidate.get("valid_from"),
+                        valid_to=row.candidate.get("valid_to"),
+                        confidence=row.candidate.get("confidence"),
+                        source=row.source,
+                        session=row.candidate.get("message_id"),
+                    )
+                )
+            else:
+                self._record_fact.execute(
+                    RecordFactInput(
+                        person_id=person_id,
+                        predicate=row.candidate["predicate"],
+                        value=row.candidate["value"],
+                        valid_from=row.candidate.get("valid_from"),
+                        valid_to=row.candidate.get("valid_to"),
+                        confidence=row.candidate.get("confidence"),
+                        sensitivity=row.candidate.get("sensitivity", "personal"),
+                        source=row.source,
+                        session=row.candidate.get("message_id"),
+                    )
+                )
+            committed.append(row.id)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "interaction":
                 continue

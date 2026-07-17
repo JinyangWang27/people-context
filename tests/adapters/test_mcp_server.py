@@ -253,6 +253,49 @@ def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
     ]
 
 
+def test_vcard_import_reports_per_card_skips_and_stages_valid_neighbors(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "vcard.db")
+    content = "\n".join(
+        [
+            "BEGIN:VCARD",
+            "VERSION:4.0",
+            "FN:Alice",
+            "END:VCARD",
+            "BEGIN:VCARD",
+            "VERSION:2.1",
+            "FN:Old",
+            "END:VCARD",
+        ]
+    )
+
+    async def flow(client: ClientSession) -> Any:
+        return await client.call_tool(
+            "import_content",
+            {"source_type": "vcard", "content": content},
+        )
+
+    payload = _run(server, flow).structuredContent
+
+    assert payload["candidate_count"] == 1
+    assert payload["skipped_cards"] == [{"index": 2, "reason": "unsupported_version"}]
+
+
+def test_all_invalid_vcards_return_no_candidates_with_skip_details(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "invalid-vcard.db")
+    content = "BEGIN:VCARD\nVERSION:4.0\nEMAIL:nobody@example.com\nEND:VCARD\n"
+
+    async def flow(client: ClientSession) -> Any:
+        return await client.call_tool(
+            "import_content",
+            {"source_type": "vcard", "content": content},
+        )
+
+    payload = _run(server, flow).structuredContent
+
+    assert payload["error"] == "no_candidates"
+    assert payload["skipped_cards"] == [{"index": 1, "reason": "missing_fn"}]
+
+
 def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path) -> None:
     db_path = tmp_path / "merge.db"
     conn = open_db(db_path)

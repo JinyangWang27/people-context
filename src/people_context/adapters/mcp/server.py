@@ -18,7 +18,6 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from people_context.adapters.email_import import EmailImportExtractor
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DIMENSION,
@@ -46,6 +45,7 @@ from people_context.adapters.sqlite import (
     open_db,
     open_sqlite_vector_index,
 )
+from people_context.adapters.vcard_import import ImportExtractorRouter
 from people_context.app import (
     AddAlias,
     CommitImport,
@@ -208,9 +208,16 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
         merge_people=MergePeople(repository, lifecycle_store, clock),
         forget=Forget(repository, lifecycle_store, clock),
         export_data=ExportData(export_reader, clock),
-        import_content=ImportContent(repository, EmailImportExtractor(), import_staging, clock),
+        import_content=ImportContent(repository, ImportExtractorRouter(), import_staging, clock),
         review_import=ReviewImport(import_staging),
-        commit_import=CommitImport(repository, import_staging, remember_person, record_interaction),
+        commit_import=CommitImport(
+            repository,
+            import_staging,
+            remember_person,
+            record_interaction,
+            SetAffiliation(repository, organization_store, record_store, audit, clock),
+            RecordFact(repository, record_store, audit, clock),
+        ),
     )
 
     mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
