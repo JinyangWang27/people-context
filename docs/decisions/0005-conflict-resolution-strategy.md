@@ -2,7 +2,7 @@
 
 ## Status
 
-PROPOSED.
+ACCEPTED.
 
 ## Context
 
@@ -14,7 +14,7 @@ The complete policy is in [the sync design](../design/sync.md#4-conflict-resolut
 logical clocks for deterministic ordering, structural merge where the data model has a safe set interpretation,
 and user review where an automatic answer could attach data to the wrong person.
 
-## Proposed decision
+## Decision
 
 Use field-level last-writer-wins, ordered by hybrid logical clock plus device and operation tie-breakers, as the
 default for reversible non-identity scalar fields.
@@ -32,7 +32,7 @@ Override that default as follows:
 A replica must record unresolved identity conflicts separately and exclude ambiguous results from normal identity
 resolution until reviewed. Automatic convergence is subordinate to preserving identity correctness and privacy.
 
-This proposal does not implement clocks, conflict tables, review UI, or replay logic.
+M6 implements the local HLC and conflict table foundation. Conflict replay, review UI, exchange, and bootstrap remain deferred to M7.
 
 ## Consequences
 

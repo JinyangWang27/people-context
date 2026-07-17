@@ -2,7 +2,7 @@
 
 ## Status
 
-PROPOSED.
+ACCEPTED.
 
 ## Context
 
@@ -19,7 +19,7 @@ multi-row transaction in one entry. Forget then rewrites matching earlier payloa
 replication source needs exact row outcomes, device identity, deterministic ordering, idempotency metadata, and a
 replicated way to make already-synced replicas forget prior content.
 
-## Proposed decision
+## Decision
 
 Add a dedicated `changelog` table in a future implementation milestone. Write changelog entries in the same
 SQLite transaction as the primary mutation and the user-facing audit entry.
@@ -32,7 +32,7 @@ retains a minimal propagation tombstone.
 Keep `audit_log` as the accountability trail. Its payloads may remain intentionally concise and may continue to
 be redacted in place by forget. Do not require the audit payload and changelog payload to be identical.
 
-This proposal does not implement the table, migration, writer integration, or sync protocol.
+M6 implements the local table, migration, transactional writer integration, and inspection surface. Exchange, pairing, replay, and bootstrap remain deferred to M7.
 
 ## Consequences
 
