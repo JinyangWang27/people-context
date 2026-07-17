@@ -16,7 +16,8 @@
         "description": "HTTP path for the MCP endpoint.",
         "default": "/mcp"
       }
-    }
+    },
+    "additionalProperties": false
   },
   "activation": {
     "onStartup": true
@@ -28,5 +29,10 @@
       "people_communication_guidance",
       "people_remember"
     ]
+  },
+  "toolMetadata": {
+    "people_remember": {
+      "optional": true
+    }
   }
 }
