@@ -31,6 +31,7 @@ SERVER_INSTRUCTIONS = (
     "relevant past interactions. "
     "When the user mentions someone by name, nickname, or partial reference, call `resolve_person` "
     "first to find who they mean — prefer resolving before asking the user who someone is. "
+    "After resolving an identity, use `get_person_context` for a bounded, sensitivity-aware context bundle. "
     "Use `search_people` for broader browsing and `remember_person` to record a new or updated person. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
@@ -71,7 +72,7 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
 
     Resolves ``db_path`` via :func:`resolve_db_path`, logs the chosen path to
     STDERR, opens the database, constructs the repository/audit/clock and the
-    three use cases, and registers every tool. Does not start any transport.
+    application use cases, and registers every tool. Does not start any transport.
     """
     logger = _configure_logging()
     path = resolve_db_path(db_path)

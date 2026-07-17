@@ -1,7 +1,7 @@
 """Command-line interface: read/search commands over the same app-layer use cases as the MCP server.
 
-M0 scope: db-path, list, search, show, export. Edit/delete/reindex are documented as planned (M3) and are
-intentionally not implemented here yet (see docs/cli.md).
+M1 scope: db-path, list, search, context-backed show, and export. Edit/delete/reindex are documented as
+planned (M3) and are intentionally not implemented here yet (see docs/cli.md).
 """
 
 from __future__ import annotations

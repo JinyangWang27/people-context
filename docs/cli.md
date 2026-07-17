@@ -19,7 +19,7 @@ regardless of which surface was used to make a change.
 | `people-context db-path` | Print the resolved database path. | `-v`/`--verbose` prints the full `describe_resolution()` trace — every source checked, in order, and which one won. |
 | `people-context list` | List known people: `id`, `canonical_name`, alias count, summary excerpt, as a table. | `--all` includes soft-deleted people. |
 | `people-context search QUERY` | Ranked search results for `QUERY`, via the same `SearchPeople` use case `search_people` uses. | |
-| `people-context show PERSON` | Show a person's full record: identity, aliases, relationships, facts, traits, reminders. | `PERSON` may be an id or a name; it is resolved via `ResolvePerson`. If resolution is ambiguous, the command errors and lists the candidates instead of guessing. |
+| `people-context show PERSON` | Show identity, aliases, active relationships, affiliations/roles, the ranked facts/interactions slice, and active communication reminders. | `PERSON` may be an id or a name; it is resolved via `ResolvePerson`. If resolution is ambiguous, the command errors and lists candidates instead of guessing. Uses `GetPersonContext` with `max_items=10` and `include_sensitive=true`. |
 | `people-context export [--output FILE]` | JSON dump of all people (later: the full dataset) to stdout, or to `FILE` if given. | |
 
 All output is plain text (tables for `list`/`search`, structured text for `show`); no third-party formatting
@@ -38,8 +38,9 @@ carry identical audit/provenance behaviour:
 | `people-context delete` | Remove a record (soft-delete or forget, depending on scope). |
 | `people-context reindex` | Rebuild the FTS5 search indexes (`person_search`, `interaction_search`) after manual, out-of-band edits to the SQLite file — see Direct database access below. |
 
-A basic read/search command set (`db-path`, `list`, `search`, `show`, `export`) lands in **M0**; the full
-curation surface above lands in **M3** alongside `merge_people`/`forget`/import (see
+A basic read/search command set (`db-path`, `list`, `search`, `export`) landed in **M0**; M1 upgraded `show`
+to the shared context-retrieval use case. The full curation surface above lands in **M3** alongside
+`merge_people`/`forget`/import (see
 [docs/roadmap.md](roadmap.md)).
 
 ## Database location resolution order

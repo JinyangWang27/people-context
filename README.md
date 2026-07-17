@@ -19,16 +19,19 @@ persistence with provenance, confidence, sensitivity, audit, and forget/merge/ex
 
 ## Status
 
-**M0 — scaffold.** This is a vertical slice, not a finished product. `resolve_person`, `search_people`, and
-`remember_person` are implemented against the real SQLite store. The rest of the tool surface described in
-[docs/mcp-interface.md](docs/mcp-interface.md) is registered so it is visible to clients, but each stub tool
-currently returns `{"status": "not_implemented", "planned_milestone": "..."}`. See
+**M1 — identity and retrieval delivered.** `resolve_person`, `search_people`, `remember_person`, and
+`get_person_context` are implemented against the real SQLite store. Resolution includes guarded fuzzy
+matching and organization/role/relationship hint boosting; context retrieval is ranked, sensitivity-filtered,
+and disclosure-bounded. Later M2/M3 tools described in [docs/mcp-interface.md](docs/mcp-interface.md) remain
+registered stubs returning `{"status": "not_implemented", "planned_milestone": "..."}`. See
 [docs/roadmap.md](docs/roadmap.md) for the full milestone plan.
 
 ## Features overview
 
-- **Identity resolution** — exact, normalized, and fuzzy name matching with explainable scores, alias support
-  (nicknames, native-script names, transliterations, handles), and an explicit ambiguity contract.
+- **Identity resolution** — exact, normalized, search, and bounded fuzzy name matching with explainable
+  scores, alias support, organization/role/relationship hint boosting, and an explicit ambiguity contract.
+- **Minimal-disclosure retrieval** — stable person context containing active relationships/affiliations and
+  a single ranked facts/interactions budget, with sensitivity and purpose gates.
 - **Relationships and organisations** — directed, typed, time-bounded edges between people, and
   affiliations (role + period) with organisations.
 - **Facts vs. observations vs. traits** — objective, time-aware facts are kept separate from subjective

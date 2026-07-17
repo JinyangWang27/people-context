@@ -21,7 +21,7 @@ proving the architecture holds together.
 - A view/search `people-context` CLI (`db-path`, `list`, `search`, `show`, `export`).
 - Tests: domain value objects, resolution pipeline stages, SQLite repository round-trips.
 
-## M1 — Identity and retrieval
+## M1 — Identity and retrieval (delivered)
 
 **Goals:** complete identity resolution and bring context retrieval up to its designed minimal-disclosure
 behaviour.
@@ -32,6 +32,9 @@ behaviour.
 - `get_person_context` implemented with relevance ranking and minimal disclosure
   (`purpose`, `max_items`, `include_sensitive` honoured — see
   [docs/mcp-interface.md](mcp-interface.md#minimal-disclosure-in-get_person_context)).
+
+**Status:** Delivered. The MCP server and CLI share the same SQLite-backed retrieval use case; coverage
+includes fake use-case tests, SQLite hydration, in-memory MCP tests, and a real stdio SDK/CLI round trip.
 
 ## M2 — Full write surface, curation, and communication guidance
 

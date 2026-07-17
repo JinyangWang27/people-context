@@ -17,10 +17,10 @@ people-context server itself has no such dependency, per [docs/decisions/0002-sq
 
 Context-returning tools never dump full records. Responses are:
 
-- **Capped** — bounded by an explicit or default `max_items` ("disclosure budget"), so a caller only
-  receives as much as it asked for.
-- **Ranked** — the most relevant facts/interactions/relationships are returned first, not an arbitrary or
-  chronological slice.
+- **Capped** — facts and interactions share an explicit or default `max_items` ("disclosure budget"), so a
+  caller only receives as much ranked assertive history as it asked for. Active relationships,
+  affiliations, purpose-gated traits, and communication notes sit outside that budget.
+- **Ranked** — the most relevant eligible facts/interactions are returned first, not an arbitrary slice.
 - **Sensitivity-filtered** — items above the caller's disclosure setting are excluded unless explicitly
   requested (`include_sensitive`).
 
@@ -38,7 +38,7 @@ Every assertive record (facts, observations, traits, interactions, relationships
 | `public` | Freely shareable information (e.g. a public job title). | Included by default. |
 | `personal` | Ordinary personal information not meant for broad disclosure but not especially sensitive. | Included by default. This is the default sensitivity for observations, facts, and traits when not otherwise specified. |
 | `sensitive` | Information the user would not want casually surfaced (health, family conflict, finances, etc.). | Excluded unless `include_sensitive` is explicitly set. |
-| `restricted` | The most guarded tier — information the user wants excluded from context responses even more strictly. | Excluded by default; intended for cases where even opt-in inclusion should require deliberate, narrower handling than a blanket `include_sensitive` flag. |
+| `restricted` | The most guarded tier. | Excluded by default; included by `get_person_context` only when the caller deliberately sets `include_sensitive=true`. |
 
 ## Facts and observations, kept separate
 

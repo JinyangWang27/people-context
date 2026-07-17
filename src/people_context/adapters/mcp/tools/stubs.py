@@ -3,7 +3,7 @@
 Every stub carries the correct MCP annotations (read-only / write / destructive)
 and a client-facing docstring, so the complete tool surface is visible in any MCP
 client's tool list before each tool is implemented. Each returns a fixed shape:
-``{"status": "not_implemented", "planned_milestone": "M1|M2|M3"}``.
+``{"status": "not_implemented", "planned_milestone": "M2|M3"}``.
 
 Milestones follow docs/mcp-interface.md.
 """

@@ -15,16 +15,16 @@ human-readable `match_reason` string:
 | 1. Exact match | Exact match against `canonical_name_normalized` or an alias's `value_normalized`, via `PersonReader.find_by_normalized_name` | `1.0` | `"exact"` |
 | 2. Normalized match | Unicode NFKC normalization, casefold, diacritic (combining-mark) stripping, whitespace collapse — the same `normalize_name()` used to populate the `_normalized` columns (see [docs/data-model.md](data-model.md)) — catches names that differ only by case, accents, or spacing | `1.0` (folded into stage 1 via the normalized columns) | `"exact"` |
 | 3. FTS5 prefix/token match | `PersonReader.search_names`, backed by the `person_search` FTS5 table, prefix (`"tok"*`) and token queries — handles partial names and multi-token queries like "Wang from Acme" | `0.4 + 0.4 * hit.score` (`hit.score` is the adapter's normalized 0–1 FTS relevance) | `"search:<kind>"` where `kind` is `"canonical"` or `"alias"` |
-| 4. Fuzzy match (optional, low-confidence tier) | Levenshtein distance ≤ 2 on normalized forms, only consulted when earlier stages are inconclusive | Low, below the exact/search tiers | `"fuzzy"` |
-| 5. Hint boosting | Organisation, role, or relationship hints supplied by the caller re-rank (not re-discover) the candidate set produced by stages 1–4 | Additive/multiplicative adjustment to the base score | Reason string is augmented, e.g. `"search:alias+hint:org"` |
+| 4. Fuzzy match (guarded, low-confidence tier) | Dependency-free bounded Levenshtein distance on normalized canonical names and aliases. Runs only for queries of at least 3 characters when there is no exact candidate and no mapped search score reaches `0.5`. | Distance 1: `0.45`; distance 2: `0.38` | `"fuzzy"` |
+| 5. Hint boosting | Normalized substring matching in either direction against active organization names, roles, and relationship type/label. Re-ranks only candidates produced by stages 1–4. | `+0.15` once per matched hint kind; non-exact scores cap at `0.99`, exact scores stay `1.0` | Appends matched reasons in `org`, `role`, `relationship` order, e.g. `"search:alias+hint:org+hint:role"` |
 
-`ResolvePerson.execute(query, limit=5)` runs stages 1–3 today (M0): it checks for an exact-normalized match
-first (score `1.0`, `"exact"`), then runs `reader.search_names` and maps hits to scores in the
+`ResolvePerson.execute(query, limit=5, hints=None)` runs all five stages. It checks for an exact-normalized
+match first (score `1.0`, `"exact"`), then runs `reader.search_names` and maps hits to scores in the
 `[0.4, 0.8]` range via `0.4 + 0.4 * hit.score`, so search-tier hits can never be confused with an exact
 match. Results are deduplicated by `person_id` (keeping the best score seen), sorted descending, and
-candidates below `0.35` are dropped entirely; soft-deleted people are excluded throughout. Stages 4 (fuzzy)
-and 5 (hint boosting) are part of the designed pipeline and are planned for **M1** alongside
-`get_person_context`'s relevance ranking (see [docs/roadmap.md](roadmap.md)).
+candidates below `0.35` are dropped entirely; soft-deleted people are excluded throughout. Hints never add
+candidates. An affiliation or relationship is eligible for hint matching when `valid_to` is absent or is on
+or after the injected clock's current date; a future `valid_from` does not exclude a not-yet-expired record.
 
 ## Scoring and explainability
 

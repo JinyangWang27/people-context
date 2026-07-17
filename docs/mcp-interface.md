@@ -30,9 +30,9 @@ Every tool carries an MCP `ToolAnnotations` value that tells clients how to gate
 
 | Tool | Purpose | Parameters | Return shape | Status |
 |---|---|---|---|---|
-| `resolve_person` | Resolve a name/query to one or more candidate people, with scores and match reasons. | `query: str`, `hints?` | `ResolutionResult`: `query`, `candidates: list[ResolutionCandidate]` (each with `person_id`, `canonical_name`, `score`, `match_reason`, `aliases`, `summary`), `ambiguous: bool` | **Implemented (M0)** |
+| `resolve_person` | Resolve a name/query to one or more candidate people, with scores and match reasons. | `query: str`, `hints?: {org?: str, role?: str, relationship?: str}`, `limit: int = 5` | `ResolutionResult`: `query`, `candidates: list[ResolutionCandidate]` (each with `person_id`, `canonical_name`, `score`, `match_reason`, `aliases`, `summary`), `ambiguous: bool` | **Implemented (M1)** |
 | `search_people` | Free-text search over people (broader than resolution — for browsing/lookup rather than pinning down one identity). | `query: str`, `filters?` | `list[ResolutionCandidate]` | **Implemented (M0)** |
-| `get_person_context` | Minimal-disclosure context bundle for a person: identity, active relationships/roles, top-N relevant facts/interactions. | `person_id: str`, `purpose?: str`, `max_items?: int`, `include_sensitive?: bool` | Bundle containing identity summary, active relationships/affiliations, and a capped, ranked slice of facts/interactions. Sensitive items excluded unless `include_sensitive` is set. | Stub — planned **M1** |
+| `get_person_context` | Minimal-disclosure context bundle for a person: narrow identity, active relationships/roles, and top-ranked facts/interactions. | `person_id: str`, `purpose?: str`, `max_items: int = 10`, `include_sensitive: bool = false` | `PersonContextResult`, with the stable shape documented below. | **Implemented (M1)** |
 | `get_communication_guidance` | Structured bundle for composing communication advice: the person's traits, relevant relationship/role context, recent interaction friction notes, active `communication_note` reminders, and the user's communication philosophy text. | `person_id: str`, `situation?: str` | Structured bundle (traits, context, reminders, philosophy text) — advice itself is composed by the client LLM, not the server. | Stub — planned **M2** |
 | `list_reminders` | List reminders, optionally filtered, so agents can surface due follow-ups/occasions on their own schedule (pull-based; no server-side scheduler). | `person_id?: str`, `due_before?`, `status?` | `list[Reminder]` | Stub — planned **M2** |
 
@@ -68,7 +68,7 @@ Annotated `destructiveHint: true`.
 | `forget` | Hard delete a target (person or narrower scope) and write a tombstone audit entry. | `target`, `scope` | Confirmation of what was deleted | Stub — planned **M3** |
 | `export_data` | Full JSON export of the dataset, for portability. | (none) | JSON document of all records | Stub — planned **M3** |
 
-Stub tools currently return a fixed shape: `{"status": "not_implemented", "planned_milestone": "M1" | "M2" | "M3"}`,
+Stub tools currently return a fixed shape: `{"status": "not_implemented", "planned_milestone": "M2" | "M3"}`,
 so the full intended surface is visible in any MCP client's tool list even before each tool is implemented.
 
 ## The ambiguity contract of `resolve_person`
@@ -97,6 +97,114 @@ on top of.
   set, keeping the default response safe to hand to a general-purpose coding agent that has no particular
   need for a person's more private information.
 
-The result is always identity plus active (not expired) relationships/roles plus a capped, ranked slice of
-facts/interactions — never a full table dump. See [docs/privacy-and-safety.md](privacy-and-safety.md) for
-the disclosure policy this implements.
+`max_items` may be zero and must not be negative. Facts and interactions compete in one combined pool, so
+`len(facts) + len(interactions) <= max_items`. Records are first ordered newest-first and assigned ordinal
+recency from `1` down to `0`, then ranked by `0.7 * recency + 0.3 * confidence`; interactions use confidence
+`1.0`. Ties break by newest timestamp, record kind, then id. Public and personal records are eligible by
+default; `include_sensitive=true` also admits sensitive and restricted records.
+
+Relationships and affiliations are active, fully hydrated, and outside the disclosure budget. Observations
+remain empty in M1. Traits are returned only when `purpose` contains `"communication"` case-insensitively,
+and only active `communication_note` reminders are returned; both are also outside the budget.
+
+The exact top-level response shape is:
+
+```json
+{
+  "found": true,
+  "person_id": "requested-person-id",
+  "identity": {
+    "id": "person-id",
+    "canonical_name": "Alice Example",
+    "aliases": ["Ally"],
+    "summary": "Colleague",
+    "is_self": false
+  },
+  "relationships": [
+    {
+      "relationship": {
+        "id": "relationship-id",
+        "subject_id": "person-id",
+        "object_id": "other-person-id",
+        "type": "colleague_of",
+        "label": null,
+        "period": {"valid_from": null, "valid_to": null},
+        "confidence": 1.0,
+        "provenance": {"source": "user", "session": null, "stated_by": null},
+        "created_at": "2025-01-01T00:00:00Z"
+      },
+      "other_person_id": "other-person-id",
+      "other_person_name": "Bob"
+    }
+  ],
+  "affiliations": [
+    {
+      "affiliation": {
+        "id": "affiliation-id",
+        "person_id": "person-id",
+        "org_id": "organization-id",
+        "role": "Engineer",
+        "period": {"valid_from": null, "valid_to": null},
+        "confidence": 1.0,
+        "provenance": {"source": "user", "session": null, "stated_by": null},
+        "created_at": "2025-01-01T00:00:00Z"
+      },
+      "organization_name": "Acme"
+    }
+  ],
+  "facts": [
+    {
+      "id": "fact-id",
+      "person_id": "person-id",
+      "predicate": "location",
+      "value": "Dubai",
+      "period": {"valid_from": null, "valid_to": null},
+      "recorded_at": "2025-01-01T00:00:00Z",
+      "confidence": 1.0,
+      "sensitivity": "personal",
+      "provenance": {"source": "user", "session": null, "stated_by": null}
+    }
+  ],
+  "interactions": [
+    {
+      "id": "interaction-id",
+      "summary": "Discussed the launch",
+      "occurred_at": "2025-01-01T00:00:00Z",
+      "channel": "call",
+      "participant_ids": ["person-id"],
+      "sensitivity": "personal",
+      "provenance": {"source": "user", "session": null, "stated_by": null}
+    }
+  ],
+  "observations": [],
+  "traits": [
+    {
+      "id": "trait-id",
+      "person_id": "person-id",
+      "category": "communication_style",
+      "value": "Prefers concise updates",
+      "evidence_note": null,
+      "confidence": 1.0,
+      "sensitivity": "personal",
+      "provenance": {"source": "user", "session": null, "stated_by": null},
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "reminders": [
+    {
+      "id": "reminder-id",
+      "person_id": "person-id",
+      "text": "Prefer written updates",
+      "kind": "communication_note",
+      "due_at": null,
+      "recurrence": null,
+      "status": "active",
+      "created_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+Nullable values are shown explicitly; timestamps and dates use Pydantic JSON mode. For an unknown or
+soft-deleted person, `found` is `false`, `person_id` still contains the requested id, `identity` is `null`,
+and every array is empty.
