@@ -1,0 +1,31 @@
+[project]
+name = "people-context-mcp"
+version = "0.1.0"
+description = "Local-first MCP server giving AI agents contextual knowledge about the people in your life"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["mcp>=1.2", "pydantic>=2.7", "python-ulid>=2.2"]
+
+[project.scripts]
+people-context-mcp = "people_context.adapters.mcp.server:main"
+people-context = "people_context.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/people_context"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
