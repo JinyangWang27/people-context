@@ -45,6 +45,7 @@ class EmailImportExtractor:
         alternate_names: dict[str, list[str]] = {}
         interactions: list[ImportInteractionCandidate] = []
         skipped_message_ids: list[str] = []
+        skipped_without_id = 0
         normalized_self = {normalize_name(address) for address in self_addresses}
         for message in messages:
             correspondents = self._correspondents(message, normalized_self)
@@ -74,6 +75,8 @@ class EmailImportExtractor:
                 )
             elif occurred_at is None and correspondents and message_id is not None:
                 skipped_message_ids.append(message_id)
+            elif occurred_at is None and correspondents:
+                skipped_without_id += 1
         candidates = [
             ImportPersonCandidate(
                 name=candidate.name,
@@ -88,6 +91,7 @@ class EmailImportExtractor:
             people=candidates,
             interactions=interactions,
             skipped_message_ids=skipped_message_ids,
+            skipped_without_id=skipped_without_id,
         )
 
     def _messages(self, source_type: str, content: str | None, path: str | None) -> Iterable[Message]:

@@ -138,6 +138,21 @@ def test_import_content_reports_skipped_dateless_interaction(tmp_path: Path) -> 
     assert payload["skipped_message_ids"] == ["<dateless@example.com>"]
 
 
+def test_import_content_reports_dateless_interaction_without_message_id(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "t.db")
+    content = "From: Alice <alice@example.com>\nTo: Bob <bob@example.com>\n\n"
+
+    async def flow(client: ClientSession) -> Any:
+        return await client.call_tool("import_content", {"source_type": "email", "content": content})
+
+    payload = _run(server, flow).structuredContent
+
+    assert payload["candidate_count"] == 2
+    assert payload["skipped_message_ids"] == []
+    assert payload["skipped_without_id"] == 1
+    assert payload["skipped_cards"] == []
+
+
 def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path) -> None:
     db_path = tmp_path / "merge.db"
     conn = open_db(db_path)

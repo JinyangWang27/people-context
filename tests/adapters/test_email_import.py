@@ -174,6 +174,37 @@ def test_mbox_deduplicates_people_and_omits_interaction_for_invalid_date(tmp_pat
     assert _BODY_SENTINEL not in _all_ordinary_text(conn)
 
 
+def test_dateless_message_without_id_preserves_people_and_reports_counter() -> None:
+    content = "\n".join(
+        [
+            "From: Alice Example <alice@example.com>",
+            "To: Bob Example <bob@example.com>",
+            "Subject: Dateless message",
+            "",
+            _BODY_SENTINEL,
+        ]
+    )
+    extracted = EmailImportExtractor().extract(
+        "email",
+        content=content,
+        path=None,
+        self_addresses=set(),
+    )
+
+    assert [person.email for person in extracted.people] == ["alice@example.com", "bob@example.com"]
+    assert extracted.interactions == []
+    assert extracted.skipped_message_ids == []
+    assert extracted.skipped_without_id == 1
+
+    conn = open_db(":memory:")
+    _, _, import_content, review, _ = _use_cases(conn)
+    batch = import_content.execute("email", content=content)
+
+    assert batch.candidate_count == 2
+    assert batch.skipped_without_id == 1
+    assert len(review.execute(batch.batch_id).candidates) == 2
+
+
 def test_source_validation_and_atomic_stage_rollback() -> None:
     extractor = EmailImportExtractor()
     with pytest.raises(ImportExtractionError):

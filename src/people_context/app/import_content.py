@@ -30,6 +30,8 @@ class ImportBatchResult(BaseModel):
     batch_id: str
     candidate_count: int
     skipped_message_ids: list[str] = Field(default_factory=list)
+    skipped_without_id: int = 0
+    skipped_cards: list[dict[str, int | str]] = Field(default_factory=list)
 
 
 class ImportReviewRow(BaseModel):
@@ -136,6 +138,7 @@ class ImportContent:
             batch_id=batch_id,
             candidate_count=len(rows),
             skipped_message_ids=extracted.skipped_message_ids,
+            skipped_without_id=extracted.skipped_without_id,
         )
 
     def _match_existing(self, email: str, name: str) -> Person | None:

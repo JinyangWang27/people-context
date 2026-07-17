@@ -35,6 +35,7 @@ class ExtractedImport:
     people: list[ImportPersonCandidate]
     interactions: list[ImportInteractionCandidate]
     skipped_message_ids: list[str] = field(default_factory=list)
+    skipped_without_id: int = 0
 
 
 @dataclass(frozen=True)
