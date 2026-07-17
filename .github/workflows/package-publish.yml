@@ -1,0 +1,33 @@
+name: Publish OpenClaw plugin
+
+on:
+  pull_request:
+    paths:
+      - "openclaw-plugin/**"
+      - ".github/workflows/package-publish.yml"
+  workflow_dispatch:
+
+jobs:
+  dry-run:
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      id-token: write
+    uses: openclaw/clawhub/.github/workflows/package-publish.yml@v0.12.0
+    with:
+      source: ./openclaw-plugin
+      owner: jinyangwang27
+      dry_run: true
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      id-token: write
+    uses: openclaw/clawhub/.github/workflows/package-publish.yml@v0.12.0
+    with:
+      source: ./openclaw-plugin
+      owner: jinyangwang27
+      dry_run: false
+    secrets:
+      clawhub_token: ${{ secrets.CLAWHUB_TOKEN }}

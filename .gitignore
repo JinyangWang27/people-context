@@ -4,12 +4,17 @@ __pycache__/
 .venv/
 venv/
 dist/
+!openclaw-plugin/dist/
+!openclaw-plugin/dist/**
 build/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
 .coverage
 htmlcov/
+
+# Node
+node_modules/
 
 # Data (local SQLite store — never commit user data)
 *.db
