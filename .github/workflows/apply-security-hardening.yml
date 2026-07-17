@@ -7,6 +7,12 @@ on:
     paths:
       - scripts/apply_security_hardening.py
       - .github/workflows/apply-security-hardening.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - scripts/apply_security_hardening.py
+      - .github/workflows/apply-security-hardening.yml
 
 permissions:
   contents: write
