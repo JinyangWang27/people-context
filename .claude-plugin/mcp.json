@@ -7,9 +7,7 @@
         "run",
         "--project",
         "${CLAUDE_PLUGIN_ROOT}",
-        "people-context-mcp",
-        "--db",
-        "${CLAUDE_PLUGIN_DATA}/people_context.db"
+        "people-context-mcp"
       ]
     }
   }

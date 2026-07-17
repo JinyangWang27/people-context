@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - ".claude-plugin/**"
-      - ".mcp.json"
       - "docs/claude-code-plugin.md"
       - ".github/workflows/claude-plugin-validate.yml"
       - "pyproject.toml"
@@ -17,7 +16,6 @@ on:
       - main
     paths:
       - ".claude-plugin/**"
-      - ".mcp.json"
       - "docs/claude-code-plugin.md"
       - ".github/workflows/claude-plugin-validate.yml"
       - "pyproject.toml"

@@ -18,5 +18,5 @@
     "memory",
     "local-first"
   ],
-  "mcpServers": "./.mcp.json"
+  "mcpServers": "./mcp.json"
 }

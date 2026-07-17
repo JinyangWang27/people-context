@@ -37,11 +37,20 @@ Inside an interactive Claude Code session, the equivalent commands are:
 When the plugin is enabled, Claude Code starts this command automatically:
 
 ```bash
-uv run --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp \
-  --db "${CLAUDE_PLUGIN_DATA}/people_context.db"
+uv run --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
 ```
 
-`CLAUDE_PLUGIN_ROOT` points to Claude Code's installed copy of this repository. `CLAUDE_PLUGIN_DATA` is a persistent per-plugin directory, so the SQLite database survives marketplace updates and plugin reinstalls.
+`CLAUDE_PLUGIN_ROOT` points to Claude Code's installed copy of this repository.
+
+The server resolves its database path with the standard chain documented in [cli.md](cli.md) and
+[data-model.md](data-model.md): the `--db` flag, then `PEOPLE_CONTEXT_DB`, then a config file, then an
+agent-workspace directory, and finally the XDG data default `~/.local/share/people-context/people.db`.
+The plugin deliberately passes no `--db` flag, so the database lands at that XDG default. This location
+lives in the user's home directory — entirely outside the plugin's installed copy — so it survives
+marketplace updates, reinstalls, and uninstalls, and it is the same file the `people-context` CLI reads
+by default, so `people-context show` and `people-context export` work against the plugin's data with no
+extra configuration. To isolate or relocate the store, set `PEOPLE_CONTEXT_DB` in the environment that
+launches Claude Code.
 
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
 
@@ -49,7 +58,8 @@ The MCP server uses stdio. It does not listen on a TCP port and is available onl
 
 Installing this plugin executes the repository's Python code locally through `uv` with the permissions of your operating-system user. It is not a sandboxed, data-only extension. Install only revisions you trust.
 
-The durable store is an unencrypted SQLite file under `${CLAUDE_PLUGIN_DATA}`. Normal filesystem permissions and full-disk encryption are the at-rest security boundary. Anyone who can read that file can inspect its contents directly.
+The durable store is an unencrypted SQLite file at the resolved database path (by default
+`~/.local/share/people-context/people.db`). Normal filesystem permissions and full-disk encryption are the at-rest security boundary. Anyone who can read that file can inspect its contents directly.
 
 The default plugin configuration deliberately does not set either high-disclosure process capability:
 
@@ -102,6 +112,6 @@ Before submitting:
 1. Make the repository publicly accessible.
 2. Run `claude plugin validate . --strict` on the intended release commit.
 3. Confirm installation from a clean machine using the GitHub marketplace commands above.
-4. Verify that all durable data remains under `${CLAUDE_PLUGIN_DATA}`.
+4. Verify that all durable data remains at the resolved database path (by default the XDG data directory).
 5. Confirm that the default tool surface excludes high-disclosure reads.
 6. Document the local execution model, required `uv` dependency, tool behavior, and privacy properties.
