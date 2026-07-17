@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+import pytest
 from mcp.client.session import ClientSession
 from mcp.shared.memory import create_connected_server_and_client_session
 
@@ -190,6 +191,7 @@ def test_semantic_search_before_reindex_is_not_available_without_network(
 
 
 def test_semantic_search_refuses_model_mismatch(tmp_path: Path) -> None:
+    pytest.importorskip("sqlite_vec")
     db_path = tmp_path / "semantic-mismatch.db"
     conn = open_db(db_path)
     try:
@@ -216,6 +218,7 @@ def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
     tmp_path: Path,
     monkeypatch: Any,
 ) -> None:
+    pytest.importorskip("sqlite_vec")
     class FakeProvider:
         model_id = MODEL_ID
         dimension = 256

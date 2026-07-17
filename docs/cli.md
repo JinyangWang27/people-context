@@ -25,7 +25,8 @@ regardless of which surface was used to make a change.
 | `people-context add-alias PERSON VALUE [--kind/--lang/--script]` | Add a normalized-deduplicated alias. | |
 | `people-context set communication_philosophy VALUE` | Set the supported free-text user preference. | Other keys are rejected. |
 | `people-context delete PERSON [--yes]` | Preview and permanently forget a person graph. | Without `--yes`, only `y`/`yes` confirms. |
-| `people-context reindex` | Atomically rebuild `person_search` from active people and aliases. | Does not index interactions. |
+| `people-context reindex` | Atomically rebuild `person_search` from active people and aliases. | Remains person-only and makes no network call. |
+| `people-context reindex --semantic` | Rebuild lexical search, then explicitly download/cache the pinned multilingual model and atomically replace eligible person/interaction vectors plus model metadata. | Prints model id, pinned URL, approximately 512 MB size, and cache directory before download. Sensitive/restricted interactions are excluded. |
 
 All output is plain text (tables for `list`/`search`, structured text for `show`); no third-party formatting
 dependency is used.
@@ -74,5 +75,25 @@ If a person or alias row is edited directly with an external SQL tool, the FTS i
 stale until it is rebuilt. `people-context reindex` rebuilds the person-only `person_search` table from
 active `persons` and `aliases`; direct SQL changes do not, on their own, get an `audit_log` entry, since the
 CLI/MCP layer is what writes those.
+
+The semantic vec0 table is also derived. Direct changes to people or interactions can make it stale;
+`people-context reindex --semantic` is the repair command. A failed/offline model fetch occurs before vector
+replacement, so the previous semantic index and its metadata remain intact.
+
+## Server entrypoint transport flags
+
+`people-context-mcp` remains stdio by default. `people-context-mcp --http --host 127.0.0.1 --port 8765`
+selects Streamable HTTP at `/mcp`. `--host` accepts only `127.0.0.1`; other values are argparse errors with
+exit code 2. The HTTP endpoint is unauthenticated loopback, not a remote deployment surface.
+
+## Semantic model download and cache
+
+The optional extra pins
+`minishlab/potion-multilingual-128M@73908c3438cf03b6a01bcb9611d62b23d0726f08`, a 101-language model that
+includes Chinese. `reindex --semantic` is the only command permitted to call Hugging Face with network
+access. It announces the pinned artifact URL, approximately 512 MB download, and resolved cache directory
+first; `HF_HUB_CACHE`, `HF_HOME`, and `XDG_CACHE_HOME` overrides are honored. Server-side search opens the
+cache with `local_files_only=True` and returns `not_available` rather than downloading.
+The extra uses `model2vec>=0.8.2,<0.9` and `sqlite-vec>=0.1.9,<0.2`; neither is a base dependency.
 
 See [docs/data-model.md](data-model.md) for the full schema reference these tools operate on.

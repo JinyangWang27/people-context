@@ -184,6 +184,10 @@ principles drawn from 周易 (I Ching) or 道德经 (Tao Te Ching), a personal s
 communication norms. It also holds default disclosure settings. See
 [docs/communication-guidance.md](communication-guidance.md).
 
+M4 also stores `semantic_embedding_model_id` and `semantic_embedding_dimension`. These portable preferences
+identify the derived vectors without embedding backend-specific types in the domain. A semantic rebuild
+replaces both keys atomically with the vec0 rows; search refuses mismatched metadata.
+
 ### `import_staging`
 
 Extracted candidate records awaiting user approval. Raw source content is never stored here — only
@@ -193,7 +197,7 @@ distilled candidates plus a provenance reference. See [docs/import.md](import.md
 |---|---|---|
 | `id` | TEXT (ULID) | Primary key. |
 | `batch_id` | TEXT (ULID) | Groups candidates from one import run. |
-| `source` | TEXT | e.g. `"import/email"`. |
+| `source` | TEXT | e.g. `"import/email"`, `"import/vcard"`, or `"import/agent:meeting-notes"`. |
 | `candidate_json` | TEXT (JSON) | The distilled candidate record (proposed person/alias/fact/interaction) plus a provenance reference (message id, date) — never the raw message. |
 | `status` | TEXT enum | Pending / accepted / rejected. |
 | `created_at` | TIMESTAMP | Row creation time. |
@@ -240,6 +244,24 @@ Whenever a person or their aliases change, the repository deletes and re-inserts
 rows so the index never drifts from the source tables. If a user edits the database directly with an
 external SQL tool, the index can go stale — `people-context reindex` atomically rebuilds it from active
 people and aliases.
+
+## Optional semantic vec0 table
+
+With the `semantic` extra installed, M4 dynamically creates a same-file `semantic_vectors` virtual table:
+
+```sql
+CREATE VIRTUAL TABLE semantic_vectors USING vec0(
+  entity_id TEXT PRIMARY KEY,
+  kind TEXT PARTITION KEY,
+  embedding FLOAT[256] DISTANCE_METRIC=cosine
+);
+```
+
+It contains active-person documents (canonical name, aliases ordered by id, summary) and only `public` or
+`personal` interaction summaries. `sensitive`/`restricted` interactions are removed. This table is derived,
+excluded from portable export, and maintained best-effort after saves/merges/deletes; primary data commits
+even if vector refresh fails. `people-context reindex --semantic` atomically repairs all vectors and their
+model metadata. Exposed similarity is `1.0 - distance`.
 
 ## Bitemporal-lite
 

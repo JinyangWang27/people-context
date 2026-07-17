@@ -4,14 +4,16 @@
 document lays out the safety model: what the software guarantees, what it depends on the user's environment
 for, and what its threat model does and does not cover.
 
-## Local, user-owned, no network required
+## Local, user-owned, no surprise network activity
 
 The entire dataset lives in a single SQLite file the user owns and controls (see
 [docs/data-model.md](data-model.md) and [docs/cli.md](cli.md) for its exact location and how to inspect it
-directly). The server performs no network calls of its own; it does not phone home, does not sync to any
-service, and has no concept of a remote account. Any network activity in the system as a whole comes only
-from the MCP client the server is wired into (e.g. Claude Code talking to Anthropic's API) — the
-people-context server itself has no such dependency, per [docs/decisions/0002-sqlite.md](decisions/0002-sqlite.md).
+directly). The server does not phone home, sync, or have remote accounts. Stdio serving, loopback HTTP
+serving, ordinary CLI commands, and `semantic_search` make no outbound requests. The sole in-project network
+path is explicit: `people-context reindex --semantic` may download the pinned multilingual model after
+printing its identity, URL, approximately 512 MB size, and cache directory. Search uses
+`local_files_only=True`; missing cache state returns `not_available` instead of downloading. This preserves
+the no-surprise-network rule while keeping semantic retrieval optional.
 
 ## Minimal disclosure
 
@@ -61,6 +63,10 @@ By default, and by design, the system never stores raw message content:
 This is a hard constraint on the design, not a configurable option — there is no code path that persists
 raw source content.
 
+For vCards, NOTE/PHOTO/ADR/TEL/X-fields are discarded before staging, and per-card skip reasons never echo
+raw values. `stage_candidates` accepts only narrow structured fields; agents must extract concise candidates
+from notes rather than submit or persist the notes themselves.
+
 ## Audit of every mutation
 
 Every create, update, merge, and forget operation writes an entry to the append-only `audit_log` table
@@ -88,7 +94,8 @@ See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-lev
 
 `export_data` produces a deterministic, domain-shaped JSON export of the full portable dataset on demand,
 including soft-deleted people, interaction participant ids, preference text, and decoded audit payloads.
-Derived `person_search` rows and pending `import_staging` candidates are excluded. Export does not mutate
+Derived `person_search`/semantic vec0 rows and pending `import_staging` candidates are excluded. Semantic
+model id/dimension preferences remain portable. Export does not mutate
 data, but remains write-gated because it is a maximal-disclosure operation.
 
 ## Writes and destructive operations are annotated for client-side gating
@@ -106,6 +113,9 @@ See [docs/mcp-interface.md](mcp-interface.md#annotations).
   and common browser rebinding attacks, but it is not process isolation: every local process able to reach
   loopback can attempt to use the MCP endpoint. Do not run it on a shared machine unless that trust boundary
   is acceptable. Authenticated or remotely reachable HTTP is explicitly deferred.
+- **Semantic vectors are sensitivity-filtered derived data.** Only active people and public/personal
+  interaction summaries are indexed. Search rechecks primary rows during hydration, so a stale vector for a
+  deleted person or newly sensitive interaction is not returned. Reindex remains the repair path.
 
 - **The database file is plaintext SQLite.** Anyone with filesystem read access to the `.db` file (and its
   `-wal`/`-shm` companions while the server is running) can read its contents directly — there is no
