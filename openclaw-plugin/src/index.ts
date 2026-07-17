@@ -43,6 +43,14 @@ async function callMcpTool(
 
   try {
     const result = await client.callTool({ name, arguments: args });
+
+    if (
+      result.structuredContent !== undefined &&
+      result.structuredContent !== null
+    ) {
+      return result.structuredContent;
+    }
+
     const content = result.content as Array<{ type: string; text?: string }>;
     const text = content
       .filter((block) => block.type === "text")
@@ -50,7 +58,7 @@ async function callMcpTool(
       .join("");
 
     if (!text) {
-      throw new Error("MCP tool returned no text content");
+      throw new Error("MCP tool returned no text or structured content");
     }
 
     return JSON.parse(text);
