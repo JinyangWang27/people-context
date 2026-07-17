@@ -7,7 +7,7 @@ a local-first store for durable knowledge about the people in your life.
 ## Tools
 
 - `people_resolve` — resolve a name, nickname, or partial reference
-- `people_context` — retrieve a bounded, sensitivity-aware context bundle
+- `people_context` — retrieve a bounded public/personal context bundle
 - `people_communication_guidance` — retrieve communication-relevant traits, history, and reminders
 - `people_remember` — create or update a person record
 
@@ -77,6 +77,16 @@ agent or session. For example, where an existing tool policy already uses
 ```
 
 Read-only tools remain available according to the normal OpenClaw tool policy.
+
+## Security model
+
+This plugin runs JavaScript locally and connects to a local Python MCP process that can read a plaintext SQLite
+file containing personal data. Neither component is sandboxed from the user's filesystem. Install only trusted
+revisions, keep the endpoint on loopback, and treat every local process as able to reach the unauthenticated
+HTTP endpoint while it is enabled.
+
+The ordinary `people_context` wrapper cannot request sensitive or restricted rows. The underlying server also
+keeps full export absent from default MCP discovery; use the human-operated CLI for routine export.
 
 ## Local development
 

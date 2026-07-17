@@ -23,8 +23,8 @@ Context-returning tools never dump full records. Responses are:
   caller only receives as much ranked assertive history as it asked for. Active relationships,
   affiliations, purpose-gated traits, and communication notes sit outside that budget.
 - **Ranked** — the most relevant eligible facts/interactions are returned first, not an arbitrary slice.
-- **Sensitivity-filtered** — items above the caller's disclosure setting are excluded unless explicitly
-  requested (`include_sensitive`).
+- **Sensitivity-filtered** — ordinary MCP context excludes `sensitive` and `restricted` records. There is
+  no model-supplied boolean that can widen this boundary.
 
 This applies most directly to `get_person_context` (see
 [docs/mcp-interface.md](mcp-interface.md#minimal-disclosure-in-get_person_context)), but the same posture —
@@ -39,8 +39,8 @@ Every assertive record (facts, observations, traits, interactions, relationships
 |---|---|---|
 | `public` | Freely shareable information (e.g. a public job title). | Included by default. |
 | `personal` | Ordinary personal information not meant for broad disclosure but not especially sensitive. | Included by default. This is the default sensitivity for observations, facts, and traits when not otherwise specified. |
-| `sensitive` | Information the user would not want casually surfaced (health, family conflict, finances, etc.). | Excluded unless `include_sensitive` is explicitly set. |
-| `restricted` | The most guarded tier. | Excluded by default; included by `get_person_context` only when the caller deliberately sets `include_sensitive=true`. |
+| `sensitive` | Information the user would not want casually surfaced (health, family conflict, finances, etc.). | Excluded from the ordinary MCP surface. |
+| `restricted` | The most guarded tier. | Excluded from the ordinary MCP surface. |
 
 ## Facts and observations, kept separate
 
@@ -63,9 +63,12 @@ By default, and by design, the system never stores raw message content:
 This is a hard constraint on the design, not a configurable option — there is no code path that persists
 raw source content.
 
-For vCards, NOTE/PHOTO/ADR/TEL/X-fields are discarded before staging, and per-card skip reasons never echo
-raw values. `stage_candidates` accepts only narrow structured fields; agents must extract concise candidates
-from notes rather than submit or persist the notes themselves.
+For email and mbox imports, Subject values are treated as attacker-controlled input and are not persisted or
+returned to the model. A fixed `Email correspondence` interaction summary is staged instead; message id,
+date, channel, and participants remain available as narrow provenance. For vCards, NOTE/PHOTO/ADR/TEL/X-fields
+are discarded before staging, and per-card skip reasons never echo raw values. `stage_candidates` accepts only
+narrow structured fields; agents must extract concise candidates from notes rather than submit or persist the
+notes themselves.
 
 ## Audit of every mutation
 
@@ -92,21 +95,31 @@ See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-lev
 
 ## Export for portability
 
-`export_data` produces a deterministic, domain-shaped JSON export of the full portable dataset on demand,
-including soft-deleted people, interaction participant ids, preference text, and decoded audit payloads.
-Derived `person_search`/semantic vec0 rows and pending `import_staging` candidates are excluded. Semantic
-model id/dimension preferences remain portable. Export does not mutate
-data, but remains write-gated because it is a maximal-disclosure operation.
+The human-operated `people-context export` CLI produces a deterministic, domain-shaped JSON export of the
+full portable dataset, including soft-deleted people, interaction participant ids, preference text, and
+decoded audit payloads. Derived `person_search`/semantic vec0 rows and pending `import_staging` candidates are
+excluded. Semantic model id/dimension preferences remain portable.
+
+The maximal-disclosure `export_data` MCP tool is absent by default. An operator must start the server process
+with `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1` before a client can discover it. This process-level boundary, not a
+model-supplied tool argument or advisory annotation, is the security control. Prefer the CLI for routine export.
 
 ## Writes and destructive operations are annotated for client-side gating
 
 Every write and destructive MCP tool carries the appropriate `ToolAnnotations` (`readOnlyHint`/
 `destructiveHint`) so that MCP clients — Claude Code and others — can apply their own approval UI/policy
-before executing a mutation. The server does not attempt to implement its own approval prompt; it relies on
-the MCP client to honour these annotations, which is the standard mechanism MCP defines for this purpose.
+before executing a mutation. These annotations are advisory metadata, not an authorization boundary. High-
+disclosure reads therefore use process-level capability gates and are absent from ordinary tool discovery.
 See [docs/mcp-interface.md](mcp-interface.md#annotations).
 
 ## Threat model notes
+
+- **Installed integrations execute local code.** A Claude Code/OpenClaw/Codex integration that starts this
+  project through `uv` executes the repository's Python code with the user's normal filesystem permissions.
+  It is not a sandboxed data-only extension. Install only from a repository and revision you trust.
+- **Sensitive MCP reads require operator elevation.** `get_person_context` never returns `sensitive` or
+  `restricted` rows. `get_sensitive_person_context` exists only when the server process starts with
+  `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE=1`; models cannot enable it through tool arguments.
 
 - **Loopback HTTP is unauthenticated.** `people-context-mcp --http` binds only to `127.0.0.1` and enables
   DNS-rebinding protection for `127.0.0.1`/`localhost` hosts and HTTP origins. This prevents remote binding

@@ -226,11 +226,7 @@ class CandidateStager:
 
     @staticmethod
     def _references(candidates: list[CandidateInput]) -> dict[str, str]:
-        return {
-            candidate.ref: new_id()
-            for candidate in candidates
-            if isinstance(candidate, PersonCandidateInput)
-        }
+        return {candidate.ref: new_id() for candidate in candidates if isinstance(candidate, PersonCandidateInput)}
 
     def _row(
         self,
@@ -303,10 +299,7 @@ def _invalid_candidates(message: str, **details: Any) -> ImportPipelineError:
         **details,
         details=validation_details,
         allowed_types=list(_CANDIDATE_MODELS),
-        valid_fields={
-            name: list(model.model_fields)
-            for name, model in _CANDIDATE_MODELS.items()
-        },
+        valid_fields={name: list(model.model_fields) for name, model in _CANDIDATE_MODELS.items()},
     )
 
 
@@ -344,10 +337,7 @@ class ImportContent:
         if not candidates:
             for candidate in extracted.people:
                 aliases = [{"value": candidate.email, "kind": AliasKind.HANDLE.value}]
-                aliases.extend(
-                    {"value": name, "kind": AliasKind.OTHER.value}
-                    for name in candidate.alternate_names
-                )
+                aliases.extend({"value": name, "kind": AliasKind.OTHER.value} for name in candidate.alternate_names)
                 candidates.append(
                     {
                         "type": "person",
@@ -361,7 +351,7 @@ class ImportContent:
             candidates.extend(
                 {
                     "type": "interaction",
-                    "summary": candidate.subject or "Email correspondence",
+                    "summary": "Email correspondence",
                     "participant_refs": candidate.participant_emails,
                     "channel": "email",
                     "message_id": candidate.message_id,

@@ -212,15 +212,9 @@ export default defineToolPlugin({
             maximum: 50,
           }),
         ),
-        include_sensitive: Type.Optional(
-          Type.Boolean({
-            description: "Whether to include sensitive-tagged records.",
-            default: false,
-          }),
-        ),
       }),
       async execute(
-        { person_id, purpose, max_items, include_sensitive },
+        { person_id, purpose, max_items },
         config: Config,
         context,
       ) {
@@ -231,7 +225,6 @@ export default defineToolPlugin({
             person_id,
             purpose: purpose ?? "communication",
             max_items: max_items ?? 10,
-            include_sensitive: include_sensitive ?? false,
           },
           context.signal,
         );

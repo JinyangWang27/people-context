@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
+from people_context.adapters.mcp.security import process_elevation_enabled
 from people_context.app import (
     AliasInput,
     AmbiguousPersonError,
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 
 _READ_ONLY = ToolAnnotations(readOnlyHint=True)
 _WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+_SENSITIVE_CONTEXT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE"
 
 
 def register(mcp: FastMCP, deps: ToolDeps) -> None:
@@ -52,21 +54,41 @@ def register(mcp: FastMCP, deps: ToolDeps) -> None:
         person_id: str,
         purpose: str | None = None,
         max_items: int = 10,
-        include_sensitive: bool = False,
     ) -> dict[str, Any]:
         """Assemble a minimal-disclosure context bundle for one person.
 
         Returns narrow identity fields, active relationships and affiliations, and
         one ranked facts/interactions slice capped by `max_items`. Sensitive and
-        restricted records require `include_sensitive=True`; communication traits
-        require a purpose containing `communication`.
+        restricted records are never returned by this ordinary tool. Communication
+        traits require a purpose containing `communication`.
         """
         return deps.get_person_context.execute(
             person_id,
             purpose=purpose,
             max_items=max_items,
-            include_sensitive=include_sensitive,
+            include_sensitive=False,
         ).model_dump(mode="json")
+
+    if process_elevation_enabled(_SENSITIVE_CONTEXT_ENV):
+
+        @mcp.tool(annotations=_READ_ONLY)
+        def get_sensitive_person_context(
+            person_id: str,
+            purpose: str | None = None,
+            max_items: int = 10,
+        ) -> dict[str, Any]:
+            """Return context that may include sensitive and restricted records.
+
+            This tool is absent from the normal MCP surface. The operator must
+            restart the server with PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE=1 before
+            a client can discover or invoke it.
+            """
+            return deps.get_person_context.execute(
+                person_id,
+                purpose=purpose,
+                max_items=max_items,
+                include_sensitive=True,
+            ).model_dump(mode="json")
 
     @mcp.tool(annotations=_READ_ONLY)
     def search_people(query: str, limit: int = 10) -> dict[str, Any]:

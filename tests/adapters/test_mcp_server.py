@@ -47,8 +47,6 @@ EXPECTED_TOOLS = {
     # destructive stubs
     "merge_people",
     "forget",
-    # export
-    "export_data",
 }
 
 
@@ -80,10 +78,31 @@ def test_tools_list_surface_and_annotations(tmp_path: Path) -> None:
     assert by_name["list_reminders"].annotations.readOnlyHint is True
     assert "hints" in by_name["resolve_person"].inputSchema["properties"]
     assert by_name["get_person_context"].inputSchema["properties"]["max_items"]["default"] == 10
+    assert "include_sensitive" not in by_name["get_person_context"].inputSchema["properties"]
+    assert "get_sensitive_person_context" not in by_name
+    assert "export_data" not in by_name
     assert by_name["merge_people"].annotations.destructiveHint is True
     assert by_name["remember_person"].annotations.readOnlyHint is False
     assert by_name["record_fact"].annotations.readOnlyHint is False
     assert by_name["record_fact"].annotations.destructiveHint is False
+
+
+def test_high_disclosure_tools_require_process_elevation(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setenv("PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE", "1")
+    monkeypatch.setenv("PEOPLE_CONTEXT_MCP_ENABLE_EXPORT", "true")
+    server = build_server(db_path=tmp_path / "elevated.db")
+
+    async def collect(client: ClientSession) -> Any:
+        return await client.list_tools()
+
+    result = _run(server, collect)
+    by_name = {tool.name: tool for tool in result.tools}
+
+    assert "get_sensitive_person_context" in by_name
+    assert "include_sensitive" not in by_name["get_sensitive_person_context"].inputSchema["properties"]
+    assert by_name["get_sensitive_person_context"].annotations.readOnlyHint is True
+    assert "export_data" in by_name
+    assert by_name["export_data"].annotations.readOnlyHint is True
 
 
 def test_remember_then_resolve_and_audit_row(tmp_path: Path) -> None:
@@ -219,6 +238,7 @@ def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
     monkeypatch: Any,
 ) -> None:
     pytest.importorskip("sqlite_vec")
+
     class FakeProvider:
         model_id = MODEL_ID
         dimension = 256
@@ -350,12 +370,8 @@ def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path)
     server = build_server(db_path=db_path)
 
     async def flow(client: ClientSession) -> tuple[dict[str, Any], dict[str, Any]]:
-        invalid = await client.call_tool(
-            "merge_people", {"primary_id": primary.id, "duplicate_id": primary.id}
-        )
-        merged = await client.call_tool(
-            "merge_people", {"primary_id": primary.id, "duplicate_id": duplicate.id}
-        )
+        invalid = await client.call_tool("merge_people", {"primary_id": primary.id, "duplicate_id": primary.id})
+        merged = await client.call_tool("merge_people", {"primary_id": primary.id, "duplicate_id": duplicate.id})
         return invalid.structuredContent, merged.structuredContent
 
     invalid, merged = _run(server, flow)
@@ -365,14 +381,13 @@ def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path)
     assert merged["self_loops_removed"] == 0
 
 
-def test_m2_write_read_curation_and_guidance_flow(tmp_path: Path) -> None:
+def test_m2_write_read_curation_and_guidance_flow(tmp_path: Path, monkeypatch: Any) -> None:
+    monkeypatch.setenv("PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE", "1")
     db_path = tmp_path / "m2.db"
     server = build_server(db_path=db_path)
 
     async def flow(client: ClientSession) -> dict[str, Any]:
-        me = (
-            await client.call_tool("remember_person", {"name": "Me", "is_self": True})
-        ).structuredContent["person"]
+        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structuredContent["person"]
         alice = (await client.call_tool("remember_person", {"name": "Alice"})).structuredContent["person"]
         person_id = alice["id"]
         await client.call_tool(
@@ -440,9 +455,7 @@ def test_m2_write_read_curation_and_guidance_flow(tmp_path: Path) -> None:
                 {"person_id": person_id, "due_before": "2025-07-02T00:00:00+00:00"},
             )
         ).structuredContent
-        completed = (
-            await client.call_tool("complete_reminder", {"reminder_id": follow_up["id"]})
-        ).structuredContent
+        completed = (await client.call_tool("complete_reminder", {"reminder_id": follow_up["id"]})).structuredContent
         completed_twice = (
             await client.call_tool("complete_reminder", {"reminder_id": follow_up["id"]})
         ).structuredContent
@@ -467,9 +480,7 @@ def test_m2_write_read_curation_and_guidance_flow(tmp_path: Path) -> None:
             await client.call_tool("get_person_context", {"person_id": person_id, "max_items": 10})
         ).structuredContent
         context_sensitive = (
-            await client.call_tool(
-                "get_person_context", {"person_id": person_id, "max_items": 10, "include_sensitive": True}
-            )
+            await client.call_tool("get_sensitive_person_context", {"person_id": person_id, "max_items": 10})
         ).structuredContent
         guidance = (
             await client.call_tool(
@@ -514,9 +525,7 @@ def test_m2_write_read_curation_and_guidance_flow(tmp_path: Path) -> None:
     context_default = payload["context_default"]
     assert context_default["facts"][0]["value"] == "Dubai"
     assert payload["sensitive_fact"]["id"] not in {fact["id"] for fact in context_default["facts"]}
-    assert payload["sensitive_fact"]["id"] in {
-        fact["id"] for fact in payload["context_sensitive"]["facts"]
-    }
+    assert payload["sensitive_fact"]["id"] in {fact["id"] for fact in payload["context_sensitive"]["facts"]}
     assert context_default["observations"] == []
     assert context_default["relationships"][0]["relationship"]["type"] == "friend_of"
     assert context_default["affiliations"][0]["organization_name"] == "Acme"

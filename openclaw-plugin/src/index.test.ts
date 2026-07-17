@@ -15,6 +15,9 @@ describe("people-context plugin", () => {
     expect(metadata?.tools.find((tool) => tool.name === "people_remember")).toMatchObject({
       optional: true,
     });
+    expect(metadata?.tools.find((tool) => tool.name === "people_context")?.parameters).not.toHaveProperty(
+      "properties.include_sensitive",
+    );
   });
 
   it("builds the default and configured MCP URLs", () => {
