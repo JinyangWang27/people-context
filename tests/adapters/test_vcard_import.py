@@ -140,6 +140,45 @@ def test_vcard_matches_email_before_name_and_dependents_commit_without_person_ac
     assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 1
 
 
+def test_vcard_ignores_self_card_and_its_dependents() -> None:
+    content = "\n".join(
+        [
+            "BEGIN:VCARD",
+            "VERSION:4.0",
+            "FN:Current User",
+            "EMAIL;TYPE=work:OWNER@EXAMPLE.COM",
+            "ORG:Private Org",
+            "TITLE:Owner",
+            "BDAY:1990-01-01",
+            "END:VCARD",
+            "BEGIN:VCARD",
+            "VERSION:4.0",
+            "FN:Real Contact",
+            "EMAIL:contact@example.com",
+            "END:VCARD",
+        ]
+    )
+
+    extracted = VCardImportExtractor().extract(
+        "vcard",
+        content=content,
+        path=None,
+        self_addresses={"owner@example.com"},
+    )
+
+    assert extracted.skipped_cards == []
+    assert extracted.candidates == [
+        {
+            "type": "person",
+            "ref": "card-2",
+            "name": "Real Contact",
+            "aliases": [{"value": "contact@example.com", "kind": "handle"}],
+            "message_id": None,
+            "date": None,
+        }
+    ]
+
+
 def test_mixed_invalid_cards_report_stable_one_based_reasons_and_keep_valid_cards() -> None:
     content = "\n".join(
         [

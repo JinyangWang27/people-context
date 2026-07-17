@@ -63,13 +63,13 @@ class VCardImportExtractor:
         path: str | None,
         self_addresses: set[str],
     ) -> ExtractedImport:
-        del self_addresses
         if source_type != "vcard":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'vcard'")
         if (content is None) == (path is None):
             raise ImportExtractionError("invalid_source", "vcard import requires exactly one of content or path")
         text = content if content is not None else Path(path or "").read_text(encoding="utf-8")
         cards = _split_cards(_unfold_lines(text))
+        normalized_self_addresses = {normalize_name(address) for address in self_addresses if address.strip()}
         candidates: list[dict[str, object]] = []
         skipped: list[dict[str, int | str]] = []
         for index, (lines, structurally_valid) in enumerate(cards, start=1):
@@ -96,6 +96,11 @@ class VCardImportExtractor:
             name = _decode_text(fn_properties[0]).strip() if fn_properties else ""
             if not name:
                 skipped.append({"index": index, "reason": "missing_fn"})
+                continue
+            if any(
+                normalize_name(_decode_text(email).strip()) in normalized_self_addresses
+                for email in by_name.get("EMAIL", [])
+            ):
                 continue
             candidates.extend(_card_candidates(index, name, by_name))
         return ExtractedImport(

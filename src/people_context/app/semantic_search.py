@@ -109,31 +109,52 @@ class SemanticSearch:
             vector = provider.embed([query.strip()])[0]
             if len(vector) != self._current_dimension:
                 raise ValueError("embedding provider returned an unexpected vector dimension")
-            candidates = [
-                (kind, hit.entity_id, 1.0 - hit.distance)
+            hits = [
+                hit
                 for kind in selected_kinds
-                for hit in index.search(kind, vector, limit)
+                for hit in self._search_kind(index, vector, kind, limit)
             ]
         except Exception as exc:  # noqa: BLE001 - optional package/model/index failures are result states
             return SemanticSearchNotAvailable(reason=str(exc) or exc.__class__.__name__)
-        candidates.sort(key=lambda item: (-item[2], item[1], item[0]))
-        hits: list[SemanticSearchHit] = []
-        for kind, entity_id, score in candidates:
-            entity = self._entities.get_semantic_entity(kind, entity_id)
-            if entity is None:
-                continue
-            hits.append(
-                SemanticSearchHit(
-                    kind=kind,
-                    entity_id=entity_id,
-                    score=score,
-                    title=entity.title,
-                    summary=entity.summary,
-                )
-            )
-            if len(hits) == limit:
-                break
-        return SemanticSearchOk(model_id=self._current_model_id, hits=hits)
+        hits.sort(key=lambda hit: (-hit.score, hit.kind, hit.entity_id))
+        return SemanticSearchOk(model_id=self._current_model_id, hits=hits[:limit])
+
+    def _search_kind(
+        self,
+        index: VectorIndex,
+        vector: list[float],
+        kind: str,
+        limit: int,
+    ) -> list[SemanticSearchHit]:
+        search_limit = limit
+        hydrated: dict[str, SemanticSearchHit | None] = {}
+        while True:
+            vector_hits = index.search(kind, vector, search_limit)
+            candidates: list[SemanticSearchHit] = []
+            seen_entity_ids: set[str] = set()
+            for vector_hit in vector_hits:
+                if vector_hit.entity_id in seen_entity_ids:
+                    continue
+                seen_entity_ids.add(vector_hit.entity_id)
+                if vector_hit.entity_id not in hydrated:
+                    entity = self._entities.get_semantic_entity(kind, vector_hit.entity_id)
+                    hydrated[vector_hit.entity_id] = (
+                        None
+                        if entity is None
+                        else SemanticSearchHit(
+                            kind=kind,
+                            entity_id=vector_hit.entity_id,
+                            score=1.0 - vector_hit.distance,
+                            title=entity.title,
+                            summary=entity.summary,
+                        )
+                    )
+                if hit := hydrated[vector_hit.entity_id]:
+                    candidates.append(hit)
+            candidates.sort(key=lambda hit: (-hit.score, hit.entity_id))
+            if len(candidates) >= limit or len(vector_hits) < search_limit:
+                return candidates[:limit]
+            search_limit *= 2
 
     @staticmethod
     def _validate(query: str, kinds: list[str], limit: int) -> None:
