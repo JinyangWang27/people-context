@@ -144,6 +144,81 @@ def test_candidates_carry_aliases_and_summary_from_search() -> None:
     assert top.match_reason.startswith("search:")
 
 
+@pytest.mark.parametrize(
+    ("query", "name", "expected_score"),
+    [("Alicf", "Alice", 0.45), ("Alixe", "Alicea", 0.38)],
+)
+def test_fuzzy_matches_names_at_distance_one_or_two(query: str, name: str, expected_score: float) -> None:
+    repo = FakePeopleRepository()
+    person = _person(name)
+    repo.save_person(person)
+
+    result = ResolvePerson(repo).execute(query)
+
+    assert [(candidate.person_id, candidate.score, candidate.match_reason) for candidate in result.candidates] == [
+        (person.id, expected_score, "fuzzy")
+    ]
+
+
+def test_fuzzy_compares_aliases() -> None:
+    repo = FakePeopleRepository()
+    person = _person("Robert", aliases=[Alias(value="Bobby", kind=AliasKind.NICKNAME)])
+    repo.save_person(person)
+
+    result = ResolvePerson(repo).execute("Bobbi")
+
+    assert result.candidates[0].person_id == person.id
+    assert result.candidates[0].match_reason == "fuzzy"
+
+
+def test_fuzzy_skips_queries_shorter_than_three_characters() -> None:
+    repo = FakePeopleRepository()
+    repo.save_person(_person("Amy"))
+    repo.forced_hits["Am"] = []
+
+    assert ResolvePerson(repo).execute("Am").candidates == []
+
+
+@pytest.mark.parametrize("query", ["Alice", "ali"])
+def test_exact_or_strong_search_match_suppresses_fuzzy(query: str) -> None:
+    repo = FakePeopleRepository()
+    strong = _person("Alice")
+    fuzzy = _person("Alixe")
+    repo.save_person(strong)
+    repo.save_person(fuzzy)
+
+    result = ResolvePerson(repo).execute(query)
+
+    assert all(candidate.match_reason != "fuzzy" for candidate in result.candidates)
+
+
+def test_fuzzy_candidates_follow_order_limit_and_ambiguity_rules() -> None:
+    repo = FakePeopleRepository()
+    distance_one = _person("Alice")
+    distance_two = _person("Aline")
+    repo.save_person(distance_two)
+    repo.save_person(distance_one)
+
+    result = ResolvePerson(repo).execute("Alise", limit=2)
+
+    assert [candidate.person_id for candidate in result.candidates] == [distance_one.id, distance_two.id]
+    assert result.ambiguous is True
+
+
+def test_weak_search_candidate_can_be_replaced_by_better_fuzzy_score() -> None:
+    repo = FakePeopleRepository()
+    person = _person("Alice")
+    repo.save_person(person)
+    repo.forced_hits["Alise"] = [
+        SearchHit(person=person, score=-0.1, matched_value="Alice", match_kind="canonical")
+    ]
+
+    result = ResolvePerson(repo).execute("Alise")
+
+    assert result.candidates[0].score == 0.45
+    assert result.candidates[0].match_reason == "fuzzy"
+
+
 def test_search_people_returns_ranked_candidates_with_search_reasons() -> None:
     repo = FakePeopleRepository()
     person = _person("Alice", aliases=[Alias(value="Ally", kind=AliasKind.NICKNAME)])
