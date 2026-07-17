@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 venv/
 dist/
+!openclaw-plugin/dist/
+!openclaw-plugin/dist/**
 build/
 *.egg-info/
 .pytest_cache/
