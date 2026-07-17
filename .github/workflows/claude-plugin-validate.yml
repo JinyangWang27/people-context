@@ -1,0 +1,58 @@
+name: Validate Claude Code plugin
+
+on:
+  pull_request:
+    paths:
+      - ".claude-plugin/**"
+      - ".mcp.json"
+      - "docs/claude-code-plugin.md"
+      - ".github/workflows/claude-plugin-validate.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "src/**"
+      - "tests/adapters/test_mcp_server.py"
+      - "tests/adapters/test_email_import.py"
+  push:
+    branches:
+      - main
+    paths:
+      - ".claude-plugin/**"
+      - ".mcp.json"
+      - "docs/claude-code-plugin.md"
+      - ".github/workflows/claude-plugin-validate.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "src/**"
+      - "tests/adapters/test_mcp_server.py"
+      - "tests/adapters/test_email_import.py"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code@latest
+
+      - name: Validate marketplace and plugin
+        run: claude plugin validate . --strict
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Verify local MCP entry point
+        run: uv run --locked people-context-mcp --help
+
+      - name: Verify security boundaries
+        run: >-
+          uv run --locked pytest -q
+          tests/adapters/test_mcp_server.py
+          tests/adapters/test_email_import.py
