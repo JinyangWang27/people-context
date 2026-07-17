@@ -14,11 +14,20 @@ from people_context.adapters.email_import import EmailImportExtractor, ImportExt
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteImportStagingStore,
+    SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
     open_db,
 )
-from people_context.app import CommitImport, ImportContent, RecordInteraction, RememberPerson, ReviewImport
+from people_context.app import (
+    CommitImport,
+    ImportContent,
+    RecordFact,
+    RecordInteraction,
+    RememberPerson,
+    ReviewImport,
+    SetAffiliation,
+)
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.ports.imports import StagedImportRow
 
@@ -38,12 +47,14 @@ def _use_cases(conn):
     staging = SqliteImportStagingStore(conn)
     remember = RememberPerson(people, people, audit, _Clock())
     interactions = RecordInteraction(people, records, audit, _Clock())
+    affiliations = SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, _Clock())
+    facts = RecordFact(people, records, audit, _Clock())
     return (
         people,
         records,
         ImportContent(people, EmailImportExtractor(), staging, _Clock()),
         ReviewImport(staging),
-        CommitImport(people, staging, remember, interactions),
+        CommitImport(people, staging, remember, interactions, affiliations, facts),
     )
 
 
