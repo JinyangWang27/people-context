@@ -150,3 +150,18 @@ def test_metadata_is_stored_under_portable_preference_keys() -> None:
         SEMANTIC_MODEL_ID_KEY: "test/model@revision",
         SEMANTIC_DIMENSION_KEY: 256,
     }
+
+
+def test_cosine_search_scores_identical_as_one_and_orthogonal_as_zero() -> None:
+    conn = open_db(":memory:")
+    index = create_sqlite_vector_index(conn)
+    query = _vector(1.0)
+    orthogonal = [0.0, 1.0, *([0.0] * 254)]
+    index.upsert("person", "identical", query)
+    index.upsert("person", "orthogonal", orthogonal)
+
+    hits = index.search("person", query, 2)
+    scores = {hit.entity_id: 1.0 - hit.distance for hit in hits}
+
+    assert scores["identical"] == pytest.approx(1.0)
+    assert scores["orthogonal"] == pytest.approx(0.0)

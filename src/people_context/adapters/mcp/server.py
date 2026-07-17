@@ -20,6 +20,11 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context.adapters.email_import import EmailImportExtractor
 from people_context.adapters.mcp.tools import register_all
+from people_context.adapters.model2vec_embeddings import (
+    MODEL_DIMENSION,
+    MODEL_ID,
+    create_local_embedding_provider,
+)
 from people_context.adapters.semantic_indexing import (
     IndexingLifecycleStore,
     IndexingPeopleRepository,
@@ -36,7 +41,10 @@ from people_context.adapters.sqlite import (
     SqlitePeopleRepository,
     SqlitePreferencesStore,
     SqliteRecordStore,
+    SqliteSemanticEntityReader,
+    SqliteSemanticMetadataReader,
     open_db,
+    open_sqlite_vector_index,
 )
 from people_context.app import (
     AddAlias,
@@ -58,6 +66,7 @@ from people_context.app import (
     ResolvePerson,
     ReviewImport,
     SearchPeople,
+    SemanticSearch,
     SetAffiliation,
     SetCommunicationPhilosophy,
     SetRelationship,
@@ -90,6 +99,7 @@ class ToolDeps:
     resolve_person: ResolvePerson
     get_person_context: GetPersonContext
     search_people: SearchPeople
+    semantic_search: SemanticSearch
     remember_person: RememberPerson
     add_alias: AddAlias
     set_relationship: SetRelationship
@@ -171,6 +181,14 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
         resolve_person=ResolvePerson(repository, context_reader, clock),
         get_person_context=GetPersonContext(repository, context_reader, clock),
         search_people=SearchPeople(repository),
+        semantic_search=SemanticSearch(
+            SqliteSemanticMetadataReader(conn),
+            SqliteSemanticEntityReader(conn),
+            create_local_embedding_provider,
+            lambda: open_sqlite_vector_index(conn),
+            MODEL_ID,
+            MODEL_DIMENSION,
+        ),
         remember_person=remember_person,
         add_alias=AddAlias(repository, repository, audit, clock),
         set_relationship=SetRelationship(repository, record_store, audit, clock),

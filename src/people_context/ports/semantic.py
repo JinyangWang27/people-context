@@ -31,6 +31,16 @@ class SemanticIndexMetadata:
     dimension: int
 
 
+@dataclass(frozen=True)
+class SemanticEntity:
+    """Minimal safe hydration for one active semantic-search entity."""
+
+    kind: str
+    entity_id: str
+    title: str
+    summary: str
+
+
 @runtime_checkable
 class EmbeddingProvider(Protocol):
     """Create fixed-size embeddings for text."""
@@ -79,3 +89,10 @@ class SemanticDocumentReader(Protocol):
     """Read all currently eligible entities as derived index documents."""
 
     def list_documents(self) -> list[SemanticDocument]: ...
+
+
+@runtime_checkable
+class SemanticEntityReader(Protocol):
+    """Hydrate an eligible current entity after vector candidate retrieval."""
+
+    def get_semantic_entity(self, kind: str, entity_id: str) -> SemanticEntity | None: ...

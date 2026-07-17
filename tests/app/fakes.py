@@ -22,6 +22,11 @@ from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
 from people_context.ports.repository import SearchHit
+from people_context.ports.semantic import (
+    SemanticEntity,
+    SemanticIndexMetadata,
+    VectorSearchHit,
+)
 
 
 class FakeClock:
@@ -270,3 +275,53 @@ class FakePreferencesStore:
 
     def set(self, key: str, value: str) -> None:
         self.values[key] = value
+
+
+class FakeEmbeddingProvider:
+    """Deterministic embedding provider with call tracking."""
+
+    def __init__(self, model_id: str = "test/model", dimension: int = 3) -> None:
+        self.model_id = model_id
+        self.dimension = dimension
+        self.calls: list[list[str]] = []
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        self.calls.append(texts)
+        return [[float(len(text)), *([0.0] * (self.dimension - 1))] for text in texts]
+
+
+class FakeVectorIndex:
+    """In-memory vector port with controlled search results."""
+
+    def __init__(self) -> None:
+        self.vectors: dict[str, tuple[str, list[float]]] = {}
+        self.search_hits: dict[str, list[VectorSearchHit]] = {}
+
+    def upsert(self, kind: str, entity_id: str, vector: list[float]) -> None:
+        self.vectors[entity_id] = (kind, vector)
+
+    def delete(self, entity_id: str) -> None:
+        self.vectors.pop(entity_id, None)
+
+    def search(self, kind: str, vector: list[float], limit: int) -> list[VectorSearchHit]:
+        return self.search_hits.get(kind, [])[:limit]
+
+
+class FakeSemanticMetadataReader:
+    """Configurable semantic metadata port."""
+
+    def __init__(self, metadata: SemanticIndexMetadata | None = None) -> None:
+        self.metadata = metadata
+
+    def get_metadata(self) -> SemanticIndexMetadata | None:
+        return self.metadata
+
+
+class FakeSemanticEntityReader:
+    """In-memory safe semantic hydration port."""
+
+    def __init__(self) -> None:
+        self.entities: dict[tuple[str, str], SemanticEntity] = {}
+
+    def get_semantic_entity(self, kind: str, entity_id: str) -> SemanticEntity | None:
+        return self.entities.get((kind, entity_id))

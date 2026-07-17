@@ -16,8 +16,11 @@ from people_context.adapters.sqlite.record_store import (
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
 from people_context.adapters.sqlite.semantic import (
     SqliteSemanticDocumentReader,
+    SqliteSemanticEntityReader,
+    SqliteSemanticMetadataReader,
     SqliteVectorIndex,
     create_sqlite_vector_index,
+    open_sqlite_vector_index,
     read_semantic_metadata,
 )
 
@@ -32,8 +35,11 @@ __all__ = [
     "SqlitePreferencesStore",
     "SqliteRecordStore",
     "SqliteSemanticDocumentReader",
+    "SqliteSemanticEntityReader",
+    "SqliteSemanticMetadataReader",
     "SqliteVectorIndex",
     "create_sqlite_vector_index",
+    "open_sqlite_vector_index",
     "open_db",
     "read_semantic_metadata",
 ]

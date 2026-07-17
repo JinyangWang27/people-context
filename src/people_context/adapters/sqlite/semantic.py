@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from people_context.adapters.model2vec_embeddings import MODEL_DIMENSION
 from people_context.ports.semantic import (
     SemanticDocument,
+    SemanticEntity,
     SemanticIndexMetadata,
     VectorSearchHit,
 )
@@ -26,10 +27,19 @@ class SqliteVecNotAvailableError(RuntimeError):
 class SqliteVectorIndex:
     """Store entity embeddings in a same-file vec0 table using cosine distance."""
 
-    def __init__(self, conn: sqlite3.Connection, serialize: Callable[[list[float]], bytes]) -> None:
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        serialize: Callable[[list[float]], bytes],
+        *,
+        create: bool = True,
+    ) -> None:
         self._conn = conn
         self._serialize = serialize
-        self._ensure_table()
+        if create:
+            self._ensure_table()
+        elif not self._table_exists():
+            raise SqliteVecNotAvailableError("semantic vector index is missing")
 
     def upsert(self, kind: str, entity_id: str, vector: list[float]) -> None:
         self._validate_vector(vector)
@@ -49,7 +59,7 @@ class SqliteVectorIndex:
         rows = self._conn.execute(
             f"""SELECT entity_id, distance FROM {_VECTOR_TABLE}
                 WHERE embedding MATCH ? AND kind = ? AND k = ?
-                ORDER BY distance, entity_id""",
+                ORDER BY distance""",
             (self._serialize(vector), kind, limit),
         ).fetchall()
         return [VectorSearchHit(entity_id=row["entity_id"], distance=float(row["distance"])) for row in rows]
@@ -95,6 +105,13 @@ class SqliteVectorIndex:
                 embedding FLOAT[{MODEL_DIMENSION}] DISTANCE_METRIC=cosine
             )"""
         )
+
+    def _table_exists(self) -> bool:
+        row = self._conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (_VECTOR_TABLE,),
+        ).fetchone()
+        return row is not None
 
     def _validate_vector(self, vector: list[float]) -> None:
         if len(vector) != MODEL_DIMENSION:
@@ -144,20 +161,64 @@ class SqliteSemanticDocumentReader:
         ]
 
 
+class SqliteSemanticEntityReader:
+    """Hydrate only active people and public/personal interactions."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def get_semantic_entity(self, kind: str, entity_id: str) -> SemanticEntity | None:
+        if kind == "person":
+            row = self._conn.execute(
+                """SELECT id, canonical_name, summary FROM persons
+                   WHERE id = ? AND deleted_at IS NULL""",
+                (entity_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return SemanticEntity(
+                kind="person",
+                entity_id=row["id"],
+                title=row["canonical_name"],
+                summary=row["summary"] or "",
+            )
+        if kind == "interaction":
+            row = self._conn.execute(
+                """SELECT id, summary FROM interactions
+                   WHERE id = ? AND sensitivity IN ('public', 'personal')""",
+                (entity_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return SemanticEntity(
+                kind="interaction",
+                entity_id=row["id"],
+                title="Interaction",
+                summary=row["summary"],
+            )
+        return None
+
+
+class SqliteSemanticMetadataReader:
+    """Read semantic model metadata without loading optional packages or creating tables."""
+
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self._conn = conn
+
+    def get_metadata(self) -> SemanticIndexMetadata | None:
+        return read_semantic_metadata(self._conn)
+
+
 def create_sqlite_vector_index(conn: sqlite3.Connection) -> SqliteVectorIndex:
     """Load sqlite-vec into an existing connection and immediately disable extension loading."""
-    try:
-        import sqlite_vec
-    except ImportError as exc:
-        raise SqliteVecNotAvailableError("install the semantic optional dependencies") from exc
-    try:
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-    except Exception as exc:
-        raise SqliteVecNotAvailableError("sqlite-vec could not be loaded") from exc
-    finally:
-        conn.enable_load_extension(False)
+    sqlite_vec = _load_sqlite_vec(conn)
     return SqliteVectorIndex(conn, sqlite_vec.serialize_float32)
+
+
+def open_sqlite_vector_index(conn: sqlite3.Connection) -> SqliteVectorIndex:
+    """Open an existing vec0 table for search without creating missing index state."""
+    sqlite_vec = _load_sqlite_vec(conn)
+    return SqliteVectorIndex(conn, sqlite_vec.serialize_float32, create=False)
 
 
 def read_semantic_metadata(conn: sqlite3.Connection) -> SemanticIndexMetadata | None:
@@ -177,3 +238,18 @@ def _read_preferences(conn: sqlite3.Connection, keys: list[str]) -> dict[str, ob
         keys,
     ).fetchall()
     return {row["key"]: json.loads(row["value_json"]) for row in rows}
+
+
+def _load_sqlite_vec(conn: sqlite3.Connection):
+    try:
+        import sqlite_vec
+    except ImportError as exc:
+        raise SqliteVecNotAvailableError("install the semantic optional dependencies") from exc
+    try:
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+    except Exception as exc:
+        raise SqliteVecNotAvailableError("sqlite-vec could not be loaded") from exc
+    finally:
+        conn.enable_load_extension(False)
+    return sqlite_vec

@@ -9,14 +9,19 @@ import anyio
 from mcp.client.session import ClientSession
 from mcp.shared.memory import create_connected_server_and_client_session
 
+from people_context.adapters.mcp import server as server_module
 from people_context.adapters.mcp.server import build_server
+from people_context.adapters.model2vec_embeddings import MODEL_ID
 from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, open_db
+from people_context.adapters.sqlite.semantic import create_sqlite_vector_index
 from people_context.domain.person import Person
+from people_context.ports.semantic import SemanticDocument, SemanticIndexMetadata
 
 EXPECTED_TOOLS = {
     # real
     "resolve_person",
     "search_people",
+    "semantic_search",
     "remember_person",
     # read-only stubs
     "get_person_context",
@@ -65,6 +70,7 @@ def test_tools_list_surface_and_annotations(tmp_path: Path) -> None:
 
     assert set(by_name) >= EXPECTED_TOOLS
     assert by_name["resolve_person"].annotations.readOnlyHint is True
+    assert by_name["semantic_search"].annotations.readOnlyHint is True
     assert by_name["get_person_context"].annotations.readOnlyHint is True
     assert by_name["get_communication_guidance"].annotations.readOnlyHint is True
     assert by_name["list_reminders"].annotations.readOnlyHint is True
@@ -151,6 +157,100 @@ def test_import_content_reports_dateless_interaction_without_message_id(tmp_path
     assert payload["skipped_message_ids"] == []
     assert payload["skipped_without_id"] == 1
     assert payload["skipped_cards"] == []
+
+
+def test_semantic_search_before_reindex_is_not_available_without_network(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    network_calls: list[bool] = []
+
+    def reject_network(*args: Any, **kwargs: Any) -> None:
+        network_calls.append(True)
+        raise AssertionError("search must not download")
+
+    monkeypatch.setattr("huggingface_hub.snapshot_download", reject_network)
+    server = build_server(db_path=tmp_path / "semantic.db")
+
+    async def flow(client: ClientSession) -> Any:
+        return await client.call_tool("semantic_search", {"query": "SQL engineer"})
+
+    payload = _run(server, flow).structuredContent
+
+    assert payload == {
+        "status": "not_available",
+        "reason": "semantic index metadata is missing; run semantic reindex",
+        "install": "uv sync --extra semantic",
+        "retry": "uv run people-context reindex --semantic",
+    }
+    assert network_calls == []
+
+
+def test_semantic_search_refuses_model_mismatch(tmp_path: Path) -> None:
+    db_path = tmp_path / "semantic-mismatch.db"
+    conn = open_db(db_path)
+    try:
+        create_sqlite_vector_index(conn).replace_all(
+            [],
+            [],
+            SemanticIndexMetadata(model_id="old/model", dimension=256),
+        )
+    finally:
+        conn.close()
+    server = build_server(db_path=db_path)
+
+    async def flow(client: ClientSession) -> Any:
+        return await client.call_tool("semantic_search", {"query": "SQL engineer"})
+
+    payload = _run(server, flow).structuredContent
+
+    assert payload["status"] == "model_mismatch"
+    assert payload["stored_model_id"] == "old/model"
+    assert payload["current_model_id"] == MODEL_ID
+
+
+def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
+    tmp_path: Path,
+    monkeypatch: Any,
+) -> None:
+    class FakeProvider:
+        model_id = MODEL_ID
+        dimension = 256
+
+        def embed(self, texts: list[str]) -> list[list[float]]:
+            return [[1.0, *([0.0] * 255)] for _ in texts]
+
+    db_path = tmp_path / "semantic-success.db"
+    conn = open_db(db_path)
+    try:
+        person = Person(canonical_name="Alice", summary="SQL engineer")
+        SqlitePeopleRepository(conn).save_person(person)
+        create_sqlite_vector_index(conn).replace_all(
+            [SemanticDocument(kind="person", entity_id=person.id, text="Alice\nSQL engineer")],
+            [[1.0, *([0.0] * 255)]],
+            SemanticIndexMetadata(model_id=MODEL_ID, dimension=256),
+        )
+    finally:
+        conn.close()
+    monkeypatch.setattr(server_module, "create_local_embedding_provider", FakeProvider)
+    server = build_server(db_path=db_path)
+
+    async def flow(client: ClientSession) -> Any:
+        return await client.call_tool("semantic_search", {"query": "SQL engineer", "kinds": ["person"]})
+
+    payload = _run(server, flow).structuredContent
+
+    assert payload["status"] == "ok"
+    assert payload["model_id"] == MODEL_ID
+    assert payload["hits"] == [
+        {
+            "kind": "person",
+            "entity_id": person.id,
+            "score": 1.0,
+            "title": "Alice",
+            "summary": "SQL engineer",
+        }
+    ]
 
 
 def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path) -> None:

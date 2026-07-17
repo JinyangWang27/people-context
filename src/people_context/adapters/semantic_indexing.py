@@ -201,11 +201,11 @@ def create_local_semantic_updater(conn: Any) -> SemanticIndexUpdater | None:
         MODEL_ID,
         create_local_embedding_provider,
     )
-    from people_context.adapters.sqlite.semantic import create_sqlite_vector_index, read_semantic_metadata
+    from people_context.adapters.sqlite.semantic import open_sqlite_vector_index, read_semantic_metadata
 
     metadata = read_semantic_metadata(conn)
     if metadata is None:
         return None
     if metadata.model_id != MODEL_ID or metadata.dimension != MODEL_DIMENSION:
         raise ValueError("stored semantic model metadata does not match the configured model")
-    return SemanticIndexUpdater(create_local_embedding_provider(), create_sqlite_vector_index(conn))
+    return SemanticIndexUpdater(create_local_embedding_provider(), open_sqlite_vector_index(conn))
