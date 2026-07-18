@@ -111,6 +111,23 @@ jobs:
           remains as separate edges. Every rewrite and removal is represented in audit and changelog capture.
           """,
           )
+          regression_tests = Path("tests/adapters/test_m7_review_regressions.py")
+          regression_text = regression_tests.read_text(encoding="utf-8")
+          regression_text = regression_text.replace("from tests.app.fakes import FakeClock\n", "")
+          fake_clock = (
+              "\n\nclass FakeClock:\n"
+              "    def __init__(self, now: datetime) -> None:\n"
+              "        self._now = now\n\n"
+              "    def now(self) -> datetime:\n"
+              "        return self._now\n\n\n"
+              "_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)"
+          )
+          regression_text = regression_text.replace(
+              "\n_NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)",
+              fake_clock,
+          )
+          regression_tests.write_text(regression_text, encoding="utf-8")
+
           graph_tests = Path("tests/adapters/test_relationship_graph.py")
           graph_text = graph_tests.read_text(encoding="utf-8")
           graph_text = graph_text.replace("SqliteGraphReader(conn)", "SqliteGraphReader(conn, SystemClock())")
@@ -139,6 +156,24 @@ jobs:
               "SqliteVaultReader(conn, SystemClock())",
           )
           vault_tests.write_text(vault_text, encoding="utf-8")
+
+          context_tests = Path("tests/adapters/test_sqlite_context_reader.py")
+          context_text = context_tests.read_text(encoding="utf-8")
+          context_text = context_text.replace('"2026-01-01",', '"2025-01-01",', 1)
+          context_tests.write_text(context_text, encoding="utf-8")
+
+          resolve_tests = Path("tests/app/test_resolve_person.py")
+          resolve_text = resolve_tests.read_text(encoding="utf-8")
+          old_affiliation = (
+              "        affiliation_values = (\n"
+              "            target.id,\n"
+              '            "2026-01-01",\n'
+              "            _TS.isoformat(),\n"
+              "        )\n"
+          )
+          new_affiliation = old_affiliation.replace("2026-01-01", "2025-01-01")
+          resolve_text = resolve_text.replace(old_affiliation, new_affiliation)
+          resolve_tests.write_text(resolve_text, encoding="utf-8")
           PY
       - name: Format changed Python
         run: |
@@ -155,7 +190,9 @@ jobs:
             src/people_context/cli.py \
             tests/adapters/test_relationship_graph.py \
             tests/adapters/test_vault_export.py \
-            tests/adapters/test_m7_review_regressions.py
+            tests/adapters/test_m7_review_regressions.py \
+            tests/adapters/test_sqlite_context_reader.py \
+            tests/app/test_resolve_person.py
           uv run ruff check --fix \
             src/people_context/app/normalize_relationships.py \
             src/people_context/app/set_relationship.py \
@@ -169,7 +206,9 @@ jobs:
             src/people_context/cli.py \
             tests/adapters/test_relationship_graph.py \
             tests/adapters/test_vault_export.py \
-            tests/adapters/test_m7_review_regressions.py
+            tests/adapters/test_m7_review_regressions.py \
+            tests/adapters/test_sqlite_context_reader.py \
+            tests/app/test_resolve_person.py
       - run: uv run ruff check .
       - name: Capture pytest output
         shell: bash
@@ -194,6 +233,7 @@ jobs:
         shell: bash
         run: |
           rm .github/workflows/m7-review-fixes-validation.yml
+          rm -f .github/workflows/m7-test-import-fix.yml .m7-import-trigger
           git config user.name "Codex"
           git config user.email "codex@openai.com"
           git add -A
