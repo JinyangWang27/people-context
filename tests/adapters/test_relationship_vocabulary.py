@@ -30,9 +30,9 @@ def _people(conn: sqlite3.Connection) -> tuple[Person, Person]:
     return a, b
 
 
-def test_fresh_and_m6_database_apply_migration_003(tmp_path: Path) -> None:
+def test_fresh_and_m6_database_apply_pending_migrations(tmp_path: Path) -> None:
     fresh = open_db(":memory:")
-    assert fresh.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert fresh.execute("PRAGMA user_version").fetchone()[0] == 4
     assert fresh.execute("SELECT COUNT(*) FROM relationship_types").fetchone()[0] == 14
     assert fresh.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
 
@@ -46,7 +46,7 @@ def test_fresh_and_m6_database_apply_migration_003(tmp_path: Path) -> None:
     legacy.close()
 
     upgraded = open_db(path)
-    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 4
     inverse = upgraded.execute(
         "SELECT inverse FROM relationship_types WHERE type = 'reports_to'"
     ).fetchone()[0]

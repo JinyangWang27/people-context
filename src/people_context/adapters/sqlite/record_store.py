@@ -236,16 +236,21 @@ class SqliteOrganizationStore:
         return _organization(row) if row else None
 
     def get_by_normalized_name(self, normalized_name: str) -> Organization | None:
-        rows = self._conn.execute("SELECT * FROM organizations ORDER BY id").fetchall()
-        row = next((candidate for candidate in rows if normalize_name(candidate["name"]) == normalized_name), None)
+        row = self._conn.execute(
+            "SELECT * FROM organizations WHERE name_normalized = ? ORDER BY id LIMIT 1",
+            (normalized_name,),
+        ).fetchone()
         return _organization(row) if row else None
 
     def save(self, organization: Organization) -> None:
         with SqliteUnitOfWork(self._conn):
             self._conn.execute(
-                """INSERT INTO organizations (id, name, kind) VALUES (?, ?, ?)
-                   ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind""",
-                (organization.id, organization.name, organization.kind),
+                """INSERT INTO organizations (id, name, name_normalized, kind) VALUES (?, ?, ?, ?)
+                   ON CONFLICT(id) DO UPDATE SET
+                       name = excluded.name,
+                       name_normalized = excluded.name_normalized,
+                       kind = excluded.kind""",
+                (organization.id, organization.name, normalize_name(organization.name), organization.kind),
             )
 
 

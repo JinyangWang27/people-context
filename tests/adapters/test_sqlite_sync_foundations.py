@@ -17,7 +17,7 @@ def test_fresh_database_creates_sync_schema_and_one_stable_device(tmp_path: Path
         first = conn.execute("SELECT * FROM devices WHERE retired_at IS NULL").fetchall()
         assert {"devices", "changelog", "sync_conflicts"} <= tables
         assert "sync_peer_cursors" not in tables
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
         assert len(first) == 1
         assert len(first[0]["id"]) == 26
         assert first[0]["display_name"]
@@ -49,7 +49,7 @@ def test_m4_database_upgrades_without_inventing_changelog_history(tmp_path: Path
 
     upgraded = open_db(db_path)
     try:
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 4
         assert upgraded.execute("SELECT canonical_name FROM persons").fetchone()[0] == "Historical Alice"
         assert upgraded.execute("SELECT COUNT(*) FROM devices WHERE retired_at IS NULL").fetchone()[0] == 1
         assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0

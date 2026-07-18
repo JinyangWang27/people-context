@@ -137,6 +137,12 @@ never inside `domain` or `app`:
   the `app` use cases from them, and
   registers MCP tools that call into those use cases. `main()` parses `--db` plus transport flags; it runs
   stdio by default or applies loopback HTTP settings before `run(transport="streamable-http")`.
+
+  The server shares one SQLite connection (`check_same_thread=True`) across all tools, which is safe because
+  the pinned MCP SDK invokes synchronous tools inline on the event-loop thread. Two consequences are accepted
+  for now: a long tool call blocks the whole server, and upgrading to an SDK that dispatches sync tools to
+  worker threads would require moving to a connection-per-request (or serialized-access) design first. Revisit
+  this deliberately when bumping the `mcp` dependency — do not just flip `check_same_thread`.
 - `cli.py:main()` performs the equivalent wiring for the CLI, so CLI commands and MCP tools call the exact
   same use case classes and therefore obey the exact same audit/provenance rules.
 - `__main__.py` (`python -m people_context`) is a thin alias to the stdio server entrypoint.

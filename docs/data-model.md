@@ -91,6 +91,13 @@ payload, changed fields, actor, schema version, and insertion time. Its determin
 relay, peer cursor, replay engine, or bootstrap protocol. Forget redacts covered replay payloads and retains
 stable-id tombstones.
 
+**Do not copy the SQLite file between machines as a sync substitute.** The active `devices` row is the
+installation's identity: two live copies of the same file (Dropbox/iCloud folder sync, restoring one backup
+onto two machines) share one device id and interleave its persisted HLC state, corrupting the changelog's
+per-origin ordering that future sync will rely on. Moving the file once to a new machine is fine; running two
+copies concurrently is not. Device re-registration/copy detection is deliberately deferred to the sync
+milestone. Use `people-context export` (or the vault export) to move data between machines today.
+
 Every M7 write path—relationship create/update dedupe, custom vocabulary add, and applied legacy
 normalization—uses the same transactional `audit_mutation` capture seam as M6.
 
