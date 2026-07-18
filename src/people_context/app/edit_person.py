@@ -19,12 +19,12 @@ from people_context.ports.repository import PersonReader, PersonWriter
 
 
 class PersonNameCollisionError(Exception):
-    """Raised when an edit would duplicate another active canonical name."""
+    """Raised when an edit would duplicate another active person's name or alias."""
 
     def __init__(self, name: str, person_id: str) -> None:
         self.name = name
         self.person_id = person_id
-        super().__init__(f"canonical name already belongs to another person: {name}")
+        super().__init__(f"name already belongs to another person: {name}")
 
 
 class EditPersonInput(BaseModel):
@@ -63,8 +63,8 @@ class EditPerson:
             collision = next(
                 (
                     candidate
-                    for candidate in self._people.list_people()
-                    if candidate.id != person.id and normalize_name(candidate.canonical_name) == normalized
+                    for candidate in self._people.find_by_normalized_name(normalized)
+                    if candidate.id != person.id
                 ),
                 None,
             )

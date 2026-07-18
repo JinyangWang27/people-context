@@ -163,11 +163,22 @@ def changelog_mutation(
     session: str | None = None,
     stated_by: str | None = None,
 ) -> None:
-    """Append a replay-only child operation when the adapter exposes sync foundations."""
+    """Append a replay-only child operation when the adapter exposes sync foundations.
+
+    The seam is capability-discovered: an audit adapter opts in by exposing both
+    ``changelog`` and ``hybrid_clock``. Wrappers around a real audit adapter MUST
+    forward both attributes, or replay history is silently dropped; forwarding only
+    one is always a wiring mistake and is reported loudly below.
+    """
     changelog = cast(Changelog | None, getattr(audit, "changelog", None))
     hybrid_clock = cast(HybridLogicalClock | None, getattr(audit, "hybrid_clock", None))
-    if changelog is None or hybrid_clock is None:
+    if changelog is None and hybrid_clock is None:
         return
+    if changelog is None or hybrid_clock is None:
+        raise RuntimeError(
+            "audit adapter exposes only one of changelog/hybrid_clock; "
+            "a wrapper must forward both sync-foundation attributes"
+        )
     hlc = hybrid_clock.tick()
     actor = {"source": source}
     if session is not None:

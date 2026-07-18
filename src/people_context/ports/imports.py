@@ -24,7 +24,6 @@ class ImportInteractionCandidate:
 
     participant_emails: list[str]
     occurred_at: datetime
-    subject: str | None = None
     message_id: str | None = None
 
 

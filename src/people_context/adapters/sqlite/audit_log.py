@@ -59,7 +59,7 @@ class SqliteAuditLog:
                     entry.op,
                     entry.entity_type,
                     entry.entity_id,
-                    json.dumps(entry.payload),
+                    json.dumps(entry.payload, ensure_ascii=False, sort_keys=True),
                     entry.source,
                 ),
             )

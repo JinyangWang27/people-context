@@ -16,6 +16,11 @@ class SqliteImportStagingStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
+    @property
+    def unit_of_work(self) -> SqliteUnitOfWork:
+        """Return a join-safe transaction boundary so batch commits are atomic."""
+        return SqliteUnitOfWork(self._conn)
+
     def stage_batch(self, rows: list[StagedImportRow]) -> None:
         with SqliteUnitOfWork(self._conn):
             self._conn.executemany(

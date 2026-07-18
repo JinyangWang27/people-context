@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
 from people_context.adapters.filesystem import FileSystemVaultWriter
 from people_context.adapters.model2vec_embeddings import (
@@ -118,7 +118,7 @@ def _open_context(db: str | None) -> CliContext:
         audit=SqliteAuditLog(conn),
         changelog=SqliteChangelog(conn),
         lifecycle=lifecycle,
-        preferences=SqlitePreferencesStore(conn),
+        preferences=SqlitePreferencesStore(conn, clock),
         relationship_store=SqliteRelationshipStore(conn),
         relationship_vocabulary=SqliteRelationshipVocabularyStore(conn),
     )
@@ -367,7 +367,10 @@ def _cmd_export(ctx: CliContext, args: argparse.Namespace) -> int:
     document = ExportData(ctx.export_reader, ctx.clock).execute().model_dump(mode="json")
     text = json.dumps(document, indent=2, ensure_ascii=False)
     if args.output:
-        Path(args.output).write_text(text + "\n", encoding="utf-8")
+        # The export contains the complete dataset; keep it owner-readable only.
+        fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text + "\n")
     else:
         print(text)
     return 0
@@ -470,7 +473,7 @@ def _cmd_delete(ctx: CliContext, args: argparse.Namespace) -> int:
     if not args.yes and input("Proceed? [y/N] ").strip().casefold() not in {"y", "yes"}:
         print("Aborted.")
         return 0
-    Forget(ctx.repo, ctx.lifecycle, ctx.clock, ctx.audit).execute(person.id, "person")
+    Forget(ctx.repo, ctx.lifecycle, ctx.clock, ctx.audit).execute(person.id, "person", source="cli")
     print("Deleted.")
     return 0
 
