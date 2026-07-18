@@ -47,7 +47,10 @@ def test_fresh_and_m6_database_apply_migration_003(tmp_path: Path) -> None:
 
     upgraded = open_db(path)
     assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 3
-    assert upgraded.execute("SELECT inverse FROM relationship_types WHERE type = 'reports_to'").fetchone()[0] == "manages"
+    inverse = upgraded.execute(
+        "SELECT inverse FROM relationship_types WHERE type = 'reports_to'"
+    ).fetchone()[0]
+    assert inverse == "manages"
     assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
 
 

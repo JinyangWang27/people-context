@@ -29,6 +29,7 @@ from people_context.adapters.sqlite.semantic import (
     read_semantic_metadata,
 )
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 
 __all__ = [
     "SqliteAuditLog",
@@ -49,6 +50,7 @@ __all__ = [
     "SqliteSemanticEntityReader",
     "SqliteSemanticMetadataReader",
     "SqliteUnitOfWork",
+    "SqliteVaultReader",
     "SqliteVectorIndex",
     "create_sqlite_vector_index",
     "open_db",

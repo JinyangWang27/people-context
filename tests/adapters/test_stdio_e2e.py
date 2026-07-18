@@ -277,6 +277,76 @@ def test_real_stdio_mbox_import_commit_and_resolve(tmp_path: Path) -> None:
     assert resolved["candidates"][0]["canonical_name"] == "Alice Example"
 
 
+def test_real_stdio_graph_then_cli_vault_export_uses_matching_links(tmp_path: Path) -> None:
+    uv = shutil.which("uv")
+    assert uv is not None
+    project_root = Path(__file__).parents[2]
+    db_path = tmp_path / "m7-stdio.db"
+    vault_path = tmp_path / "vault"
+    parameters = StdioServerParameters(
+        command=uv,
+        args=["run", "people-context-mcp", "--db", str(db_path)],
+        cwd=project_root,
+    )
+
+    async def flow() -> tuple[dict[str, Any], dict[str, Any]]:
+        async with (
+            stdio_client(parameters) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as client,
+        ):
+            await client.initialize()
+            people: dict[str, str] = {}
+            for name in ("Alice", "Bob", "Carol"):
+                remembered = await client.call_tool("remember_person", {"name": name})
+                people[name] = remembered.structuredContent["person"]["id"]
+            await client.call_tool(
+                "set_relationship",
+                {"subject_id": people["Bob"], "object_id": people["Alice"], "type": "manager of"},
+            )
+            await client.call_tool(
+                "set_relationship",
+                {"subject_id": people["Bob"], "object_id": people["Carol"], "type": "reports to"},
+            )
+            graph = await client.call_tool(
+                "get_relationship_graph",
+                {"person_id": people["Alice"], "depth": 2},
+            )
+            connection = await client.call_tool(
+                "find_connection",
+                {"person_a": people["Alice"], "person_b": people["Carol"]},
+            )
+            return graph.structuredContent, connection.structuredContent
+
+    graph, connection = anyio.run(flow)
+    assert {edge["type"] for edge in graph["edges"]} == {"reports_to"}
+    assert [hop["edge"]["display_type"] for hop in connection["hops"]] == ["reports_to", "reports_to"]
+
+    exported = subprocess.run(
+        [
+            uv,
+            "run",
+            "people-context",
+            "--db",
+            str(db_path),
+            "export-vault",
+            "--output",
+            str(vault_path),
+        ],
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert exported.returncode == 0, exported.stderr
+    alice = (vault_path / "People" / "Alice.md").read_text(encoding="utf-8")
+    bob = (vault_path / "People" / "Bob.md").read_text(encoding="utf-8")
+    carol = (vault_path / "People" / "Carol.md").read_text(encoding="utf-8")
+    assert "- reports_to:: [[Bob]]" in alice
+    assert "- manages:: [[Alice]]" in bob
+    assert "- reports_to:: [[Carol]]" in bob
+    assert "- manages:: [[Bob]]" in carol
+
+
 def _seed_context(db_path: Path, person_id: str) -> None:
     conn = open_db(db_path)
     try:

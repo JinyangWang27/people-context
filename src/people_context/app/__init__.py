@@ -12,6 +12,7 @@ from people_context.app.complete_reminder import CompleteReminder, CompleteRemin
 from people_context.app.correct_record import CorrectRecord, CorrectRecordInput
 from people_context.app.edit_person import EditPerson, EditPersonInput, PersonNameCollisionError
 from people_context.app.export_data import ExportData, ExportDocument
+from people_context.app.export_vault import ExportVault, ExportVaultResult
 from people_context.app.forget import Forget, ForgetError, ForgetPreview, ForgetResult, PreviewForget
 from people_context.app.get_communication_guidance import CommunicationGuidanceResult, GetCommunicationGuidance
 from people_context.app.get_person_context import (
@@ -121,6 +122,8 @@ __all__ = [
     "EditPersonInput",
     "ExportData",
     "ExportDocument",
+    "ExportVault",
+    "ExportVaultResult",
     "FactCandidateInput",
     "Forget",
     "ForgetError",

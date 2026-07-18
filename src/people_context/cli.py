@@ -9,6 +9,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from people_context.adapters.filesystem import FileSystemVaultWriter
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DOWNLOAD_SIZE,
     MODEL_ID,
@@ -32,6 +33,7 @@ from people_context.adapters.sqlite import (
     SqliteRelationshipStore,
     SqliteRelationshipVocabularyStore,
     SqliteSemanticDocumentReader,
+    SqliteVaultReader,
     create_sqlite_vector_index,
     open_db,
 )
@@ -43,6 +45,7 @@ from people_context.app import (
     EditPerson,
     EditPersonInput,
     ExportData,
+    ExportVault,
     Forget,
     GetPersonContext,
     NormalizeRelationships,
@@ -61,6 +64,7 @@ from people_context.config import describe_resolution, resolve_db_path
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.ports.clock import Clock, SystemClock
+from people_context.ports.vault import VaultSafetyError
 
 _SUMMARY_WIDTH = 40
 
@@ -77,9 +81,10 @@ class CliContext:
     audit: SqliteAuditLog
     lifecycle: SqliteLifecycleStore | IndexingLifecycleStore
     preferences: SqlitePreferencesStore
-    relationship_store: SqliteRelationshipStore
-    relationship_vocabulary: SqliteRelationshipVocabularyStore
     changelog: SqliteChangelog | None = None
+    vault_reader: SqliteVaultReader | None = None
+    relationship_store: SqliteRelationshipStore | None = None
+    relationship_vocabulary: SqliteRelationshipVocabularyStore | None = None
 
 
 def _open_context(db: str | None) -> CliContext:
@@ -108,6 +113,7 @@ def _open_context(db: str | None) -> CliContext:
         context_reader=SqliteContextReader(conn),
         clock=SystemClock(),
         export_reader=SqliteExportReader(conn),
+        vault_reader=SqliteVaultReader(conn),
         audit=SqliteAuditLog(conn),
         changelog=SqliteChangelog(conn),
         lifecycle=lifecycle,
@@ -139,6 +145,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     export = subparsers.add_parser("export", help="JSON dump of all people.")
     export.add_argument("--output", default=None, help="Write to this file instead of stdout.")
+
+    export_vault = subparsers.add_parser("export-vault", help="Export an Obsidian relationship vault.")
+    export_vault.add_argument("--output", required=True, help="Empty or marker-owned output directory.")
+    export_vault.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="Include sensitive and restricted facts in files outside server disclosure controls.",
+    )
 
     edit = subparsers.add_parser("edit", help="Edit a person's canonical name or summary.")
     edit.add_argument("person", help="An active person id, or a name to resolve.")
@@ -221,6 +235,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_show(ctx, args)
         if args.command == "export":
             return _cmd_export(ctx, args)
+        if args.command == "export-vault":
+            return _cmd_export_vault(ctx, args)
         if args.command == "edit":
             return _cmd_edit(ctx, args)
         if args.command == "add-alias":
@@ -356,6 +372,24 @@ def _cmd_export(ctx: CliContext, args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export_vault(ctx: CliContext, args: argparse.Namespace) -> int:
+    if ctx.vault_reader is None:
+        raise RuntimeError("export-vault requires a vault reader")
+    try:
+        result = ExportVault(ctx.vault_reader, FileSystemVaultWriter()).execute(
+            args.output,
+            include_sensitive=args.include_sensitive,
+        )
+    except VaultSafetyError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(
+        f"Exported {result.people} people and {result.organizations} organizations "
+        f"to {result.output} ({result.files} files)."
+    )
+    return 0
+
+
 def _resolve_person(ctx: CliContext, reference: str) -> tuple[Person | None, int]:
     person = ctx.repo.get(reference)
     if person is not None and person.deleted_at is None:
@@ -441,6 +475,8 @@ def _cmd_delete(ctx: CliContext, args: argparse.Namespace) -> int:
 
 
 def _cmd_relationship_types(ctx: CliContext, args: argparse.Namespace) -> int:
+    if ctx.relationship_vocabulary is None:
+        raise RuntimeError("relationship-types requires a vocabulary adapter")
     if args.relationship_types_command == "add":
         try:
             rows = AddRelationshipType(
@@ -488,6 +524,8 @@ def _cmd_relationship_types(ctx: CliContext, args: argparse.Namespace) -> int:
 
 
 def _cmd_normalize_relationships(ctx: CliContext, args: argparse.Namespace) -> int:
+    if ctx.relationship_store is None or ctx.relationship_vocabulary is None:
+        raise RuntimeError("normalize-relationships requires relationship adapters")
     result = NormalizeRelationships(
         ctx.relationship_store,
         ctx.relationship_vocabulary,
