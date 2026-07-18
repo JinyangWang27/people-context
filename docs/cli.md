@@ -25,6 +25,7 @@ regardless of which surface was used to make a change.
 | `people-context add-alias PERSON VALUE [--kind/--lang/--script]` | Add a normalized-deduplicated alias. | |
 | `people-context set communication_philosophy VALUE` | Set the supported free-text user preference. | Other keys are rejected. |
 | `people-context delete PERSON [--yes]` | Preview and permanently forget a person graph. | Without `--yes`, only `y`/`yes` confirms. |
+| `people-context sync-log [--limit N] [--entity ID] [--payloads]` | Inspect recent local changelog entries in reverse HLC order. | Shows operation, entity, device, HLC, and changed fields. Full replay payloads are hidden unless `--payloads` is explicit. |
 | `people-context reindex` | Atomically rebuild `person_search` from active people and aliases. | Remains person-only and makes no network call. |
 | `people-context reindex --semantic` | Rebuild lexical search, then explicitly download/cache the pinned multilingual model and atomically replace eligible person/interaction vectors plus model metadata. | Prints model id, pinned URL, approximately 512 MB size, and cache directory before download. Sensitive/restricted interactions are excluded. |
 
@@ -32,7 +33,7 @@ All output is plain text (tables for `list`/`search`, structured text for `show`
 dependency is used.
 
 The curation commands reuse the same app-layer use cases as MCP writes/destructive tools, so they carry the
-same audit, validation, and provenance behaviour. `show`, `edit`, `add-alias`, and `delete` share one resolver:
+same audit, changelog, validation, and provenance behaviour. `show`, `edit`, `add-alias`, and `delete` share one resolver:
 active id first, then `ResolvePerson`; unknown names exit 1 and ambiguous names exit 2 with candidates.
 
 ## Database location resolution order
@@ -68,13 +69,13 @@ Direct SQL edits are legal — it is the user's data, and there is no proprietar
 
 - keep the FTS5 search indexes (`person_search`, `interaction_search`) in sync with the underlying tables
   (see [docs/data-model.md](data-model.md#fts5-tables)), and
-- write the corresponding `audit_log` entries automatically, preserving the accountability trail described
-  in [docs/privacy-and-safety.md](privacy-and-safety.md).
+- atomically write the corresponding `audit_log` and replayable `changelog` entries, preserving both the
+  accountability trail and M6 durable change capture described in [docs/privacy-and-safety.md](privacy-and-safety.md).
 
 If a person or alias row is edited directly with an external SQL tool, the FTS index for that row can go
 stale until it is rebuilt. `people-context reindex` rebuilds the person-only `person_search` table from
-active `persons` and `aliases`; direct SQL changes do not, on their own, get an `audit_log` entry, since the
-CLI/MCP layer is what writes those.
+active `persons` and `aliases`; direct SQL changes do not, on their own, get an `audit_log` or `changelog` entry, since the
+CLI/MCP application boundary is what writes those atomically.
 
 The semantic vec0 table is also derived. Direct changes to people or interactions can make it stale;
 `people-context reindex --semantic` is the repair command. A failed/offline model fetch occurs before vector

@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import re
+import socket
 import sqlite3
+from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
+
+from people_context.domain.shared import new_id
 
 _MIGRATIONS_PACKAGE = "people_context.adapters.sqlite.migrations"
 _LEADING_NUMBER = re.compile(r"^(\d+)")
@@ -32,6 +36,7 @@ def open_db(path: str | Path) -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     _run_migrations(conn)
+    _ensure_local_device(conn)
     return conn
 
 
@@ -54,7 +59,23 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     for version, sql in _discover_migrations():
         if version <= current:
             continue
-        with conn:
-            conn.executescript(sql)
-            # PRAGMA does not accept parameter binding; version is a trusted int.
-            conn.execute(f"PRAGMA user_version = {version}")
+        try:
+            conn.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;")
+        except Exception:
+            if conn.in_transaction:
+                conn.rollback()
+            raise
+
+
+def _ensure_local_device(conn: sqlite3.Connection) -> None:
+    """Register one stable installation identity after migration 002."""
+    row = conn.execute("SELECT id FROM devices WHERE retired_at IS NULL LIMIT 1").fetchone()
+    if row is not None:
+        return
+    conn.execute(
+        """INSERT INTO devices
+           (id, display_name, public_key, created_at, retired_at, hlc_physical_ms, hlc_logical)
+           VALUES (?, ?, NULL, ?, NULL, 0, 0)""",
+        (new_id(), socket.gethostname(), datetime.now(UTC).isoformat()),
+    )
+    conn.commit()

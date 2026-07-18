@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import audit_mutation, require_active_person, snapshot
+from people_context.app.write_support import (
+    audit_mutation,
+    require_active_person,
+    snapshot,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.person import Person
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
@@ -38,7 +44,9 @@ class EditPerson:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
 
+    @transactional
     def execute(self, data: EditPersonInput) -> Person:
         """Apply supplied fields to one active person."""
         person = require_active_person(self._people, data.person_id)
@@ -74,6 +82,8 @@ class EditPerson:
             entity_type="person",
             entity_id=person.id,
             payload={"before": before, "after": snapshot(person), "fields": fields},
+            replay_payload=snapshot(person),
+            changed_fields=[*fields, "updated_at"],
             source=data.source,
         )
         return person

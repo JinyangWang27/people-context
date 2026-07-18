@@ -2,10 +2,10 @@
 
 ## Status and scope
 
-This document delivers M5 as a design milestone only. It defines a replication model that a later
-implementation can adopt, but it does not commit the project to a transport, hosted service, schema migration,
-or release date. ADRs [0004](../decisions/0004-changelog-vs-audit-log.md) and
-[0005](../decisions/0005-conflict-resolution-strategy.md) remain proposed.
+This document delivered M5 as the replication design and is the implementation specification for M6 and M7.
+M6 accepts ADRs [0004](../decisions/0004-changelog-vs-audit-log.md) and
+[0005](../decisions/0005-conflict-resolution-strategy.md) and implements the local durable-change-capture half.
+Transport, pairing, exchange, replay, and bootstrap remain M7 work.
 
 ## 1. Goals and non-goals
 
@@ -137,7 +137,7 @@ entries are append-only; forget is an explicit, replicated exception that remove
 Extending `audit_log` would avoid a second table, but it would couple two incompatible payload policies. Full
 preference text and complete lifecycle manifests are necessary for replay but are deliberately absent from the
 audit trail. A dedicated changelog keeps the privacy-facing audit contract narrow while making replication
-requirements explicit. See proposed ADR [0004](../decisions/0004-changelog-vs-audit-log.md).
+requirements explicit. See accepted ADR [0004](../decisions/0004-changelog-vs-audit-log.md).
 
 ## 3. Operation model
 
@@ -249,7 +249,7 @@ Automatic conflict resolution must never reduce identity-resolution correctness.
 
 When an automatic result would violate those rules, the replica records a conflict object and excludes the
 ambiguous change from normal resolution until the user reviews it. This conservative boundary is more important
-than convergence without intervention. See proposed ADR
+than convergence without intervention. See accepted ADR
 [0005](../decisions/0005-conflict-resolution-strategy.md).
 
 ## 5. Forget and redaction across replicas
@@ -413,7 +413,7 @@ and existing rows have no ownership or sharing columns.
 
 ## 8. Migration path appendix
 
-This is a sketch for a future migration `002`; **it is not implemented by M5**.
+M6 implements the single-user subset of this migration sketch. `sync_peer_cursors` remains deferred to M7.
 
 Minimal backward-compatible additions could include:
 
@@ -465,8 +465,8 @@ CREATE TABLE sync_conflicts (
 );
 ```
 
-The migration would also need transactional write integration so each primary mutation, audit entry, and
-changelog transaction commit or roll back together. Existing rows require a bootstrap snapshot rather than
+M6 adds transactional write integration so each primary mutation, audit entry, HLC advance, and changelog
+transaction commit or roll back together. Existing rows require a bootstrap snapshot rather than
 invented historical operations. Multi-user support would later add owner/user/actor tables, ownership columns,
 and sharing grants; those should not be added to a single-user sync migration without a concrete authorization
 design.
@@ -500,3 +500,19 @@ design.
 10. **Should sensitivity ever be lowered automatically by conflict resolution?**
     Leaning: no. Automatic resolution selects the more restrictive value; lowering sensitivity requires an
     explicit user action.
+
+
+### Decisions
+
+M6 locks the following answers for the local sync foundation:
+
+1. Changelog payloads are plaintext in the local SQLite database. Primary tables already contain the same
+   plaintext; end-to-end encryption applies to M7 batch exchange, while SQLCipher remains separate work.
+2. Merge records row-level child operations and one semantic parent manifest under the same `transaction_id`.
+3. Forget tombstones are retained indefinitely in M6 and are never compacted before peer-aware retention exists.
+4. `import_staging` remains device-local workflow state and is not captured in the changelog.
+5. Reminders are ordinary portable state and every reminder mutation is captured. Notification delivery state is
+   separate from reminder state.
+
+M6 also defers `sync_peer_cursors` to M7 because no peers or exchange protocol exist yet. The local changelog is
+not added to the M6 export envelope; pre-changelog rows and first-device bootstrap remain snapshot territory.

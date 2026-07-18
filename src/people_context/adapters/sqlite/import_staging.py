@@ -6,6 +6,7 @@ import json
 import sqlite3
 from datetime import datetime
 
+from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.imports import StagedImportRow
 
 
@@ -16,7 +17,7 @@ class SqliteImportStagingStore:
         self._conn = conn
 
     def stage_batch(self, rows: list[StagedImportRow]) -> None:
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.executemany(
                 """INSERT INTO import_staging (id, batch_id, source, candidate_json, status, created_at)
                    VALUES (?, ?, ?, ?, ?, ?)""",
@@ -53,7 +54,7 @@ class SqliteImportStagingStore:
     def mark_committed(self, candidate_ids: list[str]) -> None:
         if not candidate_ids:
             return
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.executemany(
                 "UPDATE import_staging SET status = 'committed' WHERE id = ? AND status = 'pending'",
                 [(candidate_id,) for candidate_id in candidate_ids],

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from people_context.app.write_support import audit_mutation, snapshot, transactional, unit_of_work_for
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import normalize_name
-from people_context.ports.audit_log import AuditEntry, AuditLog
+from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.repository import PersonReader, PersonWriter
 
@@ -64,7 +65,9 @@ class RememberPerson:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
 
+    @transactional
     def execute(self, data: RememberPersonInput) -> RememberPersonResult:
         """Upsert a person by normalized name, recording an audit entry."""
         normalized = normalize_name(data.name)
@@ -88,6 +91,7 @@ class RememberPerson:
             raise SelfAlreadyExistsError(existing_self)
 
     def _update(self, person: Person, data: RememberPersonInput) -> RememberPersonResult:
+        before = snapshot(person)
         known = {normalize_name(name) for name in person.all_names()}
         added = 0
         for alias in data.aliases:
@@ -105,7 +109,17 @@ class RememberPerson:
         person.updated_at = self._clock.now()
 
         self._writer.save_person(person)
-        self._append_audit(person, op="update", created=False, alias_count=added, source=data.source)
+        after = snapshot(person)
+        changed_fields = sorted(key for key in after if after[key] != before[key])
+        self._append_audit(
+            person,
+            op="update",
+            created=False,
+            alias_count=added,
+            source=data.source,
+            session=data.session,
+            changed_fields=changed_fields,
+        )
         return RememberPersonResult(person=person, created=False)
 
     def _create(self, data: RememberPersonInput) -> RememberPersonResult:
@@ -122,17 +136,37 @@ class RememberPerson:
             updated_at=now,
         )
         self._writer.save_person(person)
-        self._append_audit(person, op="create", created=True, alias_count=len(aliases), source=data.source)
+        self._append_audit(
+            person,
+            op="create",
+            created=True,
+            alias_count=len(aliases),
+            source=data.source,
+            session=data.session,
+            changed_fields=[],
+        )
         return RememberPersonResult(person=person, created=True)
 
-    def _append_audit(self, person: Person, *, op: str, created: bool, alias_count: int, source: str) -> None:
-        self._audit.append(
-            AuditEntry(
-                ts=self._clock.now(),
-                op=op,
-                entity_type="person",
-                entity_id=person.id,
-                payload={"canonical_name": person.canonical_name, "created": created, "alias_count": alias_count},
-                source=source,
-            )
+    def _append_audit(
+        self,
+        person: Person,
+        *,
+        op: str,
+        created: bool,
+        alias_count: int,
+        source: str,
+        session: str | None,
+        changed_fields: list[str],
+    ) -> None:
+        audit_mutation(
+            self._audit,
+            self._clock,
+            op=op,
+            entity_type="person",
+            entity_id=person.id,
+            payload={"canonical_name": person.canonical_name, "created": created, "alias_count": alias_count},
+            replay_payload=snapshot(person),
+            changed_fields=changed_fields,
+            source=source,
+            session=session,
         )

@@ -6,6 +6,7 @@ import math
 import sqlite3
 from datetime import datetime
 
+from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import normalize_name
 from people_context.ports.repository import SearchHit
@@ -25,7 +26,7 @@ class SqlitePeopleRepository:
 
     def save_person(self, person: Person) -> None:
         canonical_norm = normalize_name(person.canonical_name)
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute(
                 """
                 INSERT INTO persons (
@@ -89,7 +90,7 @@ class SqlitePeopleRepository:
         """Rebuild FTS rows from active people and aliases in one transaction."""
         people = self.list_people()
         names = [(name, person.id) for person in people for name in person.all_names()]
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute("DELETE FROM person_search")
             self._conn.executemany("INSERT INTO person_search (name, person_id) VALUES (?, ?)", names)
         return len(people), len(names)
@@ -101,9 +102,7 @@ class SqlitePeopleRepository:
         return self._hydrate(row) if row is not None else None
 
     def get_self(self) -> Person | None:
-        row = self._conn.execute(
-            "SELECT * FROM persons WHERE is_self = 1 AND deleted_at IS NULL LIMIT 1"
-        ).fetchone()
+        row = self._conn.execute("SELECT * FROM persons WHERE is_self = 1 AND deleted_at IS NULL LIMIT 1").fetchone()
         return self._hydrate(row) if row is not None else None
 
     def list_people(self, include_deleted: bool = False, limit: int | None = None) -> list[Person]:
@@ -195,9 +194,7 @@ class SqlitePeopleRepository:
             match_kind = "canonical" if name == person.canonical_name else "alias"
             existing = best.get(person_id)
             if existing is None or score > existing.score:
-                best[person_id] = SearchHit(
-                    person=person, score=score, matched_value=name, match_kind=match_kind
-                )
+                best[person_id] = SearchHit(person=person, score=score, matched_value=name, match_kind=match_kind)
         hits = sorted(best.values(), key=lambda hit: hit.score, reverse=True)
         return hits[:limit]
 

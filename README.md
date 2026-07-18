@@ -19,9 +19,10 @@ persistence with provenance, confidence, sensitivity, audit, and forget/merge/ex
 
 ## Status
 
-**M5 — sync groundwork delivered as design.** M0–M4 behaviour is unchanged. The
-[sync design](docs/design/sync.md) concludes that the current audit log alone is not a replayable replication
-source and proposes a dedicated changelog; M5 adds no sync runtime, transport, dependency, or schema migration.
+**M6 — local sync foundations delivered.** Every application mutation now atomically writes primary state,
+the privacy-oriented audit, and a full replay changelog operation with installation identity and persisted HLC
+ordering. Forget redacts covered replay history and retains an ID-only tombstone. M6 adds no exchange protocol,
+pairing, relay, bootstrap restore, remote account, or MCP tool.
 
 ## Features overview
 
@@ -156,6 +157,7 @@ uv run people-context edit PERSON [--name NAME] [--summary TEXT]
 uv run people-context add-alias PERSON VALUE [--kind KIND]
 uv run people-context set communication_philosophy VALUE
 uv run people-context delete PERSON [--yes]
+uv run people-context sync-log [--limit N] [--entity ID] [--payloads]
 uv run people-context reindex
 uv run people-context reindex --semantic
 ```
@@ -221,14 +223,14 @@ the "self as a person row" choice, and the audit log's assessed limits as a sync
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Hexagonal layering, dependency rule, SOLID mapping, entrypoint wiring |
 | [docs/data-model.md](docs/data-model.md) | Tables, metadata, FTS5, bitemporal-lite, soft-delete vs. forget |
-| [docs/design/sync.md](docs/design/sync.md) | M5 multi-device replication and multi-user design |
+| [docs/design/sync.md](docs/design/sync.md) | M5 design and M6 locked local sync foundations |
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools, parameters, return shapes, annotations, status |
 | [docs/identity-resolution.md](docs/identity-resolution.md) | Resolution pipeline, scoring, ambiguity contract |
 | [docs/communication-guidance.md](docs/communication-guidance.md) | Traits, philosophy, reminders, privacy |
 | [docs/import.md](docs/import.md) | Staged email/mbox, vCard, and agent-candidate import |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, sensitivity, audit, forget, threat model |
 | [docs/cli.md](docs/cli.md) | CLI reference, DB location resolution, direct SQLite access |
-| [docs/roadmap.md](docs/roadmap.md) | M0 through M5 milestones and post-roadmap candidates |
+| [docs/roadmap.md](docs/roadmap.md) | M0 through M6 milestones and post-roadmap candidates |
 | [docs/decisions/](docs/decisions/) | Architecture decision records |
 
 ## Contributing

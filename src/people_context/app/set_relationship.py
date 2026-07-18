@@ -6,7 +6,14 @@ from datetime import date
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
+from people_context.app.write_support import (
+    audit_mutation,
+    provenance,
+    require_active_person,
+    snapshot,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.relationship import Relationship
 from people_context.domain.shared import Confidence, ValidityPeriod
 from people_context.ports.audit_log import AuditLog
@@ -38,7 +45,9 @@ class SetRelationship:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
 
+    @transactional
     def execute(self, data: SetRelationshipInput) -> Relationship:
         """Create and audit a directed relationship."""
         for person_id in (data.subject_id, data.object_id):
@@ -55,7 +64,14 @@ class SetRelationship:
         )
         self._writer.save_relationship(relationship)
         audit_mutation(
-            self._audit, self._clock, op="create", entity_type="relationship", entity_id=relationship.id,
-            payload=snapshot(relationship), source=data.source,
+            self._audit,
+            self._clock,
+            op="create",
+            entity_type="relationship",
+            entity_id=relationship.id,
+            payload=snapshot(relationship),
+            source=data.source,
+            session=data.session,
+            stated_by=data.stated_by,
         )
         return relationship

@@ -6,7 +6,14 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
+from people_context.app.write_support import (
+    audit_mutation,
+    provenance,
+    require_active_person,
+    snapshot,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.interaction import Interaction
 from people_context.domain.shared import Sensitivity
 from people_context.ports.audit_log import AuditLog
@@ -36,7 +43,9 @@ class RecordInteraction:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
 
+    @transactional
     def execute(self, data: RecordInteractionInput) -> Interaction:
         """Persist and audit a deduplicated-participant interaction."""
         participant_ids = list(dict.fromkeys(data.participant_ids))
@@ -52,7 +61,14 @@ class RecordInteraction:
         )
         self._writer.save_interaction(interaction)
         audit_mutation(
-            self._audit, self._clock, op="create", entity_type="interaction", entity_id=interaction.id,
-            payload=snapshot(interaction), source=data.source,
+            self._audit,
+            self._clock,
+            op="create",
+            entity_type="interaction",
+            entity_id=interaction.id,
+            payload=snapshot(interaction),
+            source=data.source,
+            session=data.session,
+            stated_by=data.stated_by,
         )
         return interaction

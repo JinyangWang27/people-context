@@ -15,8 +15,9 @@ printing its identity, URL, approximately 512 MB size, and cache directory. Sear
 `local_files_only=True`; missing cache state returns `not_available` instead of downloading. This preserves
 the no-surprise-network rule while keeping semantic retrieval optional.
 
-M5 documents a possible future sync design. It adds no network path, account, relay, device registration, or
-background process to the current software.
+M6 implements local durable change capture only. It adds one installation device row, persisted HLC state, and
+a plaintext replay changelog inside the same SQLite file. It adds no network path, account, pairing, relay, peer
+registration, remote access, batch encryption, replay engine, bootstrap restore, or background sync process.
 
 ## Minimal disclosure
 
@@ -75,16 +76,15 @@ notes themselves.
 
 ## Audit of every mutation
 
-Every create, update, merge, and forget operation writes an entry to `audit_log` (`op`, `entity_type`,
-`entity_id`, `payload_json`, `source`, timestamp) before or alongside the mutation itself — see
-[docs/data-model.md](data-model.md#audit_log). The audit trail is for local accountability and deliberately
-uses privacy-preserving summaries for some operations.
+Every create, update, merge, and forget operation atomically writes primary state, an `audit_log` entry, and
+one or more full replay rows in `changelog`; a failure rolls the whole logical operation back. The audit remains
+for local accountability and deliberately uses privacy-preserving summaries for some operations.
 
-Forget replaces matching earlier payloads with `{"redacted": true}`. The log is therefore append-oriented for
-ordinary writes, but not immutable. M5 concludes that it is not sufficient by itself for replication: replay
-also needs full payloads, device identity, deterministic ordering, and exact lifecycle outcomes. A future
-implementation should add a dedicated changelog alongside the audit trail. See
-[the sync design](design/sync.md#2-fitness-of-the-current-audit-log-as-a-replication-source).
+Forget replaces matching earlier audit payloads and every covered changelog transaction with
+`{"redacted": true}`. The audit is therefore append-oriented, not immutable. The changelog additionally stores
+full after-images, installation identity, persisted HLC order, transaction grouping, changed fields, and actor
+provenance. Communication philosophy remains length-only in audit while its full text is present in the local
+changelog. See [the sync design](design/sync.md#2-fitness-of-the-current-audit-log-as-a-replication-source).
 
 ## Forget vs. soft delete
 
@@ -93,10 +93,10 @@ Two distinct deletion mechanisms exist, and they are not interchangeable:
 - **Soft delete** (`persons.deleted_at`) hides a person from normal listings and resolution without
   physically removing any data. It is reversible and is the default outcome of ordinary "this person is no
   longer relevant" bookkeeping.
-- **Forget** (the `forget` tool) is a **hard delete**: the targeted rows are actually removed from the
-  database. Earlier audit rows whose entity id is deleted, or whose nested payload contains the forgotten
-  person id as an exact scalar, are replaced with `{"redacted": true}`. The new tombstone contains only the
-  scope and pluralized deletion counts — no names, values, summaries, or ids in its payload.
+- **Forget** (the `forget` tool) is a **hard delete**: targeted rows are removed. Earlier audit rows and every
+  covered changelog transaction are replaced with `{"redacted": true}`. The user-facing audit tombstone keeps
+  scope and deletion counts; the durable changelog tombstone keeps stable target/coverage ids only. Neither
+  contains names, values, summaries, observation text, or preference content.
 
 See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-level detail.
 
@@ -105,7 +105,8 @@ See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-lev
 The human-operated `people-context export` CLI produces a deterministic, domain-shaped JSON export of the
 full portable dataset, including soft-deleted people, interaction participant ids, preference text, and
 decoded audit payloads. Derived `person_search`/semantic vec0 rows and pending `import_staging` candidates are
-excluded. Semantic model id/dimension preferences remain portable.
+excluded. M6 also excludes `devices`, `changelog`, and `sync_conflicts`: this export remains the byte-compatible
+version-1 portability snapshot, not a sync bootstrap package. Semantic model id/dimension preferences remain portable.
 
 The maximal-disclosure `export_data` MCP tool is absent by default. An operator must start the server process
 with `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1` before a client can discover it. This process-level boundary, not a
@@ -123,7 +124,7 @@ See [docs/mcp-interface.md](mcp-interface.md#annotations).
 
 ### Sync threat model (design stage)
 
-No sync implementation exists in M5. The design in [docs/design/sync.md](design/sync.md) assumes direct
+No sync exchange implementation exists in M6. The design in [docs/design/sync.md](design/sync.md) assumes direct
 encrypted file exchange or an optional dumb relay that stores opaque batches.
 
 - **Relay trust is deliberately narrow.** End-to-end authenticated encryption is expected before a batch

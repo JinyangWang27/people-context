@@ -15,8 +15,7 @@ from people_context.domain.person import Person
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.trait import Trait
-from people_context.ports.audit_log import AuditEntry
-from people_context.ports.lifecycle import LifecycleStore
+from people_context.ports.lifecycle import ForgetStoreResult, LifecycleStore, MergeStoreResult
 from people_context.ports.records import Record, RecordReader, RecordWriter
 from people_context.ports.repository import PersonReader, PersonSearchIndexer, PersonWriter, SearchHit
 
@@ -154,38 +153,34 @@ class IndexingLifecycleStore:
         self._updater = updater
         self._warn = warn
 
-    def merge_people(
-        self,
-        primary: Person,
-        duplicate_id: str,
-        audit_factory: Callable[[dict[str, int]], AuditEntry],
-    ) -> dict[str, int]:
-        counts = self._delegate.merge_people(primary, duplicate_id, audit_factory)
+    def merge_people(self, primary: Person, duplicate_id: str) -> MergeStoreResult:
+        result = self._delegate.merge_people(primary, duplicate_id)
         self._best_effort(lambda: self._updater.refresh_person(primary))
         self._best_effort(lambda: self._updater.delete(duplicate_id))
-        return counts
+        return result
 
-    def forget_person(
-        self,
-        person_id: str,
-        audit_factory: Callable[[dict[str, int]], AuditEntry],
-    ) -> dict[str, int]:
-        counts = self._delegate.forget_person(person_id, audit_factory)
+    def forget_person(self, person_id: str) -> ForgetStoreResult:
+        counts = self._delegate.forget_person(person_id)
         self._best_effort(lambda: self._updater.delete(person_id))
         return counts
 
-    def forget_record(
-        self,
-        entity_type: str,
-        entity_id: str,
-        audit_factory: Callable[[dict[str, int]], AuditEntry],
-    ) -> dict[str, int]:
-        counts = self._delegate.forget_record(entity_type, entity_id, audit_factory)
+    def forget_record(self, entity_type: str, entity_id: str) -> ForgetStoreResult:
+        counts = self._delegate.forget_record(entity_type, entity_id)
         self._best_effort(lambda: self._updater.delete(entity_id))
         return counts
 
     def preview_person_forget(self, person_id: str) -> dict[str, int]:
         return self._delegate.preview_person_forget(person_id)
+
+    @property
+    def unit_of_work(self):
+        """Forward an adapter-provided transaction boundary when present."""
+        return getattr(self._delegate, "unit_of_work", None)
+
+    @property
+    def audit_log(self):
+        """Forward the lifecycle adapter's paired mutation journal."""
+        return self._delegate.audit_log
 
     def _best_effort(self, operation: Callable[[], None]) -> None:
         try:

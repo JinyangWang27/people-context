@@ -6,7 +6,14 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import InvalidReminderError, audit_mutation, require_active_person, snapshot
+from people_context.app.write_support import (
+    InvalidReminderError,
+    audit_mutation,
+    require_active_person,
+    snapshot,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.reminder import Reminder, ReminderKind
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -35,7 +42,9 @@ class SetReminder:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
 
+    @transactional
     def execute(self, data: SetReminderInput) -> Reminder:
         """Persist and audit a reminder."""
         require_active_person(self._people, data.person_id)
@@ -55,7 +64,14 @@ class SetReminder:
         )
         self._writer.save_reminder(reminder)
         audit_mutation(
-            self._audit, self._clock, op="create", entity_type="reminder", entity_id=reminder.id,
-            payload=snapshot(reminder), source=data.source,
+            self._audit,
+            self._clock,
+            op="create",
+            entity_type="reminder",
+            entity_id=reminder.id,
+            payload=snapshot(reminder),
+            source=data.source,
+            session=data.session,
+            stated_by=data.stated_by,
         )
         return reminder

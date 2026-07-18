@@ -22,7 +22,7 @@ proving the architecture holds together.
 - Tests: domain value objects, resolution pipeline stages, SQLite repository round-trips.
 
 **Status:** Delivered. The initial scaffold established the complete schema, hexagonal boundaries, stdio MCP
-surface, CLI, and tested SQLite vertical slice on which M1–M5 build.
+surface, CLI, and tested SQLite vertical slice on which M1–M6 build.
 
 ## M1 — Identity and retrieval (delivered)
 
@@ -105,14 +105,32 @@ between users, without committing to an implementation.
   [docs/decisions/0005-conflict-resolution-strategy.md](decisions/0005-conflict-resolution-strategy.md).
 - Multi-user ownership, actor, `is_self`, and sensitivity considerations, design only.
 
-**Status:** Delivered as a design. M5 adds documentation and proposed ADRs only; it includes no sync runtime,
-transport, schema migration, dependency, or multi-user implementation.
+**Status:** Delivered as a design. M5 added documentation only; it included no sync runtime, transport,
+schema migration, dependency, or multi-user implementation.
+
+## M6 — Sync foundations
+
+**Goals:** implement the local, durable half of the M5 design without adding any exchange protocol or MCP tools.
+
+**Deliverables:**
+- Migration `002_sync_foundations.sql` with installation device identity, persisted HLC state, a replayable
+  `changelog`, and local `sync_conflicts` staging. Peer cursors remain deferred to M7.
+- One explicit unit-of-work boundary for primary state, accountability audit, HLC advancement, and changelog
+  capture, including atomic merge and forget.
+- Full replay after-images for every durable write, row-level merge children plus a semantic parent manifest,
+  and ID-only forget tombstones that redact covered changelog transactions.
+- CLI inspection through `people-context sync-log`; replay payloads remain hidden unless `--payloads` is supplied.
+- Fresh- and upgraded-database coverage, clock-rollback coverage, failure-injection atomicity tests, and stdio E2E
+  proof of remember → fact → forget redaction.
+
+**Status:** Delivered. M6 creates no network path, pairing flow, relay, peer cursor, replay engine, or bootstrap
+restore. The MCP tool surface and version-1 export envelope remain unchanged; exchange and bootstrap are M7.
 
 ## Post-roadmap candidates
 
 The following are candidates for future work, not commitments:
 
-- sync implementation;
+- M7 sync exchange, pairing, replay, and bootstrap;
 - multi-user ownership and sharing;
 - authenticated remote transport;
 - SQLCipher at rest;

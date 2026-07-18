@@ -18,7 +18,8 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
                          │  adapters/sqlite/     adapters/mcp/          │
                          │    db.py                server.py            │
                          │    migrations/*.sql     tools/*.py           │
-                         │    repository.py                             │
+                         │    repository.py       unit_of_work.py     │
+                         │    audit_log.py       changelog.py  hlc.py   │
                          │    semantic.py        email_import.py        │
                          │                       vcard_import.py        │
                          │                                              │
@@ -31,7 +32,10 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
                          │                          PersonWriter,        │
                          │                          SearchHit            │
                          │  ports/audit_log.py     AuditLog, AuditEntry  │
-                         │  ports/clock.py         Clock, SystemClock    │
+                         │  ports/changelog.py     Changelog, entries     │
+                         │  ports/hlc.py           HybridLogicalClock     │
+                         │  ports/unit_of_work.py  UnitOfWork             │
+                         │  ports/clock.py         Clock, SystemClock     │
                          └───────────────────┬─────────────────────────┘
                                              │ depended on by (never implemented in)
                          ┌───────────────────▼─────────────────────────┐
@@ -72,17 +76,18 @@ identity resolution, or the minimal-disclosure cap in context assembly) is allow
 
 `typing.Protocol` interfaces, split narrowly by concern rather than one fat repository interface:
 `PersonReader` and `PersonWriter` (`ports/repository.py`), semantic embedding/vector/rebuild ports
-(`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), and `Clock` (`ports/clock.py`). Splitting concerns
-means a use case that only reads people never has to depend on write or audit capability — Interface
-Segregation in practice.
+(`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), `Changelog` (`ports/changelog.py`),
+`HybridLogicalClock` (`ports/hlc.py`), `UnitOfWork` (`ports/unit_of_work.py`), and `Clock`
+(`ports/clock.py`). Splitting concerns means read use cases do not depend on write, audit, or sync capability.
+The application layer owns transaction orchestration through the UoW port; SQLite owns BEGIN/COMMIT/ROLLBACK.
 
 ### `adapters`
 
 Concrete implementations of the ports, plus anything that talks to the outside world:
 
-- `adapters/sqlite/` — `db.py` (connection + pragmas + migration runner), `migrations/001_initial.sql`,
-  `repository.py` (`SqlitePeopleRepository`, implementing `PersonReader` + `PersonWriter`), `audit_log.py`
-  (`SqliteAuditLog`).
+- `adapters/sqlite/` — `db.py` (connection, migrations, and local device initialization), migrations
+  `001_initial.sql` and `002_sync_foundations.sql`, repositories, `audit_log.py`, `changelog.py`, `hlc.py`, and
+  `unit_of_work.py`. Adapter write methods join an enclosing transaction rather than committing independently.
 - `adapters/mcp/` — `server.py` (`build_server`/`main`, tool registration and annotations), `tools/` (one
   module per tool group).
 - `adapters/email_import.py` and `adapters/vcard_import.py` — source-specific, stdlib-backed extraction;
@@ -128,7 +133,8 @@ Wiring — constructing concrete adapters and injecting them into use cases — 
 never inside `domain` or `app`:
 
 - `adapters/mcp/server.py:build_server()` resolves the DB path, opens the SQLite connection, constructs
-  `SqlitePeopleRepository`, `SqliteAuditLog`, and `SystemClock`, builds the `app` use cases from them, and
+  `SqlitePeopleRepository`, `SqliteAuditLog` (paired with the local changelog/HLC), and `SystemClock`, builds
+  the `app` use cases from them, and
   registers MCP tools that call into those use cases. `main()` parses `--db` plus transport flags; it runs
   stdio by default or applies loopback HTTP settings before `run(transport="streamable-http")`.
 - `cli.py:main()` performs the equivalent wiring for the CLI, so CLI commands and MCP tools call the exact
@@ -163,23 +169,28 @@ concept elsewhere in the schema or API. Consequences:
   migration; see [the sync design](design/sync.md#7-multi-user-considerations).
 
 <a id="append-only-audit-log-as-future-sync-foundation"></a>
-## Audit log and future sync
+## Accountability audit and replayable changelog
 
-Every mutation — create, update, merge, forget — writes an `AuditEntry` (`ports/audit_log.py`) before or
-alongside the write itself. The audit log exists for local accountability and deliberately permits concise,
-privacy-preserving payloads. Forget also redacts matching earlier payloads in place, so the log is
-append-oriented during ordinary writes but is not immutable.
+M6 implements ADR [0004](decisions/0004-changelog-vs-audit-log.md): every application mutation executes inside
+an explicit `UnitOfWork` and commits primary rows, the accountability audit, persisted HLC advancement, and one
+or more full replay changelog entries together. A failure at any point rolls the complete logical operation back.
+Read paths do not open a UoW.
 
-The M5 fitness assessment found that the audit log alone is not a sufficient replication source. Some payloads
-are intentionally lossy, merge and forget summarize multi-row transactions, entries have no device or causal
-ordering metadata, and ULID ordering depends on wall clocks. A future implementation should add a dedicated,
-full-fidelity changelog in the same transaction as the primary write and audit entry. See
-[the sync design](design/sync.md#2-fitness-of-the-current-audit-log-as-a-replication-source) and proposed ADR
-[0004](decisions/0004-changelog-vs-audit-log.md).
+The two histories remain intentionally different:
+
+- `audit_log` is user-facing accountability. Payloads may summarize private values; communication philosophy
+  continues to record lengths only.
+- `changelog` is local replay state. It stores full after-images, installation `device_id`, HLC components,
+  transaction grouping, operation kind, changed fields, actor provenance, and payload schema version.
+
+Merge writes row-level child effects and a semantic parent manifest under one `transaction_id`. Forget is the
+explicit append-only exception: it hard-deletes primary rows, redacts covered audit and changelog payloads, and
+retains an ID-only forget tombstone indefinitely in M6. `people-context sync-log` is the only new inspection
+surface; no MCP tool, peer, exchange protocol, or replay engine is introduced.
 
 ## Single-user now, multi-user-safe choices
 
-The product is single-user through M5. Several existing choices reduce the cost of future multi-user work
+The product is single-user through M6. Several existing choices reduce the cost of future multi-user work
 without solving it:
 
 - **IDs are ULIDs**, not auto-increment integers. Their large random component makes collisions across devices

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from people_context.adapters.model2vec_embeddings import MODEL_DIMENSION
+from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.semantic import (
     SemanticDocument,
     SemanticEntity,
@@ -43,7 +44,7 @@ class SqliteVectorIndex:
 
     def upsert(self, kind: str, entity_id: str, vector: list[float]) -> None:
         self._validate_vector(vector)
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute(f"DELETE FROM {_VECTOR_TABLE} WHERE entity_id = ?", (entity_id,))
             self._conn.execute(
                 f"INSERT INTO {_VECTOR_TABLE} (entity_id, kind, embedding) VALUES (?, ?, ?)",
@@ -51,7 +52,7 @@ class SqliteVectorIndex:
             )
 
     def delete(self, entity_id: str) -> None:
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute(f"DELETE FROM {_VECTOR_TABLE} WHERE entity_id = ?", (entity_id,))
 
     def search(self, kind: str, vector: list[float], limit: int) -> list[VectorSearchHit]:
@@ -85,7 +86,7 @@ class SqliteVectorIndex:
         for vector in vectors:
             self._validate_vector(vector)
         now = datetime.now(UTC).isoformat()
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute(f"DELETE FROM {_VECTOR_TABLE}")
             self._conn.executemany(
                 f"INSERT INTO {_VECTOR_TABLE} (entity_id, kind, embedding) VALUES (?, ?, ?)",
@@ -155,10 +156,7 @@ class SqliteSemanticDocumentReader:
             """SELECT id, summary FROM interactions
                WHERE sensitivity IN ('public', 'personal') ORDER BY id"""
         ).fetchall()
-        return [
-            SemanticDocument(kind="interaction", entity_id=row["id"], text=row["summary"])
-            for row in rows
-        ]
+        return [SemanticDocument(kind="interaction", entity_id=row["id"], text=row["summary"]) for row in rows]
 
 
 class SqliteSemanticEntityReader:

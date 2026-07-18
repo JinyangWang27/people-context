@@ -4,10 +4,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import require_active_person
+from people_context.app.write_support import (
+    audit_mutation,
+    changelog_mutation,
+    require_active_person,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.person import Alias, AliasKind, Person
-from people_context.domain.shared import normalize_name
-from people_context.ports.audit_log import AuditEntry
+from people_context.domain.shared import new_id, normalize_name
+from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.lifecycle import LifecycleStore
 from people_context.ports.repository import PersonReader
@@ -44,11 +50,20 @@ class MergePeopleResult(BaseModel):
 class MergePeople:
     """Validate and merge a duplicate person into an active primary person."""
 
-    def __init__(self, people: PersonReader, lifecycle: LifecycleStore, clock: Clock) -> None:
+    def __init__(
+        self,
+        people: PersonReader,
+        lifecycle: LifecycleStore,
+        clock: Clock,
+        audit: AuditLog | None = None,
+    ) -> None:
         self._people = people
         self._lifecycle = lifecycle
         self._clock = clock
+        self._audit = audit or lifecycle.audit_log
+        self._uow = unit_of_work_for(lifecycle, self._audit)
 
+    @transactional
     def execute(self, primary_id: str, duplicate_id: str) -> MergePeopleResult:
         """Merge aliases, summary, and all linked records in one store transaction."""
         if primary_id == duplicate_id:
@@ -60,27 +75,41 @@ class MergePeople:
 
         aliases_added = self._merge_identity(primary, duplicate)
         primary.updated_at = self._clock.now()
-
-        def audit_factory(counts: dict[str, int]) -> AuditEntry:
-            moved = {key: value for key, value in counts.items() if key != "self_loops_removed"}
-            return AuditEntry(
-                ts=self._clock.now(),
-                op="merge",
-                entity_type="person",
-                entity_id=primary.id,
-                payload={
-                    "duplicate_id": duplicate.id,
-                    "aliases_added": aliases_added,
-                    "moved": moved,
-                    "self_loops_removed": counts["self_loops_removed"],
-                },
+        transaction_id = new_id()
+        store_result = self._lifecycle.merge_people(primary, duplicate.id)
+        counts = store_result.counts
+        for change in store_result.changes:
+            changelog_mutation(
+                self._audit,
+                self._clock,
+                entity_type=change.entity_type,
+                entity_id=change.entity_id,
+                op_kind=change.op_kind,
+                payload=change.payload,
+                changed_fields=change.changed_fields,
+                transaction_id=transaction_id,
                 source="agent",
             )
-
-        counts = self._lifecycle.merge_people(primary, duplicate.id, audit_factory)
-        moved = MergeMovedCounts.model_validate(
-            {key: value for key, value in counts.items() if key != "self_loops_removed"}
+        moved_payload = {key: value for key, value in counts.items() if key != "self_loops_removed"}
+        audit_payload = {
+            "duplicate_id": duplicate.id,
+            "aliases_added": aliases_added,
+            "moved": moved_payload,
+            "self_loops_removed": counts["self_loops_removed"],
+        }
+        audit_mutation(
+            self._audit,
+            self._clock,
+            op="merge",
+            entity_type="person",
+            entity_id=primary.id,
+            payload=audit_payload,
+            replay_payload=store_result.manifest,
+            changed_fields=[],
+            transaction_id=transaction_id,
+            source="agent",
         )
+        moved = MergeMovedCounts.model_validate(moved_payload)
         return MergePeopleResult(person=primary, moved=moved, self_loops_removed=counts["self_loops_removed"])
 
     @staticmethod

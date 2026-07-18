@@ -13,6 +13,8 @@ from people_context.app.write_support import (
     audit_mutation,
     require_active_person,
     snapshot,
+    transactional,
+    unit_of_work_for,
 )
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
@@ -64,8 +66,10 @@ class CorrectRecord:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
         self._people = people
 
+    @transactional
     def execute(self, data: CorrectRecordInput) -> Record:
         """Correct one record in place with a lossless audit snapshot."""
         allowed = _CORRECTABLE_FIELDS.get(data.entity_type)
@@ -94,7 +98,11 @@ class CorrectRecord:
             entity_type=data.entity_type,
             entity_id=data.entity_id,
             payload={"before": snapshot(current), "after": snapshot(updated), "fields": sorted(data.fields)},
+            replay_payload=snapshot(updated),
+            changed_fields=sorted(data.fields),
             source=data.source,
+            session=data.session,
+            stated_by=data.stated_by,
         )
         return updated
 

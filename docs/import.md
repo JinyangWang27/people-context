@@ -117,3 +117,12 @@ correspondents are deduplicated by normalized address across a batch, self handl
 missing/invalid dates retain person candidates while omitting the interaction. Successful staging ids are
 idempotent, and unresolved interactions remain pending for a later partial commit. Omitted interactions are
 reported in deterministic input order through `skipped_message_ids` or `skipped_without_id`.
+
+
+## M6 changelog and export boundary
+
+Accepted import candidates reach ordinary application write use cases and therefore produce the same atomic
+audit and replayable changelog entries as interactive writes. `import_staging` itself remains device-local
+review state and is not captured. The version-1 `people-context export` envelope is unchanged in M6 and does
+not include `devices`, `changelog`, or `sync_conflicts`; first-device bootstrap and changelog transfer require
+the trusted snapshot/restore protocol deferred to M7.

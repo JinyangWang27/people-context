@@ -6,7 +6,14 @@ from datetime import date
 
 from pydantic import BaseModel
 
-from people_context.app.write_support import audit_mutation, provenance, require_active_person, snapshot
+from people_context.app.write_support import (
+    audit_mutation,
+    provenance,
+    require_active_person,
+    snapshot,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.fact import Fact
 from people_context.domain.shared import Confidence, Sensitivity, ValidityPeriod
 from people_context.ports.audit_log import AuditLog
@@ -38,7 +45,9 @@ class RecordFact:
         self._writer = writer
         self._audit = audit
         self._clock = clock
+        self._uow = unit_of_work_for(audit)
 
+    @transactional
     def execute(self, data: RecordFactInput) -> Fact:
         """Persist and audit a fact."""
         require_active_person(self._people, data.person_id)
@@ -54,7 +63,14 @@ class RecordFact:
         )
         self._writer.save_fact(fact)
         audit_mutation(
-            self._audit, self._clock, op="create", entity_type="fact", entity_id=fact.id,
-            payload=snapshot(fact), source=data.source,
+            self._audit,
+            self._clock,
+            op="create",
+            entity_type="fact",
+            entity_id=fact.id,
+            payload=snapshot(fact),
+            source=data.source,
+            session=data.session,
+            stated_by=data.stated_by,
         )
         return fact

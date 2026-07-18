@@ -187,6 +187,32 @@ def test_export_to_file_includes_soft_deleted(tmp_path: Path, capsys: pytest.Cap
     assert gone.id in ids
 
 
+# -- sync log ---------------------------------------------------------------
+
+
+def test_sync_log_hides_payloads_by_default_and_can_filter_and_reveal_them(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    sentinel = "SYNC-LOG-SENTINEL-42"
+    person = _seed(db_file, "Alice", summary=sentinel)
+
+    assert cli.main(["--db", str(db_file), "sync-log", "--limit", "1"]) == 0
+    hidden = capsys.readouterr().out
+    assert f"create  person:{person.id}" in hidden
+    assert "device=" in hidden and "hlc=" in hidden and "fields=-" in hidden
+    assert "payload=" not in hidden
+    assert sentinel not in hidden
+
+    assert cli.main(
+        ["--db", str(db_file), "sync-log", "--entity", person.id, "--payloads"]
+    ) == 0
+    revealed = capsys.readouterr().out
+    assert f"create  person:{person.id}" in revealed
+    assert "payload=" in revealed
+    assert sentinel in revealed
+
+
 # -- curation ---------------------------------------------------------------
 
 

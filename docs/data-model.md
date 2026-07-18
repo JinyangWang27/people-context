@@ -227,9 +227,27 @@ affiliation creation are two row mutations and therefore produce one audit entry
 `forget` are intentional exceptions: each multi-row lifecycle transaction produces exactly one aggregate
 entry so the audit cannot describe a partial operation that never committed. A merge audit records the
 duplicate id, every adopted alias value in `aliases_added`, moved-row counts, and removed self-loop count;
-the duplicate canonical name is adopted as a `former_name` alias. Forget tombstones intentionally use the
-scope (`person` or `record`) as `entity_type`; their `entity_id` is the person id for person scope or the
-validated `concrete_type:id` target for record scope.
+the duplicate canonical name is adopted as a `former_name` alias. The replay changelog is intentionally more
+complete: merge emits exact row-level child operations plus one semantic parent manifest under a shared
+`transaction_id`. Forget audit tombstones intentionally use the scope (`person` or `record`) as `entity_type`;
+their `entity_id` is the person id for person scope or the validated `concrete_type:id` target for record scope.
+The corresponding changelog tombstone uses the concrete target type/id and carries affected entity ids plus
+covered operation/transaction ids only; it never carries deleted names or values.
+
+### `devices`, `changelog`, and `sync_conflicts` (M6)
+
+Migration `002_sync_foundations.sql` adds local sync state without backfilling invented history. On first open,
+one active installation row is created in `devices` with a random ULID, hostname display name, and persisted
+`hlc_physical_ms`/`hlc_logical` state. HLC emission never regresses across process restarts or wall-clock rollback.
+
+`changelog` stores full replay operations: `op_id`, `device_id`, HLC components, `transaction_id`, entity type/id,
+`op_kind`, full `payload_json`, sorted `changed_fields_json`, `actor_json`, independent `schema_version`, and local
+`inserted_at`. The deterministic order key is `(hlc_physical_ms, hlc_logical, device_id, op_id)`. Ordinary entries
+are append-only; forget redacts covered transaction payloads and retains an ID-only tombstone.
+
+`sync_conflicts` is local staging for future conservative conflict review. M6 does not create peer cursors because
+no peer, exchange, or acknowledgement protocol exists. These tables are not included in the version-1 export
+envelope; M7 must define trusted snapshot restore and changelog transfer.
 
 ## FTS5 tables
 
@@ -304,7 +322,8 @@ we distilled, and how should that shape communication." See
   deleted people are excluded from normal reads (`list_people(include_deleted=False)` by default,
   `resolve_person` excludes them) but remain in the database and in exports until forgotten.
 - **Forget** (the MCP tool and CLI delete command) is a **hard delete**: rows are actually removed, prior
-  audits naming the target are replaced with exactly `{"redacted": true}`, and a minimal aggregate tombstone
-  records only the scope and pluralized deletion counts. This is the mechanism for genuinely removing data
+  audits naming the target are replaced with exactly `{"redacted": true}`. Covered changelog transactions are
+  also redacted, and a durable changelog tombstone records stable ids and coverage only. The user-facing audit
+  tombstone remains minimal and records scope plus pluralized deletion counts. This is the mechanism for genuinely removing data
   the user no longer wants stored, as opposed to merely hiding it. See
   [docs/privacy-and-safety.md](privacy-and-safety.md) for the full forget semantics.

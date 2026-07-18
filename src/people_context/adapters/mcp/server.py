@@ -205,12 +205,10 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
         set_reminder=SetReminder(repository, record_store, audit, clock),
         complete_reminder=CompleteReminder(record_store, record_store, audit, clock, people=repository),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences_store, audit, clock),
-        get_communication_guidance=GetCommunicationGuidance(
-            repository, context_reader, preferences_store, clock
-        ),
+        get_communication_guidance=GetCommunicationGuidance(repository, context_reader, preferences_store, clock),
         list_reminders=ListReminders(record_store),
-        merge_people=MergePeople(repository, lifecycle_store, clock),
-        forget=Forget(repository, lifecycle_store, clock),
+        merge_people=MergePeople(repository, lifecycle_store, clock, audit),
+        forget=Forget(repository, lifecycle_store, clock, audit),
         export_data=ExportData(export_reader, clock),
         import_content=ImportContent(
             repository,

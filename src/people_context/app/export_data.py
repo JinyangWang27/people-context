@@ -12,7 +12,7 @@ from people_context.ports.export import ExportReader
 
 
 class ExportDocument(BaseModel):
-    """Versioned domain-shaped portable export envelope."""
+    """Versioned domain-shaped portable export envelope; M6 intentionally excludes the changelog."""
 
     format: str = "people-context-export"
     version: int = 1
@@ -31,7 +31,7 @@ class ExportDocument(BaseModel):
 
 
 class ExportData:
-    """Build a portable export using the shared clock and read port."""
+    """Build the M3-compatible snapshot export; M7 will define changelog/bootstrap portability."""
 
     def __init__(self, reader: ExportReader, clock: Clock) -> None:
         self._reader = reader

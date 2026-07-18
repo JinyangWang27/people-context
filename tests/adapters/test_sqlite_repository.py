@@ -51,7 +51,7 @@ def _person(**overrides: object) -> Person:
 
 def test_fresh_db_has_user_version_and_all_tables() -> None:
     conn = open_db(":memory:")
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     names = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert names >= _EXPECTED_TABLES
 
@@ -60,7 +60,7 @@ def test_reopening_db_is_idempotent(tmp_path: Path) -> None:
     db_file = tmp_path / "nested" / "people.db"
     open_db(db_file).close()
     conn = open_db(db_file)  # parent dirs already created; migrations already applied
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
     assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
 
 

@@ -164,6 +164,70 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
     assert philosophy not in str(philosophy_entry.payload)
 
 
+def test_real_stdio_remember_fact_forget_leaves_redacted_sync_log(tmp_path: Path) -> None:
+    uv = shutil.which("uv")
+    assert uv is not None
+    project_root = Path(__file__).parents[2]
+    db_path = tmp_path / "m6-stdio.db"
+    sentinel = "STDIO-FORGET-SENTINEL-c94d"
+    parameters = StdioServerParameters(
+        command=uv,
+        args=["run", "people-context-mcp", "--db", str(db_path)],
+        cwd=project_root,
+    )
+
+    async def flow() -> tuple[str, str]:
+        async with (
+            stdio_client(parameters) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as client,
+        ):
+            await client.initialize()
+            remembered = await client.call_tool(
+                "remember_person",
+                {"name": "Forget Me", "summary": sentinel},
+            )
+            person_id = remembered.structuredContent["person"]["id"]
+            fact = await client.call_tool(
+                "record_fact",
+                {"person_id": person_id, "predicate": "secret", "value": sentinel},
+            )
+            fact_id = fact.structuredContent["id"]
+            forgotten = await client.call_tool("forget", {"target": person_id, "scope": "person"})
+            assert forgotten.structuredContent["scope"] == "person"
+            return person_id, fact_id
+
+    person_id, fact_id = anyio.run(flow)
+
+    hidden = subprocess.run(
+        [uv, "run", "people-context", "--db", str(db_path), "sync-log", "--limit", "10"],
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert hidden.returncode == 0, hidden.stderr
+    assert "payload=" not in hidden.stdout
+    assert sentinel not in hidden.stdout
+    assert f"forget  person:{person_id}" in hidden.stdout
+    assert f"create  fact:{fact_id}" in hidden.stdout
+    assert hidden.stdout.index(f"forget  person:{person_id}") < hidden.stdout.index(f"create  fact:{fact_id}")
+
+    shown = subprocess.run(
+        [uv, "run", "people-context", "--db", str(db_path), "sync-log", "--payloads"],
+        cwd=project_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert shown.returncode == 0, shown.stderr
+    assert sentinel not in shown.stdout
+    assert 'payload={"redacted": true}' in shown.stdout
+    assert f'"target_id": "{person_id}"' in shown.stdout
+    assert '"canonical_name"' not in shown.stdout
+    assert '"summary"' not in shown.stdout
+    assert '"value"' not in shown.stdout
+
+
 def test_real_stdio_mbox_import_commit_and_resolve(tmp_path: Path) -> None:
     uv = shutil.which("uv")
     assert uv is not None

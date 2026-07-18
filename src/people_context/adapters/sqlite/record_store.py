@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
 
+from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
@@ -130,7 +131,7 @@ class SqliteRecordStore:
             "sensitivity": interaction.sensitivity.value,
             **_provenance_values(interaction.provenance),
         }
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._execute_upsert("interactions", values)
             self._conn.execute("DELETE FROM interaction_participants WHERE interaction_id = ?", (interaction.id,))
             self._conn.executemany(
@@ -170,7 +171,7 @@ class SqliteRecordStore:
             return None
         values = {key: _sqlite_value(value) for key, value in fields.items()}
         assignments = ", ".join(f"{column} = ?" for column in values)
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             cursor = self._conn.execute(
                 f"UPDATE {table} SET {assignments} WHERE id = ?",
                 (*values.values(), entity_id),
@@ -210,7 +211,7 @@ class SqliteRecordStore:
         return [row["person_id"] for row in rows]
 
     def _upsert(self, table: str, values: dict[str, Any]) -> None:
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._execute_upsert(table, values)
 
     def _execute_upsert(self, table: str, values: dict[str, Any]) -> None:
@@ -239,7 +240,7 @@ class SqliteOrganizationStore:
         return _organization(row) if row else None
 
     def save(self, organization: Organization) -> None:
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute(
                 """INSERT INTO organizations (id, name, kind) VALUES (?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind""",
@@ -261,7 +262,7 @@ class SqlitePreferencesStore:
         return value if isinstance(value, str) else None
 
     def set(self, key: str, value: str) -> None:
-        with self._conn:
+        with SqliteUnitOfWork(self._conn):
             self._conn.execute(
                 """INSERT INTO user_preferences (key, value_json, updated_at) VALUES (?, ?, ?)
                    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at""",
