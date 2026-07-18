@@ -89,6 +89,7 @@ class CliContext:
 
 def _open_context(db: str | None) -> CliContext:
     conn = open_db(resolve_db_path(db))
+    clock = SystemClock()
     repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
     lifecycle: SqliteLifecycleStore | IndexingLifecycleStore = SqliteLifecycleStore(conn)
     try:
@@ -111,9 +112,9 @@ def _open_context(db: str | None) -> CliContext:
         conn=conn,
         repo=repo,
         context_reader=SqliteContextReader(conn),
-        clock=SystemClock(),
+        clock=clock,
         export_reader=SqliteExportReader(conn),
-        vault_reader=SqliteVaultReader(conn),
+        vault_reader=SqliteVaultReader(conn, clock),
         audit=SqliteAuditLog(conn),
         changelog=SqliteChangelog(conn),
         lifecycle=lifecycle,

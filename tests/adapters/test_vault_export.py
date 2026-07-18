@@ -26,11 +26,7 @@ _TS = "2026-01-01T00:00:00+00:00"
 
 
 def _tree_bytes(root: Path) -> dict[str, bytes]:
-    return {
-        path.relative_to(root).as_posix(): path.read_bytes()
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-    }
+    return {path.relative_to(root).as_posix(): path.read_bytes() for path in sorted(root.rglob("*")) if path.is_file()}
 
 
 def _fixture(tmp_path: Path):
@@ -121,7 +117,7 @@ def _fixture(tmp_path: Path):
 def test_vault_layout_sensitivity_determinism_and_marked_regeneration(tmp_path: Path) -> None:
     conn, ming, _ = _fixture(tmp_path)
     output = tmp_path / "vault"
-    exporter = ExportVault(SqliteVaultReader(conn), FileSystemVaultWriter())
+    exporter = ExportVault(SqliteVaultReader(conn, SystemClock()), FileSystemVaultWriter())
 
     result = exporter.execute(output)
     first = _tree_bytes(output)
@@ -178,7 +174,7 @@ def test_nonempty_unmarked_directory_is_refused_without_changes(tmp_path: Path) 
     before = _tree_bytes(output)
 
     with pytest.raises(VaultSafetyError, match="non-empty unmarked"):
-        ExportVault(SqliteVaultReader(conn), FileSystemVaultWriter()).execute(output)
+        ExportVault(SqliteVaultReader(conn, SystemClock()), FileSystemVaultWriter()).execute(output)
 
     assert _tree_bytes(output) == before
 

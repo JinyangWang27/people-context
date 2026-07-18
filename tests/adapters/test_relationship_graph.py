@@ -48,8 +48,8 @@ def test_chain_subgraph_and_shortest_path_have_perspective_types() -> None:
     setter.execute(SetRelationshipInput(subject_id=b.id, object_id=c.id, type="reports_to"))
     setter.execute(SetRelationshipInput(subject_id=d.id, object_id=a.id, type="friend of"))
 
-    reader = SqliteGraphReader(conn)
-    graph = GetRelationshipGraph(people, reader).execute(a.id, depth=2)
+    reader = SqliteGraphReader(conn, SystemClock())
+    graph = GetRelationshipGraph(people, reader, vocabulary).execute(a.id, depth=2)
     assert not hasattr(graph, "error")
     assert [node.name for node in graph.nodes] == ["A", "B", "D", "C"]
     assert {(edge.subject_id, edge.object_id, edge.type) for edge in graph.edges} == {
@@ -66,7 +66,7 @@ def test_chain_subgraph_and_shortest_path_have_perspective_types() -> None:
 
 
 def test_graph_caps_nodes_reports_truncation_and_excludes_deleted_people() -> None:
-    conn, people, _, setter = _setup()
+    conn, people, vocabulary, setter = _setup()
     center = _person(people, "Center")
     leaves = [_person(people, f"Leaf {index:03d}") for index in range(150)]
     for leaf in leaves:
@@ -74,7 +74,7 @@ def test_graph_caps_nodes_reports_truncation_and_excludes_deleted_people() -> No
     leaves[0].deleted_at = datetime.now(UTC)
     people.save_person(leaves[0])
 
-    graph = GetRelationshipGraph(people, SqliteGraphReader(conn)).execute(center.id, depth=1)
+    graph = GetRelationshipGraph(people, SqliteGraphReader(conn, SystemClock()), vocabulary).execute(center.id, depth=1)
     assert len(graph.nodes) == 100
     assert graph.truncated is True
     assert leaves[0].id not in {node.person_id for node in graph.nodes}
@@ -85,7 +85,7 @@ def test_disconnected_and_not_found_results_are_structured() -> None:
     conn, people, vocabulary, _ = _setup()
     a = _person(people, "A")
     b = _person(people, "B")
-    use_case = FindConnection(people, SqliteGraphReader(conn), vocabulary)
+    use_case = FindConnection(people, SqliteGraphReader(conn, SystemClock()), vocabulary)
 
     disconnected = use_case.execute(a.id, b.id)
     assert disconnected.model_dump(mode="json") == {
@@ -98,5 +98,5 @@ def test_disconnected_and_not_found_results_are_structured() -> None:
 
 
 def test_sqlite_graph_reader_satisfies_exact_port() -> None:
-    reader: GraphReader = SqliteGraphReader(open_db(":memory:"))
+    reader: GraphReader = SqliteGraphReader(open_db(":memory:"), SystemClock())
     assert isinstance(reader, GraphReader)

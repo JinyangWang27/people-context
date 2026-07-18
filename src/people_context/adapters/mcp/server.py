@@ -161,9 +161,10 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     logger.info("people-context MCP server using database at %s", path)
 
     conn = open_db(path)
+    clock = SystemClock()
     repository = SqlitePeopleRepository(conn)
     context_reader = SqliteContextReader(conn)
-    graph_reader = SqliteGraphReader(conn)
+    graph_reader = SqliteGraphReader(conn, clock)
     record_store = SqliteRecordStore(conn)
     relationship_store = SqliteRelationshipStore(conn)
     relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
@@ -173,7 +174,6 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     lifecycle_store = SqliteLifecycleStore(conn)
     export_reader = SqliteExportReader(conn)
     import_staging = SqliteImportStagingStore(conn)
-    clock = SystemClock()
     try:
         semantic_updater = create_local_semantic_updater(conn)
     except Exception as exc:  # noqa: BLE001 - optional derived index cannot block the server
@@ -194,7 +194,7 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     deps = ToolDeps(
         resolve_person=ResolvePerson(repository, context_reader, clock),
         get_person_context=GetPersonContext(repository, context_reader, clock),
-        get_relationship_graph=GetRelationshipGraph(repository, graph_reader),
+        get_relationship_graph=GetRelationshipGraph(repository, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repository, graph_reader, relationship_vocabulary),
         search_people=SearchPeople(repository),
         semantic_search=SemanticSearch(

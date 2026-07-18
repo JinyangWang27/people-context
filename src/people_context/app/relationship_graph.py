@@ -64,9 +64,15 @@ class ConnectionResult(BaseModel):
 class GetRelationshipGraph:
     """Return a minimal-disclosure, bounded relationship subgraph."""
 
-    def __init__(self, people: PersonReader, graph: GraphReader) -> None:
+    def __init__(
+        self,
+        people: PersonReader,
+        graph: GraphReader,
+        vocabulary: RelationshipVocabularyReader,
+    ) -> None:
         self._people = people
         self._graph = graph
+        self._vocabulary = vocabulary
 
     def execute(
         self,
@@ -80,7 +86,7 @@ class GetRelationshipGraph:
         if person is None or person.deleted_at is not None:
             return GraphPersonNotFound(person_id=person_id)
         raw = self._graph.neighbors(person_id, depth)
-        allowed = {normalize_relationship_type(value) for value in types} if types else None
+        allowed = {self._canonical_type(value) for value in types} if types else None
         raw_edges = [edge for edge in raw.edges if allowed is None or edge.type in allowed]
         included_ids = {person_id}
         for edge in raw_edges:
@@ -89,9 +95,7 @@ class GetRelationshipGraph:
         selected_nodes = candidate_nodes[:MAX_GRAPH_NODES]
         selected_ids = {node.person_id for node in selected_nodes}
         candidate_edges = [
-            edge
-            for edge in raw_edges
-            if edge.subject_id in selected_ids and edge.object_id in selected_ids
+            edge for edge in raw_edges if edge.subject_id in selected_ids and edge.object_id in selected_ids
         ]
         selected_edges = candidate_edges[:MAX_GRAPH_EDGES]
         truncated = len(candidate_nodes) > len(selected_nodes) or len(candidate_edges) > len(selected_edges)
@@ -100,6 +104,15 @@ class GetRelationshipGraph:
             edges=[_edge_result(edge) for edge in selected_edges],
             truncated=truncated,
         )
+
+    def _canonical_type(self, value: str) -> str:
+        normalized = normalize_relationship_type(value)
+        row = self._vocabulary.resolve(normalized)
+        if row is None:
+            return normalized
+        if row.canonical:
+            return row.type
+        return row.inverse or row.type
 
 
 class FindConnection:

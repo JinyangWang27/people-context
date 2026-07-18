@@ -1,4 +1,4 @@
-"""SQLite recursive-CTE implementation of the relationship graph port."""
+"""SQLite breadth-first implementation of the relationship graph port."""
 
 from __future__ import annotations
 
@@ -11,140 +11,112 @@ from people_context.domain.relationship_graph import (
     RelationshipPath,
     RelationshipSubgraph,
 )
-
-_SEPARATOR = "\x1f"
+from people_context.ports.clock import Clock
 
 
 class SqliteGraphReader:
     """Traverse active, non-deleted-person relationship edges deterministically."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, clock: Clock) -> None:
         self._conn = conn
+        self._clock = clock
 
     def neighbors(self, person_id: str, depth: int) -> RelationshipSubgraph:
         return self.subgraph([person_id], depth)
 
     def path_between(self, a: str, b: str, max_depth: int) -> RelationshipPath | None:
+        as_of = self._clock.now().date()
         if a == b:
             person = self._person(a, 0)
             return RelationshipPath(people=[person], edges=[]) if person is not None else None
-        row = self._conn.execute(
-            """
-            WITH RECURSIVE paths(current_id, depth, visited, edge_path, person_path) AS (
-                SELECT ?, 0, '|' || ? || '|', '', ?
-                UNION ALL
-                SELECT
-                    CASE WHEN r.subject_id = paths.current_id THEN r.object_id ELSE r.subject_id END,
-                    paths.depth + 1,
-                    paths.visited || CASE
-                        WHEN r.subject_id = paths.current_id THEN r.object_id ELSE r.subject_id
-                    END || '|',
-                    CASE WHEN paths.edge_path = '' THEN r.id ELSE paths.edge_path || ? || r.id END,
-                    paths.person_path || ? || CASE
-                        WHEN r.subject_id = paths.current_id THEN r.object_id ELSE r.subject_id
-                    END
-                FROM paths
-                JOIN relationships r
-                  ON r.subject_id = paths.current_id OR r.object_id = paths.current_id
-                JOIN persons subject ON subject.id = r.subject_id AND subject.deleted_at IS NULL
-                JOIN persons object ON object.id = r.object_id AND object.deleted_at IS NULL
-                WHERE paths.depth < ?
-                  AND (r.valid_to IS NULL OR r.valid_to >= ?)
-                  AND instr(
-                      paths.visited,
-                      '|' || CASE
-                          WHEN r.subject_id = paths.current_id THEN r.object_id ELSE r.subject_id
-                      END || '|'
-                  ) = 0
-            )
-            SELECT edge_path, person_path
-            FROM paths
-            WHERE current_id = ?
-            ORDER BY depth, edge_path
-            LIMIT 1
-            """,
-            (a, a, a, _SEPARATOR, _SEPARATOR, max_depth, date.today().isoformat(), b),
-        ).fetchone()
-        if row is None:
+        if self._person(a, 0) is None or self._person(b, 0) is None:
             return None
-        person_ids = row["person_path"].split(_SEPARATOR)
-        edge_ids = row["edge_path"].split(_SEPARATOR) if row["edge_path"] else []
-        people = [self._person(person_id, index) for index, person_id in enumerate(person_ids)]
-        if any(person is None for person in people):
-            return None
-        edges = [self._edge(edge_id) for edge_id in edge_ids]
-        if any(edge is None for edge in edges):
-            return None
-        return RelationshipPath(
-            people=[person for person in people if person is not None],
-            edges=[edge for edge in edges if edge is not None],
-        )
+
+        frontier = [a]
+        visited = {a}
+        parents: dict[str, tuple[str, str]] = {}
+        for _ in range(max_depth):
+            if not frontier:
+                break
+            adjacency = self._frontier_adjacency(frontier, as_of)
+            next_frontier: list[str] = []
+            for current in frontier:
+                for neighbor, edge_id in adjacency.get(current, []):
+                    if neighbor in visited:
+                        continue
+                    visited.add(neighbor)
+                    parents[neighbor] = (current, edge_id)
+                    if neighbor == b:
+                        return self._hydrate_path(a, b, parents, as_of)
+                    next_frontier.append(neighbor)
+            frontier = next_frontier
+        return None
 
     def subgraph(self, person_ids: list[str], depth: int) -> RelationshipSubgraph:
-        if not person_ids:
-            return RelationshipSubgraph()
+        as_of = self._clock.now().date()
         seeds = sorted(set(person_ids))
-        values = ", ".join("(?, 0, '|' || ? || '|', '')" for _ in seeds)
-        params: list[object] = []
+        nodes: list[GraphPerson] = []
+        frontier: list[str] = []
+        visited: set[str] = set()
         for person_id in seeds:
-            params.extend((person_id, person_id))
-        params.extend((depth, date.today().isoformat()))
-        rows = self._conn.execute(
-            f"""
-            WITH RECURSIVE walk(person_id, depth, visited, path_key) AS (
-                VALUES {values}
-                UNION ALL
-                SELECT
-                    CASE WHEN r.subject_id = walk.person_id THEN r.object_id ELSE r.subject_id END,
-                    walk.depth + 1,
-                    walk.visited || CASE
-                        WHEN r.subject_id = walk.person_id THEN r.object_id ELSE r.subject_id
-                    END || '|',
-                    CASE WHEN walk.path_key = '' THEN r.id ELSE walk.path_key || '/' || r.id END
-                FROM walk
-                JOIN relationships r ON r.subject_id = walk.person_id OR r.object_id = walk.person_id
-                JOIN persons subject ON subject.id = r.subject_id AND subject.deleted_at IS NULL
-                JOIN persons object ON object.id = r.object_id AND object.deleted_at IS NULL
-                WHERE walk.depth < ?
-                  AND (r.valid_to IS NULL OR r.valid_to >= ?)
-                  AND instr(
-                      walk.visited,
-                      '|' || CASE
-                          WHEN r.subject_id = walk.person_id THEN r.object_id ELSE r.subject_id
-                      END || '|'
-                  ) = 0
-            ), minimum_depth AS (
-                SELECT person_id, MIN(depth) AS depth
-                FROM walk
-                GROUP BY person_id
-            ), discovered AS (
-                SELECT walk.person_id, walk.depth, MIN(walk.path_key) AS path_key
-                FROM walk
-                JOIN minimum_depth
-                  ON minimum_depth.person_id = walk.person_id AND minimum_depth.depth = walk.depth
-                GROUP BY walk.person_id, walk.depth
-            )
-            SELECT p.id AS person_id, p.canonical_name AS name, p.is_self, discovered.depth
-            FROM discovered
-            JOIN persons p ON p.id = discovered.person_id AND p.deleted_at IS NULL
-            ORDER BY discovered.depth, discovered.path_key, p.id
-            """,  # noqa: S608 - VALUES contains placeholders only
-            params,
-        ).fetchall()
-        nodes = [
-            GraphPerson(
-                person_id=row["person_id"],
-                name=row["name"],
-                is_self=bool(row["is_self"]),
-                depth=row["depth"],
-            )
-            for row in rows
-        ]
+            person = self._person(person_id, 0)
+            if person is None:
+                continue
+            nodes.append(person)
+            frontier.append(person_id)
+            visited.add(person_id)
+        for level in range(1, depth + 1):
+            if not frontier:
+                break
+            adjacency = self._frontier_adjacency(frontier, as_of)
+            next_frontier: list[str] = []
+            for current in frontier:
+                for neighbor, _ in adjacency.get(current, []):
+                    if neighbor in visited:
+                        continue
+                    person = self._person(neighbor, level)
+                    if person is None:
+                        continue
+                    visited.add(neighbor)
+                    next_frontier.append(neighbor)
+                    nodes.append(person)
+            frontier = next_frontier
         if not nodes:
             return RelationshipSubgraph()
-        node_ids = [node.person_id for node in nodes]
+        return RelationshipSubgraph(
+            nodes=nodes,
+            edges=self._edges_within([node.person_id for node in nodes], as_of),
+        )
+
+    def _frontier_adjacency(self, frontier: list[str], as_of: date) -> dict[str, list[tuple[str, str]]]:
+        if not frontier:
+            return {}
+        placeholders = ", ".join("?" for _ in frontier)
+        rows = self._conn.execute(
+            f"""
+            SELECT r.id, r.subject_id, r.object_id
+            FROM relationships r
+            JOIN persons subject ON subject.id = r.subject_id AND subject.deleted_at IS NULL
+            JOIN persons object ON object.id = r.object_id AND object.deleted_at IS NULL
+            WHERE (r.subject_id IN ({placeholders}) OR r.object_id IN ({placeholders}))
+              AND (r.valid_from IS NULL OR r.valid_from <= ?)
+              AND (r.valid_to IS NULL OR r.valid_to >= ?)
+            ORDER BY r.id
+            """,  # noqa: S608 - placeholders are generated; all values remain bound
+            [*frontier, *frontier, as_of.isoformat(), as_of.isoformat()],
+        ).fetchall()
+        frontier_set = set(frontier)
+        adjacency: dict[str, list[tuple[str, str]]] = {person_id: [] for person_id in frontier}
+        for row in rows:
+            if row["subject_id"] in frontier_set:
+                adjacency[row["subject_id"]].append((row["object_id"], row["id"]))
+            if row["object_id"] in frontier_set:
+                adjacency[row["object_id"]].append((row["subject_id"], row["id"]))
+        return adjacency
+
+    def _edges_within(self, node_ids: list[str], as_of: date) -> list[GraphRelationship]:
         placeholders = ", ".join("?" for _ in node_ids)
-        edge_rows = self._conn.execute(
+        rows = self._conn.execute(
             f"""
             SELECT r.id, r.subject_id, r.object_id, r.type, r.label,
                    COALESCE(rt.category, 'uncategorized') AS category
@@ -154,14 +126,41 @@ class SqliteGraphReader:
             LEFT JOIN relationship_types rt ON rt.type = r.type
             WHERE r.subject_id IN ({placeholders})
               AND r.object_id IN ({placeholders})
+              AND (r.valid_from IS NULL OR r.valid_from <= ?)
               AND (r.valid_to IS NULL OR r.valid_to >= ?)
             ORDER BY r.id
-            """,  # noqa: S608 - placeholders are generated, values remain bound
-            [*node_ids, *node_ids, date.today().isoformat()],
+            """,  # noqa: S608 - placeholders are generated; all values remain bound
+            [*node_ids, *node_ids, as_of.isoformat(), as_of.isoformat()],
         ).fetchall()
-        return RelationshipSubgraph(
-            nodes=nodes,
-            edges=[_graph_edge(row) for row in edge_rows],
+        return [_graph_edge(row) for row in rows]
+
+    def _hydrate_path(
+        self,
+        start: str,
+        target: str,
+        parents: dict[str, tuple[str, str]],
+        as_of: date,
+    ) -> RelationshipPath | None:
+        person_ids = [target]
+        edge_ids: list[str] = []
+        current = target
+        while current != start:
+            parent = parents.get(current)
+            if parent is None:
+                return None
+            previous, edge_id = parent
+            person_ids.append(previous)
+            edge_ids.append(edge_id)
+            current = previous
+        person_ids.reverse()
+        edge_ids.reverse()
+        people = [self._person(person_id, index) for index, person_id in enumerate(person_ids)]
+        edges = [self._edge(edge_id, as_of) for edge_id in edge_ids]
+        if any(person is None for person in people) or any(edge is None for edge in edges):
+            return None
+        return RelationshipPath(
+            people=[person for person in people if person is not None],
+            edges=[edge for edge in edges if edge is not None],
         )
 
     def _person(self, person_id: str, depth: int) -> GraphPerson | None:
@@ -178,7 +177,7 @@ class SqliteGraphReader:
             depth=depth,
         )
 
-    def _edge(self, edge_id: str) -> GraphRelationship | None:
+    def _edge(self, edge_id: str, as_of: date) -> GraphRelationship | None:
         row = self._conn.execute(
             """
             SELECT r.id, r.subject_id, r.object_id, r.type, r.label,
@@ -187,9 +186,11 @@ class SqliteGraphReader:
             JOIN persons subject ON subject.id = r.subject_id AND subject.deleted_at IS NULL
             JOIN persons object ON object.id = r.object_id AND object.deleted_at IS NULL
             LEFT JOIN relationship_types rt ON rt.type = r.type
-            WHERE r.id = ? AND (r.valid_to IS NULL OR r.valid_to >= ?)
+            WHERE r.id = ?
+              AND (r.valid_from IS NULL OR r.valid_from <= ?)
+              AND (r.valid_to IS NULL OR r.valid_to >= ?)
             """,
-            (edge_id, date.today().isoformat()),
+            (edge_id, as_of.isoformat(), as_of.isoformat()),
         ).fetchone()
         return _graph_edge(row) if row is not None else None
 

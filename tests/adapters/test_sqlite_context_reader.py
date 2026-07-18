@@ -67,7 +67,7 @@ def test_hydrates_every_context_type_with_joins_directions_and_filters() -> None
                     report.id,
                     "mentor_of",
                     None,
-                    "2026-01-01",
+                    "2025-01-01",
                     None,
                     1.0,
                     "test",
