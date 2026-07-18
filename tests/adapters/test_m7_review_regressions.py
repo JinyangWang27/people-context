@@ -26,7 +26,15 @@ from people_context.app import (
 )
 from people_context.domain.person import Person
 from people_context.domain.vault import VaultPerson, VaultSnapshot
-from tests.app.fakes import FakeClock
+
+
+class FakeClock:
+    def __init__(self, now: datetime) -> None:
+        self._now = now
+
+    def now(self) -> datetime:
+        return self._now
+
 
 _NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 _CLOCK = FakeClock(_NOW)
@@ -280,11 +288,10 @@ def test_valid_from_bounds_and_injected_clocks_control_all_active_reads() -> Non
     assert store.find_active_relationship(a.id, b.id, "friend_of", date(2026, 1, 1)) is None
     assert context.list_active_relationships(a.id, date(2026, 1, 1)) == []
     assert context.list_active_affiliations(a.id, date(2026, 1, 1)) == []
-    present_nodes = SqliteGraphReader(conn, present_clock).neighbors(a.id, 1).nodes
-    assert [node.person_id for node in present_nodes] == [a.id]
+    assert [node.person_id for node in SqliteGraphReader(conn, present_clock).neighbors(a.id, 1).nodes] == [a.id]
     present_vault = next(
         person for person in SqliteVaultReader(conn, present_clock).read_vault().people if person.id == a.id
-    )
+     )
     assert present_vault.relationships == []
     assert present_vault.affiliations == []
 
