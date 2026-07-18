@@ -40,6 +40,8 @@ from people_context.adapters.sqlite import (
     SqlitePeopleRepository,
     SqlitePreferencesStore,
     SqliteRecordStore,
+    SqliteRelationshipStore,
+    SqliteRelationshipVocabularyStore,
     SqliteSemanticEntityReader,
     SqliteSemanticMetadataReader,
     open_db,
@@ -157,6 +159,8 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     repository = SqlitePeopleRepository(conn)
     context_reader = SqliteContextReader(conn)
     record_store = SqliteRecordStore(conn)
+    relationship_store = SqliteRelationshipStore(conn)
+    relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
     organization_store = SqliteOrganizationStore(conn)
     preferences_store = SqlitePreferencesStore(conn)
     audit = SqliteAuditLog(conn)
@@ -195,7 +199,13 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
         ),
         remember_person=remember_person,
         add_alias=AddAlias(repository, repository, audit, clock),
-        set_relationship=SetRelationship(repository, record_store, audit, clock),
+        set_relationship=SetRelationship(
+            repository,
+            relationship_store,
+            audit,
+            clock,
+            relationship_vocabulary,
+        ),
         set_affiliation=SetAffiliation(repository, organization_store, record_store, audit, clock),
         record_fact=RecordFact(repository, record_store, audit, clock),
         record_observation=RecordObservation(repository, record_store, audit, clock),

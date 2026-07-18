@@ -10,11 +10,12 @@ from people_context.ports.context import AffiliationRecord, RelationshipRecord
 
 
 class PersonRelationshipContext(BaseModel):
-    """A relationship plus the other endpoint's id and display name."""
+    """A relationship plus the other endpoint and perspective-rendered type."""
 
     relationship: Relationship
     other_person_id: str
     other_person_name: str
+    display_type: str
 
 
 class PersonAffiliationContext(BaseModel):
@@ -30,6 +31,7 @@ def relationship_context(record: RelationshipRecord) -> PersonRelationshipContex
         relationship=record.relationship,
         other_person_id=record.other_person_id,
         other_person_name=record.other_person_name,
+        display_type=record.display_type or record.relationship.type,
     )
 
 

@@ -29,6 +29,8 @@ from people_context.adapters.sqlite import (
     SqliteLifecycleStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
+    SqliteRelationshipStore,
+    SqliteRelationshipVocabularyStore,
     SqliteSemanticDocumentReader,
     create_sqlite_vector_index,
     open_db,
@@ -36,16 +38,20 @@ from people_context.adapters.sqlite import (
 from people_context.app import (
     AddAlias,
     AddAliasInput,
+    AddRelationshipType,
+    AddRelationshipTypeInput,
     EditPerson,
     EditPersonInput,
     ExportData,
     Forget,
     GetPersonContext,
+    NormalizeRelationships,
     PersonContextResult,
     PersonNameCollisionError,
     PreviewForget,
     ReindexPeople,
     ReindexSemantic,
+    RelationshipTypeAlreadyExistsError,
     ResolvePerson,
     SearchPeople,
     SetCommunicationPhilosophy,
@@ -71,6 +77,8 @@ class CliContext:
     audit: SqliteAuditLog
     lifecycle: SqliteLifecycleStore | IndexingLifecycleStore
     preferences: SqlitePreferencesStore
+    relationship_store: SqliteRelationshipStore
+    relationship_vocabulary: SqliteRelationshipVocabularyStore
     changelog: SqliteChangelog | None = None
 
 
@@ -104,6 +112,8 @@ def _open_context(db: str | None) -> CliContext:
         changelog=SqliteChangelog(conn),
         lifecycle=lifecycle,
         preferences=SqlitePreferencesStore(conn),
+        relationship_store=SqliteRelationshipStore(conn),
+        relationship_vocabulary=SqliteRelationshipVocabularyStore(conn),
     )
 
 
@@ -150,6 +160,30 @@ def build_parser() -> argparse.ArgumentParser:
     delete.add_argument("person", help="An active person id, or a name to resolve.")
     delete.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
 
+    relationship_types = subparsers.add_parser(
+        "relationship-types",
+        help="List relationship vocabulary or add a custom type.",
+    )
+    relationship_type_subcommands = relationship_types.add_subparsers(dest="relationship_types_command")
+    relationship_type_add = relationship_type_subcommands.add_parser("add", help="Add custom vocabulary.")
+    relationship_type_add.add_argument("type")
+    relationship_type_add.add_argument("--category", required=True)
+    direction = relationship_type_add.add_mutually_exclusive_group()
+    direction.add_argument("--inverse", default=None)
+    direction.add_argument("--symmetric", action="store_true")
+    relationship_type_add.add_argument(
+        "--synonym",
+        action="append",
+        default=[],
+        help="Additional synonym; repeat for multiple values.",
+    )
+
+    normalize_relationships = subparsers.add_parser(
+        "normalize-relationships",
+        help="Preview or apply canonical rewrites to existing relationships.",
+    )
+    normalize_relationships.add_argument("--apply", action="store_true", help="Execute the reported rewrites.")
+
     sync_log = subparsers.add_parser("sync-log", help="Inspect the local replayable changelog.")
     sync_log.add_argument("--limit", type=int, default=50, help="Maximum number of recent entries.")
     sync_log.add_argument("--entity", default=None, help="Filter by exact entity id.")
@@ -195,6 +229,10 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_set(ctx, args)
         if args.command == "delete":
             return _cmd_delete(ctx, args)
+        if args.command == "relationship-types":
+            return _cmd_relationship_types(ctx, args)
+        if args.command == "normalize-relationships":
+            return _cmd_normalize_relationships(ctx, args)
         if args.command == "sync-log":
             return _cmd_sync_log(ctx, args)
         if args.command == "reindex":
@@ -279,7 +317,7 @@ def _print_context(context: PersonContextResult) -> None:
     _print_section(
         "relationships",
         [
-            f"{record.relationship.type}: {record.other_person_name} ({record.other_person_id})"
+            f"{record.display_type}: {record.other_person_name} ({record.other_person_id})"
             + (f" — {record.relationship.label}" if record.relationship.label else "")
             for record in context.relationships
         ],
@@ -399,6 +437,78 @@ def _cmd_delete(ctx: CliContext, args: argparse.Namespace) -> int:
         return 0
     Forget(ctx.repo, ctx.lifecycle, ctx.clock, ctx.audit).execute(person.id, "person")
     print("Deleted.")
+    return 0
+
+
+def _cmd_relationship_types(ctx: CliContext, args: argparse.Namespace) -> int:
+    if args.relationship_types_command == "add":
+        try:
+            rows = AddRelationshipType(
+                ctx.relationship_vocabulary,
+                ctx.relationship_vocabulary,
+                ctx.audit,
+                ctx.clock,
+            ).execute(
+                AddRelationshipTypeInput(
+                    type=args.type,
+                    category=args.category,
+                    inverse=args.inverse,
+                    symmetric=args.symmetric,
+                    synonyms=args.synonym,
+                )
+            )
+        except (RelationshipTypeAlreadyExistsError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print("Added relationship vocabulary: " + ", ".join(row.type for row in rows))
+        return 0
+    rows = ctx.relationship_vocabulary.list_types()
+    _print_table(
+        ["TYPE", "INVERSE", "SYMMETRIC", "CATEGORY", "CANONICAL", "SYNONYMS"],
+        [
+            (
+                row.type,
+                row.inverse or "-",
+                "yes" if row.symmetric else "no",
+                row.category,
+                "yes" if row.canonical else "no",
+                ", ".join(row.synonyms) or "-",
+            )
+            for row in rows
+        ],
+    )
+    print("\nUncategorized types in use:")
+    uncategorized = ctx.relationship_vocabulary.list_uncategorized_types()
+    if not uncategorized:
+        print("  (none)")
+    else:
+        for type_name in uncategorized:
+            print(f"  - {type_name}")
+    return 0
+
+
+def _cmd_normalize_relationships(ctx: CliContext, args: argparse.Namespace) -> int:
+    result = NormalizeRelationships(
+        ctx.relationship_store,
+        ctx.relationship_vocabulary,
+        ctx.audit,
+        ctx.clock,
+    ).execute(apply=args.apply)
+    if not result.changes:
+        print("No relationship normalization changes.")
+        return 0
+    print("Applied relationship normalization:" if result.applied else "Dry run; relationship normalization would:")
+    for change in result.changes:
+        if change.action == "update" and change.after is not None:
+            print(
+                f"  update {change.relationship_id}: "
+                f"{change.before.subject_id} {change.before.type} {change.before.object_id} -> "
+                f"{change.after.subject_id} {change.after.type} {change.after.object_id}"
+            )
+        else:
+            print(f"  merge {change.relationship_id} into {change.merged_into}")
+    if not result.applied:
+        print("Run again with --apply to execute these audited rewrites.")
     return 0
 
 

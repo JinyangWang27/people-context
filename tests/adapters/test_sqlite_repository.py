@@ -19,6 +19,8 @@ _EXPECTED_TABLES = {
     "organizations",
     "affiliations",
     "relationships",
+    "relationship_types",
+    "relationship_type_synonyms",
     "facts",
     "observations",
     "traits",
@@ -51,7 +53,7 @@ def _person(**overrides: object) -> Person:
 
 def test_fresh_db_has_user_version_and_all_tables() -> None:
     conn = open_db(":memory:")
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     names = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert names >= _EXPECTED_TABLES
 
@@ -60,7 +62,7 @@ def test_reopening_db_is_idempotent(tmp_path: Path) -> None:
     db_file = tmp_path / "nested" / "people.db"
     open_db(db_file).close()
     conn = open_db(db_file)  # parent dirs already created; migrations already applied
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
     assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
 
 
@@ -167,7 +169,6 @@ def test_search_excludes_deleted_and_scores_bounded() -> None:
 
 def test_search_dedupes_keeping_single_hit_per_person() -> None:
     repo = SqlitePeopleRepository(open_db(":memory:"))
-    # "ming" matches both the canonical token and the alias value of the same person.
     person = _person(canonical_name="Ming Zhao", aliases=[Alias(value="Ming", kind=AliasKind.NICKNAME)])
     repo.save_person(person)
 
@@ -193,7 +194,6 @@ def test_search_falls_back_to_substring() -> None:
     person = _person(canonical_name="Alexandra", aliases=[])
     repo.save_person(person)
 
-    # "xand" is not a token prefix, so FTS misses and the LIKE fallback matches.
     hits = repo.search_names("xand")
     assert [h.person.id for h in hits] == [person.id]
     assert 0.0 < hits[0].score <= 1.0

@@ -17,11 +17,12 @@ from people_context.domain.trait import Trait
 
 @dataclass(frozen=True)
 class RelationshipRecord:
-    """A relationship hydrated with the other endpoint's identity."""
+    """A relationship hydrated with the other endpoint's identity and perspective type."""
 
     relationship: Relationship
     other_person_id: str
     other_person_name: str
+    display_type: str | None = None
 
 
 @dataclass(frozen=True)
