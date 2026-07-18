@@ -1,6 +1,12 @@
 # people-context-mcp
 
+[![CI](https://github.com/JinyangWang27/people-context-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JinyangWang27/people-context-mcp/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JinyangWang27/people-context-mcp/graph/badge.svg)](https://codecov.io/gh/JinyangWang27/people-context-mcp)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JinyangWang27/people-context-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/JinyangWang27/people-context-mcp)
+[![PyPI](https://img.shields.io/pypi/v/people-context-mcp)](https://pypi.org/project/people-context-mcp/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/people-context-mcp)](https://pypi.org/project/people-context-mcp/)
+[![Python](https://img.shields.io/pypi/pyversions/people-context-mcp)](https://pypi.org/project/people-context-mcp/)
+[![License](https://img.shields.io/github/license/JinyangWang27/people-context-mcp)](https://github.com/JinyangWang27/people-context-mcp/blob/main/LICENSE)
 
 A local-first [MCP](https://modelcontextprotocol.io) server that gives AI coding agents and personal agent
 systems durable, user-owned context about the people they mention.
