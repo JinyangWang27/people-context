@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 
-from people_context.domain.shared import new_id
+from people_context.domain.shared import new_id, normalize_name
 
 _MIGRATIONS_PACKAGE = "people_context.adapters.sqlite.migrations"
 _LEADING_NUMBER = re.compile(r"^(\d+)")
@@ -38,6 +38,9 @@ def open_db(path: str | Path) -> sqlite3.Connection:
     # Wait for concurrent writers (e.g. CLI beside a running server) instead of
     # failing immediately with "database is locked".
     conn.execute("PRAGMA busy_timeout=5000")
+    # Domain name normalization exposed to migration SQL for backfilling
+    # normalized columns (e.g. migration 004).
+    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
     _run_migrations(conn)
     _ensure_local_device(conn)
     return conn

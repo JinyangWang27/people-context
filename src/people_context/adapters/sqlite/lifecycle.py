@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Callable
+from datetime import date
 
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.changelog import SqliteChangelog
@@ -12,7 +13,7 @@ from people_context.adapters.sqlite.record_store import SqliteRecordStore
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.person import Person
-from people_context.domain.shared import normalize_name
+from people_context.domain.shared import ValidityPeriod, normalize_name
 from people_context.ports.lifecycle import (
     AffectedEntity,
     ForgetStoreResult,
@@ -88,8 +89,11 @@ class SqliteLifecycleStore:
                 )
                 for entity_type, table in _LINKED_TABLES.items()
             }
-            relationships, self_loops = self._merge_relationships(primary.id, duplicate_id)
-            counts["relationships"] = relationships
+            moved_edge_ids, self_loops = self._merge_relationships(primary.id, duplicate_id)
+            counts["relationships"] = len(moved_edge_ids)
+            self._recanonicalize_symmetric(moved_edge_ids)
+            deduped = self._dedupe_relationships(primary.id, primary.updated_at.date(), moved_edge_ids)
+            counts["duplicate_relationships_removed"] = len(deduped)
             counts["interaction_participations"] = self._merge_participations(primary.id, duplicate_id)
             counts["self_loops_removed"] = self_loops
             self._conn.execute(
@@ -107,6 +111,7 @@ class SqliteLifecycleStore:
                 participation_ids,
                 people,
                 records,
+                deduped,
             )
             manifest = {
                 "primary_id": primary.id,
@@ -123,6 +128,9 @@ class SqliteLifecycleStore:
                 ],
                 "removed_relationship_ids": [
                     row["id"] for row in relationship_rows if records.get_record("relationship", row["id"]) is None
+                ],
+                "deduped_relationships": [
+                    {"id": removed_id, "merged_into": keeper_id} for removed_id, keeper_id in deduped
                 ],
                 "duplicate_tombstone": (people.get(duplicate_id) or primary).model_dump(mode="json"),
             }
@@ -298,6 +306,7 @@ class SqliteLifecycleStore:
         participation_ids: list[str],
         people: SqlitePeopleRepository,
         records: SqliteRecordStore,
+        deduped: list[tuple[str, str]],
     ) -> list[LifecycleChange]:
         changes: list[LifecycleChange] = []
         primary_payload = primary.model_dump(mode="json")
@@ -337,7 +346,20 @@ class SqliteLifecycleStore:
                             changed_fields=["person_id"],
                         )
                     )
+        deduped_keepers = {removed_id: keeper_id for removed_id, keeper_id in deduped}
+        for removed_id, keeper_id in deduped:
+            changes.append(
+                LifecycleChange(
+                    entity_type="relationship",
+                    entity_id=removed_id,
+                    op_kind="delete",
+                    payload={"id": removed_id, "deleted": True, "merged_into": keeper_id},
+                    changed_fields=["deleted"],
+                )
+            )
         for row in relationship_rows:
+            if row["id"] in deduped_keepers:
+                continue
             record = records.get_record("relationship", row["id"])
             if record is None:
                 changes.append(
@@ -427,7 +449,78 @@ class SqliteLifecycleStore:
         )
         return cursor.rowcount
 
-    def _merge_relationships(self, primary_id: str, duplicate_id: str) -> tuple[int, int]:
+    def _recanonicalize_symmetric(self, moved_edge_ids: list[str]) -> None:
+        """Restore ID-ordered endpoints on re-parented symmetric edges.
+
+        Raw re-parenting can leave a symmetric edge with subject > object, which
+        the exact-direction active-edge lookup would then miss, letting a later
+        assertion insert a parallel duplicate.
+        """
+        if not moved_edge_ids:
+            return
+        placeholders = ", ".join("?" for _ in moved_edge_ids)
+        rows = self._conn.execute(
+            f"""SELECT r.id, r.subject_id, r.object_id
+                FROM relationships r
+                JOIN relationship_types rt ON rt.type = r.type AND rt.symmetric = 1
+                WHERE r.id IN ({placeholders}) AND r.subject_id > r.object_id""",  # noqa: S608 - bound placeholders
+            moved_edge_ids,
+        ).fetchall()
+        self._conn.executemany(
+            "UPDATE relationships SET subject_id = ?, object_id = ? WHERE id = ?",
+            [(row["object_id"], row["subject_id"], row["id"]) for row in rows],
+        )
+
+    def _dedupe_relationships(self, primary_id: str, as_of: date, moved_edge_ids: list[str]) -> list[tuple[str, str]]:
+        """Remove same-type overlapping-period edges left parallel by re-parenting.
+
+        Mirrors the normalize-relationships policy: the kept edge is the active one
+        as of the merge, then the oldest; symmetric types match either direction.
+        Only collisions involving an edge moved from the duplicate are collapsed —
+        pre-existing parallel edges between the primary and a third person are the
+        business of normalize-relationships, not merge. Disjoint-period history is
+        never collapsed.
+        """
+        moved = set(moved_edge_ids)
+        if not moved:
+            return []
+        symmetric_types = {
+            row["type"]
+            for row in self._conn.execute("SELECT type FROM relationship_types WHERE symmetric = 1").fetchall()
+        }
+        rows = self._conn.execute(
+            """SELECT id, subject_id, object_id, type, valid_from, valid_to, created_at
+               FROM relationships WHERE subject_id = ? OR object_id = ?""",
+            (primary_id, primary_id),
+        ).fetchall()
+
+        def period(row: sqlite3.Row) -> ValidityPeriod:
+            return ValidityPeriod(
+                valid_from=date.fromisoformat(row["valid_from"]) if row["valid_from"] else None,
+                valid_to=date.fromisoformat(row["valid_to"]) if row["valid_to"] else None,
+            )
+
+        ordered = sorted(rows, key=lambda row: (not period(row).contains(as_of), row["created_at"], row["id"]))
+        keepers: dict[tuple[str, str, str], list[sqlite3.Row]] = {}
+        removed: list[tuple[str, str]] = []
+        for row in ordered:
+            endpoints = (row["subject_id"], row["object_id"])
+            if row["type"] in symmetric_types:
+                endpoints = tuple(sorted(endpoints))
+            group = keepers.setdefault((row["type"], *endpoints), [])
+            keeper = next((candidate for candidate in group if period(candidate).overlaps(period(row))), None)
+            if keeper is None or (row["id"] not in moved and keeper["id"] not in moved):
+                group.append(row)
+                continue
+            removed.append((row["id"], keeper["id"]))
+        if removed:
+            self._conn.executemany(
+                "DELETE FROM relationships WHERE id = ?",
+                [(removed_id,) for removed_id, _ in removed],
+            )
+        return removed
+
+    def _merge_relationships(self, primary_id: str, duplicate_id: str) -> tuple[list[str], int]:
         loop_cursor = self._conn.execute(
             """DELETE FROM relationships
                WHERE (subject_id = ? AND object_id IN (?, ?))
@@ -435,12 +528,12 @@ class SqliteLifecycleStore:
             (duplicate_id, primary_id, duplicate_id, duplicate_id, primary_id, duplicate_id),
         )
         rows = self._conn.execute(
-            "SELECT id FROM relationships WHERE subject_id = ? OR object_id = ?",
+            "SELECT id FROM relationships WHERE subject_id = ? OR object_id = ? ORDER BY id",
             (duplicate_id, duplicate_id),
         ).fetchall()
         self._conn.execute("UPDATE relationships SET subject_id = ? WHERE subject_id = ?", (primary_id, duplicate_id))
         self._conn.execute("UPDATE relationships SET object_id = ? WHERE object_id = ?", (primary_id, duplicate_id))
-        return len(rows), loop_cursor.rowcount
+        return [row["id"] for row in rows], loop_cursor.rowcount
 
     def _merge_participations(self, primary_id: str, duplicate_id: str) -> int:
         rows = self._conn.execute(

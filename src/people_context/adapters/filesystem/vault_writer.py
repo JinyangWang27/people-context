@@ -21,7 +21,21 @@ from people_context.ports.vault import VaultSafetyError
 
 MARKER_FILE = ".people-context-vault"
 _MARKER_CONTENT = "people-context vault v1\n"
-_ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+# Cross-platform illegal path characters plus the characters Obsidian forbids in
+# note names because they would break [[wikilink]] targets: [ ] # ^ |.
+_ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f\[\]#^]')
+# Windows reserves these device names as the component before the first period,
+# regardless of extension (NUL.txt is NUL); superscript digits count too.
+_WINDOWS_RESERVED = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{digit}" for digit in "123456789¹²³"),
+        *(f"LPT{digit}" for digit in "123456789¹²³"),
+    }
+)
 
 
 class FileSystemVaultWriter:
@@ -81,10 +95,13 @@ class FileSystemVaultWriter:
 
 
 def sanitize_filename(value: str) -> str:
-    """Preserve Unicode names while replacing cross-platform illegal path characters."""
+    """Preserve Unicode names while replacing illegal path and wikilink-breaking characters."""
     normalized = unicodedata.normalize("NFC", value)
     sanitized = _ILLEGAL_FILENAME.sub("_", normalized).strip()
     sanitized = sanitized.lstrip(".").rstrip(" .")
+    stem, separator, rest = sanitized.partition(".")
+    if stem.upper() in _WINDOWS_RESERVED:
+        sanitized = f"{stem}_{separator}{rest}"
     return sanitized or "unnamed"
 
 

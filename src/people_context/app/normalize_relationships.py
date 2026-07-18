@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from pydantic import BaseModel, Field
 
 from people_context.app.relationship_policy import normalize_relationship
 from people_context.app.write_support import audit_mutation, snapshot, transactional, unit_of_work_for
 from people_context.domain.relationship import Relationship
-from people_context.domain.shared import ValidityPeriod
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.relationship_vocabulary import RelationshipStore, RelationshipVocabularyReader
@@ -58,7 +55,7 @@ class NormalizeRelationships:
         today = self._clock.now().date()
         rows = sorted(
             self._store.list_relationships(),
-            key=lambda row: (not _is_active(row.period, today), row.created_at, row.id),
+            key=lambda row: (not row.period.contains(today), row.created_at, row.id),
         )
         keepers: dict[tuple[str, str, str], list[Relationship]] = {}
         changes: list[RelationshipNormalizationChange] = []
@@ -74,7 +71,7 @@ class NormalizeRelationships:
             key = (after.subject_id, after.object_id, after.type)
             matching_keepers = keepers.setdefault(key, [])
             keeper = next(
-                (candidate for candidate in matching_keepers if _periods_overlap(candidate.period, after.period)),
+                (candidate for candidate in matching_keepers if candidate.period.overlaps(after.period)),
                 None,
             )
             if keeper is not None:
@@ -129,16 +126,3 @@ class NormalizeRelationships:
                     source=source,
                 )
 
-
-def _periods_overlap(left: ValidityPeriod, right: ValidityPeriod) -> bool:
-    left_start = left.valid_from or date.min
-    right_start = right.valid_from or date.min
-    left_end = left.valid_to or date.max
-    right_end = right.valid_to or date.max
-    return max(left_start, right_start) <= min(left_end, right_end)
-
-
-def _is_active(period: ValidityPeriod, as_of: date) -> bool:
-    return (period.valid_from is None or period.valid_from <= as_of) and (
-        period.valid_to is None or period.valid_to >= as_of
-    )

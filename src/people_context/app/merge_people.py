@@ -45,6 +45,7 @@ class MergePeopleResult(BaseModel):
     person: Person
     moved: MergeMovedCounts
     self_loops_removed: int
+    duplicate_relationships_removed: int = 0
 
 
 class MergePeople:
@@ -90,12 +91,14 @@ class MergePeople:
                 transaction_id=transaction_id,
                 source=source,
             )
-        moved_payload = {key: value for key, value in counts.items() if key != "self_loops_removed"}
+        summary_keys = {"self_loops_removed", "duplicate_relationships_removed"}
+        moved_payload = {key: value for key, value in counts.items() if key not in summary_keys}
         audit_payload = {
             "duplicate_id": duplicate.id,
             "aliases_added": aliases_added,
             "moved": moved_payload,
             "self_loops_removed": counts["self_loops_removed"],
+            "duplicate_relationships_removed": counts.get("duplicate_relationships_removed", 0),
         }
         audit_mutation(
             self._audit,
@@ -110,7 +113,12 @@ class MergePeople:
             source=source,
         )
         moved = MergeMovedCounts.model_validate(moved_payload)
-        return MergePeopleResult(person=primary, moved=moved, self_loops_removed=counts["self_loops_removed"])
+        return MergePeopleResult(
+            person=primary,
+            moved=moved,
+            self_loops_removed=counts["self_loops_removed"],
+            duplicate_relationships_removed=counts.get("duplicate_relationships_removed", 0),
+        )
 
     @staticmethod
     def _merge_identity(primary: Person, duplicate: Person) -> list[str]:

@@ -16,8 +16,10 @@ request needs.
 
 **M7 — relationship graph & vault export delivered.** Relationship types are data-backed and canonicalized,
 relationship reads add perspective `display_type`, two bounded read-only graph tools are available, and the CLI
-can generate a deterministic marker-owned Obsidian vault. Existing tool fields, resolution behavior, JSON export
-envelope, and M6 sync capture remain compatible.
+can generate a deterministic marker-owned Obsidian vault. Existing field meanings, resolution behavior, JSON
+export envelope, and M6 sync capture remain compatible. The `merge_people` result intentionally adds the
+`duplicate_relationships_removed` field, reporting how many overlapping relationship edges were collapsed;
+callers that ignore unknown response fields require no changes.
 
 ## Features
 

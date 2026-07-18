@@ -43,6 +43,18 @@ class ValidityPeriod(BaseModel):
             raise ValueError("valid_from must be <= valid_to")
         return self
 
+    def overlaps(self, other: ValidityPeriod) -> bool:
+        """Return whether two periods share at least one day (open bounds are unbounded)."""
+        start = max(self.valid_from or date.min, other.valid_from or date.min)
+        end = min(self.valid_to or date.max, other.valid_to or date.max)
+        return start <= end
+
+    def contains(self, as_of: date) -> bool:
+        """Return whether ``as_of`` falls inside this period (open bounds are unbounded)."""
+        return (self.valid_from is None or self.valid_from <= as_of) and (
+            self.valid_to is None or self.valid_to >= as_of
+        )
+
 
 def new_id() -> str:
     """Return a fresh ULID string (26-char Crockford, sortable)."""
