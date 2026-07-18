@@ -34,6 +34,7 @@ from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteContextReader,
     SqliteExportReader,
+    SqliteGraphReader,
     SqliteImportStagingStore,
     SqliteLifecycleStore,
     SqliteOrganizationStore,
@@ -55,9 +56,11 @@ from people_context.app import (
     CompleteReminder,
     CorrectRecord,
     ExportData,
+    FindConnection,
     Forget,
     GetCommunicationGuidance,
     GetPersonContext,
+    GetRelationshipGraph,
     ImportContent,
     ListReminders,
     MergePeople,
@@ -102,6 +105,8 @@ class ToolDeps:
 
     resolve_person: ResolvePerson
     get_person_context: GetPersonContext
+    get_relationship_graph: GetRelationshipGraph
+    find_connection: FindConnection
     search_people: SearchPeople
     semantic_search: SemanticSearch
     remember_person: RememberPerson
@@ -158,6 +163,7 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     conn = open_db(path)
     repository = SqlitePeopleRepository(conn)
     context_reader = SqliteContextReader(conn)
+    graph_reader = SqliteGraphReader(conn)
     record_store = SqliteRecordStore(conn)
     relationship_store = SqliteRelationshipStore(conn)
     relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
@@ -188,6 +194,8 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     deps = ToolDeps(
         resolve_person=ResolvePerson(repository, context_reader, clock),
         get_person_context=GetPersonContext(repository, context_reader, clock),
+        get_relationship_graph=GetRelationshipGraph(repository, graph_reader),
+        find_connection=FindConnection(repository, graph_reader, relationship_vocabulary),
         search_people=SearchPeople(repository),
         semantic_search=SemanticSearch(
             SqliteSemanticMetadataReader(conn),

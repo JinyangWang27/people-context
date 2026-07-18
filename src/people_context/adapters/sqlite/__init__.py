@@ -7,6 +7,7 @@ from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.db import open_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
+from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
 from people_context.adapters.sqlite.hlc import SqliteHybridLogicalClock
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
 from people_context.adapters.sqlite.lifecycle import SqliteLifecycleStore
@@ -34,6 +35,7 @@ __all__ = [
     "SqliteChangelog",
     "SqliteContextReader",
     "SqliteExportReader",
+    "SqliteGraphReader",
     "SqliteHybridLogicalClock",
     "SqliteImportStagingStore",
     "SqliteLifecycleStore",

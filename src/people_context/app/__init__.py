@@ -59,6 +59,18 @@ from people_context.app.record_observation import RecordObservation, RecordObser
 from people_context.app.record_trait import RecordTrait, RecordTraitInput
 from people_context.app.reindex_people import ReindexPeople, ReindexPeopleResult
 from people_context.app.reindex_semantic import ReindexSemantic, ReindexSemanticResult
+from people_context.app.relationship_graph import (
+    ConnectionEdgeResult,
+    ConnectionHop,
+    ConnectionResult,
+    FindConnection,
+    GetRelationshipGraph,
+    GraphEdgeResult,
+    GraphPersonNotFound,
+    GraphPersonResult,
+    GraphTraversalError,
+    RelationshipGraphResult,
+)
 from people_context.app.resolve_person import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
 from people_context.app.search_people import SearchPeople
 from people_context.app.semantic_search import (
@@ -98,6 +110,9 @@ __all__ = [
     "CommitImport",
     "CommitImportResult",
     "CommunicationGuidanceResult",
+    "ConnectionEdgeResult",
+    "ConnectionHop",
+    "ConnectionResult",
     "CompleteReminder",
     "CompleteReminderInput",
     "CorrectRecord",
@@ -110,9 +125,15 @@ __all__ = [
     "Forget",
     "ForgetError",
     "ForgetPreview",
+    "FindConnection",
     "ForgetResult",
     "GetCommunicationGuidance",
+    "GetRelationshipGraph",
     "GetPersonContext",
+    "GraphEdgeResult",
+    "GraphPersonNotFound",
+    "GraphPersonResult",
+    "GraphTraversalError",
     "ImportBatchResult",
     "ImportContent",
     "ImportPipelineError",
@@ -151,6 +172,7 @@ __all__ = [
     "ReindexPeopleResult",
     "ReindexSemantic",
     "ReindexSemanticResult",
+    "RelationshipGraphResult",
     "RelationshipNormalizationChange",
     "RelationshipTypeAlreadyExistsError",
     "RememberPerson",
