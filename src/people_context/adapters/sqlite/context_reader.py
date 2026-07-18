@@ -25,16 +25,19 @@ class SqliteContextReader:
     def list_active_relationships(self, person_id: str, as_of: date) -> list[RelationshipRecord]:
         rows = self._conn.execute(
             """
-            SELECT r.*, other.id AS other_person_id, other.canonical_name AS other_person_name
+            SELECT r.*, other.id AS other_person_id, other.canonical_name AS other_person_name,
+                   rt.inverse AS inverse_type, rt.symmetric AS relationship_symmetric
             FROM relationships r
             JOIN persons other
               ON other.id = CASE WHEN r.subject_id = ? THEN r.object_id ELSE r.subject_id END
+            LEFT JOIN relationship_types rt ON rt.type = r.type
             WHERE (r.subject_id = ? OR r.object_id = ?)
+              AND (r.valid_from IS NULL OR r.valid_from <= ?)
               AND (r.valid_to IS NULL OR r.valid_to >= ?)
               AND other.deleted_at IS NULL
             ORDER BY r.created_at DESC, r.id
             """,
-            (person_id, person_id, person_id, as_of.isoformat()),
+            (person_id, person_id, person_id, as_of.isoformat(), as_of.isoformat()),
         ).fetchall()
         return [
             RelationshipRecord(
@@ -51,6 +54,7 @@ class SqliteContextReader:
                 ),
                 other_person_id=row["other_person_id"],
                 other_person_name=row["other_person_name"],
+                display_type=_display_type(row, person_id),
             )
             for row in rows
         ]
@@ -61,10 +65,12 @@ class SqliteContextReader:
             SELECT a.*, o.name AS organization_name
             FROM affiliations a
             JOIN organizations o ON o.id = a.org_id
-            WHERE a.person_id = ? AND (a.valid_to IS NULL OR a.valid_to >= ?)
+            WHERE a.person_id = ?
+              AND (a.valid_from IS NULL OR a.valid_from <= ?)
+              AND (a.valid_to IS NULL OR a.valid_to >= ?)
             ORDER BY a.created_at DESC, a.id
             """,
-            (person_id, as_of.isoformat()),
+            (person_id, as_of.isoformat(), as_of.isoformat()),
         ).fetchall()
         return [
             AffiliationRecord(
@@ -190,6 +196,12 @@ class SqliteContextReader:
             (interaction_id,),
         ).fetchall()
         return [row["person_id"] for row in rows]
+
+
+def _display_type(row: sqlite3.Row, person_id: str) -> str:
+    if row["subject_id"] == person_id or row["relationship_symmetric"] or row["inverse_type"] is None:
+        return row["type"]
+    return row["inverse_type"]
 
 
 def _period(row: sqlite3.Row) -> ValidityPeriod:

@@ -213,9 +213,7 @@ def test_weak_search_candidate_can_be_replaced_by_better_fuzzy_score() -> None:
     repo = FakePeopleRepository()
     person = _person("Alice")
     repo.save_person(person)
-    repo.forced_hits["Alise"] = [
-        SearchHit(person=person, score=-0.1, matched_value="Alice", match_kind="canonical")
-    ]
+    repo.forced_hits["Alise"] = [SearchHit(person=person, score=-0.1, matched_value="Alice", match_kind="canonical")]
 
     result = ResolvePerson(repo).execute("Alise")
 
@@ -355,7 +353,7 @@ def test_sqlite_context_hints_disambiguate_duplicate_names(hints: ResolutionHint
         conn.execute("INSERT INTO organizations (id, name, kind) VALUES ('org-old', 'Old Corp', 'company')")
         affiliation_values = (
             target.id,
-            "2026-01-01",
+            "2025-01-01",
             _TS.isoformat(),
         )
         conn.execute(

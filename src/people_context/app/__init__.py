@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from people_context.app.add_alias import AddAlias, AddAliasInput
+from people_context.app.add_relationship_type import (
+    AddRelationshipType,
+    AddRelationshipTypeInput,
+    RelationshipTypeAlreadyExistsError,
+)
 from people_context.app.complete_reminder import CompleteReminder, CompleteReminderInput
 from people_context.app.correct_record import CorrectRecord, CorrectRecordInput
 from people_context.app.edit_person import EditPerson, EditPersonInput, PersonNameCollisionError
 from people_context.app.export_data import ExportData, ExportDocument
+from people_context.app.export_vault import ExportVault, ExportVaultResult
 from people_context.app.forget import Forget, ForgetError, ForgetPreview, ForgetResult, PreviewForget
 from people_context.app.get_communication_guidance import CommunicationGuidanceResult, GetCommunicationGuidance
 from people_context.app.get_person_context import (
@@ -35,6 +41,11 @@ from people_context.app.import_content import (
 )
 from people_context.app.list_reminders import ListReminders, ListRemindersInput
 from people_context.app.merge_people import MergeMovedCounts, MergePeople, MergePeopleError, MergePeopleResult
+from people_context.app.normalize_relationships import (
+    NormalizeRelationships,
+    NormalizeRelationshipsResult,
+    RelationshipNormalizationChange,
+)
 from people_context.app.record import (
     AliasInput,
     AmbiguousPersonError,
@@ -49,6 +60,18 @@ from people_context.app.record_observation import RecordObservation, RecordObser
 from people_context.app.record_trait import RecordTrait, RecordTraitInput
 from people_context.app.reindex_people import ReindexPeople, ReindexPeopleResult
 from people_context.app.reindex_semantic import ReindexSemantic, ReindexSemanticResult
+from people_context.app.relationship_graph import (
+    ConnectionEdgeResult,
+    ConnectionHop,
+    ConnectionResult,
+    FindConnection,
+    GetRelationshipGraph,
+    GraphEdgeResult,
+    GraphPersonNotFound,
+    GraphPersonResult,
+    GraphTraversalError,
+    RelationshipGraphResult,
+)
 from people_context.app.resolve_person import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
 from people_context.app.search_people import SearchPeople
 from people_context.app.semantic_search import (
@@ -76,53 +99,69 @@ from people_context.app.write_support import (
 )
 
 __all__ = [
-    "AffiliationCandidateInput",
-    "AliasInput",
     "AddAlias",
     "AddAliasInput",
+    "AddRelationshipType",
+    "AddRelationshipTypeInput",
+    "AffiliationCandidateInput",
+    "AliasInput",
     "AmbiguousPersonError",
     "CandidateAlias",
     "CandidateStager",
-    "GetPersonContext",
-    "CommunicationGuidanceResult",
-    "GetCommunicationGuidance",
-    "Forget",
-    "ForgetError",
-    "ForgetPreview",
-    "ForgetResult",
-    "ImportBatchResult",
-    "ImportContent",
-    "ImportPipelineError",
-    "ImportReviewResult",
-    "ImportReviewRow",
-    "InteractionCandidateInput",
-    "ListReminders",
-    "ListRemindersInput",
-    "MergeMovedCounts",
-    "MergePeople",
-    "MergePeopleError",
-    "MergePeopleResult",
-    "CompleteReminder",
-    "CompleteReminderInput",
     "CommitImport",
     "CommitImportResult",
+    "CommunicationGuidanceResult",
+    "ConnectionEdgeResult",
+    "ConnectionHop",
+    "ConnectionResult",
+    "CompleteReminder",
+    "CompleteReminderInput",
     "CorrectRecord",
     "CorrectRecordInput",
     "EditPerson",
     "EditPersonInput",
     "ExportData",
     "ExportDocument",
+    "ExportVault",
+    "ExportVaultResult",
+    "FactCandidateInput",
+    "Forget",
+    "ForgetError",
+    "ForgetPreview",
+    "FindConnection",
+    "ForgetResult",
+    "GetCommunicationGuidance",
+    "GetRelationshipGraph",
+    "GetPersonContext",
+    "GraphEdgeResult",
+    "GraphPersonNotFound",
+    "GraphPersonResult",
+    "GraphTraversalError",
+    "ImportBatchResult",
+    "ImportContent",
+    "ImportPipelineError",
+    "ImportReviewResult",
+    "ImportReviewRow",
+    "InteractionCandidateInput",
     "InvalidCorrectionError",
     "InvalidReminderError",
+    "ListReminders",
+    "ListRemindersInput",
+    "MergeMovedCounts",
+    "MergePeople",
+    "MergePeopleError",
+    "MergePeopleResult",
+    "NormalizeRelationships",
+    "NormalizeRelationshipsResult",
     "OrganizationNotFoundError",
     "PersonAffiliationContext",
+    "PersonCandidateInput",
     "PersonContextResult",
     "PersonIdentity",
+    "PersonNameCollisionError",
+    "PersonNotFoundError",
     "PersonRelationshipContext",
     "PreviewForget",
-    "PersonNotFoundError",
-    "PersonNameCollisionError",
-    "PersonCandidateInput",
     "RecordFact",
     "RecordFactInput",
     "RecordInteraction",
@@ -132,20 +171,24 @@ __all__ = [
     "RecordObservationInput",
     "RecordTrait",
     "RecordTraitInput",
-    "RememberPerson",
-    "RememberPersonInput",
-    "RememberPersonResult",
     "ReindexPeople",
     "ReindexPeopleResult",
     "ReindexSemantic",
     "ReindexSemanticResult",
+    "RelationshipGraphResult",
+    "RelationshipNormalizationChange",
+    "RelationshipTypeAlreadyExistsError",
+    "RememberPerson",
+    "RememberPersonInput",
+    "RememberPersonResult",
+    "ReminderNotActiveError",
     "ResolutionCandidate",
     "ResolutionHints",
     "ResolutionResult",
-    "ReviewImport",
-    "StageCandidates",
     "ResolvePerson",
+    "ReviewImport",
     "SearchPeople",
+    "SelfAlreadyExistsError",
     "SemanticSearch",
     "SemanticSearchHit",
     "SemanticSearchModelMismatch",
@@ -160,7 +203,5 @@ __all__ = [
     "SetRelationshipInput",
     "SetReminder",
     "SetReminderInput",
-    "SelfAlreadyExistsError",
-    "ReminderNotActiveError",
-    "FactCandidateInput",
+    "StageCandidates",
 ]

@@ -34,12 +34,15 @@ from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteContextReader,
     SqliteExportReader,
+    SqliteGraphReader,
     SqliteImportStagingStore,
     SqliteLifecycleStore,
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
     SqliteRecordStore,
+    SqliteRelationshipStore,
+    SqliteRelationshipVocabularyStore,
     SqliteSemanticEntityReader,
     SqliteSemanticMetadataReader,
     open_db,
@@ -53,9 +56,11 @@ from people_context.app import (
     CompleteReminder,
     CorrectRecord,
     ExportData,
+    FindConnection,
     Forget,
     GetCommunicationGuidance,
     GetPersonContext,
+    GetRelationshipGraph,
     ImportContent,
     ListReminders,
     MergePeople,
@@ -100,6 +105,8 @@ class ToolDeps:
 
     resolve_person: ResolvePerson
     get_person_context: GetPersonContext
+    get_relationship_graph: GetRelationshipGraph
+    find_connection: FindConnection
     search_people: SearchPeople
     semantic_search: SemanticSearch
     remember_person: RememberPerson
@@ -154,16 +161,19 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     logger.info("people-context MCP server using database at %s", path)
 
     conn = open_db(path)
+    clock = SystemClock()
     repository = SqlitePeopleRepository(conn)
     context_reader = SqliteContextReader(conn)
+    graph_reader = SqliteGraphReader(conn, clock)
     record_store = SqliteRecordStore(conn)
+    relationship_store = SqliteRelationshipStore(conn)
+    relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
     organization_store = SqliteOrganizationStore(conn)
     preferences_store = SqlitePreferencesStore(conn)
     audit = SqliteAuditLog(conn)
     lifecycle_store = SqliteLifecycleStore(conn)
     export_reader = SqliteExportReader(conn)
     import_staging = SqliteImportStagingStore(conn)
-    clock = SystemClock()
     try:
         semantic_updater = create_local_semantic_updater(conn)
     except Exception as exc:  # noqa: BLE001 - optional derived index cannot block the server
@@ -184,6 +194,8 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     deps = ToolDeps(
         resolve_person=ResolvePerson(repository, context_reader, clock),
         get_person_context=GetPersonContext(repository, context_reader, clock),
+        get_relationship_graph=GetRelationshipGraph(repository, graph_reader, relationship_vocabulary),
+        find_connection=FindConnection(repository, graph_reader, relationship_vocabulary),
         search_people=SearchPeople(repository),
         semantic_search=SemanticSearch(
             SqliteSemanticMetadataReader(conn),
@@ -195,7 +207,13 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
         ),
         remember_person=remember_person,
         add_alias=AddAlias(repository, repository, audit, clock),
-        set_relationship=SetRelationship(repository, record_store, audit, clock),
+        set_relationship=SetRelationship(
+            repository,
+            relationship_store,
+            audit,
+            clock,
+            relationship_vocabulary,
+        ),
         set_affiliation=SetAffiliation(repository, organization_store, record_store, audit, clock),
         record_fact=RecordFact(repository, record_store, audit, clock),
         record_observation=RecordObservation(repository, record_store, audit, clock),

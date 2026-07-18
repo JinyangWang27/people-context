@@ -1,100 +1,111 @@
 # CLI
 
-`people-context-mcp` ships a companion CLI, `people-context`, so the data is always directly inspectable and
-editable without going through an MCP client. The CLI is built with `argparse`, has no third-party
-dependencies, and calls the **same `app`-layer use cases** as the MCP tools do (see
-[docs/architecture.md](architecture.md#entrypoint-wiring)), so audit and provenance rules apply identically
-regardless of which surface was used to make a change.
+`people-context` is the human-operated companion to the MCP server. It uses the same application use cases for
+curation, so validation, audit, HLC, and changelog capture match MCP writes.
 
-## Global options
+## Global option
 
-| Option | Meaning |
-|---|---|
-| `--db PATH` | Explicit database path, overriding all other resolution sources (see below). |
+`--db PATH` explicitly selects the SQLite database and overrides every other location source.
 
 ## Commands
 
-| Command | Purpose | Notes |
-|---|---|---|
-| `people-context db-path` | Print the resolved database path. | `-v`/`--verbose` prints the full `describe_resolution()` trace — every source checked, in order, and which one won. |
-| `people-context list` | List known people: `id`, `canonical_name`, alias count, summary excerpt, as a table. | `--all` includes soft-deleted people. |
-| `people-context search QUERY` | Ranked search results for `QUERY`, via the same `SearchPeople` use case `search_people` uses. | |
-| `people-context show PERSON` | Show identity, aliases, active relationships, affiliations/roles, the ranked facts/interactions slice, and active communication reminders. | `PERSON` may be an id or a name; it is resolved via `ResolvePerson`. If resolution is ambiguous, the command errors and lists candidates instead of guessing. Uses `GetPersonContext` with `max_items=10` and `include_sensitive=true`. |
-| `people-context export [--output FILE]` | Domain-shaped JSON dump of the full portable dataset to stdout, or to `FILE` if given. | Includes soft-deleted people and decoded preferences/audits. |
-| `people-context edit PERSON --name/--summary` | Edit canonical identity fields. | Requires at least one field and rejects another active person's canonical name. |
-| `people-context add-alias PERSON VALUE [--kind/--lang/--script]` | Add a normalized-deduplicated alias. | |
-| `people-context set communication_philosophy VALUE` | Set the supported free-text user preference. | Other keys are rejected. |
-| `people-context delete PERSON [--yes]` | Preview and permanently forget a person graph. | Without `--yes`, only `y`/`yes` confirms. |
-| `people-context sync-log [--limit N] [--entity ID] [--payloads]` | Inspect recent local changelog entries in reverse HLC order. | Shows operation, entity, device, HLC, and changed fields. Full replay payloads are hidden unless `--payloads` is explicit. |
-| `people-context reindex` | Atomically rebuild `person_search` from active people and aliases. | Remains person-only and makes no network call. |
-| `people-context reindex --semantic` | Rebuild lexical search, then explicitly download/cache the pinned multilingual model and atomically replace eligible person/interaction vectors plus model metadata. | Prints model id, pinned URL, approximately 512 MB size, and cache directory before download. Sensitive/restricted interactions are excluded. |
+| Command | Purpose |
+|---|---|
+| `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
+| `list [--all] [--limit N]` | List people; `--all` includes soft-deleted rows. |
+| `search QUERY [--limit N]` | Ranked lexical person search. |
+| `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
+| `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
+| `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
+| `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
+| `set communication_philosophy VALUE` | Set the supported user preference. |
+| `delete PERSON [--yes]` | Preview and permanently forget a person graph. |
+| `sync-log [--limit N] [--entity ID] [--payloads]` | Inspect local replay entries; payloads are opt-in. |
+| `reindex` | Rebuild the active-person FTS index. |
+| `reindex --semantic` | Explicitly obtain the pinned model and atomically rebuild semantic vectors. |
+| `relationship-types` | List vocabulary and uncategorized types currently used by active edges. |
+| `relationship-types add ...` | Add portable custom vocabulary (add-only in v1). |
+| `normalize-relationships [--apply]` | Dry-run or apply audited canonical rewrites of legacy edges. |
+| `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
 
-All output is plain text (tables for `list`/`search`, structured text for `show`); no third-party formatting
-dependency is used.
+`show`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown references exit
+1; ambiguous names exit 2 and print candidates rather than guessing.
 
-The curation commands reuse the same app-layer use cases as MCP writes/destructive tools, so they carry the
-same audit, changelog, validation, and provenance behaviour. `show`, `edit`, `add-alias`, and `delete` share one resolver:
-active id first, then `ResolvePerson`; unknown names exit 1 and ambiguous names exit 2 with candidates.
+## Relationship vocabulary
 
-## Database location resolution order
+List seeded/custom rows and uncategorized stored types:
 
-Both the CLI and the MCP server resolve the database path identically, via `config.py:resolve_db_path()`.
-The first source below that resolves wins; none of the later sources are consulted once an earlier one
-matches. Paths are `~`-expanded. This function never creates the file or its directories — that happens
-when the SQLite adapter opens the connection.
+```bash
+uv run people-context relationship-types
+```
 
-| Order | Source | Detail |
-|---|---|---|
-| 1 | Explicit argument | The CLI's `--db PATH`, or the equivalent argument passed to the server. |
-| 2 | `PEOPLE_CONTEXT_DB` environment variable | |
-| 3 | `db_path` key in a config file | `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`, read via `tomllib`. |
-| 4 | Agent workspace auto-detect | Checked in order, first existing directory wins: (a) `OPENCLAW_WORKSPACE` env var, if set and the directory exists; (b) `~/.openclaw/workspace`. The resulting path is `<workspace>/people-context/people.db`. This lives in one small module (`config.py`) specifically so more agent workspaces (e.g. Levey) can be added with a one-line change. |
-| 5 | XDG data fallback | `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db`. |
+Add a symmetric custom type with repeatable synonyms:
 
-`people-context db-path -v` prints exactly which sources were checked and which one won — this is the
-authoritative way to debug "why is it reading/writing the DB I didn't expect."
+```bash
+uv run people-context relationship-types add co_founder_of \
+  --category professional --symmetric --synonym cofounder
+```
 
-## Direct database access
+Add an inverse pair:
 
-The database is a **plain, documented SQLite file** — nothing about it requires this project's own tools to
-inspect or modify. Standard SQLite tooling works directly against it:
+```bash
+uv run people-context relationship-types add advises \
+  --category professional --inverse advised_by
+```
 
-- **DB Browser for SQLite** — a GUI for browsing and editing tables, running ad hoc queries.
-- **Datasette** — a read-oriented web UI, useful for exploring and cross-referencing tables.
-- **The `sqlite3` command-line shell** — for scripting or one-off queries, e.g.
-  `sqlite3 "$(uv run people-context db-path)" "select canonical_name from persons"`.
+`--inverse` and `--symmetric` are mutually exclusive. Type, inverse, category, and synonyms are normalized to
+snake case. Existing rows/synonyms are rejected because v1 vocabulary is add-only. Custom vocabulary is written
+through the M6 audit/changelog seam; migration seeds are reference data and are not logged.
 
-Direct SQL edits are legal — it is the user's data, and there is no proprietary lock-in. However, the
-`people-context` CLI and the MCP tools are the **preferred** path for changes, because they:
+## Normalize legacy relationships
 
-- keep the FTS5 search indexes (`person_search`, `interaction_search`) in sync with the underlying tables
-  (see [docs/data-model.md](data-model.md#fts5-tables)), and
-- atomically write the corresponding `audit_log` and replayable `changelog` entries, preserving both the
-  accountability trail and M6 durable change capture described in [docs/privacy-and-safety.md](privacy-and-safety.md).
+Migration 003 does not rewrite stored edges. Preview changes:
 
-If a person or alias row is edited directly with an external SQL tool, the FTS index for that row can go
-stale until it is rebuilt. `people-context reindex` rebuilds the person-only `person_search` table from
-active `persons` and `aliases`; direct SQL changes do not, on their own, get an `audit_log` or `changelog` entry, since the
-CLI/MCP application boundary is what writes those atomically.
+```bash
+uv run people-context normalize-relationships
+```
 
-The semantic vec0 table is also derived. Direct changes to people or interactions can make it stale;
-`people-context reindex --semantic` is the repair command. A failed/offline model fetch occurs before vector
-replacement, so the previous semantic index and its metadata remain intact.
+Apply them:
 
-## Server entrypoint transport flags
+```bash
+uv run people-context normalize-relationships --apply
+```
 
-`people-context-mcp` remains stdio by default. `people-context-mcp --http --host 127.0.0.1 --port 8765`
-selects Streamable HTTP at `/mcp`. `--host` accepts only `127.0.0.1`; other values are argparse errors with
-exit code 2. The HTTP endpoint is unauthenticated loopback, not a remote deployment surface.
+Dry-run is the default and performs no writes. Apply uses the same canonical policy as `set_relationship` and
+captures every update/removal atomically in audit and changelog. Only duplicates with overlapping validity
+periods are merged; an edge active today is preferred, otherwise the older row is retained.
 
-## Semantic model download and cache
+## Vault export
 
-The optional extra pins
-`minishlab/potion-multilingual-128M@73908c3438cf03b6a01bcb9611d62b23d0726f08`, a 101-language model that
-includes Chinese. `reindex --semantic` is the only command permitted to call Hugging Face with network
-access. It announces the pinned artifact URL, approximately 512 MB download, and resolved cache directory
-first; `HF_HUB_CACHE`, `HF_HOME`, and `XDG_CACHE_HOME` overrides are honored. Server-side search opens the
-cache with `local_files_only=True` and returns `not_available` rather than downloading.
-The extra uses `model2vec>=0.8.2,<0.9` and `sqlite-vec>=0.1.9,<0.2`; neither is a base dependency.
+```bash
+uv run people-context export-vault --output ~/PeopleVault
+```
 
-See [docs/data-model.md](data-model.md) for the full schema reference these tools operate on.
+The destination must be nonexistent, empty, or already contain `.people-context-vault`. A non-empty unmarked
+directory is refused without changes. Re-export replaces only the marker plus `People/` and `Organizations/`;
+`.obsidian/` and every other user-created path are preserved. Use `--include-sensitive` only with explicit intent;
+exported Markdown is outside the server's disclosure controls. See [vault-export.md](vault-export.md).
+
+## Database location resolution
+
+The CLI and server use the same first-match order:
+
+1. explicit `--db`/server argument;
+2. `PEOPLE_CONTEXT_DB`;
+3. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`;
+4. `OPENCLAW_WORKSPACE`, then `~/.openclaw/workspace`, storing `people-context/people.db`;
+5. `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db`.
+
+Paths are expanded and parent directories are created only when SQLite opens the selected database.
+
+## Direct SQLite access
+
+The file is plain SQLite and may be inspected with DB Browser, Datasette, or `sqlite3`. Prefer CLI/MCP writes:
+direct SQL bypasses audit/changelog capture and can stale FTS/semantic derived indexes. Repair person FTS with
+`reindex`; repair semantic vectors with `reindex --semantic`. Directly inserted legacy relationship types may be
+made canonical and replayable with `normalize-relationships --apply`.
+
+## Server transport flags
+
+`people-context-mcp` is stdio by default. `--http --host 127.0.0.1 --port 8765` selects unauthenticated loopback
+Streamable HTTP at `/mcp`; no other bind host is accepted.
