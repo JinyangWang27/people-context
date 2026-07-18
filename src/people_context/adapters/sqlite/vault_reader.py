@@ -18,6 +18,7 @@ from people_context.domain.vault import (
     VaultReminder,
     VaultSnapshot,
 )
+from people_context.ports.clock import Clock
 
 _EXCLUDED_BY_DEFAULT = {Sensitivity.SENSITIVE, Sensitivity.RESTRICTED}
 
@@ -25,13 +26,14 @@ _EXCLUDED_BY_DEFAULT = {Sensitivity.SENSITIVE, Sensitivity.RESTRICTED}
 class SqliteVaultReader:
     """Read active people, structure, durable facts, and active reminders only."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, clock: Clock) -> None:
         self._conn = conn
+        self._clock = clock
         self._people = SqlitePeopleRepository(conn)
         self._context = SqliteContextReader(conn)
 
     def read_vault(self, *, include_sensitive: bool = False) -> VaultSnapshot:
-        as_of = date.today()
+        as_of = self._clock.now().date()
         people: list[VaultPerson] = []
         organizations: dict[str, VaultOrganization] = {}
         for person in self._people.list_people():

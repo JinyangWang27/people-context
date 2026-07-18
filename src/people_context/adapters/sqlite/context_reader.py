@@ -32,11 +32,12 @@ class SqliteContextReader:
               ON other.id = CASE WHEN r.subject_id = ? THEN r.object_id ELSE r.subject_id END
             LEFT JOIN relationship_types rt ON rt.type = r.type
             WHERE (r.subject_id = ? OR r.object_id = ?)
+              AND (r.valid_from IS NULL OR r.valid_from <= ?)
               AND (r.valid_to IS NULL OR r.valid_to >= ?)
               AND other.deleted_at IS NULL
             ORDER BY r.created_at DESC, r.id
             """,
-            (person_id, person_id, person_id, as_of.isoformat()),
+            (person_id, person_id, person_id, as_of.isoformat(), as_of.isoformat()),
         ).fetchall()
         return [
             RelationshipRecord(
@@ -64,10 +65,12 @@ class SqliteContextReader:
             SELECT a.*, o.name AS organization_name
             FROM affiliations a
             JOIN organizations o ON o.id = a.org_id
-            WHERE a.person_id = ? AND (a.valid_to IS NULL OR a.valid_to >= ?)
+            WHERE a.person_id = ?
+              AND (a.valid_from IS NULL OR a.valid_from <= ?)
+              AND (a.valid_to IS NULL OR a.valid_to >= ?)
             ORDER BY a.created_at DESC, a.id
             """,
-            (person_id, as_of.isoformat()),
+            (person_id, as_of.isoformat(), as_of.isoformat()),
         ).fetchall()
         return [
             AffiliationRecord(

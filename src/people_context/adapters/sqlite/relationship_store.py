@@ -64,11 +64,12 @@ class SqliteRelationshipStore:
             """
             SELECT * FROM relationships
             WHERE subject_id = ? AND object_id = ? AND type = ?
+              AND (valid_from IS NULL OR valid_from <= ?)
               AND (valid_to IS NULL OR valid_to >= ?)
             ORDER BY created_at, id
             LIMIT 1
             """,
-            (subject_id, object_id, type, as_of.isoformat()),
+            (subject_id, object_id, type, as_of.isoformat(), as_of.isoformat()),
         ).fetchone()
         return _relationship(row) if row is not None else None
 

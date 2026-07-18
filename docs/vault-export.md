@@ -17,12 +17,15 @@ Every successful export writes `.people-context-vault` at the output root. The d
 - an empty directory; or
 - a directory already containing the marker file.
 
-A non-empty unmarked directory is refused before any file changes. The exporter never deletes or overwrites a
-directory it cannot prove it owns. A marked directory is wiped and regenerated on re-export, including any
-extra files placed inside it; the marker means the entire directory is dedicated to this generated vault.
+A non-empty unmarked directory is refused before any file changes. In a marked directory, the exporter owns
+exactly three generated paths: `.people-context-vault`, `People/`, and `Organizations/`. Re-export removes and
+regenerates only those paths. Obsidian state such as `.obsidian/`, user-created notes, attachments, and every
+other root path are preserved unchanged. Files manually placed inside `People/` or `Organizations/` are treated
+as generated output and are removed on the next export.
 
-The output is deterministic: ordering is stable and files contain no export timestamps. Re-exporting unchanged
-data produces byte-identical files.
+The output is deterministic: ordering is stable and generated files contain no export timestamps. Re-exporting
+unchanged data produces byte-identical marker, person-note, and organization-note files; preserved user files
+are outside that determinism guarantee because the exporter does not manage them.
 
 ## Layout and filenames
 

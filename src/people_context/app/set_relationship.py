@@ -64,8 +64,6 @@ class SetRelationship:
         normalized = normalize_relationship(data.subject_id, data.object_id, data.type, self._vocabulary)
         if not normalized.type:
             raise ValueError("relationship type must contain at least one word character")
-        period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
-        confidence = data.confidence if data.confidence is not None else 1.0
         finder = getattr(self._writer, "find_active_relationship", None)
         existing = (
             finder(
@@ -78,9 +76,7 @@ class SetRelationship:
             else None
         )
         if existing is not None:
-            updated = existing.model_copy(
-                update={"label": data.label, "period": period, "confidence": confidence}
-            )
+            updated, changed_fields = self._updated_relationship(existing, data)
             self._writer.save_relationship(updated)
             audit_mutation(
                 self._audit,
@@ -90,12 +86,14 @@ class SetRelationship:
                 entity_id=updated.id,
                 payload={"before": snapshot(existing), "after": snapshot(updated)},
                 replay_payload=snapshot(updated),
-                changed_fields=["label", "valid_from", "valid_to", "confidence"],
+                changed_fields=changed_fields,
                 source=data.source,
                 session=data.session,
                 stated_by=data.stated_by,
             )
             return updated
+        period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
+        confidence = data.confidence if data.confidence is not None else 1.0
         relationship = Relationship(
             subject_id=normalized.subject_id,
             object_id=normalized.object_id,
@@ -131,3 +129,40 @@ class SetRelationship:
             stated_by=data.stated_by,
         )
         return relationship
+
+    @staticmethod
+    def _updated_relationship(
+        existing: Relationship,
+        data: SetRelationshipInput,
+    ) -> tuple[Relationship, list[str]]:
+        updates: dict[str, object] = {}
+        changed_fields: list[str] = []
+
+        if data.label is not None and data.label != existing.label:
+            updates["label"] = data.label
+            changed_fields.append("label")
+
+        valid_from = existing.period.valid_from
+        valid_to = existing.period.valid_to
+        period_changed = False
+        if data.valid_from is not None and data.valid_from != valid_from:
+            valid_from = data.valid_from
+            period_changed = True
+            changed_fields.append("valid_from")
+        if data.valid_to is not None and data.valid_to != valid_to:
+            valid_to = data.valid_to
+            period_changed = True
+            changed_fields.append("valid_to")
+        if period_changed:
+            updates["period"] = ValidityPeriod(valid_from=valid_from, valid_to=valid_to)
+
+        if data.confidence is not None and data.confidence != existing.confidence:
+            updates["confidence"] = data.confidence
+            changed_fields.append("confidence")
+
+        new_provenance = provenance(data.source, data.session, data.stated_by)
+        if new_provenance != existing.provenance:
+            updates["provenance"] = new_provenance
+            changed_fields.append("provenance")
+
+        return existing.model_copy(update=updates), changed_fields

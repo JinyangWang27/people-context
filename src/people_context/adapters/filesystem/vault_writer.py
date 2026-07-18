@@ -25,7 +25,7 @@ _ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
 
 class FileSystemVaultWriter:
-    """Regenerate only empty or marker-owned directories and never arbitrary paths."""
+    """Regenerate only exporter-owned paths inside an empty or marker-owned directory."""
 
     def write_vault(self, output: Path, snapshot: VaultSnapshot) -> list[Path]:
         self._prepare_output(output)
@@ -69,17 +69,17 @@ class FileSystemVaultWriter:
             return
         children = list(output.iterdir())
         marker = output / MARKER_FILE
-        if children and not marker.is_file():
+        if children and (not marker.is_file() or marker.is_symlink()):
             raise VaultSafetyError(
                 f"refusing non-empty unmarked directory: {output}; expected {MARKER_FILE}"
             )
         if not marker.is_file():
             return
-        for child in children:
-            if child.is_symlink() or child.is_file():
-                child.unlink()
-            else:
-                shutil.rmtree(child)
+        for generated in (marker, output / "People", output / "Organizations"):
+            if generated.is_symlink() or generated.is_file():
+                generated.unlink()
+            elif generated.is_dir():
+                shutil.rmtree(generated)
 
 
 def sanitize_filename(value: str) -> str:
