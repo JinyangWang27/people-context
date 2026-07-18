@@ -5,7 +5,7 @@ description = "Local-first MCP server giving AI agents contextual knowledge abou
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-authors = [{ name = "Jinyang Wang" }]
+authors = [{ name = "Jinyang Wang", email = "jinyang.wang27@outlook.com" }]
 keywords = ["ai-agents", "local-first", "mcp", "model-context-protocol", "personal-context"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["mcp>=1.2", "pydantic>=2.7", "python-ulid>=2.2"]
+dependencies = ["mcp>=1.2,<2", "pydantic>=2.7", "python-ulid>=2.2"]
 
 [project.urls]
 Homepage = "https://github.com/JinyangWang27/people-context-mcp"

@@ -24,9 +24,17 @@ _MARKER_CONTENT = "people-context vault v1\n"
 # Cross-platform illegal path characters plus the characters Obsidian forbids in
 # note names because they would break [[wikilink]] targets: [ ] # ^ |.
 _ILLEGAL_FILENAME = re.compile(r'[<>:"/\\|?*\x00-\x1f\[\]#^]')
-# Windows reserved device names are invalid as file stems regardless of extension.
+# Windows reserves these device names as the component before the first period,
+# regardless of extension (NUL.txt is NUL); superscript digits count too.
 _WINDOWS_RESERVED = frozenset(
-    {"CON", "PRN", "AUX", "NUL", *(f"COM{digit}" for digit in range(1, 10)), *(f"LPT{digit}" for digit in range(1, 10))}
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{digit}" for digit in "123456789¹²³"),
+        *(f"LPT{digit}" for digit in "123456789¹²³"),
+    }
 )
 
 
@@ -91,8 +99,9 @@ def sanitize_filename(value: str) -> str:
     normalized = unicodedata.normalize("NFC", value)
     sanitized = _ILLEGAL_FILENAME.sub("_", normalized).strip()
     sanitized = sanitized.lstrip(".").rstrip(" .")
-    if sanitized.upper() in _WINDOWS_RESERVED:
-        sanitized = f"{sanitized}_"
+    stem, separator, rest = sanitized.partition(".")
+    if stem.upper() in _WINDOWS_RESERVED:
+        sanitized = f"{stem}_{separator}{rest}"
     return sanitized or "unnamed"
 
 

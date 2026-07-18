@@ -22,6 +22,7 @@ from people_context.app.merge_people import MergePeople
 from people_context.app.record import RememberPerson, RememberPersonInput
 from people_context.app.set_relationship import SetRelationship, SetRelationshipInput
 from people_context.domain.organization import Organization
+from people_context.domain.person import Person
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
 
@@ -127,6 +128,59 @@ def test_sanitize_filename_guards_windows_reserved_and_wikilink_characters() -> 
     assert sanitize_filename("CON") == "CON_"
     assert sanitize_filename("com1") == "com1_"
     assert sanitize_filename("Nula") == "Nula"
+    assert sanitize_filename("NUL.txt") == "NUL_.txt"
+    assert sanitize_filename("COM1.notes") == "COM1_.notes"
+    assert sanitize_filename("COM¹") == "COM¹_"
+    assert sanitize_filename("Dr. Smith") == "Dr. Smith"
     assert sanitize_filename("x]]y|z") == "x__y_z"
     assert sanitize_filename("tag#and^caret") == "tag_and_caret"
     assert sanitize_filename("王小明") == "王小明"
+
+
+def test_merge_never_dedupes_preexisting_primary_edges() -> None:
+    conn = open_db(":memory:")
+    people, audit, clock, remember = _people_fixture(conn)
+    primary = remember.execute(RememberPersonInput(name="Primary")).person
+    duplicate = remember.execute(RememberPersonInput(name="Duplicate")).person
+    third = remember.execute(RememberPersonInput(name="Third")).person
+    # Two overlapping legacy parallel edges on the primary, inserted directly;
+    # the duplicate has no relationships at all.
+    for index in (1, 2):
+        conn.execute(
+            """INSERT INTO relationships
+               (id, subject_id, object_id, type, label, confidence, provenance_source, created_at)
+               VALUES (?, ?, ?, 'mentor_of', ?, 1.0, 'user', ?)""",
+            (f"edge-{index}", primary.id, third.id, f"label-{index}", _NOW.isoformat()),
+        )
+    conn.commit()
+
+    result = MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute(primary.id, duplicate.id)
+
+    assert result.duplicate_relationships_removed == 0
+    remaining = {row.id for row in SqliteRelationshipStore(conn).list_relationships()}
+    assert remaining == {"edge-1", "edge-2"}, "merge must not act as implicit normalize-relationships"
+
+
+def test_merge_recanonicalizes_symmetric_edges_so_reassert_updates_in_place() -> None:
+    conn = open_db(":memory:")
+    people = SqlitePeopleRepository(conn)
+    audit = SqliteAuditLog(conn)
+    clock = _Clock()
+    store = SqliteRelationshipStore(conn)
+    vocabulary = SqliteRelationshipVocabularyStore(conn)
+    # Explicit IDs force duplicate < third < primary.
+    for person_id, name in (("id-a-dup", "Dup"), ("id-b-third", "Third"), ("id-c-primary", "Primary")):
+        people.save_person(Person(id=person_id, canonical_name=name, created_at=_NOW, updated_at=_NOW))
+    set_relationship = SetRelationship(people, store, audit, clock, vocabulary)
+    set_relationship.execute(SetRelationshipInput(subject_id="id-a-dup", object_id="id-b-third", type="friend_of"))
+
+    MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute("id-c-primary", "id-a-dup")
+    (edge,) = SqliteRelationshipStore(conn).list_relationships()
+    assert (edge.subject_id, edge.object_id) == ("id-b-third", "id-c-primary"), "must stay ID-ordered"
+
+    # Re-asserting via a synonym must update the canonical edge, not insert a parallel one.
+    updated = set_relationship.execute(
+        SetRelationshipInput(subject_id="id-c-primary", object_id="id-b-third", type="friend", label="close")
+    )
+    rows = SqliteRelationshipStore(conn).list_relationships()
+    assert len(rows) == 1 and updated.id == edge.id and rows[0].label == "close"
