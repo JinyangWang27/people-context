@@ -72,8 +72,8 @@ uv run people-context normalize-relationships --apply
 ```
 
 Dry-run is the default and performs no writes. Apply uses the same canonical policy as `set_relationship` and
-captures every update/removal atomically in audit and changelog. If two legacy rows become duplicates, the older
-id is retained.
+captures every update/removal atomically in audit and changelog. Only duplicates with overlapping validity
+periods are merged; an edge active today is preferred, otherwise the older row is retained.
 
 ## Vault export
 
@@ -82,9 +82,9 @@ uv run people-context export-vault --output ~/PeopleVault
 ```
 
 The destination must be nonexistent, empty, or already contain `.people-context-vault`. A non-empty unmarked
-directory is refused without changes. Marked directories are dedicated generated output and are wiped before
-regeneration. Use `--include-sensitive` only with explicit intent; exported Markdown is outside the server's
-disclosure controls. See [vault-export.md](vault-export.md).
+directory is refused without changes. Re-export replaces only the marker plus `People/` and `Organizations/`;
+`.obsidian/` and every other user-created path are preserved. Use `--include-sensitive` only with explicit intent;
+exported Markdown is outside the server's disclosure controls. See [vault-export.md](vault-export.md).
 
 ## Database location resolution
 

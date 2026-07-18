@@ -131,5 +131,6 @@ Apply the reported changes:
 uv run people-context normalize-relationships --apply
 ```
 
-If canonicalization makes two rows duplicates, the older relationship id is retained and the newer row is
-removed. Both the rewrite and removal are represented in audit and changelog capture.
+Canonical duplicates are merged only when their validity periods overlap. A row active today is retained in
+preference to an inactive overlapping row; otherwise the older relationship id is retained. Disjoint history
+remains as separate edges. Every rewrite and removal is represented in audit and changelog capture.

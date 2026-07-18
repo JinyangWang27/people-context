@@ -74,11 +74,7 @@ class NormalizeRelationships:
             key = (after.subject_id, after.object_id, after.type)
             matching_keepers = keepers.setdefault(key, [])
             keeper = next(
-                (
-                    candidate
-                    for candidate in matching_keepers
-                    if _periods_overlap(candidate.period, after.period)
-                ),
+                (candidate for candidate in matching_keepers if _periods_overlap(candidate.period, after.period)),
                 None,
             )
             if keeper is not None:

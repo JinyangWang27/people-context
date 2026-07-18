@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from time import perf_counter
 
-from people_context.adapters.filesystem import FileSystemVaultWriter, MARKER_FILE
+from people_context.adapters.filesystem import MARKER_FILE, FileSystemVaultWriter
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteChangelog,
@@ -26,7 +26,15 @@ from people_context.app import (
 )
 from people_context.domain.person import Person
 from people_context.domain.vault import VaultPerson, VaultSnapshot
-from tests.app.fakes import FakeClock
+
+
+class FakeClock:
+    def __init__(self, now: datetime) -> None:
+        self._now = now
+
+    def now(self) -> datetime:
+        return self._now
+
 
 _NOW = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 _CLOCK = FakeClock(_NOW)
@@ -78,18 +86,15 @@ def test_normalize_preserves_disjoint_history_and_keeps_active_overlap() -> None
     assert [(change.action, change.relationship_id, change.merged_into) for change in result.changes] == [
         ("merge", overlapping_expired, current)
     ]
-    rows = conn.execute(
-        "SELECT id, valid_from, valid_to FROM relationships ORDER BY valid_from"
-    ).fetchall()
+    rows = conn.execute("SELECT id, valid_from, valid_to FROM relationships ORDER BY valid_from").fetchall()
     assert [(row["id"], row["valid_from"], row["valid_to"]) for row in rows] == [
         (disjoint, "2010-01-01", "2011-12-31"),
         (current, "2024-01-01", None),
     ]
     assert [entry.entity_id for entry in audit.list_entries()] == [overlapping_expired]
-    assert [
-        (entry.op_kind, entry.entity_id)
-        for entry in SqliteChangelog(conn).list_entries(limit=10)
-    ] == [("delete", overlapping_expired)]
+    assert [(entry.op_kind, entry.entity_id) for entry in SqliteChangelog(conn).list_entries(limit=10)] == [
+        ("delete", overlapping_expired)
+    ]
 
 
 def test_reassertion_keeps_omitted_fields_updates_provenance_and_changed_fields() -> None:
@@ -155,9 +160,7 @@ def test_marked_vault_regeneration_preserves_obsidian_and_user_paths(tmp_path: P
     initial = VaultSnapshot(people=[VaultPerson(id="01AAAA00000000000000000000", name="Alice")])
     writer.write_vault(output, initial)
     generated_before = {
-        path.relative_to(output).as_posix(): path.read_bytes()
-        for path in output.rglob("*")
-        if path.is_file()
+        path.relative_to(output).as_posix(): path.read_bytes() for path in output.rglob("*") if path.is_file()
     }
     obsidian = output / ".obsidian" / "workspace.json"
     obsidian.parent.mkdir()

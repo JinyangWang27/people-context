@@ -70,9 +70,7 @@ class FileSystemVaultWriter:
         children = list(output.iterdir())
         marker = output / MARKER_FILE
         if children and (not marker.is_file() or marker.is_symlink()):
-            raise VaultSafetyError(
-                f"refusing non-empty unmarked directory: {output}; expected {MARKER_FILE}"
-            )
+            raise VaultSafetyError(f"refusing non-empty unmarked directory: {output}; expected {MARKER_FILE}")
         if not marker.is_file():
             return
         for generated in (marker, output / "People", output / "Organizations"):
@@ -116,10 +114,14 @@ def _render_person(
     people: dict[str, str],
     organizations: dict[str, str],
 ) -> str:
-    aliases = ["aliases: []"] if not person.aliases else [
-        "aliases:",
-        *[f"  - {_yaml_scalar(alias)}" for alias in person.aliases],
-    ]
+    aliases = (
+        ["aliases: []"]
+        if not person.aliases
+        else [
+            "aliases:",
+            *[f"  - {_yaml_scalar(alias)}" for alias in person.aliases],
+        ]
+    )
     lines = [
         "---",
         *aliases,
