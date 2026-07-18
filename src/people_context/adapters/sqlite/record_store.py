@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Callable
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import Any
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
@@ -17,6 +17,7 @@ from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
 from people_context.domain.trait import Trait, TraitCategory
+from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.records import Record
 
 _TABLES = {
@@ -251,8 +252,9 @@ class SqliteOrganizationStore:
 class SqlitePreferencesStore:
     """SQLite string preference store using JSON values."""
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(self, conn: sqlite3.Connection, clock: Clock | None = None) -> None:
         self._conn = conn
+        self._clock = clock or SystemClock()
 
     def get(self, key: str) -> str | None:
         row = self._conn.execute("SELECT value_json FROM user_preferences WHERE key = ?", (key,)).fetchone()
@@ -266,7 +268,7 @@ class SqlitePreferencesStore:
             self._conn.execute(
                 """INSERT INTO user_preferences (key, value_json, updated_at) VALUES (?, ?, ?)
                    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at""",
-                (key, json.dumps(value, ensure_ascii=False), datetime.now(UTC).isoformat()),
+                (key, json.dumps(value, ensure_ascii=False), self._clock.now().isoformat()),
             )
 
 

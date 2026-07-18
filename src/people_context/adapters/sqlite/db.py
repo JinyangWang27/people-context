@@ -35,6 +35,9 @@ def open_db(path: str | Path) -> sqlite3.Connection:
         # WAL is a persistent-file feature; skip (harmless) failures on :memory:.
         conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    # Wait for concurrent writers (e.g. CLI beside a running server) instead of
+    # failing immediately with "database is locked".
+    conn.execute("PRAGMA busy_timeout=5000")
     _run_migrations(conn)
     _ensure_local_device(conn)
     return conn

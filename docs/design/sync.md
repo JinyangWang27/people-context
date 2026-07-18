@@ -278,6 +278,11 @@ local transaction:
 A non-forget operation covered by a retained tombstone is ignored even if its HLC is later. Forget wins over
 sync completeness and over ordinary last-writer rules.
 
+**Payload identifier constraint.** Redaction coverage matches entity ids by exact string equality against
+standalone JSON string values in changelog and audit payloads. Every write path MUST therefore keep entity ids
+as their own JSON string values in replay payloads — never embedded inside composite strings (for example
+`"<interaction_id>:<person_id>"`) — or a later forget will fail to redact the operations that mention them.
+
 ### 5.2 Late replicas
 
 A device may have been offline since before the forget. On its next session it can upload stale creates or edits

@@ -69,7 +69,6 @@ class EmailImportExtractor:
                     ImportInteractionCandidate(
                         participant_emails=list(dict.fromkeys(address for _, address in correspondents)),
                         occurred_at=occurred_at,
-                        subject=_clean_header(message.get("Subject")),
                         message_id=message_id,
                     )
                 )

@@ -64,7 +64,7 @@ class MergePeople:
         self._uow = unit_of_work_for(lifecycle, self._audit)
 
     @transactional
-    def execute(self, primary_id: str, duplicate_id: str) -> MergePeopleResult:
+    def execute(self, primary_id: str, duplicate_id: str, source: str = "agent") -> MergePeopleResult:
         """Merge aliases, summary, and all linked records in one store transaction."""
         if primary_id == duplicate_id:
             raise MergePeopleError("same_person", "primary and duplicate must be different people")
@@ -88,7 +88,7 @@ class MergePeople:
                 payload=change.payload,
                 changed_fields=change.changed_fields,
                 transaction_id=transaction_id,
-                source="agent",
+                source=source,
             )
         moved_payload = {key: value for key, value in counts.items() if key != "self_loops_removed"}
         audit_payload = {
@@ -107,7 +107,7 @@ class MergePeople:
             replay_payload=store_result.manifest,
             changed_fields=[],
             transaction_id=transaction_id,
-            source="agent",
+            source=source,
         )
         moved = MergeMovedCounts.model_validate(moved_payload)
         return MergePeopleResult(person=primary, moved=moved, self_loops_removed=counts["self_loops_removed"])

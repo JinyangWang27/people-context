@@ -18,6 +18,7 @@ from people_context.app.record import AliasInput, RememberPerson, RememberPerson
 from people_context.app.record_fact import RecordFact, RecordFactInput
 from people_context.app.record_interaction import RecordInteraction, RecordInteractionInput
 from people_context.app.set_affiliation import SetAffiliation, SetAffiliationInput
+from people_context.app.write_support import transactional, unit_of_work_for
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.shared import Confidence, Sensitivity, new_id, normalize_name
 from people_context.ports.clock import Clock
@@ -411,7 +412,9 @@ class CommitImport:
         self._record_interaction = record_interaction
         self._set_affiliation = set_affiliation
         self._record_fact = record_fact
+        self._uow = unit_of_work_for(staging)
 
+    @transactional
     def execute(self, batch_id: str, accepted_ids: list[str]) -> CommitImportResult:
         rows = self._staging.list_batch(batch_id)
         if not rows:

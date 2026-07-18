@@ -54,13 +54,13 @@ class Forget:
         self._uow = unit_of_work_for(lifecycle, self._audit)
 
     @transactional
-    def execute(self, target: str, scope: str) -> ForgetResult:
+    def execute(self, target: str, scope: str, source: str = "agent") -> ForgetResult:
         """Forget one stored person or one validated record target atomically."""
         if scope == "person":
             if self._people.get(target) is None:
                 raise PersonNotFoundError(target)
             store_result = self._lifecycle.forget_person(target)
-            self._record_audit(scope, "person", target, target, store_result)
+            self._record_audit(scope, "person", target, target, store_result, source)
             return ForgetResult(scope=scope, target=target, deleted=store_result.deleted)
         if scope != "record":
             raise ForgetError("invalid_scope", "scope must be 'person' or 'record'", scope=scope)
@@ -69,7 +69,7 @@ class Forget:
             store_result = self._lifecycle.forget_record(entity_type, entity_id)
         except LifecycleTargetNotFoundError:
             raise RecordNotFoundError(entity_type, entity_id) from None
-        self._record_audit(scope, entity_type, entity_id, target, store_result)
+        self._record_audit(scope, entity_type, entity_id, target, store_result, source)
         return ForgetResult(scope=scope, target=target, deleted=store_result.deleted)
 
     @staticmethod
@@ -90,6 +90,7 @@ class Forget:
         target_id: str,
         audit_target: str,
         store_result: ForgetStoreResult,
+        source: str,
     ) -> None:
         tombstone = {
             "scope": scope,
@@ -114,7 +115,7 @@ class Forget:
             op_kind="forget",
             changelog_entity_type=target_type,
             changelog_entity_id=target_id,
-            source="agent",
+            source=source,
         )
 
 
