@@ -46,12 +46,14 @@ Non-goals:
 
 ### Zero-clone PyPI install
 
-`pyproject.toml` already declares `[project.scripts] people-context-mcp = "people_context.adapters.mcp.server:main"`
-and `people-context = "people_context.cli:main"`, and the package is built with `hatchling`
-(`[build-system]`) and published via `.github/workflows/release.yml` using PyPI Trusted Publishing (see
-[docs/releasing.md](../releasing.md)). No code change is required for `uvx --from people-context people-context-mcp` to work; this
-deliverable is verification (a clean-machine run of `uvx people-context-mcp --help` and a stdio round trip) plus
-a README quick-start edit that puts the `uvx` form ahead of the `git clone` + `uv sync` form.
+`pyproject.toml` declares `[project.scripts] people-context-mcp = "people_context.adapters.mcp.server:main"`
+and `people-context = "people_context.cli:main"`. The primary PyPI distribution is `people-context`; the legacy
+`people-context-mcp` distribution is only a compatibility shim. The package is built with `hatchling` and
+published through `.github/workflows/release.yml` using PyPI Trusted Publishing (see
+[docs/releasing.md](../releasing.md)). No code change is required for
+`uvx --from people-context people-context-mcp` to work. This deliverable verifies a clean-machine
+`uvx --from people-context people-context-mcp --help` run and a real stdio round trip, then puts the same form
+ahead of the `git clone` plus `uv sync` path in the README.
 
 ### MCP registry and community directories
 
@@ -75,19 +77,19 @@ and README already document.
 ### Claude Desktop extension (`.mcpb`)
 
 An `.mcpb` bundle needs a manifest describing the server's stdio invocation, analogous in spirit to
-`.claude-plugin/mcp.json`'s `{"mcpServers": {"people-context": {"type": "stdio", "command": "uv", "args": [...]}}}`
-shape, but targeting the `uvx --from people-context people-context-mcp` invocation so the bundle does not need to vendor a project
-directory. Packaging happens through a new `scripts/build-mcpb.*` step invoked from CI (there is currently no
-`scripts/` directory in the repository; this would be the first script added), producing a downloadable
-artifact attached to GitHub Releases alongside the existing PyPI publish step.
+`.claude-plugin/mcp.json`'s `{"mcpServers": {"people-context": {"type": "stdio", "command": "uv",
+"args": [...]}}}` shape, but targeting `uvx --from people-context people-context-mcp` so the bundle does not
+need to vendor a project directory. Packaging happens through a new `scripts/build-mcpb.*` step invoked from CI
+(there is currently no `scripts/` directory in the repository; this would be the first script added), producing
+a downloadable artifact attached to GitHub Releases alongside the existing PyPI publish step.
 
 ### Editor/IDE one-line configs
 
 The README's existing "MCP client configuration" section already shows the Claude Code `claude mcp add` form and
-a generic stdio JSON block (`README.md` lines ~87–106). Add equivalent blocks for Cursor (`.cursor/mcp.json`),
-Windsurf, and VS Code (`.vscode/mcp.json`), all using the same `uvx --from people-context people-context-mcp` command so there is
-exactly one canonical invocation to keep correct across every client, rather than one snippet per client with
-independent `uv run --directory ...` paths.
+a generic stdio JSON block. Add equivalent blocks for Cursor (`.cursor/mcp.json`), Windsurf, and VS Code
+(`.vscode/mcp.json`), all using `uvx --from people-context people-context-mcp` so there is exactly one canonical
+invocation to keep correct across every client, rather than one snippet per client with independent
+`uv run --directory ...` paths.
 
 ### Optional Docker image
 
@@ -102,7 +104,9 @@ narrowly-scoped publish workflow rather than folding container publishing into e
 
 ## Migration needs
 
-None. No schema, port, or domain change.
+The PyPI distribution migration is already complete before M8: `people-context` is primary and
+`people-context-mcp` is compatibility-only. M8 metadata and examples must reference the primary distribution.
+There is no database schema, port, domain, or stored-data migration.
 
 ## CLI / MCP surface changes
 
@@ -135,8 +139,8 @@ command, flag, or MCP tool is added.
 - CI: an `mcp-publisher validate` step for `server.json`, run alongside — not folded into — the existing
   `claude plugin validate . --strict` step ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)),
   which covers only the Claude Code plugin files and knows nothing about Registry metadata.
-- CI: a Docker smoke job that builds the image, runs it with a temporary volume, and execs
-  `people-context-mcp --help` and one real stdio round trip (resolve/remember/context), mirroring the existing
+- CI: a Docker smoke job that builds the image, runs it with a temporary volume, and executes
+  `people-context-mcp --help` plus one real stdio round trip (resolve/remember/context), mirroring the existing
   `uv run people-context-mcp --help` and `tests/adapters/test_mcp_server.py` /
   `tests/adapters/test_email_import.py` validation already listed in
   [docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation).
