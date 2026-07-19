@@ -2,7 +2,7 @@
 
 This document describes the extract-and-stage import pipeline for bringing external content — email/mbox,
 vCard, and agent-extracted notes candidates —
-into `people-context-mcp` without ever persisting raw source material. Import was delivered in **M3** (see
+into `people-context` without ever persisting raw source material. Import was delivered in **M3** (see
 [docs/roadmap.md](roadmap.md)); the `import_staging` table lives in the initial schema (see
 [docs/data-model.md](data-model.md#import_staging)).
 

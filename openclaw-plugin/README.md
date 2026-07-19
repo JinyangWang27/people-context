@@ -1,7 +1,7 @@
 # People Context OpenClaw Plugin
 
 An OpenClaw tool plugin that connects agents to
-[`people-context-mcp`](https://github.com/JinyangWang27/people-context),
+[`people-context`](https://github.com/JinyangWang27/people-context),
 a local-first store for durable knowledge about the people in your life.
 
 ## Tools

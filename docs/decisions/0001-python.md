@@ -6,7 +6,7 @@ Accepted.
 
 ## Context
 
-`people-context-mcp` needs a language and toolchain for a local MCP server plus a companion CLI. The main
+`people-context` needs a language and toolchain for a local MCP server plus a companion CLI. The main
 candidates were Python (with the official `mcp` SDK's `FastMCP`), TypeScript (which has first-class support
 in the broader MCP ecosystem and was the initially proposed choice), and a systems language such as Go or
 Rust. The project also needs a build/dependency toolchain and a way for MCP clients to launch it.
@@ -17,7 +17,7 @@ Use **Python ≥ 3.11**, with the official `mcp` Python SDK (`FastMCP`) for the 
 domain models and tool I/O schemas, `python-ulid` for ID generation, the standard library `sqlite3` module
 for persistence (no external database driver dependency), `pytest` for tests, and `ruff` for linting
 (`line-length = 120`). The project is packaged and run with `uv` (`pyproject.toml`, `hatchling` build
-backend); clients launch it via `uv run people-context-mcp` (or `uvx people-context-mcp` once published).
+backend); clients launch it via `uv run people-context-mcp` (or `uvx --from people-context people-context-mcp` from PyPI).
 
 ## Consequences
 

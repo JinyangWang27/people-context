@@ -1,6 +1,6 @@
 # Architecture
 
-`people-context-mcp` is built as a hexagonal (ports & adapters) system. A small `domain` + `app` core holds
+`people-context` is built as a hexagonal (ports & adapters) system. A small `domain` + `app` core holds
 all product logic and imports nothing from the outside world; every technology-specific concern — SQLite,
 the MCP SDK, file-based importers, the CLI — lives in an adapter that depends on the core through narrow
 interfaces (`ports`). This document explains the layers, the dependency rule, how new adapters slot in, and

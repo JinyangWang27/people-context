@@ -25,7 +25,7 @@ user is likely to encounter first: the official MCP registry, the community dire
 
 In scope:
 
-- verifying and documenting `uvx people-context-mcp` as a zero-clone install path;
+- verifying and documenting `uvx --from people-context people-context-mcp` as a zero-clone install path;
 - an MCP registry `server.json` (or equivalent per-registry metadata files) at the repository root;
 - a Claude Desktop extension (`.mcpb` bundle);
 - one-line stdio configuration snippets for Claude Desktop, Cursor, Windsurf, and VS Code in the README;
@@ -49,7 +49,7 @@ Non-goals:
 `pyproject.toml` already declares `[project.scripts] people-context-mcp = "people_context.adapters.mcp.server:main"`
 and `people-context = "people_context.cli:main"`, and the package is built with `hatchling`
 (`[build-system]`) and published via `.github/workflows/release.yml` using PyPI Trusted Publishing (see
-[docs/releasing.md](../releasing.md)). No code change is required for `uvx people-context-mcp` to work; this
+[docs/releasing.md](../releasing.md)). No code change is required for `uvx --from people-context people-context-mcp` to work; this
 deliverable is verification (a clean-machine run of `uvx people-context-mcp --help` and a stdio round trip) plus
 a README quick-start edit that puts the `uvx` form ahead of the `git clone` + `uv sync` form.
 
@@ -57,7 +57,7 @@ a README quick-start edit that puts the `uvx` form ahead of the `git clone` + `u
 
 Add `server.json` at the repository root following the official MCP Registry server schema: a PyPI-distributed
 server is represented by a `packages` entry with `"registryType": "pypi"`, the package identifier
-`people-context-mcp` and its version, and `"transport": {"type": "stdio"}` — not by a raw `command`/`args`
+`people-context` and its version, and `"transport": {"type": "stdio"}` — not by a raw `command`/`args`
 invocation, which is not how the Registry models package-based distribution. The Registry verifies PyPI
 ownership through an `mcp-name:` marker in the packaged README, so adding that marker (and keeping it present
 through every release, since it ships inside the sdist/wheel README) is a deliverable of this milestone.
@@ -76,7 +76,7 @@ and README already document.
 
 An `.mcpb` bundle needs a manifest describing the server's stdio invocation, analogous in spirit to
 `.claude-plugin/mcp.json`'s `{"mcpServers": {"people-context": {"type": "stdio", "command": "uv", "args": [...]}}}`
-shape, but targeting the `uvx people-context-mcp` invocation so the bundle does not need to vendor a project
+shape, but targeting the `uvx --from people-context people-context-mcp` invocation so the bundle does not need to vendor a project
 directory. Packaging happens through a new `scripts/build-mcpb.*` step invoked from CI (there is currently no
 `scripts/` directory in the repository; this would be the first script added), producing a downloadable
 artifact attached to GitHub Releases alongside the existing PyPI publish step.
@@ -85,7 +85,7 @@ artifact attached to GitHub Releases alongside the existing PyPI publish step.
 
 The README's existing "MCP client configuration" section already shows the Claude Code `claude mcp add` form and
 a generic stdio JSON block (`README.md` lines ~87–106). Add equivalent blocks for Cursor (`.cursor/mcp.json`),
-Windsurf, and VS Code (`.vscode/mcp.json`), all using the same `uvx people-context-mcp` command so there is
+Windsurf, and VS Code (`.vscode/mcp.json`), all using the same `uvx --from people-context people-context-mcp` command so there is
 exactly one canonical invocation to keep correct across every client, rather than one snippet per client with
 independent `uv run --directory ...` paths.
 
