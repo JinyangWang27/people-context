@@ -24,27 +24,32 @@ on:
       - "tests/adapters/test_mcp_server.py"
       - "tests/adapters/test_email_import.py"
 
-permissions:
-  contents: read
+permissions: read-all
 
 jobs:
   validate:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
+          package-manager-cache: false
 
       - name: Install Claude Code
-        run: npm install --global @anthropic-ai/claude-code@latest
+        run: npm install --global @anthropic-ai/claude-code@2.1.214
 
       - name: Validate marketplace and plugin
         run: claude plugin validate . --strict
 
-      - uses: astral-sh/setup-uv@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 
       - name: Verify local MCP entry point
         run: uv run --locked people-context-mcp --help
