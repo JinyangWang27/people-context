@@ -1,4 +1,4 @@
--- Initial schema for people-context-mcp.
+-- Initial schema for people-context.
 -- Datetimes: ISO-8601 TEXT (UTC, with offset). Dates: ISO date TEXT. Booleans: 0/1.
 -- Provenance flattened into provenance_source / provenance_session / provenance_stated_by.
 

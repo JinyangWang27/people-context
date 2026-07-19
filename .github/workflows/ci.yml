@@ -30,6 +30,13 @@ jobs:
       - name: Run Ruff
         run: uv run --locked ruff check .
 
+      - name: Verify package distributions
+        run: |
+          uv lock --check
+          uv build
+          (cd compat/people-context-mcp && uv build --out-dir "$GITHUB_WORKSPACE/dist-legacy")
+          uvx --from twine==6.2.0 twine check dist/* dist-legacy/*
+
       - name: Run tests with coverage
         run: uv run --locked --with pytest-cov==7.1.0 pytest --cov=people_context --cov-report=xml -q
 

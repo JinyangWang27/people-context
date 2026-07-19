@@ -13,7 +13,7 @@ The repository is also a self-hosted Claude Code plugin marketplace. The plugin 
 Add the marketplace:
 
 ```bash
-claude plugin marketplace add JinyangWang27/people-context-mcp
+claude plugin marketplace add JinyangWang27/people-context
 ```
 
 Install the plugin:
@@ -27,7 +27,7 @@ Restart Claude Code or run `/reload-plugins`. Use `/mcp` to confirm that the `pe
 Inside an interactive Claude Code session, the equivalent commands are:
 
 ```text
-/plugin marketplace add JinyangWang27/people-context-mcp
+/plugin marketplace add JinyangWang27/people-context
 /plugin install people-context@people-context-plugins
 /reload-plugins
 ```

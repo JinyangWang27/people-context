@@ -1,6 +1,6 @@
 # Communication Guidance and Reminders
 
-This document describes how `people-context-mcp` supports communication guidance — helping the user figure
+This document describes how `people-context` supports communication guidance — helping the user figure
 out how to communicate with a specific person, in the user's own preferred style — and person-linked
 reminders. Both are implemented in **M2** (see [docs/roadmap.md](roadmap.md)); their data lives in the
 M0 schema (`traits`, `reminders`, `user_preferences` — see

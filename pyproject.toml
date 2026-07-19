@@ -1,5 +1,5 @@
 [project]
-name = "people-context-mcp"
+name = "people-context"
 version = "0.1.0"
 description = "Local-first MCP server giving AI agents contextual knowledge about the people in your life"
 readme = "README.md"
@@ -21,9 +21,9 @@ classifiers = [
 dependencies = ["mcp>=1.2,<2", "pydantic>=2.7", "python-ulid>=2.2"]
 
 [project.urls]
-Homepage = "https://github.com/JinyangWang27/people-context-mcp"
-Repository = "https://github.com/JinyangWang27/people-context-mcp"
-Issues = "https://github.com/JinyangWang27/people-context-mcp/issues"
+Homepage = "https://github.com/JinyangWang27/people-context"
+Repository = "https://github.com/JinyangWang27/people-context"
+Issues = "https://github.com/JinyangWang27/people-context/issues"
 
 [project.optional-dependencies]
 semantic = [

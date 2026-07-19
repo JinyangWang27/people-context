@@ -12,7 +12,7 @@ Security fixes are applied to the latest published release and to the current `m
 
 ## Reporting a vulnerability
 
-Please report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/JinyangWang27/people-context-mcp/security/advisories/new).
+Please report suspected vulnerabilities through [GitHub private vulnerability reporting](https://github.com/JinyangWang27/people-context/security/advisories/new).
 
 Do not open a public issue, discussion, or pull request containing vulnerability details before coordinated disclosure. Because this project stores personal context locally, do not include real personal data, database contents, credentials, access tokens, or other secrets in a report. Use minimal synthetic examples instead.
 

@@ -1,6 +1,6 @@
 # Privacy and Safety
 
-`people-context-mcp` stores personal, potentially sensitive information about people in the user's life. This
+`people-context` stores personal, potentially sensitive information about people in the user's life. This
 document lays out the safety model: what the software guarantees, what it depends on the user's environment
 for, and what its threat model does and does not cover.
 

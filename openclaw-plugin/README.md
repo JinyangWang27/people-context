@@ -1,7 +1,7 @@
 # People Context OpenClaw Plugin
 
 An OpenClaw tool plugin that connects agents to
-[`people-context-mcp`](https://github.com/JinyangWang27/people-context-mcp),
+[`people-context`](https://github.com/JinyangWang27/people-context),
 a local-first store for durable knowledge about the people in your life.
 
 ## Tools
@@ -129,7 +129,7 @@ After the first manual publish, enable trusted GitHub Actions publishing:
 
 ```bash
 clawhub package trusted-publisher set openclaw-plugin-people-context \
-  --repository JinyangWang27/people-context-mcp \
+  --repository JinyangWang27/people-context \
   --workflow-filename package-publish.yml
 ```
 

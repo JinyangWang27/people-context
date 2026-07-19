@@ -50,6 +50,7 @@ jobs:
   dry-run:
     if: github.event_name == 'pull_request'
     permissions:
+      actions: read
       contents: read
       id-token: write
     # Pinned to the v0.12.0 commit SHA (mutable tags can be re-pointed at malicious code).
@@ -62,6 +63,7 @@ jobs:
   publish:
     if: github.event_name == 'workflow_dispatch'
     permissions:
+      actions: read
       contents: read
       id-token: write
     # Pinned to the v0.12.0 commit SHA (mutable tags can be re-pointed at malicious code).

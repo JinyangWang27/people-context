@@ -6,12 +6,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/JinyangWang27/people-context-mcp.git",
+    "url": "git+https://github.com/JinyangWang27/people-context.git",
     "directory": "openclaw-plugin"
   },
-  "homepage": "https://github.com/JinyangWang27/people-context-mcp#readme",
+  "homepage": "https://github.com/JinyangWang27/people-context#readme",
   "bugs": {
-    "url": "https://github.com/JinyangWang27/people-context-mcp/issues"
+    "url": "https://github.com/JinyangWang27/people-context/issues"
   },
   "keywords": [
     "openclaw",
