@@ -11,15 +11,11 @@ jobs:
   finalize:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout pull request branch
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: claude/project-adoption-paths-426qn6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
-
-      - name: Update remaining project-name references
+      - uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+      - name: Update remaining references
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -33,34 +29,37 @@ jobs:
               "openclaw-plugin/README.md": [("[`people-context-mcp`](https://github.com/JinyangWang27/people-context)", "[`people-context`](https://github.com/JinyangWang27/people-context)")],
           }
           for filename, replacements in changes.items():
-              path = Path(filename)
-              text = path.read_text(encoding="utf-8")
+              path = Path(filename); text = path.read_text(encoding="utf-8")
               for old, new in replacements:
-                  if old not in text:
-                      raise SystemExit(f"missing expected text in {filename}: {old}")
+                  if old not in text: raise SystemExit(f"missing {old!r} in {filename}")
                   text = text.replace(old, new)
               path.write_text(text, encoding="utf-8")
           for filename in ("docs/roadmap.md", "docs/specs/m8-distribution-and-reach.md"):
-              path = Path(filename)
-              text = path.read_text(encoding="utf-8")
+              path = Path(filename); text = path.read_text(encoding="utf-8")
               text = text.replace("`uvx people-context-mcp`", "`uvx --from people-context people-context-mcp`")
               text = text.replace("package identifier\n`people-context-mcp`", "package identifier\n`people-context`")
               path.write_text(text, encoding="utf-8")
           PY
-
-      - name: Regenerate lockfile and validate
+      - name: Refresh lockfile
+        run: uv lock
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Ruff
+        run: uv run --locked ruff check .
+      - name: Tests
+        run: uv run --locked pytest -q
+      - name: Entrypoint smoke tests
         run: |
-          uv lock
-          uv sync --locked --all-extras
-          uv run --locked ruff check .
-          uv run --locked pytest -q
           uv run --locked people-context-mcp --help
           uv run --locked people-context --help
-          uv build
-          (cd compat/people-context-mcp && uv build --out-dir "$GITHUB_WORKSPACE/dist-legacy")
-          uvx --from twine==6.2.0 twine check dist/* dist-legacy/*
-          ! grep -R "JinyangWang27/people-context-mcp" --exclude-dir=.git --exclude=apply-pypi-migration.yml .
-
+      - name: Build primary distribution
+        run: uv build
+      - name: Build compatibility distribution
+        run: (cd compat/people-context-mcp && uv build --out-dir "$GITHUB_WORKSPACE/dist-legacy")
+      - name: Check distribution metadata
+        run: uvx --from twine==6.2.0 twine check dist/* dist-legacy/*
+      - name: Audit obsolete repository URLs
+        run: '! grep -R "JinyangWang27/people-context-mcp" --exclude-dir=.git --exclude=apply-pypi-migration.yml .'
       - name: Commit validated migration
         run: |
           git rm .github/workflows/apply-pypi-migration.yml
