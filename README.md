@@ -187,7 +187,8 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and M6 local foundations |
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
-| [docs/roadmap.md](docs/roadmap.md) | M0 through M7 |
+| [docs/roadmap.md](docs/roadmap.md) | M0 through M7 delivered; M8 through M12 planned |
+| [docs/specs](docs/specs/) | One implementation spec per planned M8–M12 milestone |
 
 ## Contributing
 
