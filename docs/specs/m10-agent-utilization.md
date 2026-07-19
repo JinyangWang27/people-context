@@ -14,9 +14,10 @@ is not capability but *guidance*: the only agent-facing instruction text today i
 `SERVER_INSTRUCTIONS` string in `adapters/mcp/server.py:87-97`, which nudges `resolve_person` and
 `get_person_context` but says nothing about `get_communication_guidance`, nothing about the
 stage/review/commit approval flow, and nothing about when an agent should proactively stage what it learns.
-`.claude-plugin/` today contains exactly `marketplace.json`, `mcp.json`, and `plugin.json` (verified — no
-`commands/`, `skills/`, or `hooks/` directory exists yet), so there is no packaged guidance beyond that one
-instructions string and whatever a user happens to type.
+The plugin today ships exactly `marketplace.json`, `mcp.json`, and `plugin.json` inside `.claude-plugin/`
+(verified), and no `skills/`, `commands/`, or `hooks/` directory exists at the plugin root — which is where
+Claude Code actually discovers them; only the manifests belong inside `.claude-plugin/`. So there is no
+packaged guidance beyond that one instructions string and whatever a user happens to type.
 
 This is precisely the "zero server changes" adoption path called out in the source analysis: the fix is
 prompt/skill/command content shipped alongside the existing plugin, not new tools or new response fields.
@@ -27,8 +28,10 @@ In scope:
 
 - a packaged Claude Code skill teaching an agent when to call `resolve_person`, `get_communication_guidance`,
   and the `stage_candidates`/`review_import`/`commit_import` flow;
-- slash commands `/who`, `/remember`, `/reminders`;
-- an optional session-end hook that prompts (never silently performs) candidate staging;
+- user-invocable who/remember/reminders entry points (namespaced by the plugin name — `/people-context:who`
+  etc.);
+- an optional end-of-session prompt (Stop-event hook or skill instruction) that proposes — never silently
+  performs — candidate staging;
 - at most a small, additive extension of `SERVER_INSTRUCTIONS` mentioning the two under-used tools by name.
 
 Non-goals:
@@ -44,9 +47,10 @@ Non-goals:
 
 ### Skill: tool-selection guidance
 
-A new skill under `.claude-plugin/skills/people-context-usage/` (directory name illustrative; see Open
-Questions for the exact manifest wiring) documents, in plain language grounded in the real contracts already
-published in [docs/mcp-interface.md](../mcp-interface.md):
+A new skill under `skills/people-context-usage/` at the plugin root — Claude Code auto-discovers `skills/`,
+`commands/`, and `hooks/` at the plugin root; only `plugin.json` and its sibling manifests live inside
+`.claude-plugin/` — documents, in plain language grounded in the real contracts already published in
+[docs/mcp-interface.md](../mcp-interface.md):
 
 - resolve identity first (`resolve_person`) before assuming who a name refers to, matching the existing
   `SERVER_INSTRUCTIONS` guidance, restated with the ambiguity-handling contract (`ambiguous` field) spelled out;
@@ -66,32 +70,45 @@ published in [docs/mcp-interface.md](../mcp-interface.md):
   "try" a gated tool anyway would be actively wrong guidance, so the skill states explicitly that their absence
   from the tool list is expected, not a bug to work around.
 
-### Slash commands
+### User-invocable who/remember/reminders
 
-Three new command files under `.claude-plugin/commands/` (`who.md`, `remember.md`, `reminders.md`), each a
-short prompt template that instructs the agent to call one MCP tool with the user's argument:
+Three user-invocable entry points, each a short prompt template that instructs the agent to call one MCP tool
+with the user's argument. Because plugin commands and skills are namespaced by the manifest name
+(`people-context`), the actual invocations are `/people-context:who`, `/people-context:remember`, and
+`/people-context:reminders` — the roadmap's short `/who` form is shorthand, not the literal user interface.
+Claude Code has folded standalone commands into the skills mechanism (a skill with user-invocation metadata
+serves the same purpose), so the preferred implementation is three small user-invocable skills at the plugin
+root, with root-level `commands/*.md` files only as a compatibility fallback if the minimum supported Claude
+Code version requires them:
 
-- `/who <query>` → `resolve_person(query=...)`, then `get_person_context(person_id=...)` on an unambiguous
-  single match, surfacing the `ambiguous`/candidate-list contract when resolution is not unique;
-- `/remember <description>` → `remember_person` for an explicit new/updated person, or `stage_candidates` when
-  the agent is extracting from prior conversation context rather than the user directly asserting a fact;
-- `/reminders [person]` → `list_reminders`, optionally filtered by a resolved `person_id`.
+- `/people-context:who <query>` → `resolve_person(query=...)`, then `get_person_context(person_id=...)` on an
+  unambiguous single match, surfacing the `ambiguous`/candidate-list contract when resolution is not unique;
+- `/people-context:remember <description>` → `remember_person` for an explicit new/updated person, or
+  `stage_candidates` when the agent is extracting from prior conversation context rather than the user
+  directly asserting a fact;
+- `/people-context:reminders [person]` → `list_reminders`, optionally filtered by a resolved `person_id`.
 
-Each command is a thin wrapper around one existing, already-documented tool contract; none introduces new
+Each entry point is a thin wrapper around one existing, already-documented tool contract; none introduces new
 response shapes for the user to learn.
 
-### Optional session-end capture hook
+### Optional end-of-session capture prompt
 
-Claude Code's hook mechanism can run a script at defined lifecycle points, but a shell hook cannot itself decide
-*what* is worth remembering — that judgment requires the agent, not a deterministic script. This milestone
-therefore designs the hook as a **prompt injection**, not a data-computing script: at session end, the hook
-appends an instruction asking the agent to review what it learned in the session and call `stage_candidates`
-for anything durable, exactly the same call the skill already describes. The hook never calls
-`commit_import` itself and never bypasses the user review step; it only increases the odds that something
-worth remembering gets staged for the user to review later via `review_import`. If Claude Code's hook contract
-cannot deliver prompt text back into the conversation at session end (see Open Questions), this deliverable
-degrades gracefully to being purely a skill instruction ("before ending a session, consider staging what you
-learned") with no separate hook file at all.
+A hook cannot itself decide *what* is worth remembering — that judgment requires the agent, not a
+deterministic script — so this deliverable is a **prompt**, not a data-computing script. The lifecycle event
+matters, though: Claude Code's `SessionEnd` hooks support command/HTTP/MCP-tool side effects but cannot inject
+prompt text back into a conversation that is already ending, so a "session-end prompt hook" as such does not
+exist. The two viable designs are:
+
+1. a **`Stop`-event prompt hook** that, when the agent finishes a turn, asks it to review what it learned and
+   call `stage_candidates` for anything durable — with explicit loop prevention (the hook must not re-fire on
+   the continuation turn its own prompt produced; Claude Code's stop-hook-active guard exists for exactly this,
+   and the hook prompt must be written to terminate after one staging pass); or
+2. **no hook at all**: the same instruction lives purely in the skill ("before ending a session, consider
+   staging what you learned"), which is simpler, cannot loop, and needs no lifecycle support.
+
+The choice between them is an Open Question; either way the prompt never calls `commit_import` itself and never
+bypasses the user review step — it only increases the odds that something worth remembering gets staged for
+review later via `review_import`.
 
 ### `SERVER_INSTRUCTIONS` extension (optional, minimal)
 
@@ -120,11 +137,11 @@ server-provided prose, not a versioned contract field.
   and that gate is enforced in `adapters/mcp/security.py:process_elevation_enabled`, not by prompt discipline —
   this milestone's guidance reinforces, but is not a substitute for, that process-level boundary (see
   [docs/privacy-and-safety.md](../privacy-and-safety.md#writes-and-destructive-operations-are-annotated-for-client-side-gating)).
-- The session-end hook must not persist or transmit session transcript content anywhere outside the normal
+- The end-of-session capture prompt must not persist or transmit session transcript content anywhere outside the normal
   `stage_candidates` call it prompts for; the hook script itself (if implemented as a script rather than pure
   prompt injection) must not read or log conversation content, matching the "never log private values" rule in
   `AGENTS.md`.
-- Slash commands must not widen disclosure: `/who` and `/reminders` only ever call tools already available at
+- The user-invocable entry points must not widen disclosure: who and reminders only ever call tools already available at
   the default (non-elevated) MCP surface, so their behavior is identical whether or not the operator has set
   either elevation environment variable.
 
@@ -134,28 +151,29 @@ server-provided prose, not a versioned contract field.
   assert on that string (if any exist in `tests/adapters/test_mcp_server.py` or
   `tests/adapters/test_mcp_entrypoint.py`) must be checked and updated for the new wording.
 - Plugin validation: extend the existing `claude plugin validate . --strict` step
-  ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)) to cover the new `commands/`,
-  `skills/`, and (if added) `hooks/` paths.
+  ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)) to cover the new root-level
+  `skills/` (and, if added, `commands/` and `hooks/`) paths.
 - Manual interactive verification, following the existing "Local validation" procedure exactly
   ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)): install locally, `/reload-plugins`,
-  then exercise `/who`, `/remember`, and `/reminders` against a temporary database, and confirm the skill
+  then exercise `/people-context:who`, `/people-context:remember`, and `/people-context:reminders` against a
+  temporary database, and confirm the skill
   changes observed tool-selection behavior in a scripted transcript (agent calls `resolve_person` before
   assuming an identity; agent proposes `stage_candidates` rather than fabricating a write).
-- If the session-end hook ships as an actual script, add a narrow adapter-free test harness (a fixture that
+- If the Stop-event capture hook ships as an actual hook file, add a narrow adapter-free test harness (a fixture that
   invokes the hook script directly and asserts it only emits prompt text, performs no filesystem/network I/O
   beyond what Claude Code's hook contract requires, and never imports or calls into `people_context` directly).
 
 ## Open questions
 
-1. What are the current, exact Claude Code plugin manifest keys and directory conventions for `commands/`,
-   `skills/`, and `hooks/`? `plugin.json` today only demonstrates the `mcpServers: "./mcp.json"` pointer
-   pattern; the equivalent pointers (or auto-discovery rules) for commands/skills/hooks must be confirmed
-   against Claude Code's current plugin schema before implementation, not assumed from this spec.
-2. Does Claude Code's session-end hook lifecycle support injecting a follow-up prompt back into the same
-   conversation, or is it limited to fire-and-forget side effects (logging, notifications)? This determines
-   whether the "optional session-end hook" deliverable is a real hook file or purely a skill-level instruction.
-3. Should `/remember` attempt to disambiguate "explicit user assertion" (→ `remember_person`) from "agent
-   extraction from context" (→ `stage_candidates`) automatically, or should the command always route through
+1. What minimum Claude Code version should the plugin require for user-invocable skills (versus shipping
+   root-level `commands/*.md` fallbacks), and does the marketplace manifest need a version constraint bump from
+   the currently documented 2.1.196 floor?
+2. Should the end-of-session capture ship as a `Stop`-event prompt hook at all, given the loop-prevention
+   complexity, or is the skill-only instruction (option 2 in the design) the right permanent answer rather
+   than a fallback?
+3. Should `/people-context:remember` attempt to disambiguate "explicit user assertion" (→ `remember_person`)
+   from "agent extraction from context" (→ `stage_candidates`) automatically, or should the command always
+   route through
    staging for consistency, accepting one extra review step even for explicit assertions?
 4. Should this milestone's `SERVER_INSTRUCTIONS` edit ship independently of the skill/command/hook work (since
    it is the only piece touching versioned server code), or stay bundled with the rest of the plugin release?

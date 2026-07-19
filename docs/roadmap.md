@@ -83,9 +83,9 @@ command, without adding runtime dependencies or changing any server behavior.
 
 - verified zero-clone install: `uvx people-context-mcp` against the existing PyPI-published package (build
   and trusted-publish flow already documented in [docs/releasing.md](releasing.md));
-- an MCP registry `server.json` and equivalent metadata submitted to the official MCP registry and community
-  directories (Smithery, PulseMCP, mcp.so, Glama), all pointing at the same stdio entrypoint already declared
-  in `pyproject.toml`'s `[project.scripts]`;
+- a `server.json` following the official MCP Registry packages schema (`registryType: "pypi"` plus stdio
+  transport, with the required `mcp-name:` README ownership marker) published via `mcp-publisher`, and
+  equivalent metadata submitted to community directories (Smithery, PulseMCP, mcp.so, Glama);
 - a Claude Desktop extension (`.mcpb` bundle) wrapping the same stdio invocation pattern already used by
   `.claude-plugin/mcp.json`;
 - documented one-line stdio configs for Claude Desktop, Cursor, Windsurf, and VS Code in the README, alongside
@@ -133,11 +133,12 @@ and are already wired into `ToolDeps`.
 **Deliverables:**
 
 - a packaged Claude Code skill describing when to call `resolve_person`, `get_communication_guidance`, and the
-  stage/review/commit import flow, added under `.claude-plugin/`;
-- slash commands `/who`, `/remember`, and `/reminders` wrapping `resolve_person`/`get_person_context`,
-  `remember_person`, and `list_reminders` respectively;
-- an optional session-end hook that prompts the agent to propose staged candidates via `stage_candidates` for
-  anything durable learned in the session — never an automatic `commit_import`;
+  stage/review/commit import flow, shipped at the plugin root (`skills/`), where Claude Code discovers it;
+- user-invocable who/remember/reminders entry points (namespaced as `/people-context:who` etc.) wrapping
+  `resolve_person`/`get_person_context`, `remember_person`, and `list_reminders` respectively;
+- an optional end-of-session prompt (Stop-event hook or skill instruction) that asks the agent to propose
+  staged candidates via `stage_candidates` for anything durable learned in the session — never an automatic
+  `commit_import`;
 - at most a small, additive extension of the `SERVER_INSTRUCTIONS` string in `adapters/mcp/server.py` mentioning
   `get_communication_guidance` and `stage_candidates`, with no tool signature or behavior change.
 
@@ -152,13 +153,14 @@ between two independently-diverged devices remains the harder, deliberately defe
 
 **Deliverables:**
 
-- `people-context sync push --output DIR`: a CLI-only, read-only consumer of the existing `ExportReader` and
-  `Changelog` ports (same pattern as `sync-log`) that writes one versioned JSON bundle file containing the
-  portable snapshot, the complete changelog, and the originating device's HLC watermark;
+- `people-context sync push --output DIR`: a CLI-only, read-only bundle export that reads the portable
+  snapshot (including relationship vocabulary), the complete changelog, and the originating device's HLC
+  watermark inside one read transaction, and writes them as one versioned JSON bundle file;
 - `people-context sync pull --input PATH`: a CLI-only, trusted bootstrap restore that only ever targets a
-  freshly initialized, still-empty database — never a two-way merge — atomically writes primary rows and
-  changelog/device history, then rebuilds FTS (and, if requested, semantic vectors) the same way any direct-SQL
-  repair does today;
+  freshly initialized, still-empty database — never a two-way merge — and, in one atomic transaction, writes
+  primary rows, relationship vocabulary, changelog and retired device history, rebuilds FTS, and advances the
+  local device's HLC past the bundle watermark; imported device identities are never active on the restored
+  machine, and only the optional semantic reindex runs outside the transaction;
 - an additive widening of `Changelog.list_entries`'s `limit` parameter to accept `None` for "all entries",
   needed because bundle export must not silently cap history at the current default of 100;
 - explicit CLI refusal (no partial/best-effort merge) when the pull target already has primary data, with a

@@ -55,13 +55,22 @@ a README quick-start edit that puts the `uvx` form ahead of the `git clone` + `u
 
 ### MCP registry and community directories
 
-Add `server.json` at the repository root describing the package name, the stdio `command`/`args` invocation
-(`uvx people-context-mcp`, mirroring the `command`/`args` shape already used in `.claude-plugin/mcp.json`), and
-a link back to [docs/mcp-interface.md](../mcp-interface.md) for the tool contract. Community directories
-(Smithery, PulseMCP, mcp.so, Glama) each have their own submission format; where a directory requires an
-in-repo metadata file (for example a `smithery.yaml`), add it alongside `server.json` rather than duplicating
-tool descriptions that already live in `docs/mcp-interface.md`. None of these files execute anything themselves
-— they are static metadata pointing at the same `uvx`/stdio invocation the plugin and README already document.
+Add `server.json` at the repository root following the official MCP Registry server schema: a PyPI-distributed
+server is represented by a `packages` entry with `"registryType": "pypi"`, the package identifier
+`people-context-mcp` and its version, and `"transport": {"type": "stdio"}` — not by a raw `command`/`args`
+invocation, which is not how the Registry models package-based distribution. The Registry verifies PyPI
+ownership through an `mcp-name:` marker in the packaged README, so adding that marker (and keeping it present
+through every release, since it ships inside the sdist/wheel README) is a deliverable of this milestone.
+Registry initialization, validation, and publication use the Registry's own `mcp-publisher` tooling
+(`mcp-publisher validate` in CI, `mcp-publisher publish` in the release flow) — not Claude's plugin validator,
+which covers only the Claude Code plugin files. Once the `.mcpb` bundle below exists, it can be represented as
+an additional `"registryType": "mcpb"` package entry carrying the artifact URL and its SHA-256.
+
+Community directories (Smithery, PulseMCP, mcp.so, Glama) each have their own submission format; where a
+directory requires an in-repo metadata file (for example a `smithery.yaml`), add it alongside `server.json`
+rather than duplicating tool descriptions that already live in `docs/mcp-interface.md`. None of these files
+execute anything themselves — they are static metadata pointing at the same PyPI/stdio distribution the plugin
+and README already document.
 
 ### Claude Desktop extension (`.mcpb`)
 
@@ -123,9 +132,9 @@ command, flag, or MCP tool is added.
 
 ## Testing strategy
 
-- CI: extend the existing `claude plugin validate . --strict` step
-  ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)) to also validate `server.json`
-  against the MCP registry schema.
+- CI: an `mcp-publisher validate` step for `server.json`, run alongside — not folded into — the existing
+  `claude plugin validate . --strict` step ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)),
+  which covers only the Claude Code plugin files and knows nothing about Registry metadata.
 - CI: a Docker smoke job that builds the image, runs it with a temporary volume, and execs
   `people-context-mcp --help` and one real stdio round trip (resolve/remember/context), mirroring the existing
   `uv run people-context-mcp --help` and `tests/adapters/test_mcp_server.py` /
@@ -140,8 +149,8 @@ command, flag, or MCP tool is added.
 
 ## Open questions
 
-1. Does the official MCP registry require signed publisher verification tied to the GitHub repository, and if
-   so, does that block or merely delay the `server.json` submission?
+1. Which Registry namespace should the server publish under — the GitHub-authenticated `io.github.jinyangwang27.*`
+   form or a custom domain — and does that choice constrain a later rename?
 2. Can the `.mcpb` bundle shell out to `uvx` at first run (simpler bundle, but a first-run network dependency
    to fetch the package), or does the Desktop extension format require vendoring a self-contained interpreter?
 3. Is a single Docker image (stdio-only) sufficient, or should the milestone also ship an `--http` variant image
