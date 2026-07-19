@@ -17,7 +17,8 @@ Use **Python ≥ 3.11**, with the official `mcp` Python SDK (`FastMCP`) for the 
 domain models and tool I/O schemas, `python-ulid` for ID generation, the standard library `sqlite3` module
 for persistence (no external database driver dependency), `pytest` for tests, and `ruff` for linting
 (`line-length = 120`). The project is packaged and run with `uv` (`pyproject.toml`, `hatchling` build
-backend); clients launch it via `uv run people-context-mcp` (or `uvx --from people-context people-context-mcp` from PyPI).
+backend); clients launch it via `uv run people-context-mcp` (or, from PyPI,
+`uvx --from people-context people-context-mcp`).
 
 ## Consequences
 

@@ -81,8 +81,9 @@ command, without adding runtime dependencies or changing any server behavior.
 
 **Deliverables:**
 
-- verified zero-clone install: `uvx --from people-context people-context-mcp` against the existing PyPI-published package (build
-  and trusted-publish flow already documented in [docs/releasing.md](releasing.md));
+- verified zero-clone install: `uvx --from people-context people-context-mcp` against the existing
+  PyPI-published package (build and trusted-publish flow already documented in
+  [docs/releasing.md](releasing.md));
 - a `server.json` following the official MCP Registry packages schema (`registryType: "pypi"` plus stdio
   transport, with the required `mcp-name:` README ownership marker) published via `mcp-publisher`, and
   equivalent metadata submitted to community directories (Smithery, PulseMCP, mcp.so, Glama);
