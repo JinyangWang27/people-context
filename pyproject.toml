@@ -1,5 +1,5 @@
 [project]
-name = "people-context-mcp"
+name = "people-context"
 version = "0.1.0"
 description = "Local-first MCP server giving AI agents contextual knowledge about the people in your life"
 readme = "README.md"
