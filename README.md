@@ -3,9 +3,9 @@
 [![CI](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JinyangWang27/people-context/graph/badge.svg)](https://codecov.io/gh/JinyangWang27/people-context)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JinyangWang27/people-context/badge)](https://scorecard.dev/viewer/?uri=github.com/JinyangWang27/people-context)
-[![PyPI](https://img.shields.io/pypi/v/people-context-mcp)](https://pypi.org/project/people-context-mcp/)
-[![PyPI downloads](https://img.shields.io/pypi/dm/people-context-mcp)](https://pypi.org/project/people-context-mcp/)
-[![Python](https://img.shields.io/pypi/pyversions/people-context-mcp)](https://pypi.org/project/people-context-mcp/)
+[![PyPI](https://img.shields.io/pypi/v/people-context)](https://pypi.org/project/people-context/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/people-context)](https://pypi.org/project/people-context/)
+[![Python](https://img.shields.io/pypi/pyversions/people-context)](https://pypi.org/project/people-context/)
 [![License](https://img.shields.io/github/license/JinyangWang27/people-context)](https://github.com/JinyangWang27/people-context/blob/main/LICENSE)
 
 A local-first [MCP](https://modelcontextprotocol.io) server that gives AI coding agents and personal agent
@@ -46,12 +46,23 @@ callers that ignore unknown response fields require no changes.
 
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
 
-Install the published package:
+Install the published distribution, then start either the MCP server or the human-operated CLI:
 
 ```bash
-uv tool install people-context-mcp
+uv tool install people-context
 people-context-mcp
+people-context --help
 ```
+
+For a one-off server launch without a persistent installation:
+
+```bash
+uvx --from people-context people-context-mcp
+```
+
+> **PyPI migration:** the distribution was renamed from `people-context-mcp` to `people-context`. The
+> `people-context-mcp` console command remains stable. A legacy `people-context-mcp` distribution is retained as
+> a compatibility shim that depends on `people-context`; new installations should use `people-context` directly.
 
 For local development:
 
@@ -89,7 +100,7 @@ Re-export is byte-deterministic over unchanged data. Sensitive/restricted facts 
 Claude Code:
 
 ```bash
-claude mcp add people-context -- uv run --directory /path/to/people-context people-context-mcp
+claude mcp add people-context -- uvx --from people-context people-context-mcp
 ```
 
 Generic stdio configuration:
@@ -98,8 +109,8 @@ Generic stdio configuration:
 {
   "mcpServers": {
     "people-context": {
-      "command": "uv",
-      "args": ["run", "--directory", "<repo>", "people-context-mcp"]
+      "command": "uvx",
+      "args": ["--from", "people-context", "people-context-mcp"]
     }
   }
 }
@@ -185,7 +196,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools and stable response contracts |
 | [docs/cli.md](docs/cli.md) | CLI commands and DB resolution |
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and M6 local foundations |
-| [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
+| [docs/releasing.md](docs/releasing.md) | PyPI migration, trusted publishing, Codecov, and release procedure |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
 | [docs/roadmap.md](docs/roadmap.md) | M0 through M7 delivered; M8 through M15 planned |
 | [docs/specs](docs/specs/) | One implementation spec per planned M8–M15 milestone |
