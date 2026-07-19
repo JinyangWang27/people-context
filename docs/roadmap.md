@@ -158,10 +158,11 @@ between two independently-diverged devices remains the harder, deliberately defe
   originating device's HLC watermark inside one read transaction, and writes them as one versioned JSON
   bundle file;
 - `people-context sync pull --input PATH`: a CLI-only, trusted bootstrap restore that only ever targets a
-  freshly initialized, still-empty database — never a two-way merge — and, in one atomic transaction, writes
-  primary rows, relationship vocabulary, changelog and retired device history, rebuilds FTS, and advances the
-  local device's HLC past the bundle watermark; imported device identities are never active on the restored
-  machine, and only the optional semantic reindex runs outside the transaction;
+  freshly initialized, still-empty database — never a two-way merge — and, in one atomic `BEGIN IMMEDIATE`
+  transaction, verifies emptiness, writes relationship vocabulary, retired device history, primary rows, and
+  changelog, rebuilds FTS, and advances the local device's HLC past the bundle watermark; imported device
+  identities are never active on the restored machine, and only the optional semantic reindex runs outside
+  the transaction;
 - an additive widening of `Changelog.list_entries`'s `limit` parameter to accept `None` for "all entries",
   needed because bundle export must not silently cap history at the current default of 100;
 - explicit CLI refusal (no partial/best-effort merge) when the pull target already has primary data, with a

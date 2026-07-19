@@ -167,23 +167,47 @@ state preserved for provenance — this metadata exists only in that collection,
 just `device_id`), leaving the destination's own freshly created device (from `db.py::_ensure_local_device`)
 as the sole non-retired row and the only identity the clock can ever select.
 
-**All of restore is one transaction, including finalization.** A restore that commits primary rows first and
-finalizes afterward is unretryable: the destination is no longer empty, so a second `sync pull` refuses, and a
-failed HLC advancement would let future local writes sort before the restored history. The entire operation —
-the emptiness checks first (so the empty-target guarantee holds under concurrency, not just at a
-check-some-moment-earlier), then primary rows, vocabulary reconciliation, changelog, retired device history,
-the FTS rebuild via the existing
-`PersonSearchIndexer.rebuild_person_search()` port method (`src/people_context/ports/repository.py:47`, the
-same "repair path" `reindex` documents for any direct-SQL change,
-[docs/cli.md](../cli.md#direct-sqlite-access)), and the local device's HLC advancement past the bundle's
-watermark via `HybridLogicalClock.observe()` (`src/people_context/ports/hlc.py:30`, implemented in
-`src/people_context/adapters/sqlite/hlc.py:37-55`) — runs inside one outer `SqliteUnitOfWork`
-(`src/people_context/adapters/sqlite/unit_of_work.py`). This works without any new transaction machinery
-because `SqliteUnitOfWork` joins an already-open outer transaction instead of starting its own, so the inner
-unit-of-work uses inside `observe()` and the indexer compose cleanly. A failure at any point rolls the
-still-empty database back to empty, and a retry is always safe. Only the optional semantic reindex
-(`reindex --semantic`) stays outside the transaction: it is cache-only derived data, explicitly rebuildable at
-any time, and must not couple a network/model dependency into the restore transaction.
+**All of restore is one transaction, including finalization — opened with `BEGIN IMMEDIATE`.** A restore that
+commits primary rows first and finalizes afterward is unretryable: the destination is no longer empty, so a
+second `sync pull` refuses, and a failed HLC advancement would let future local writes sort before the
+restored history.
+
+The transaction must acquire the write reservation **before** the emptiness checks. `SqliteUnitOfWork` issues
+a plain deferred `BEGIN` (`src/people_context/adapters/sqlite/unit_of_work.py:20`), and the database runs in
+WAL mode precisely to allow a CLI beside a live server (`db.py:36`). Under WAL, a deferred restore transaction
+could read an empty snapshot, have a concurrent writer commit a person, and then fail its own first write with
+`SQLITE_BUSY_SNAPSHOT` on the read-to-write upgrade — an opaque error instead of the promised structured
+refusal. The restorer therefore opens its outer transaction with `BEGIN IMMEDIATE` (a small restore-specific
+immediate unit of work, or an explicit `BEGIN IMMEDIATE` before delegating to the existing one): a writer that
+committed first is then visible to the emptiness checks, no writer can interleave between validation and
+insertion once the reservation is held, and the existing `busy_timeout=5000` (`db.py:40`) governs lock
+acquisition rather than surfacing a stale-snapshot upgrade failure.
+
+Insertion order inside the transaction is constrained by the schema: `changelog.device_id` is
+`NOT NULL REFERENCES devices(id)` (migration `002_sync_foundations.sql`) and `PRAGMA foreign_keys=ON` is set
+on every connection (`db.py:37`), so bundled device rows must land before bundled changelog rows or every
+foreign-device entry fails immediately. The full sequence:
+
+1. `BEGIN IMMEDIATE`;
+2. verify target emptiness (no person rows including soft-deleted, no changelog entries);
+3. validate bundle references — every changelog `device_id` must exist in the bundle's `devices` collection;
+4. insert/reconcile relationship vocabulary (rules above);
+5. insert bundled device rows, `retired_at` forced set;
+6. insert portable domain rows (including `audit_log`);
+7. insert changelog rows;
+8. rebuild FTS via the existing `PersonSearchIndexer.rebuild_person_search()` port method
+   (`src/people_context/ports/repository.py:47`, the same "repair path" `reindex` documents for any
+   direct-SQL change, [docs/cli.md](../cli.md#direct-sqlite-access));
+9. advance the destination device's HLC past the bundle's watermark via `HybridLogicalClock.observe()`
+   (`src/people_context/ports/hlc.py:30`, implemented in `src/people_context/adapters/sqlite/hlc.py:37-55`);
+10. `COMMIT`.
+
+Steps 8–9 need no new transaction machinery: `SqliteUnitOfWork` joins an already-open outer transaction
+instead of starting its own, so the inner unit-of-work uses inside `observe()` and the indexer compose
+cleanly. A failure at any step rolls the still-empty database back to empty, and a retry is always safe. Only
+the optional semantic reindex (`reindex --semantic`) stays outside the transaction: it is cache-only derived
+data, explicitly rebuildable at any time, and must not couple a network/model dependency into the restore
+transaction.
 
 ### CLI commands
 
@@ -275,9 +299,15 @@ success, prints the same summary `push` prints, for the now-restored device.
   database succeeds by skipping every byte-identical seeded row (the custom-vocabulary E2E case below cannot
   isolate this collision); a bundle whose vocabulary row differs from the destination's row under the same
   primary key rejects the whole bundle and rolls back to empty.
-- Adapter layer, emptiness-check concurrency: a second connection that inserts a person between opening the
-  restore and its bulk writes causes the restore to refuse and roll back — verifying the emptiness check holds
-  inside the restore transaction rather than as a separate earlier read.
+- Adapter layer, emptiness-check concurrency, both orderings: a second connection that commits a person
+  *before* the restore's `BEGIN IMMEDIATE` is seen by the emptiness checks and produces the structured
+  refusal; a second connection that attempts its write *after* the restore holds the reservation blocks (or
+  times out against `busy_timeout`) until the restore completes, and never interleaves between validation and
+  insertion.
+- Adapter layer, bundle reference validation: a bundle containing a changelog entry whose `device_id` is
+  absent from its `devices` collection is rejected before any write, with rollback to empty — exercising the
+  `changelog.device_id REFERENCES devices(id)` constraint path as a structured error rather than a raw
+  foreign-key failure.
 - Adapter layer, multi-device history: restore a bundle whose changelog spans two device ids (an A→B→C chain's
   second hop), asserting both device rows land retired with their bundled `display_name`/`created_at`/HLC
   state and that a fresh bundle exported from the restored database carries all of them forward.
