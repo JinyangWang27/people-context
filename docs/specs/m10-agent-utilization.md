@@ -30,8 +30,8 @@ In scope:
   and the `stage_candidates`/`review_import`/`commit_import` flow;
 - user-invocable who/remember/reminders entry points (namespaced by the plugin name — `/people-context:who`
   etc.);
-- an optional end-of-session prompt (Stop-event hook or skill instruction) that proposes — never silently
-  performs — candidate staging;
+- an end-of-session capture instruction, delivered through the skill (no hook — see Design), that proposes —
+  never silently performs — candidate staging;
 - at most a small, additive extension of `SERVER_INSTRUCTIONS` mentioning the two under-used tools by name.
 
 Non-goals:
@@ -91,24 +91,20 @@ Code version requires them:
 Each entry point is a thin wrapper around one existing, already-documented tool contract; none introduces new
 response shapes for the user to learn.
 
-### Optional end-of-session capture prompt
+### End-of-session capture: skill instruction, no hook
 
 A hook cannot itself decide *what* is worth remembering — that judgment requires the agent, not a
-deterministic script — so this deliverable is a **prompt**, not a data-computing script. The lifecycle event
-matters, though: Claude Code's `SessionEnd` hooks support command/HTTP/MCP-tool side effects but cannot inject
-prompt text back into a conversation that is already ending, so a "session-end prompt hook" as such does not
-exist. The two viable designs are:
+deterministic script — so this deliverable is a **prompt**, not a data-computing script. No hook lifecycle
+event fits it, though: `SessionEnd` hooks support command/HTTP/MCP-tool side effects but cannot inject prompt
+text back into a conversation that is already ending, and the only prompt-capable alternative, a `Stop`-event
+hook, fires after **every** assistant turn rather than at session end — a global hook that nags for staging
+after each response, plus loop-prevention complexity for the continuation turn its own prompt produces.
 
-1. a **`Stop`-event prompt hook** that, when the agent finishes a turn, asks it to review what it learned and
-   call `stage_candidates` for anything durable — with explicit loop prevention (the hook must not re-fire on
-   the continuation turn its own prompt produced; Claude Code's stop-hook-active guard exists for exactly this,
-   and the hook prompt must be written to terminate after one staging pass); or
-2. **no hook at all**: the same instruction lives purely in the skill ("before ending a session, consider
-   staging what you learned"), which is simpler, cannot loop, and needs no lifecycle support.
-
-The choice between them is an Open Question; either way the prompt never calls `commit_import` itself and never
-bypasses the user review step — it only increases the odds that something worth remembering gets staged for
-review later via `review_import`.
+This milestone therefore ships the capture behavior **skill-only**: the skill instructs the agent that before
+a session wraps up, it should review what it learned and call `stage_candidates` for anything durable. This
+cannot loop, needs no lifecycle support, and fires with agent judgment about timing instead of on a mechanical
+event. The prompt never calls `commit_import` itself and never bypasses the user review step — it only
+increases the odds that something worth remembering gets staged for review later via `review_import`.
 
 ### `SERVER_INSTRUCTIONS` extension (optional, minimal)
 
@@ -137,10 +133,10 @@ server-provided prose, not a versioned contract field.
   and that gate is enforced in `adapters/mcp/security.py:process_elevation_enabled`, not by prompt discipline —
   this milestone's guidance reinforces, but is not a substitute for, that process-level boundary (see
   [docs/privacy-and-safety.md](../privacy-and-safety.md#writes-and-destructive-operations-are-annotated-for-client-side-gating)).
-- The end-of-session capture prompt must not persist or transmit session transcript content anywhere outside the normal
-  `stage_candidates` call it prompts for; the hook script itself (if implemented as a script rather than pure
-  prompt injection) must not read or log conversation content, matching the "never log private values" rule in
-  `AGENTS.md`.
+- The end-of-session capture instruction must not persist or transmit session transcript content anywhere
+  outside the normal `stage_candidates` call it prompts for, matching the "never log private values" rule in
+  `AGENTS.md` — and raw conversation text is not a candidate field, so nothing in the strict candidate
+  vocabulary can carry it.
 - The user-invocable entry points must not widen disclosure: who and reminders only ever call tools already available at
   the default (non-elevated) MCP surface, so their behavior is identical whether or not the operator has set
   either elevation environment variable.
@@ -156,24 +152,17 @@ server-provided prose, not a versioned contract field.
 - Manual interactive verification, following the existing "Local validation" procedure exactly
   ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)): install locally, `/reload-plugins`,
   then exercise `/people-context:who`, `/people-context:remember`, and `/people-context:reminders` against a
-  temporary database, and confirm the skill
-  changes observed tool-selection behavior in a scripted transcript (agent calls `resolve_person` before
+  temporary database, and confirm the skill changes observed tool-selection behavior in a scripted transcript
+  (agent calls `resolve_person` before
   assuming an identity; agent proposes `stage_candidates` rather than fabricating a write).
-- If the Stop-event capture hook ships as an actual hook file, add a narrow adapter-free test harness (a fixture that
-  invokes the hook script directly and asserts it only emits prompt text, performs no filesystem/network I/O
-  beyond what Claude Code's hook contract requires, and never imports or calls into `people_context` directly).
 
 ## Open questions
 
 1. What minimum Claude Code version should the plugin require for user-invocable skills (versus shipping
    root-level `commands/*.md` fallbacks), and does the marketplace manifest need a version constraint bump from
    the currently documented 2.1.196 floor?
-2. Should the end-of-session capture ship as a `Stop`-event prompt hook at all, given the loop-prevention
-   complexity, or is the skill-only instruction (option 2 in the design) the right permanent answer rather
-   than a fallback?
-3. Should `/people-context:remember` attempt to disambiguate "explicit user assertion" (→ `remember_person`)
+2. Should `/people-context:remember` attempt to disambiguate "explicit user assertion" (→ `remember_person`)
    from "agent extraction from context" (→ `stage_candidates`) automatically, or should the command always
-   route through
-   staging for consistency, accepting one extra review step even for explicit assertions?
-4. Should this milestone's `SERVER_INSTRUCTIONS` edit ship independently of the skill/command/hook work (since
-   it is the only piece touching versioned server code), or stay bundled with the rest of the plugin release?
+   route through staging for consistency, accepting one extra review step even for explicit assertions?
+3. Should this milestone's `SERVER_INSTRUCTIONS` edit ship independently of the skill work (since it is the
+   only piece touching versioned server code), or stay bundled with the rest of the plugin release?

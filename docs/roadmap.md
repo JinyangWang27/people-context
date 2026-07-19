@@ -136,9 +136,9 @@ and are already wired into `ToolDeps`.
   stage/review/commit import flow, shipped at the plugin root (`skills/`), where Claude Code discovers it;
 - user-invocable who/remember/reminders entry points (namespaced as `/people-context:who` etc.) wrapping
   `resolve_person`/`get_person_context`, `remember_person`, and `list_reminders` respectively;
-- an optional end-of-session prompt (Stop-event hook or skill instruction) that asks the agent to propose
-  staged candidates via `stage_candidates` for anything durable learned in the session — never an automatic
-  `commit_import`;
+- an end-of-session capture instruction in the skill (deliberately no hook: `SessionEnd` cannot inject
+  prompts and a `Stop` hook fires every turn) asking the agent to propose staged candidates via
+  `stage_candidates` for anything durable learned in the session — never an automatic `commit_import`;
 - at most a small, additive extension of the `SERVER_INSTRUCTIONS` string in `adapters/mcp/server.py` mentioning
   `get_communication_guidance` and `stage_candidates`, with no tool signature or behavior change.
 
@@ -154,8 +154,9 @@ between two independently-diverged devices remains the harder, deliberately defe
 **Deliverables:**
 
 - `people-context sync push --output DIR`: a CLI-only, read-only bundle export that reads the portable
-  snapshot (including relationship vocabulary), the complete changelog, and the originating device's HLC
-  watermark inside one read transaction, and writes them as one versioned JSON bundle file;
+  snapshot (including relationship vocabulary), every referenced device row, the complete changelog, and the
+  originating device's HLC watermark inside one read transaction, and writes them as one versioned JSON
+  bundle file;
 - `people-context sync pull --input PATH`: a CLI-only, trusted bootstrap restore that only ever targets a
   freshly initialized, still-empty database — never a two-way merge — and, in one atomic transaction, writes
   primary rows, relationship vocabulary, changelog and retired device history, rebuilds FTS, and advances the

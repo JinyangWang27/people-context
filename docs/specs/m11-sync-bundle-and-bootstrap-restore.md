@@ -61,7 +61,7 @@ transaction, so two independent reads can observe different database states — 
 primary row is absent from the snapshot, or snapshot state beyond the claimed watermark. A new narrow port,
 `ports/sync_bundle.py::BundleReader` (one method), implemented in `adapters/sqlite/bundle_reader.py`, performs
 every read inside one `SqliteUnitOfWork` transaction so the domain snapshot, the relationship vocabulary, the
-complete changelog, the origin device row, and the HLC watermark all come from the same SQLite snapshot:
+complete changelog, the device rows, and the HLC watermark all come from the same SQLite snapshot:
 
 - the domain-collection reads reuse the row/serialization shape of `ExportReader.read_export()` →
   `ExportSnapshot` (`src/people_context/ports/export.py:10-23`), already backing `people-context export` and
@@ -84,9 +84,14 @@ add-only curation (`AddRelationshipType`, `relationship-types add`) means those 
 rows that exist nowhere else. Restoring relationships without them would strand custom type strings with no
 vocabulary row behind them, silently breaking synonym resolution, inverse canonicalization, and perspective
 `display_type` rendering on the restored device. The bundle therefore includes both vocabulary tables (seeded
-and custom rows alike; restore writes them by primary key, so rows matching the freshly-seeded defaults are
-harmless). The same omission affects the plain `people-context export` document today and should be fixed
-there too, but that is follow-up work outside this milestone's scope.
+and custom rows alike). A fresh destination has already executed migration 003, which seeds the canonical
+vocabulary under the same primary keys (`type` and `synonym`), so restore cannot blindly insert — and a blanket
+`INSERT OR REPLACE` would silently conceal reference-data drift between the two databases. Restore instead
+applies deterministic per-row reconciliation, types before synonyms: an incoming primary key whose row is
+byte-identical to the existing one is skipped; an incoming primary key whose row differs from the existing one
+rejects the whole bundle as incompatible (rolling back, per the atomicity rule below); an incoming primary key
+with no existing row is inserted. The same export omission affects the plain `people-context export` document
+today and should be fixed there too, but that is follow-up work outside this milestone's scope.
 
 The bundle is a single JSON file, following the same `format`/`version`/timestamp envelope convention already
 used by `ExportDocument` (`src/people_context/app/export_data.py:14-30`) and already sketched for a sync batch
@@ -99,11 +104,21 @@ in [docs/design/sync.md §6.3](../design/sync.md#63-batch-envelope):
   "created_at": "2026-07-19T12:00:00Z",
   "origin_device_id": "...",
   "watermark": {"hlc_physical_ms": 1755000000000, "hlc_logical": 3},
+  "devices": [{"id": "...", "display_name": "...", "public_key": null, "created_at": "...",
+               "retired_at": null, "hlc_physical_ms": 0, "hlc_logical": 0}],
   "snapshot": { "people": [...], "organizations": [...], "...": "...same shape as ExportSnapshot" },
   "relationship_vocabulary": {"types": [...], "synonyms": [...]},
   "changelog": [{"op_id": "...", "device_id": "...", "hlc_physical_ms": 0, "...": "...same shape as ChangelogEntry"}]
 }
 ```
+
+The `devices` collection contains **every** device row referenced by any changelog entry, plus the active
+origin device even when it has no operations yet. It cannot be reconstructed from the changelog:
+`ChangelogEntry` carries only `device_id` per operation, while the `devices` table also holds `display_name`,
+`public_key`, `created_at`, `retired_at`, and each device's persisted HLC state. Omitting it breaks on the
+second transfer — after an A→B restore, B's database holds retired A history and active B history, so a
+subsequent B→C bundle contains changelog entries from both device ids and must carry both device rows for C
+to restore them.
 
 This is deliberately **not** the `transactions`/`tombstones`/`acknowledgements` batch shape sketched in
 [docs/design/sync.md §6.3](../design/sync.md#63-batch-envelope) — that shape is designed for incremental,
@@ -118,11 +133,13 @@ point-in-time hand-off, not an incremental delta.
 - `ExportSyncBundle` — takes a `BundleReader` and returns a `SyncBundle` Pydantic model matching the envelope
   above. This is a pure read, "a read-only changelog consumer like the existing sync-log CLI," per the source
   analysis — no mutation; the single-transaction consistency guarantee lives in the adapter, not here.
-- `RestoreSyncBundle` — takes a `PersonReader` (to check the target is empty, via the existing
-  `list_people(include_deleted=True, limit=1)`), a `Changelog` (to check it is empty, via
-  `list_entries(limit=1)`), and a new narrow port (below) that performs the actual verbatim bulk write. Refuses
-  with a structured error (mirroring `ImportPipelineError`'s `code`/`message`/`details` shape used elsewhere in
-  this codebase) when the target already has primary data or changelog history.
+- `RestoreSyncBundle` — takes a new narrow port (below) that performs the emptiness verification and the
+  verbatim bulk write **inside one transaction**. The emptiness checks (no person rows, including soft-deleted
+  ones, and no changelog entries) must not run in the use case before delegating: with the CLI running beside a
+  live server, a check-then-write sequence spanning two transactions races — another process could write
+  between the check and the restore. The refusal surfaces as a structured error (mirroring
+  `ImportPipelineError`'s `code`/`message`/`details` shape used elsewhere in this codebase) when the target
+  already has primary data or changelog history.
 
 ### New port and adapter for verbatim bulk restore
 
@@ -144,15 +161,18 @@ Add `ports/bootstrap_restore.py::BootstrapRestorer` (narrow Protocol, one method
 the first non-retired device ordered by `created_at, id` (`src/people_context/adapters/sqlite/hlc.py:57-64`) —
 there is no other local-device marker in the schema. If restore inserted source device A's row as non-retired,
 device B could silently start writing under A's identity (A's `created_at` predates B's), recreating the exact
-shared-identity HLC hazard this milestone exists to avoid. Restore therefore writes one `devices` row per
-distinct `device_id` seen in the changelog **with `retired_at` set** (original `created_at` and final HLC
-state preserved for provenance), leaving the destination's own freshly created device (from
-`db.py::_ensure_local_device`) as the sole non-retired row and the only identity the clock can ever select.
+shared-identity HLC hazard this milestone exists to avoid. Restore therefore writes every row in the bundle's
+`devices` collection **with `retired_at` forced set** (original `display_name`, `created_at`, and final HLC
+state preserved for provenance — this metadata exists only in that collection, since `ChangelogEntry` carries
+just `device_id`), leaving the destination's own freshly created device (from `db.py::_ensure_local_device`)
+as the sole non-retired row and the only identity the clock can ever select.
 
 **All of restore is one transaction, including finalization.** A restore that commits primary rows first and
 finalizes afterward is unretryable: the destination is no longer empty, so a second `sync pull` refuses, and a
 failed HLC advancement would let future local writes sort before the restored history. The entire operation —
-primary rows, vocabulary, changelog, retired device history, the FTS rebuild via the existing
+the emptiness checks first (so the empty-target guarantee holds under concurrency, not just at a
+check-some-moment-earlier), then primary rows, vocabulary reconciliation, changelog, retired device history,
+the FTS rebuild via the existing
 `PersonSearchIndexer.rebuild_person_search()` port method (`src/people_context/ports/repository.py:47`, the
 same "repair path" `reindex` documents for any direct-SQL change,
 [docs/cli.md](../cli.md#direct-sqlite-access)), and the local device's HLC advancement past the bundle's
@@ -238,8 +258,8 @@ success, prints the same summary `push` prints, for the now-restored device.
 ## Testing strategy
 
 - App layer: fake-port tests for `ExportSyncBundle` (envelope shape, driven through a fake `BundleReader`) and
-  `RestoreSyncBundle` (refusal on non-empty target via fake `PersonReader`/`Changelog`), added to
-  `tests/app/` alongside the existing use-case tests, using `tests/app/fakes.py`'s existing fake stores.
+  `RestoreSyncBundle` (a fake `BootstrapRestorer` reporting a non-empty target surfaces the structured refusal
+  unchanged), added to `tests/app/` alongside the existing use-case tests.
 - Adapter layer, bundle read consistency: `tests/adapters/test_sqlite_bundle_reader.py` asserting the snapshot,
   vocabulary, changelog, and watermark come from one transaction (e.g. a write from a second connection during
   the read must not appear partially).
@@ -251,6 +271,16 @@ success, prints the same summary `push` prints, for the now-restored device.
   retired and the destination's own device remains the single non-retired row, with
   `SqliteHybridLogicalClock.device_id` returning the destination's id (not the bundle origin's) after restore;
   and correct `HybridLogicalClock` advancement past the bundle's watermark.
+- Adapter layer, vocabulary reconciliation: a **default-vocabulary-only** restore into a freshly migrated
+  database succeeds by skipping every byte-identical seeded row (the custom-vocabulary E2E case below cannot
+  isolate this collision); a bundle whose vocabulary row differs from the destination's row under the same
+  primary key rejects the whole bundle and rolls back to empty.
+- Adapter layer, emptiness-check concurrency: a second connection that inserts a person between opening the
+  restore and its bulk writes causes the restore to refuse and roll back — verifying the emptiness check holds
+  inside the restore transaction rather than as a separate earlier read.
+- Adapter layer, multi-device history: restore a bundle whose changelog spans two device ids (an A→B→C chain's
+  second hop), asserting both device rows land retired with their bundled `display_name`/`created_at`/HLC
+  state and that a fresh bundle exported from the restored database carries all of them forward.
 - Widened `Changelog.list_entries(limit=None)`: extend `tests/adapters/test_sqlite_changelog.py` to cover
   unbounded listing alongside the existing bounded case.
 - CLI layer: new tests in `tests/test_cli.py` for `sync push`/`sync pull`, including the non-empty-target

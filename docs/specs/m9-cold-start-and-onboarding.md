@@ -95,9 +95,15 @@ self_addresses)` signature every other extractor implements. Parsing walks `BEGI
 `_decode_text`/`_decode_raw`/`_unescape_text` — is a strong candidate to extract into a small shared
 line-folding helper module used by both extractors, rather than duplicated). For each event:
 
-- `ATTENDEE` properties (`mailto:` value, optional `CN` parameter for display name) become `person` candidates,
-  matched the same way vCard's `EMAIL` values are staged as `handle` aliases
-  (`adapters/vcard_import.py:_card_candidates`);
+- `ATTENDEE` properties (`mailto:` value, optional `CN` parameter for display name) become `person` candidates
+  **deduplicated by normalized email address across the entire file**, exactly as the email extractor already
+  keeps one person per normalized address and accumulates differing display names into `alternate_names`
+  (`adapters/email_import.py:45-83`). This is required, not optional: `CandidateStager` allocates a distinct id
+  per person candidate and matches only against people already persisted before the batch — it does not
+  deduplicate within a batch — so an attendee appearing in several events (especially under different `CN`
+  spellings) would otherwise commit as duplicate people. Every event's interaction candidate references the one
+  shared per-address candidate. Email values are staged as `handle` aliases, the same way vCard's `EMAIL`
+  values are (`adapters/vcard_import.py:_card_candidates`);
 - one `interaction` candidate per event with `channel="calendar"`, `date` from `DTSTART`, and participant refs
   built from the event's attendees — mirroring exactly how the email importer stages one interaction per
   message today (`app/import_content.py:352`);
@@ -186,7 +192,9 @@ rather than inventing per-source skip fields.
   directly on the structure of `tests/adapters/test_vcard_import.py` (per-item independence — one malformed
   event/row never blocks its neighbors; missing-required-field skip reasons; self-address/self-row filtering;
   a raw-content sentinel value that must never appear in any staged candidate, mirroring
-  `test_vcard_import.py`'s `_NOTE_SENTINEL` pattern).
+  `test_vcard_import.py`'s `_NOTE_SENTINEL` pattern). The `.ics` tests must include cross-event deduplication:
+  two events sharing one attendee address under different `CN` display names stage exactly one person candidate
+  carrying both name variants, referenced by both interaction candidates.
 - Router: a `tests/adapters/test_import_router.py` covering the relocated `ImportExtractorRouter` dispatch for
   all four source types plus the unknown-`source_type` error path.
 - MCP layer: extend `tests/adapters/test_mcp_server.py`'s in-memory server tests with `import_content` calls
