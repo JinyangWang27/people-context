@@ -1,8 +1,7 @@
 name: Finalize PyPI distribution migration
 
 on:
-  push:
-    branches: [claude/project-adoption-paths-426qn6]
+  pull_request:
     paths: [.github/workflows/apply-pypi-migration.yml]
 
 permissions:
