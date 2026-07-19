@@ -59,7 +59,7 @@ jobs:
           uv build
           (cd compat/people-context-mcp && uv build --out-dir "$GITHUB_WORKSPACE/dist-legacy")
           uvx --from twine==6.2.0 twine check dist/* dist-legacy/*
-          ! grep -R "JinyangWang27/people-context-mcp" --exclude-dir=.git .
+          ! grep -R "JinyangWang27/people-context-mcp" --exclude-dir=.git --exclude=apply-pypi-migration.yml .
 
       - name: Commit validated migration
         run: |
