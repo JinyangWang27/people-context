@@ -204,10 +204,11 @@ a read path over data the schema already holds; nothing new is recorded.
 **Deliverables:**
 
 - read-only `get_stale_relationships` MCP tool and `people-context stale` CLI report: per-person
-  latest-interaction recency, filterable by relationship category, with explicit caps and a `truncated` flag
+  latest-interaction recency computed over ordinary-disclosure interactions only, one row per person with a
+  `categories` list (people can hold multiple relationship types), with explicit caps and a `truncated` flag
   following the M7 graph-tool conventions;
-- read-only `upcoming_dates` MCP tool and CLI report over parseable birthday/date facts and due reminders
-  within a bounded window;
+- read-only `upcoming_dates` MCP tool and CLI report over ordinary-disclosure parseable birthday/date facts
+  and due reminders within a bounded window;
 - a meeting-preparation flow in the M10 skill composing M9 `.ics` attendee resolution with
   `get_person_context`, `get_communication_guidance`, and open reminders — plugin-side only, no new server
   tool;
@@ -232,8 +233,9 @@ vault export.
   unscheduled);
 - two additional import sources through the M9 router: Outlook/Exchange contacts CSV, and WhatsApp chat-export
   participants/dates (participants and timestamps only — message bodies are never parsed into candidates);
-- an Obsidian community plugin (TypeScript package following the `openclaw-plugin/` precedent) rendering live,
-  read-only people pages from the local database.
+- an Obsidian community plugin (developed in-repo following the `openclaw-plugin/` precedent, published
+  through a mirrored distribution repository) rendering live, read-only people pages through the CLI's
+  disclosure-gated JSON output — never by opening the database directly.
 
 **Status:** Planned.
 
@@ -248,8 +250,9 @@ publishable evidence and narratives.
   dangling references — with suggested `merge_people`/`correct_record` follow-ups, never auto-applied;
 - `people-context stats`: local counts, sensitivity distribution, audit/changelog summaries, and a disclosure
   gate inventory;
-- transliteration-aware resolution polish: the existing `native_script`/`transliteration` alias kinds become
-  first-class in resolution ranking and explanations, with documented bilingual alias workflows;
+- transliteration-aware resolution explanations: exact alias matches already rank at parity, so resolution
+  explanations begin naming the matched alias kind, tests pin the parity, and bilingual alias workflows get
+  documented;
 - a published evaluation comparing agent task quality with and without the server, plus a use-case gallery in
   docs.
 

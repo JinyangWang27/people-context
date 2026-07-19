@@ -46,8 +46,27 @@ persons against their latest `interactions.occurred_at` (via `interaction_partic
 relationship-to-self category where one exists. App use case `app/get_stale_relationships.py` applies
 thresholds and caps; SQL stays in the adapter, policy in the app, per the dependency rule.
 
-Parameters: optional `category` (canonical vocabulary category), optional `threshold_days` (default 90),
-`limit` capped at 100 with a `truncated` flag — the same explicit-caps convention as the M7 graph tools.
+Two contract rules are load-bearing:
+
+**Recency respects the ordinary sensitivity boundary.** `Interaction` rows carry `sensitivity`
+(`domain/interaction.py`), and the ordinary `get_person_context` discloses only `public`/`personal` records
+(`_can_disclose` in `app/get_person_context.py`); the elevated variant is absent without
+`PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`. A recency date computed over *all* interactions would leak the
+existence and timing of sensitive/restricted interactions through an ordinary tool. The recency query
+therefore counts and dates only `public`/`personal` interactions; a person whose only interactions are
+elevated reports `last_interaction_at: null` exactly like a person with none. An operator-elevated variant
+behind the existing process gate is deliberately deferred (see Open Questions) rather than shipped by
+default.
+
+**Category is a list, not a scalar.** Storage permits multiple active relationship rows between the same two
+people — uniqueness is scoped to `(subject, object, type)` in the relationship store — so one person can be
+simultaneously `friend_of` (social) and `colleague_of` (professional). A scalar `category` would force a join
+that duplicates people and corrupts `limit`/`truncated`. The contract is one row per person with
+`categories: [...]`, and the `category` filter matches any element.
+
+Parameters: optional `category` (canonical vocabulary category, matches any of a person's categories),
+optional `threshold_days` (default 90), `limit` capped at 100 with a `truncated` flag — the same
+explicit-caps convention as the M7 graph tools.
 
 Response contract (stable, additive-only per the M12 promise):
 
@@ -56,7 +75,7 @@ Response contract (stable, additive-only per the M12 promise):
   "people": [{
     "person_id": "A",
     "name": "Alice",
-    "category": "social",
+    "categories": ["professional", "social"],
     "last_interaction_at": "2026-03-01T00:00:00Z",
     "days_since": 140,
     "interaction_count": 12
@@ -65,15 +84,18 @@ Response contract (stable, additive-only per the M12 promise):
 }
 ```
 
-People with zero recorded interactions appear with `last_interaction_at: null` and sort first. Names and
-recency metadata only — no summaries, facts, or interaction content; disclosure stays minimal like graph
-nodes.
+People with zero ordinary-disclosure interactions appear with `last_interaction_at: null` and sort first.
+Names, categories, and recency metadata only — no summaries, facts, or interaction content; disclosure stays
+minimal like graph nodes.
 
 ### `upcoming_dates` / CLI report
 
 App use case `app/list_upcoming_dates.py` over two existing reads: facts via the `ContextReader` port's
 `list_facts`, and reminders via the existing `ListReminders` use case (`app/list_reminders.py`). A fact
-qualifies when its `predicate` is date-like (initially exactly `birthday`) and its `value` parses as an ISO
+qualifies only when its `sensitivity` passes the same ordinary `public`/`personal` boundary
+`get_person_context` applies — the fact's stored `value` *is* the date, so "only the date is disclosed" is
+not a mitigation, and a sensitive or restricted birthday fact must be entirely invisible to this ordinary
+tool — and when its `predicate` is date-like (initially exactly `birthday`) and its `value` parses as an ISO
 date or a recurring `--MM-DD` form; unparseable values are skipped and counted, never guessed. Reminders
 qualify when `status` is active and `due_at` falls inside the window. Parameters: `window_days` (default 30,
 capped at 366), optional `person_id`. Response lists `{person_id, name, kind: "birthday"|"reminder", date,
@@ -89,10 +111,18 @@ brief. Purely prompt content in the plugin; zero new tools, matching M10's zero-
 ### `people-context reminders-ics`
 
 CLI-only subcommand serializing reminders (via the existing `RecordStore.list_reminders` filters) into one
-deterministic iCalendar file: one `VTODO` per reminder (`DUE` from `due_at`, `SUMMARY` from the reminder
-label, `UID` from the reminder's ULID id), sorted by `(due_at, id)`, written with the `0o600` owner-only
-pattern `_cmd_export` already uses. Determinism mirrors vault export: identical data yields byte-identical
-output (fixed `DTSTAMP` derived from each reminder's own timestamps, never wall-clock time).
+deterministic iCalendar file: one `VTODO` per exported reminder (`DUE` from `due_at`, `SUMMARY` from the
+reminder text, `UID` from the reminder's ULID id), sorted by `(due_at, id)`, written with the `0o600`
+owner-only pattern `_cmd_export` already uses. `Reminder.due_at` is optional and active listings deliberately
+include undated communication notes, so the export contract must say what happens to them: **only dated
+reminders are exported**, and the command reports a `skipped_undated` count (an undated `VTODO` renders as
+noise or not at all in most calendar clients; undated notes already surface through
+`get_communication_guidance`). `Reminder.recurrence` (free-text today) maps to `RRULE` only for an explicit
+supported vocabulary (`yearly` → `FREQ=YEARLY`, `monthly` → `FREQ=MONTHLY`, `weekly` → `FREQ=WEEKLY`);
+reminders with any other non-empty recurrence value are exported as single dated occurrences and counted in
+`skipped_unmapped_recurrence`, never guessed into a rule. Determinism mirrors vault export: identical data
+yields byte-identical output (fixed `DTSTAMP` derived from each reminder's own timestamps, never wall-clock
+time).
 
 ### `people-context watch`
 
@@ -130,12 +160,15 @@ uv run people-context watch [--interval SECONDS] [--from-start]
 
 ## Security / privacy considerations
 
-- Both new MCP tools disclose only names plus recency/date metadata — no facts, summaries, traits, or
-  interaction content — following the minimal-disclosure posture of the M7 graph tools; sensitivity-gated
-  material stays behind `get_person_context`'s existing gates.
-- `upcoming_dates` reads facts whose `sensitivity` may be elevated; the tool returns only the date and a fixed
-  kind label, never the fact's free-text `value`, so a sensitive birthday fact discloses no more than its
-  date.
+- Both new MCP tools are ordinary-surface tools and therefore apply the ordinary sensitivity boundary
+  themselves, not just structural minimalism: recency is computed exclusively over `public`/`personal`
+  interactions, and date facts with `sensitive`/`restricted` sensitivity are entirely invisible — their
+  existence, count, and timing must not be inferable from either tool's output. This matches the
+  `_can_disclose` rule the ordinary `get_person_context` already enforces; elevated variants, if ever added,
+  go behind the existing `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` process gate, never a tool argument.
+- Beyond the sensitivity gate, both tools disclose only names plus recency/date metadata — no summaries,
+  facts' free-text values, traits, or interaction content — following the minimal-disclosure posture of the
+  M7 graph tools.
 - `reminders-ics` writes a file outside server disclosure controls — same caveat and owner-only permissions as
   JSON export and vault export; CLI-only, matching the rule that file-writing operations are never
   model-callable.
@@ -148,13 +181,21 @@ uv run people-context watch [--interval SECONDS] [--from-start]
 
 - App layer: fake-port tests for staleness thresholds/caps/zero-interaction ordering and for date parsing
   (ISO, `--MM-DD`, unparseable-skip counting) against `tests/app/fakes.py`-style fakes.
+- Sensitivity boundary (both tools): a person whose *latest* interaction is `restricted` reports the latest
+  `public`/`personal` date instead (and `null` when none exists), with the restricted row affecting neither
+  date nor count; a `restricted` birthday fact never appears in `upcoming_dates` output nor in
+  `skipped_unparseable`. A person with multiple relationship types to self returns one row with all
+  categories and is counted once against `limit`.
 - Adapter layer: `tests/adapters/test_sqlite_recency_reader.py` (soft-deleted people excluded; participants
-  via `interaction_participants` resolve to the correct latest date) and ascending-cursor coverage for
-  `list_entries_after` in `tests/adapters/test_sqlite_changelog.py`, including cross-device HLC ties.
+  via `interaction_participants` resolve to the correct latest date; sensitivity filtering happens in SQL,
+  not post-hoc) and ascending-cursor coverage for `list_entries_after` in
+  `tests/adapters/test_sqlite_changelog.py`, including cross-device HLC ties.
 - MCP layer: in-memory server tests for both new tools' contracts and annotations, extending the annotation
   assertions in `tests/adapters/test_mcp_server.py`.
-- CLI layer: `stale`/`upcoming` snapshot tests; `reminders-ics` byte-determinism (two runs, identical bytes)
-  and `0o600` permission check; `watch` emits exactly the entries written after its cursor in one poll cycle.
+- CLI layer: `stale`/`upcoming` snapshot tests; `reminders-ics` byte-determinism (two runs, identical
+  bytes), `0o600` permission check, `skipped_undated`/`skipped_unmapped_recurrence` counting, and the
+  supported recurrence-vocabulary `RRULE` mapping; `watch` emits exactly the entries written after its cursor
+  in one poll cycle.
 - E2E: one stdio case recording interactions/reminders, then asserting `stale` and `upcoming` CLI output
   against the same data through MCP context reads.
 
@@ -162,9 +203,12 @@ uv run people-context watch [--interval SECONDS] [--from-start]
 
 1. Should staleness default thresholds vary by relationship category (family vs. professional feel different
    at 90 days), and if so, is that a config-file setting or per-call parameters only?
-2. Should `upcoming_dates` recognize additional date-like predicates beyond `birthday` (e.g. `anniversary`)
+2. Should operator-elevated variants of `get_stale_relationships`/`upcoming_dates` (recency over *all*
+   interactions, elevated date facts included) ship behind `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`, or is the
+   ordinary surface enough until someone asks?
+3. Should `upcoming_dates` recognize additional date-like predicates beyond `birthday` (e.g. `anniversary`)
    from day one, or start with exactly one predicate and widen after real usage?
-3. Should `watch` offer `--follow=false` (one batch then exit) as scripting sugar, or is composing with
+4. Should `watch` offer `--follow=false` (one batch then exit) as scripting sugar, or is composing with
    standard shell tools enough?
-4. Is a `VTODO`-based feed the right iCalendar mapping for reminders, or do more consumers (Google/Apple
+5. Is a `VTODO`-based feed the right iCalendar mapping for reminders, or do more consumers (Google/Apple
    Calendar) render `VEVENT` more reliably?

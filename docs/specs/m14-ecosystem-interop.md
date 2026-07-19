@@ -36,19 +36,25 @@ Non-goals:
 - parsing WhatsApp message bodies, attachments, or media — participants and timestamps only (see Security);
 - Signal import — current Signal backups are encrypted and have no stable plaintext export; revisit if that
   changes;
-- an Obsidian plugin that writes to the database — read-only, always.
+- an Obsidian plugin that writes to the database, or that opens the database file directly at all — it is a
+  read-only consumer of the CLI's disclosure-gated output (see Design).
 
 ## Design
 
 ### `people-context brief`
 
-App use case `app/compose_person_brief.py` composing two existing reads — `GetPersonContext`
-(`app/get_person_context.py`) and `GetCommunicationGuidance` (`app/get_communication_guidance.py`) — into one
-deterministic markdown document: identity and aliases, relationships with perspective `display_type`, current
-affiliations, durable facts, communication guidance signals, and open reminders. Sensitivity behaves exactly
-like vault export: elevated-sensitivity material requires the explicit `--include-sensitive` flag, and the
-brief's footer states that the exported text is outside server disclosure controls. Output goes to stdout by
-default (it is meant to be piped/pasted), or to a file via `--output` with the `0o600` export convention.
+App use case `app/compose_person_brief.py` composing three existing reads — `GetPersonContext`
+(`app/get_person_context.py`), `GetCommunicationGuidance` (`app/get_communication_guidance.py`), and
+`ListReminders` (`app/list_reminders.py`) — into one deterministic markdown document: identity and aliases,
+relationships with perspective `display_type`, current affiliations, durable facts, communication guidance
+signals, and open reminders. The third dependency is required, not optional: context and guidance both
+deliberately include only `communication_note` reminders, so "open reminders" (scheduled `follow_up` and
+`occasion` kinds included) is reachable only through `ListReminders`' person filter. Sensitivity behaves
+exactly like vault export: elevated-sensitivity material requires the explicit `--include-sensitive` flag,
+and the brief's footer states that the exported text is outside server disclosure controls. Output goes to
+stdout by default (it is meant to be piped/pasted) — as markdown, or as a stable JSON document via `--json`
+(the machine form the Obsidian plugin below consumes) — or to a file via `--output` with the `0o600` export
+convention.
 
 ### `people-context export-vcard`
 
@@ -78,19 +84,48 @@ Both are one extractor class plus a router branch, per the M9 pattern:
   without one-candidate-per-message noise. Message text after the `: ` separator is never read into any
   candidate field.
 
+  **Self-sender resolution needs its own mechanism.** The `ImportExtractor` contract supplies only
+  `self_addresses`, which `ImportContent._self_addresses` derives from the self person's `handle` aliases —
+  useless against WhatsApp sender labels, which are display names, "You", or phone numbers, so the user's own
+  messages would stage a duplicate external person. Two additive pieces close this: (a) `ImportContent`
+  additionally derives a normalized `self_names` set from the self person's canonical name and *all* alias
+  values (nickname, native-script, transliteration included, normalized via the same `normalize_name` the
+  resolver trusts) and passes it to extractors as a new keyword the existing extractors ignore; (b) the
+  WhatsApp source accepts an explicit `self_sender` hint (an additive optional `import_content` parameter)
+  naming one sender label to treat as self for labels no alias can match ("You", a bare phone number).
+  Senders matching either signal are excluded from `person` candidates and marked as self-participation in
+  the day's interaction candidate, mirroring how the email extractor treats `self_addresses` today.
+
 Both stage through the unchanged `import_content` → `review_import` → `commit_import` gate.
 
 ### Obsidian plugin (`obsidian-plugin/`)
 
-A TypeScript package in-repo, structured like `openclaw-plugin/` (own `package.json`, `tsconfig.json`,
-`vitest`, built `dist/`, dedicated publish workflow) and distributed through the Obsidian community plugin
-directory. It renders read-only "person view" panes — identity, relationships with `display_type`,
-facts, recent interactions — resolved live from the local SQLite file, so pages never go stale the way
-one-shot vault exports do. It opens the database strictly read-only and never holds a write lock; the
-concrete driver (WASM SQLite reading a snapshot copy vs. platform bindings) is an Open Question with a hard
-requirement either way: the plugin must never block or corrupt a concurrently writing server. The vault
-export (M7) remains the offline/portable path; the plugin is the live path, and both follow the same naming
-and perspective conventions ([docs/vault-export.md](../vault-export.md)).
+A TypeScript plugin rendering read-only "person view" panes — identity, relationships with `display_type`,
+ordinary-disclosure facts, recent interactions, open reminders — that never go stale the way one-shot vault
+exports do. The vault export (M7) remains the offline/portable path; the plugin is the live path, and both
+follow the same naming and perspective conventions ([docs/vault-export.md](../vault-export.md)).
+
+**Data access goes through the CLI, never raw SQLite.** A direct SQLite reader would bypass every disclosure
+control this project has (no sensitivity filtering — the exact policy `brief`, vault export, and the MCP
+tools all enforce) and would break outright against an M12 SQLCipher database, which only the canonical
+keyed open path can read. The plugin therefore shells out to the locally installed CLI —
+`people-context list --json` for the person index and `people-context brief PERSON --json` for pane content —
+so disclosure policy, database-path resolution, and encryption support are inherited from the one canonical
+Python path instead of reimplemented in TypeScript. The plugin never passes `--include-sensitive`; elevated
+material is unreachable from Obsidian by construction. This also eliminates the WAL-snapshot problem: the
+plugin holds no database handle at all, and caching is plugin-side per-pane with manual/interval refresh.
+Consequences: the plugin declares itself **desktop-only** in its manifest (it spawns a local process, which
+also must be disclosed per Obsidian's guidelines), and it degrades to a clear "CLI not found — install
+people-context" state with a configurable binary path setting.
+
+**Development and publication are separate layouts.** Obsidian's community submission expects
+`manifest.json` at the root of a dedicated repository's default branch, with releases carrying `main.js`,
+`manifest.json`, and optionally `styles.css` — an npm-style package directory inside this monorepo is not
+submittable as-is. Development therefore lives here under `obsidian-plugin/` (structured like
+`openclaw-plugin/`: own `package.json`, `tsconfig.json`, `vitest`), and a CI job deterministically mirrors
+each tagged plugin release into a dedicated distribution repository (e.g. `people-context-obsidian`) whose
+root carries `manifest.json` and whose GitHub releases carry the built artifacts. The community-directory
+submission points at the mirror repository.
 
 ## Migration needs
 
@@ -98,12 +133,15 @@ None. No schema change; new importers write only staged candidates, exports and 
 
 ## CLI / MCP surface changes
 
-CLI only; no MCP tool is added or changed. `import_content` gains two accepted `source_type` values
-(`"outlook"`, `"whatsapp"`) with unchanged tool signature and response shape.
+No new MCP tool. `import_content` gains two accepted `source_type` values (`"outlook"`, `"whatsapp"`) and
+one additive optional parameter, `self_sender` (WhatsApp source only; ignored elsewhere), with unchanged
+response shape. On the CLI, the existing `list` command gains `--json` alongside the new commands, since it
+serves as the Obsidian plugin's person index.
 
 ```text
-uv run people-context brief PERSON [--include-sensitive] [--output FILE]
+uv run people-context brief PERSON [--include-sensitive] [--json] [--output FILE]
 uv run people-context export-vcard [--output FILE] [--include-sensitive] [--version 4.0]
+uv run people-context list [--all] [--json]
 ```
 
 ## Security / privacy considerations
@@ -117,14 +155,20 @@ uv run people-context export-vcard [--output FILE] [--include-sensitive] [--vers
   is enforced by a sentinel test (a unique string planted in message bodies must appear in no staged
   candidate), the same `_NOTE_SENTINEL` pattern the vCard tests use.
 - Both new importers are local, file-based, and offline, per the existing no-surprise-network rule.
-- The Obsidian plugin reads the same plaintext database the CLI reads, under the same OS user; it must not
-  copy the database anywhere outside the vault-local cache it documents, and it must never implement a write
-  path, keeping every mutation behind the audited server/CLI surfaces.
+- The Obsidian plugin holds no database handle: it consumes only the CLI's disclosure-gated JSON output,
+  never passes `--include-sensitive`, and never implements a write path, keeping every mutation behind the
+  audited server/CLI surfaces. Its pane cache must stay vault-local and is subject to Obsidian's own sync —
+  the plugin's docs must say that anything rendered into a synced vault leaves this project's disclosure
+  perimeter, the same caveat vault export carries.
 
 ## Testing strategy
 
 - App layer: fake-port tests for `ComposePersonBrief` (composition, sensitivity gating, deterministic
-  ordering).
+  ordering, and inclusion of all open reminder kinds — a `follow_up` reminder must appear even though
+  context/guidance would omit it).
+- Self-sender resolution: WhatsApp fixtures where the user's own messages appear under a matching alias
+  (nickname/native-script/transliteration), under "You", and under a phone number with `self_sender` set —
+  asserting the self person never appears as a staged `person` candidate in any of them.
 - Adapter layer: `test_vcard_export.py` — determinism (byte-identical re-export), sensitivity gating, and a
   full round-trip through `VCardImportExtractor` asserting people/aliases/affiliations/birthday facts
   survive; `test_outlook_import.py` and `test_whatsapp_import.py` modeled on `test_vcard_import.py`
@@ -132,8 +176,10 @@ uv run people-context export-vcard [--output FILE] [--include-sensitive] [--vers
 - Router: extend the M9 `test_import_router.py` dispatch matrix with both new source types.
 - CLI layer: `brief` snapshot test incl. `--include-sensitive` difference; `export-vcard` determinism and
   `0o600` checks.
-- Obsidian plugin: `vitest` unit tests over the data-access layer against a fixture database, following the
-  `openclaw-plugin/` test layout; rendering is exercised by fixture snapshots, not a live Obsidian instance.
+- Obsidian plugin: `vitest` unit tests over the CLI-invocation layer against recorded `--json` fixtures
+  (including the CLI-missing and non-zero-exit paths), following the `openclaw-plugin/` test layout;
+  rendering is exercised by fixture snapshots, not a live Obsidian instance. The mirror workflow is verified
+  by a CI dry run asserting the mirrored tree contains root-level `manifest.json` and the release artifacts.
 - E2E: one stdio case committing a WhatsApp import and asserting the sentinel never reaches
   `get_person_context` output.
 
@@ -145,7 +191,7 @@ uv run people-context export-vcard [--output FILE] [--include-sensitive] [--vers
    or ship one canonical layout first?
 3. WhatsApp export formats vary by platform and locale (bracket styles, date order, 12/24h). Should v1
    support a fixed set of detected formats with explicit per-file failure, or accept a `--format` hint flag?
-4. Obsidian plugin database access: bundle a WASM SQLite build reading a snapshot copy (safe, slightly stale)
-   or use platform bindings against the live file (fresh, but WAL-locking risk beside a running server)?
-5. Should the Obsidian plugin live in this repository (shared CI, versioned with the schema it reads) or in a
-   sibling repository (cleaner community-plugin submission and release cadence)?
+4. Should the Obsidian plugin's CLI calls target `uvx people-context` when no installed binary is configured
+   (zero-setup for `uv` users, but slower cold starts), or require an explicit binary path?
+5. What refresh model should panes default to — manual only, on-file-open, or a polling interval — given each
+   refresh spawns a CLI process?

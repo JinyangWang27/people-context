@@ -13,12 +13,14 @@ the project's strongest differentiator, inspectable local-first privacy, is docu
 ([docs/privacy-and-safety.md](../privacy-and-safety.md)) but not operationalized: there is no command that
 shows a user what the store holds, at which sensitivity, disclosed through which gates.
 
-Two further credibility gaps are cheap to close. First, the domain model already has
-`AliasKind.NATIVE_SCRIPT` and `AliasKind.TRANSLITERATION` (`domain/person.py`), and `normalize_name`
-(`domain/shared.py`) already NFKC-normalizes, casefolds, and strips combining marks — but resolution ranking
-and explanations do not yet treat script-pair aliases as first-class, and no doc shows the bilingual
-workflow. Second, the project has no published evidence: an evaluation with numbers, and use-case narratives,
-are what turn a technically excellent README into something that travels.
+Two further credibility gaps are cheap to close. First, bilingual identity already *works* but is invisible:
+the domain model has `AliasKind.NATIVE_SCRIPT` and `AliasKind.TRANSLITERATION` (`domain/person.py`),
+`normalize_name` (`domain/shared.py`) NFKC-normalizes, casefolds, and strips combining marks, and an exact
+normalized alias match of any kind already receives the same `1.0` score as a canonical-name match in
+`ResolvePerson` — but every such match reports the bare reason `"exact"`, so a user cannot see *which* alias
+form resolved, and no doc shows the bilingual workflow. Second, the project has no published evidence: an
+evaluation with numbers, and use-case narratives, are what turn a technically excellent README into something
+that travels.
 
 ## Scope
 
@@ -55,7 +57,9 @@ New narrow read port `ports/curation.py::CurationReader` implemented in `adapter
   (`persons.canonical_name_normalized` / `aliases.value_normalized`, both already indexed), the strongest
   duplicate signal and the same normalization identity resolution already trusts;
 - `duplicate_handle`: two persons share a `handle` alias value (e.g. the same email address), which imports
-  treat as identity-bearing;
+  treat as identity-bearing. Precedence over `duplicate_alias` is explicit to prevent double-reporting: a
+  person pair sharing a handle is reported once as `duplicate_handle` (the stronger signal), and
+  `duplicate_alias` evaluates only non-`handle` alias kinds plus canonical names;
 - `contradictory_fact`: one person has two facts with the same `predicate` whose validity periods
   (`Fact.period`) overlap but whose `value`s differ — flagged, not adjudicated;
 - `dangling_reference`: relationships, affiliations, or interaction participants pointing at soft-deleted
@@ -71,26 +75,32 @@ in cron/scripts without treating findings as failures.
 
 CLI-only report over existing reads plus small adapter count queries: entity counts per table, alias-kind
 distribution, facts/observations by `Sensitivity` level, relationship-category distribution, audit-log
-operation counts, changelog entries per device, database file path and size, and the current disclosure-gate
-state (whether `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` / `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` are set in the
+operation counts, changelog entries per device, database size, and the current disclosure-gate state
+(whether `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` / `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` are set in the
 inspecting shell's environment — reported as "in this environment", since the server's own environment may
-differ). `--json` mirrors the human output. This is the M12 threat-model argument turned into a runnable
+differ). The absolute database path is **redacted by default** (`--include-path` opts in): a path routinely
+embeds a username, employer, or client name, so the default output is what a user can share when asking for
+help. `--json` mirrors the human output. This is the M12 threat-model argument turned into a runnable
 artifact: "here is exactly what this store holds and guards."
 
-### Transliteration-aware resolution polish
+### Transliteration-aware resolution explanations
 
-Small, additive changes inside the existing five-stage pipeline (`app/resolve_person.py`), no port changes:
+Rank parity already exists — every exact normalized alias match scores `1.0` like a canonical-name match in
+`ResolvePerson` — so this deliverable is deliberately *not* a ranking change. It is explanation, regression
+protection, and documentation:
 
-- an exact match on a `native_script` or `transliteration` alias ranks with (not below) primary-name exact
-  matches, and the returned explanation names the alias kind that matched, so bilingual users can see *why* a
-  script-form query resolved;
+- the returned explanation names what matched (`"exact:canonical_name"`, `"exact:alias:native_script"`,
+  `"exact:alias:transliteration"`, …) instead of the current bare `"exact"`, so bilingual users can see *why*
+  a script-form query resolved;
+- fixture-backed tests with CJK + romanization pairs (and one non-CJK case, e.g. Cyrillic) pin the existing
+  rank parity in both directions — turning today's incidental behavior into a tested contract — and assert
+  the new explanation text;
 - `docs/identity-resolution.md` gains a documented bilingual workflow: store the native-script form and
-  romanization as paired aliases (kinds already exist), with examples showing both directions resolving;
-- fixture-backed tests with CJK + romanization pairs (and one non-CJK case, e.g. Cyrillic) demonstrating both
-  directions and asserting explanation text.
+  romanization as paired aliases (kinds already exist), with examples showing both directions resolving.
 
-Existing response shapes are unchanged; only ranking behavior and explanation strings improve, within the
-M12 additive-contract promise.
+Existing response shapes are unchanged; only explanation strings change, within the M12 additive-contract
+promise (explanations are documented as descriptive text, not a parseable enum — if any consumer treats them
+as parseable, widening `"exact"` is the compatibility question to settle before shipping).
 
 ### Evaluation and use-case gallery
 
@@ -112,8 +122,8 @@ the M12 promise; `doctor` and `stats` otherwise read existing tables only.
 
 ## CLI / MCP surface changes
 
-CLI only; no MCP tool changes, and `resolve_person`'s request/response contract is unchanged (ranking and
-explanation strings are behavior, documented as such).
+CLI only; no MCP tool changes, and `resolve_person`'s request/response contract is unchanged (explanation
+strings are descriptive behavior, documented as such).
 
 ```text
 uv run people-context doctor [--json] [--only CODE[,CODE...]]
@@ -125,8 +135,10 @@ uv run people-context stats [--json]
 - `doctor` findings necessarily juxtapose personal data (two people's names/handles side by side); output is
   local stdout only, and `--json` documents the same user-owned-disclosure caveat as `watch` and the export
   commands.
-- `stats` reports aggregates and counts, never record contents — safe to paste into an issue when asking for
-  help, and the docs say exactly that, giving users a support artifact that leaks nothing.
+- `stats` reports aggregates and counts, never record contents, and redacts the database path by default —
+  but aggregate metadata is not automatically harmless (device names, sensitivity distributions, sheer
+  counts can each say something), so the docs instruct users to read the output before sharing rather than
+  claiming it leaks nothing.
 - The disclosure-gate section of `stats` reads only the local process environment; it must not probe or start
   the server.
 - The eval harness must ship with fictional fixture data only, and its docs must warn against pointing it at
