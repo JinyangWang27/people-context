@@ -1,0 +1,40 @@
+{
+  "name": "people-context",
+  "version": "0.1.1",
+  "description": "Give Codex private, durable context about the people in your life through a local MCP server.",
+  "author": {
+    "name": "Jinyang Wang",
+    "email": "jinyang.wang27@outlook.com",
+    "url": "https://github.com/JinyangWang27"
+  },
+  "homepage": "https://github.com/JinyangWang27/people-context-mcp/blob/main/docs/codex-plugin.md",
+  "repository": "https://github.com/JinyangWang27/people-context-mcp",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "people",
+    "context",
+    "memory",
+    "local-first"
+  ],
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "People Context",
+    "shortDescription": "Private, local context about people in your life",
+    "longDescription": "Resolve people, remember durable context, and retrieve privacy-bounded relationship knowledge from a user-owned local database.",
+    "developerName": "Jinyang Wang",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/JinyangWang27/people-context-mcp",
+    "privacyPolicyURL": "https://github.com/JinyangWang27/people-context-mcp/blob/main/docs/privacy-and-safety.md",
+    "defaultPrompt": [
+      "Who is this person in my life?",
+      "Remember this context about someone I know.",
+      "Help me prepare for my next conversation."
+    ],
+    "brandColor": "#4F6F52"
+  }
+}

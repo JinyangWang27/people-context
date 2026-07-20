@@ -1,0 +1,20 @@
+{
+  "name": "people-context-plugins",
+  "interface": {
+    "displayName": "People Context"
+  },
+  "plugins": [
+    {
+      "name": "people-context",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
