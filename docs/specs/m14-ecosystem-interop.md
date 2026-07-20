@@ -84,17 +84,21 @@ Both are one extractor class plus a router branch, per the M9 pattern:
   without one-candidate-per-message noise. Message text after the `: ` separator is never read into any
   candidate field.
 
-  **Self-sender resolution needs its own mechanism.** The `ImportExtractor` contract supplies only
-  `self_addresses`, which `ImportContent._self_addresses` derives from the self person's `handle` aliases —
-  useless against WhatsApp sender labels, which are display names, "You", or phone numbers, so the user's own
-  messages would stage a duplicate external person. Two additive pieces close this: (a) `ImportContent`
-  additionally derives a normalized `self_names` set from the self person's canonical name and *all* alias
-  values (nickname, native-script, transliteration included, normalized via the same `normalize_name` the
-  resolver trusts) and passes it to extractors as a new keyword the existing extractors ignore; (b) the
-  WhatsApp source accepts an explicit `self_sender` hint (an additive optional `import_content` parameter)
-  naming one sender label to treat as self for labels no alias can match ("You", a bare phone number).
-  Senders matching either signal are excluded from `person` candidates and marked as self-participation in
-  the day's interaction candidate, mirroring how the email extractor treats `self_addresses` today.
+  **Self-sender resolution widens the extractor contract explicitly.** The current `ImportExtractor.extract`
+  Protocol and every concrete implementation accept only `self_addresses`; passing additional keywords to the
+  existing implementations would raise `TypeError`. M14 therefore adds optional `self_names` and `self_sender`
+  keyword parameters, with backward-compatible defaults, to the Protocol, the router, and every concrete
+  extractor present after M9 (`EmailImportExtractor`, `VCardImportExtractor`, `IcsImportExtractor`, and
+  `LinkedInImportExtractor`, plus the two new extractors). Existing sources accept and explicitly ignore the
+  values they do not use; the router forwards the complete keyword set. Do not hide the contract behind
+  untyped `**kwargs`.
+
+  `ImportContent` derives `self_names` from the self person's canonical name and every alias value, normalized
+  through `normalize_name`, and passes it to all extractors. Its public execution path also accepts an optional
+  `self_sender` hint, exposed additively by the existing `import_content` tool for WhatsApp labels that no stored
+  alias can match (`"You"`, a bare phone number). WhatsApp excludes senders matching either signal from external
+  `person` candidates and marks self-participation in the day's interaction, mirroring email's `self_addresses`
+  behavior. Regression tests exercise every pre-M14 source through `ImportContent` after the signature change.
 
 Both stage through the unchanged `import_content` → `review_import` → `commit_import` gate.
 

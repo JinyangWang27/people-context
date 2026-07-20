@@ -29,7 +29,7 @@ In scope:
 - `people-context doctor`: report-only data-quality findings with suggested follow-up commands;
 - `people-context stats`: local inventory of counts, sensitivity distribution, audit/changelog activity, and
   disclosure gates;
-- transliteration-aware resolution polish (ranking + explanation + documentation);
+- transliteration-aware resolution polish (additive explanation detail + documentation; ranking unchanged);
 - a scripted, reproducible evaluation under `evals/` and a use-case gallery under `docs/use-cases/`.
 
 Non-goals:
@@ -86,21 +86,23 @@ artifact: "here is exactly what this store holds and guards."
 ### Transliteration-aware resolution explanations
 
 Rank parity already exists — every exact normalized alias match scores `1.0` like a canonical-name match in
-`ResolvePerson` — so this deliverable is deliberately *not* a ranking change. It is explanation, regression
-protection, and documentation:
+`ResolvePerson` — so this deliverable is deliberately *not* a ranking change. M12's compatibility promise lands
+before M15, so the current `match_reason="exact"` value must also remain stable rather than being replaced with
+new `"exact:..."` strings. The deliverable is an additive detail field, regression protection, and documentation:
 
-- the returned explanation names what matched (`"exact:canonical_name"`, `"exact:alias:native_script"`,
-  `"exact:alias:transliteration"`, …) instead of the current bare `"exact"`, so bilingual users can see *why*
-  a script-form query resolved;
-- fixture-backed tests with CJK + romanization pairs (and one non-CJK case, e.g. Cyrillic) pin the existing
-  rank parity in both directions — turning today's incidental behavior into a tested contract — and assert
-  the new explanation text;
-- `docs/identity-resolution.md` gains a documented bilingual workflow: store the native-script form and
-  romanization as paired aliases (kinds already exist), with examples showing both directions resolving.
+- `ResolutionCandidate` gains optional `match_detail: str | None = None`. Exact normalized matches set it to
+  `"canonical_name"`, `"alias:native_script"`, `"alias:transliteration"`, and analogous alias-kind values while
+  preserving `match_reason="exact"` (plus the existing hint suffix behavior when hints apply). Search and fuzzy
+  paths may leave the detail null;
+- classification is deterministic when several stored names normalize to the same query: canonical name wins;
+  otherwise select a matching alias kind using a documented stable ordering;
+- fixture-backed tests with CJK + romanization pairs and one non-CJK case pin rank parity in both directions,
+  assert the unchanged `match_reason`, and assert the additive detail value;
+- `docs/identity-resolution.md` documents storing native-script and transliteration aliases and shows both query
+  directions resolving.
 
-Existing response shapes are unchanged; only explanation strings change, within the M12 additive-contract
-promise (explanations are documented as descriptive text, not a parseable enum — if any consumer treats them
-as parseable, widening `"exact"` is the compatibility question to settle before shipping).
+The response shape changes only additively. `match_detail` is descriptive text, not a closed parseable enum, so
+consumers remain required to tolerate future detail values under the M12 compatibility rule.
 
 ### Evaluation and use-case gallery
 
@@ -122,8 +124,8 @@ the M12 promise; `doctor` and `stats` otherwise read existing tables only.
 
 ## CLI / MCP surface changes
 
-CLI only; no MCP tool changes, and `resolve_person`'s request/response contract is unchanged (explanation
-strings are descriptive behavior, documented as such).
+`doctor` and `stats` are CLI-only and add no MCP tools. `resolve_person` gains only the optional additive
+`match_detail` response field; existing fields and values, including `match_reason="exact"`, remain stable.
 
 ```text
 uv run people-context doctor [--json] [--only CODE[,CODE...]]
@@ -143,7 +145,7 @@ uv run people-context stats [--json]
   the server.
 - The eval harness must ship with fictional fixture data only, and its docs must warn against pointing it at
   a real personal database.
-- Resolution-ranking changes must not widen disclosure: `resolve_person` already returns candidate names and
+- Resolution-metadata changes must not widen disclosure: `resolve_person` already returns candidate names and
   match explanations; naming the alias *kind* adds no new personal data beyond what the match itself reveals.
 
 ## Testing strategy
@@ -153,8 +155,8 @@ uv run people-context stats [--json]
   asserting both detection and non-detection (clean data yields zero findings).
 - App layer: fake-port tests for `run_doctor` policy — stable finding codes, deterministic ordering, correct
   suggested-command rendering.
-- Resolution: extend the existing resolution test suites with script-pair fixtures asserting rank parity and
-  explanation content for `native_script`/`transliteration` matches.
+- Resolution: extend the existing resolution test suites with script-pair fixtures asserting rank parity, the
+  unchanged `match_reason`, and additive `match_detail` content for native-script/transliteration matches.
 - CLI layer: `doctor` and `stats` snapshot tests over a seeded fixture, including `--json` shape stability
   (these outputs become de-facto contracts once scripts consume them).
 - Eval harness: a dry-run mode test that executes the harness end to end against a stub agent (no network),

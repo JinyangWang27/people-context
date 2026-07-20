@@ -9,7 +9,7 @@ delivers the work.
 Ground rules that apply to every PR (do not restate them per-PR when implementing):
 
 - the hexagonal rule: `domain`/`app` never import adapters or the MCP SDK;
-- every durable write path flows through the `audit_mutation` seam in `app/write_support.py`;
+- every ordinary durable mutation flows through the `audit_mutation` seam in `app/write_support.py`; the narrowly scoped M11 `BootstrapRestorer` is the sole verbatim-restore exception and must not mint new audit or changelog rows;
 - migrations are forward-only additive files under `adapters/sqlite/migrations/` (next free number);
 - new `app/` behavior is tested against fake ports and real SQLite; MCP tools get in-memory server tests;
   CLI commands get CLI tests;
@@ -70,20 +70,24 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. New: CI job step running `mcp-publisher validate server.json` (or documented local-equivalent command if the tool isn't sandboxable in CI yet) must pass. No domain/app/adapter code changes, so no new unit tests are required per spec's Testing strategy.
   - **Out of scope:** community-directory metadata files (Smithery/PulseMCP/mcp.so/Glama), `.mcpb` bundle and its `registryType: "mcpb"` package entry, actual `mcp-publisher publish` execution against the live Registry.
 
-- [ ] **PR M8.3 — Claude Desktop `.mcpb` bundle + editor one-line configs**
-  - **Scope:** Add a `scripts/build-mcpb.*` packaging script producing a `.mcpb` bundle that invokes `uvx --from people-context people-context-mcp`, wire it into CI as a release-attached artifact, and add README config snippets for Cursor (`.cursor/mcp.json`), Windsurf, and VS Code (`.vscode/mcp.json`), all using the same `uvx` invocation as the canonical form.
+- [ ] **PR M8.3 — Native-UV Claude Desktop `.mcpb` bundle + editor one-line configs**
+  - **Scope:** Add a standards-conforming MCPB source directory with a root `manifest.json`, root `pyproject.toml`, and thin Python entry point under `server/`; use MCPB's native UV runtime so the host installs Python dependencies and launches the bundled entry point. Build it with the official `mcpb` CLI, attach the resulting `.mcpb` to tagged GitHub Releases, and add README config snippets for Cursor (`.cursor/mcp.json`), Windsurf, and VS Code (`.vscode/mcp.json`). The editor snippets continue to use `uvx --from people-context people-context-mcp`; the MCPB uses its own native manifest model and is not an `mcpServers` command wrapper.
   - **Touches:**
-    - `scripts/build-mcpb.sh` (or `.py`) (new — first file in a new `scripts/` directory)
-    - `.github/workflows/release.yml` (add `.mcpb` build + GitHub Release artifact attach step)
+    - `mcpb/manifest.json` (new — conform to the current official MCPB manifest schema)
+    - `mcpb/pyproject.toml` (new — depend on the matching `people-context` release)
+    - `mcpb/server/main.py` (new — thin entry point delegating to `people_context.adapters.mcp.server:main`)
+    - `scripts/build-mcpb.sh` (or `.py`) (new — invoke the official `mcpb pack` tooling)
+    - `.github/workflows/release.yml` (build, validate, and attach the `.mcpb` release artifact)
     - `README.md` (MCP client configuration section: add Cursor/Windsurf/VS Code snippets next to the existing Claude Code/generic stdio blocks)
     - `docs/claude-code-plugin.md` (cross-reference only, if the security-model note needs a pointer to the new bundle)
   - **Spec:** (docs/specs/m8-distribution-and-reach.md, "Claude Desktop extension (.mcpb)" and "Editor/IDE one-line configs")
-    - `.mcpb` manifest shape is analogous to `.claude-plugin/mcp.json`'s `{"mcpServers": {"people-context": {"type": "stdio", "command": ...}}}` but targets `uvx --from people-context people-context-mcp` so the bundle doesn't vendor a project directory.
-    - Exactly one canonical invocation (`uvx --from people-context people-context-mcp`) across every client config — do not add per-client `uv run --directory ...` variants.
+    - An MCPB is a ZIP containing a root `manifest.json` plus the local server files; do not model it as `.claude-plugin/mcp.json` or a Claude Desktop `mcpServers` command block.
+    - Use the current official native Python layout: `server.type = "uv"`, `server.entry_point = "server/main.py"`, and a bundled root `pyproject.toml`; the host manages Python and dependency installation.
+    - Keep the MCPB manifest version and its `people-context` dependency synchronized with the release version; fail the build on drift rather than publishing a bundle that installs a different server version.
+    - Exactly one canonical invocation (`uvx --from people-context people-context-mcp`) applies across the ordinary editor/client config snippets. It does not override MCPB's required native `server` manifest shape.
     - Every new distribution channel must prominently document that it executes local Python with the launching user's filesystem permissions (docs/privacy-and-safety.md#threat-model-notes), not a sandboxed extension.
-    - Resolve open question #2 (whether `.mcpb` can shell out to `uvx` at first run vs. needing a vendored interpreter) and record the decision in the PR description.
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. New: a CI step that runs the `build-mcpb` script and asserts the artifact is produced (smoke check, not a full Desktop install). Manual: install the `.mcpb` bundle in Claude Desktop and confirm it connects without a local clone; install each editor config on a clean machine and exercise `resolve_person`/`get_person_context`/`remember_person`.
-  - **Out of scope:** Docker image and its publish workflow (PR M8.4), the `.mcpb` `server.json` package entry (was optional/could follow here or in M8.2 rework — keep in this PR's follow-up note only if time allows, otherwise defer).
+  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. CI installs the official MCPB CLI, validates/packs `mcpb/`, inspects the archive for `manifest.json`, `pyproject.toml`, and `server/main.py`, and checks release-version synchronization. Manual: install the `.mcpb` in Claude Desktop on a clean machine and exercise `resolve_person`/`get_person_context`/`remember_person`; separately install each editor config and exercise the same calls.
+  - **Out of scope:** Docker image and its publish workflow (PR M8.4); vendoring a Python interpreter or virtual environment; treating an arbitrary `uvx` shell command as an MCPB server definition; the `.mcpb` `server.json` package entry (follow-up after a stable artifact URL and digest exist).
 
 - [ ] **PR M8.4 — Optional Docker image + GHCR publish job**
   - **Scope:** Add a multi-stage `Dockerfile` (built with `uv`, non-root user, stdio-by-default entrypoint) and a new, narrowly-scoped CI workflow that publishes the image to GHCR on tagged releases. Update README/docs with Docker usage documenting the bind-mounted DB volume and `PEOPLE_CONTEXT_DB` env var.
@@ -428,22 +432,24 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Out of scope:** CardDAV (explicit non-goal); Outlook/WhatsApp import; any change to the importer side of vCard.
 
 - [ ] **PR M14.3 — Outlook CSV + WhatsApp import extractors**
-  - **Scope:** Relocate `ImportExtractorRouter` out of `adapters/vcard_import.py` into its own `adapters/import_router.py` (if the M9 relocation hasn't already landed on this branch — check first, this PR must not duplicate it), then add `OutlookImportExtractor` and `WhatsAppImportExtractor` plus the `self_names`/`self_sender` self-resolution mechanism. Does not add any new MCP tool; `import_content` gains only the two `source_type` values and one additive optional parameter.
+  - **Scope:** Build on the M9-relocated `ImportExtractorRouter`, add `OutlookImportExtractor` and `WhatsAppImportExtractor`, and explicitly widen the extractor contract for self-sender resolution. `ImportContent` derives `self_names` and accepts the additive public `self_sender` hint; the Protocol, router, and every concrete extractor existing by M14 must accept the new optional keyword arguments so existing email/vCard/ICS/LinkedIn imports cannot fail with unexpected-keyword `TypeError`. No new MCP tool; `import_content` gains only the two `source_type` values and one additive optional parameter.
   - **Touches:**
-    - `src/people_context/adapters/import_router.py` (new/relocated `ImportExtractorRouter`)
-    - `src/people_context/adapters/outlook_import.py` (new `OutlookImportExtractor`)
-    - `src/people_context/adapters/whatsapp_import.py` (new `WhatsAppImportExtractor`)
-    - `src/people_context/app/import_content.py` (`ImportContent._self_addresses` sibling `self_names`; pass-through `self_sender` kwarg)
-    - `src/people_context/adapters/mcp/tools/imports.py`, `ports/imports.py` (additive `self_sender` parameter)
-    - `tests/adapters/test_outlook_import.py`, `tests/adapters/test_whatsapp_import.py` (new), extend `tests/adapters/test_import_router.py` (or equivalent) dispatch matrix
+    - `src/people_context/adapters/import_router.py` (add Outlook/WhatsApp branches and forward the complete extractor keyword contract)
+    - `src/people_context/adapters/outlook_import.py`, `src/people_context/adapters/whatsapp_import.py` (new)
+    - `src/people_context/ports/imports.py` (`ImportExtractor.extract`: add optional `self_names` and `self_sender` keywords with backward-compatible defaults)
+    - `src/people_context/app/import_content.py` (derive normalized `self_names`; add/pass through optional `self_sender`)
+    - every concrete extractor present after M9: `email_import.py`, `vcard_import.py`, `ics_import.py`, `linkedin_import.py` (accept the two optional keywords explicitly; ignore only those not relevant to that source)
+    - `src/people_context/adapters/mcp/tools/imports.py` (additive `self_sender` tool parameter)
+    - `tests/adapters/test_outlook_import.py`, `tests/adapters/test_whatsapp_import.py` (new), `tests/adapters/test_import_router.py` and existing importer tests (extend/regress the full dispatch and keyword-forwarding matrix)
   - **Spec:** (docs/specs/m14-ecosystem-interop.md §"Outlook CSV and WhatsApp import extractors")
-    - Outlook: maps First/Middle/Last/E-mail/Company/Job Title/Birthday columns to `person`+`handle` alias, `affiliation` (org, role), `birthday` fact; tolerate a superset of columns, skip rows missing required fields with per-row skip reasons (same pattern as the M9 LinkedIn open question).
-    - WhatsApp: parse **only** the `[date, time] Sender Name:` prefix of each line — message text after `: ` is never read into any candidate field. Senders dedupe by normalized name into `person` candidates; one `interaction` candidate per calendar day per chat, channel `"whatsapp"`.
-    - Self-resolution: `ImportContent` derives `self_names` (normalized canonical name + every alias value, via `normalize_name`) and passes it as a new keyword existing extractors ignore; WhatsApp additionally accepts an optional `self_sender` hint. Senders matching either signal are excluded from `person` candidates and marked self-participation in the day's interaction.
-    - Everything stages through the unchanged `import_content` → `review_import` → `commit_import` gate — no schema/migration change.
-    - Raw-content rule: enforced by a sentinel test (unique string in message bodies must appear in no staged candidate), matching the `_NOTE_SENTINEL` pattern in existing vCard tests.
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. `test_outlook_import.py`/`test_whatsapp_import.py` modeled on `test_vcard_import.py` (per-row/line independence, skip reasons, cross-file dedup, sentinel). WhatsApp fixtures covering self under a matching alias (nickname/native-script/transliteration), under "You", and under a phone number with `self_sender` set — self person must never appear as a staged `person` candidate in any case. One stdio E2E case committing a WhatsApp import and asserting the sentinel never reaches `get_person_context` output.
-  - **Out of scope:** Signal import (non-goal, no stable plaintext export); the `--format` hint flag for WhatsApp locale variants (open question 3 — ship one detected format first, extend later if needed).
+    - Outlook maps First/Middle/Last/E-mail/Company/Job Title/Birthday columns to `person` + `handle` alias, `affiliation`, and `birthday` fact; tolerate a superset of columns and skip malformed rows independently.
+    - WhatsApp parses **only** the `[date, time] Sender Name:` prefix; message text after `: ` is never read into any candidate field. Senders dedupe by normalized name; stage one `interaction` per calendar day per chat with channel `"whatsapp"`.
+    - Contract widening is explicit, not `**kwargs`: `ImportExtractor.extract(..., self_addresses, self_names=None, self_sender=None)`. The router forwards both values and every concrete implementation accepts them, preserving all pre-M14 source types.
+    - `ImportContent` derives `self_names` from the self person's normalized canonical name and all alias values. WhatsApp also honors the optional explicit `self_sender` hint. Matching senders are excluded from external `person` candidates and represented as self-participation.
+    - Everything stages through the unchanged `import_content` → `review_import` → `commit_import` gate; no schema change.
+    - Raw-content exclusion is enforced by a sentinel test matching the existing vCard pattern.
+  - **Tests/validation:** Existing email, vCard, ICS, and LinkedIn imports are each exercised through `ImportContent` after the signature widening, proving no unexpected-keyword failure and unchanged candidate output. Router tests cover all six source types, unknown types, and forwarding of `self_addresses`/`self_names`/`self_sender`. WhatsApp fixtures cover self under a matching alias, `"You"`, and a phone number supplied through `self_sender`; one stdio E2E case commits a WhatsApp import and proves message-body sentinel text never reaches `get_person_context`. `uv run ruff check .` clean, `uv run pytest -q` fully green.
+  - **Out of scope:** Signal import; locale-format hinting beyond the first explicitly supported WhatsApp formats; a generic extensible context object or untyped `**kwargs` escape hatch.
 
 - [ ] **PR M14.4 — Obsidian plugin (`obsidian-plugin/`)**
   - **Scope:** New in-repo TypeScript package under `obsidian-plugin/`, structured like `openclaw-plugin/` (own `package.json`, `tsconfig.json`, `vitest`), rendering read-only person panes by shelling out to the CLI's `--json` output. Adds the CI mirror-to-distribution-repo workflow. Does not add any Python/server code and does not open the SQLite database.
@@ -498,19 +504,21 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. Fake-port tests for the stats computation. CLI snapshot test over a seeded fixture including `--json` shape stability and the default-redacted-path / `--include-path` behavior.
   - **Out of scope:** `doctor`'s finding classes; any telemetry or network call (explicit non-goal — local-only).
 
-- [ ] **PR M15.3 — Transliteration-aware resolution explanations**
-  - **Scope:** Change `ResolvePerson`'s exact-match `match_reason` from the bare `"exact"` to a naming scheme identifying what matched, add script-pair fixture tests pinning existing rank parity, and document the bilingual workflow. No ranking change — explanation text and docs only.
+- [ ] **PR M15.3 — Additive transliteration-aware resolution details**
+  - **Scope:** Preserve the existing exact-match `match_reason` value and add an optional `match_detail` field identifying whether the exact normalized match came from the canonical name or an alias kind. Add script-pair fixtures pinning existing rank parity and document the bilingual workflow. No ranking change and no replacement of an existing response value after the M12 compatibility promise.
   - **Touches:**
-    - `src/people_context/app/resolve_person.py` (the `self._offer(best, _candidate(person, 1.0, "exact"))` call site and its canonical-name vs. alias-kind branches)
-    - `docs/identity-resolution.md` (bilingual workflow section)
+    - `src/people_context/app/resolve_person.py` (`ResolutionCandidate.match_detail: str | None = None`; exact-match source classification helper)
+    - `docs/identity-resolution.md` (bilingual workflow and the descriptive, additive detail field)
     - `tests/app/test_resolve_person.py` (extend)
   - **Spec:** (docs/specs/m15-data-quality-and-credibility.md §"Transliteration-aware resolution explanations")
-    - New explanation strings: `"exact:canonical_name"`, `"exact:alias:native_script"`, `"exact:alias:transliteration"`, etc., replacing the bare `"exact"` for every exact-normalized-match branch.
-    - This is explanation only — rank parity (exact alias match scores `1.0` like canonical-name match) is existing, untouched behavior; tests pin it as a now-tested contract, not a change.
-    - Fixture-backed tests: CJK + romanization pairs and at least one non-CJK case (e.g. Cyrillic), asserting rank parity in both directions plus the new explanation text.
-    - `resolve_person`'s request/response contract is otherwise unchanged — explanations are documented as descriptive text, not a parseable enum (M12 additive-contract promise).
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. Extend `test_resolve_person.py` with script-pair fixtures asserting both rank parity and explanation content for `native_script`/`transliteration` matches in both query directions.
-  - **Out of scope:** fuzzy cross-script matching (open question 3 — exact normalized matches only this pass); any MCP response-shape change beyond the string content of `match_reason`.
+    - Keep `match_reason="exact"` for exact normalized matches (and preserve the existing hint suffix behavior); do not repurpose it into `"exact:..."` values after 1.0.
+    - Add `match_detail="canonical_name"`, `"alias:native_script"`, `"alias:transliteration"`, etc. only for exact matches. Existing search/fuzzy paths may leave it `null`.
+    - When several stored names normalize to the query, canonical name wins; otherwise select a matching alias kind deterministically so identical data yields identical detail text.
+    - Rank parity remains unchanged: an exact alias match scores `1.0`, like a canonical-name match.
+    - Fixture-backed tests cover CJK + romanization pairs and at least one non-CJK pair, both query directions, unchanged `match_reason`, and the additive `match_detail`.
+    - The new field is descriptive rather than a closed enum; consumers must tolerate future values under the M12 additive-contract rule.
+  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. Extend `test_resolve_person.py` with script-pair fixtures asserting rank parity, `match_reason="exact"`, deterministic `match_detail`, and unchanged ambiguity behavior.
+  - **Out of scope:** fuzzy cross-script matching; changing existing `match_reason` strings; any ranking or disclosure-policy change.
 
 - [ ] **PR M15.4 — Eval harness and use-case gallery**
   - **Scope:** A scripted, reproducible evaluation under `evals/` (dev-only, not shipped in the package) comparing agent task quality with/without the server attached, published as `docs/evals.md`; plus 3-5 narrative recipes under `docs/use-cases/` linked from the README. No production code changes.

@@ -76,12 +76,18 @@ and README already document.
 
 ### Claude Desktop extension (`.mcpb`)
 
-An `.mcpb` bundle needs a manifest describing the server's stdio invocation, analogous in spirit to
-`.claude-plugin/mcp.json`'s `{"mcpServers": {"people-context": {"type": "stdio", "command": "uv",
-"args": [...]}}}` shape, but targeting `uvx --from people-context people-context-mcp` so the bundle does not
-need to vendor a project directory. Packaging happens through a new `scripts/build-mcpb.*` step invoked from CI
-(there is currently no `scripts/` directory in the repository; this would be the first script added), producing
-a downloadable artifact attached to GitHub Releases alongside the existing PyPI publish step.
+An `.mcpb` bundle is a ZIP containing a root `manifest.json` and the local server files described by that
+manifest. It is not a packaged Claude Desktop `mcpServers` command block and must not copy the
+`.claude-plugin/mcp.json` shape. This project uses MCPB's native UV runtime: the bundle contains a root
+`pyproject.toml`, a thin `server/main.py` entry point delegating to
+`people_context.adapters.mcp.server:main`, and a manifest whose `server` object uses `type = "uv"` with
+`entry_point = "server/main.py"`. The host manages Python and dependency installation, so the bundle does not
+vendor an interpreter or virtual environment.
+
+The bundled `pyproject.toml` depends on the same `people-context` version as the release that carries the
+artifact. The build fails if the project version, manifest version, and dependency pin drift. Packaging uses the
+official MCPB CLI (`mcpb pack`, including its manifest validation) through a new `scripts/build-mcpb.*` step,
+and the resulting artifact is attached to GitHub Releases alongside the existing PyPI publish step.
 
 ### Editor/IDE one-line configs
 
@@ -155,8 +161,8 @@ command, flag, or MCP tool is added.
 
 1. Which Registry namespace should the server publish under — the GitHub-authenticated `io.github.jinyangwang27.*`
    form or a custom domain — and does that choice constrain a later rename?
-2. Can the `.mcpb` bundle shell out to `uvx` at first run (simpler bundle, but a first-run network dependency
-   to fetch the package), or does the Desktop extension format require vendoring a self-contained interpreter?
+2. What is the simplest release-version synchronization mechanism that keeps the MCPB manifest and bundled
+   `pyproject.toml` dependency pin aligned with `project.version` without duplicating release logic?
 3. Is a single Docker image (stdio-only) sufficient, or should the milestone also ship an `--http` variant image
    for users who already run this behind their own reverse proxy — and if so, how is the "loopback-only,
    unauthenticated" guarantee in [docs/mcp-interface.md](../mcp-interface.md) communicated inside a container
