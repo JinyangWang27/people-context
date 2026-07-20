@@ -195,14 +195,16 @@ Check the matching box only in the PR that delivers it.
 
 - [ ] **M13.2 — Upcoming dates MCP/CLI report**
   - **Scope:** `ListUpcomingDates(PersonContextReader, ListReminders, PersonReader, Clock)`.
-  - **Acceptance:** inclusive window; annual projection of `YYYY-MM-DD` and `--MM-DD`; actual leap days only;
-    literal active reminder dates; missing/deleted people skipped; elevated facts invisible even to skip counts.
+  - **Acceptance:** `window_days` validated in `0..366`; inclusive window; annual projection of `YYYY-MM-DD` and
+    `--MM-DD`; actual leap days only; literal active reminder dates; missing/deleted people skipped; elevated facts
+    invisible even to skip counts.
   - **Out:** additional predicates/elevated variant.
 
 - [ ] **M13.3 — Meeting-prep skill and private reminder ICS export**
   - **Scope:** extend M10 skill; deterministic `reminders-ics` CLI using M11 private writer.
-  - **Acceptance:** canonical UTC/folding/escaping; one dated VTODO; supported exact RRULE vocabulary; skipped
-    undated/unmapped counts; byte-identical output; overwrite/symlink/failure safety inherited and tested.
+  - **Acceptance:** canonical UTC/folding/escaping; one dated VTODO; supported exact RRULE vocabulary;
+    `skipped_undated` counts reminders not exported, while `recurrence_omitted` counts exported reminders whose
+    unsupported RRULE was omitted; byte-identical output; overwrite/symlink/failure safety inherited and tested.
   - **Out:** VEVENT and third-party push.
 
 - [ ] **M13.4 — Deterministic local changelog watch**

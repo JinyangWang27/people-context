@@ -63,7 +63,7 @@ No summaries or other content are returned.
 
 `ListUpcomingDates` depends on `PersonContextReader`, `ListReminders`, `PersonReader`, and an injected `Clock`.
 Use the inclusive interval `[today, today + window_days]`, where `today = clock.now().date()` and `window_days`
-is capped at 366.
+is constrained to `0..366`.
 
 Ordinary-sensitivity facts qualify only when `predicate == "birthday"` and `value` is either `YYYY-MM-DD` or
 `--MM-DD`. Both forms are annual recurrences: project month/day to the earliest actual occurrence on or after
@@ -92,8 +92,9 @@ Serialize one `VTODO` for each active dated reminder:
 - stable order `(due_at, id)` and canonical CRLF/folding rules.
 
 Only dated reminders are exported; report `skipped_undated`. Map recurrence only for exact values
-`yearly`, `monthly`, and `weekly`; every other non-empty value is exported as one dated occurrence and counted in
-`skipped_unmapped_recurrence`.
+`yearly`, `monthly`, and `weekly`. A reminder with any other non-empty recurrence value is still exported as one
+dated occurrence, but its unsupported `RRULE` is omitted and `recurrence_omitted` increments. Do not call the
+reminder itself skipped when only the recurrence rule was omitted.
 
 Write through `adapters/filesystem/private_file.py::atomic_write_private_text`, introduced by M11.2. Do not copy
 the old `os.open(..., O_TRUNC, 0o600)` pattern: overwriting an existing permissive file must still result in a
@@ -156,8 +157,8 @@ uv run people-context watch [--interval SECONDS] [--from-start]
 - SQLite tests prove recency sensitivity filtering occurs in SQL and cursor comparison handles cross-device HLC
   ties.
 - MCP tests pin shapes and read-only annotations; CLI snapshots pin human and JSON output.
-- iCalendar tests cover escaping/folding, UTC conversion, all supported recurrence mappings, skipped counts, and
-  byte-identical repeated export.
+- iCalendar tests cover escaping/folding, UTC conversion, all supported recurrence mappings, `skipped_undated`,
+  `recurrence_omitted`, and byte-identical repeated export.
 - Private-file tests pre-create a `0o644` destination, overwrite it, and assert `0o600` on POSIX; symlink and failed
   replacement cases reuse the M11 helper tests.
 - Watch tests cover initial latest-cursor behavior, `--from-start`, empty polls, multi-batch cursor advancement,
