@@ -68,8 +68,8 @@ is constrained to `0..366`.
 Ordinary-sensitivity facts qualify only when `predicate == "birthday"` and `value` is either `YYYY-MM-DD` or
 `--MM-DD`. Both forms are annual recurrences: project month/day to the earliest actual occurrence on or after
 today, rolling into the next year when needed. February 29 is never coerced to February 28 or March 1; its next
-occurrence is the next actual leap day. Active reminders with `due_at` use the literal due date and the same
-inclusive window.
+occurrence is the next actual leap day. Active reminders with `due_at` use the stored calendar-date component and
+the same inclusive window; this report does not reinterpret a naïve datetime as a timezone.
 
 `PersonReader` supplies names and determines whether a person is still active. Missing or soft-deleted people are
 skipped deterministically. Return ordered `{person_id, name, kind, date, label}` entries plus
@@ -83,18 +83,24 @@ content only and adds no server tool.
 
 ### `people-context reminders-ics`
 
-Serialize one `VTODO` for each active dated reminder:
+Serialize one `VTODO` for each active reminder whose `due_at` and `created_at` are both timezone-aware:
 
 - `UID` from reminder id;
-- `DUE` from timezone-aware `due_at`, normalized to UTC in canonical iCalendar form;
+- `DUE` from `due_at`, normalized to UTC in canonical iCalendar form;
 - `SUMMARY` from escaped reminder text;
-- deterministic `DTSTAMP` from the reminder's stored `created_at`, never wall-clock time;
+- deterministic `DTSTAMP` from `created_at`, normalized to UTC, never wall-clock time;
 - stable order `(due_at, id)` and canonical CRLF/folding rules.
 
-Only dated reminders are exported; report `skipped_undated`. Map recurrence only for exact values
-`yearly`, `monthly`, and `weekly`. A reminder with any other non-empty recurrence value is still exported as one
-dated occurrence, but its unsupported `RRULE` is omitted and `recurrence_omitted` increments. Do not call the
-reminder itself skipped when only the recurrence rule was omitted.
+The current `SetReminderInput`/`Reminder` models accept ordinary Python `datetime` values without enforcing a
+ timezone, and M13 is a read/export milestone rather than a breaking write-contract change. Therefore do not guess
+ a local timezone for legacy/current naïve rows. Count and omit:
+
+- `skipped_undated` when `due_at is None`;
+- `skipped_naive_datetime` when either `due_at` or `created_at` lacks `tzinfo`/UTC offset.
+
+Map recurrence only for exact values `yearly`, `monthly`, and `weekly`. A valid exported reminder with any other
+non-empty recurrence value is still emitted as one dated occurrence, but its unsupported `RRULE` is omitted and
+`recurrence_omitted` increments. Do not call the reminder itself skipped when only the recurrence rule was omitted.
 
 Write through `adapters/filesystem/private_file.py::atomic_write_private_text`, introduced by M11.2. Do not copy
 the old `os.open(..., O_TRUNC, 0o600)` pattern: overwriting an existing permissive file must still result in a
@@ -144,7 +150,7 @@ uv run people-context watch [--interval SECONDS] [--from-start]
 - Recency uses only ordinary-disclosure interactions; upcoming dates entirely hides elevated date facts.
 - Results disclose names and recency/date metadata only.
 - `reminders-ics` is a human-operated file export outside server controls and uses the shared private atomic
-  writer.
+  writer; it never invents a timezone for naïve stored timestamps.
 - `watch` prints personal changelog payloads to local stdout only. Piping them elsewhere is the operator's own
   disclosure decision.
 
@@ -158,7 +164,8 @@ uv run people-context watch [--interval SECONDS] [--from-start]
   ties.
 - MCP tests pin shapes and read-only annotations; CLI snapshots pin human and JSON output.
 - iCalendar tests cover escaping/folding, UTC conversion, all supported recurrence mappings, `skipped_undated`,
-  `recurrence_omitted`, and byte-identical repeated export.
+  `skipped_naive_datetime`, `recurrence_omitted`, and byte-identical repeated export. Include aware non-UTC offsets,
+  naïve `due_at`, and naïve `created_at`; no output event may be produced for the naïve cases.
 - Private-file tests pre-create a `0o644` destination, overwrite it, and assert `0o600` on POSIX; symlink and failed
   replacement cases reuse the M11 helper tests.
 - Watch tests cover initial latest-cursor behavior, `--from-start`, empty polls, multi-batch cursor advancement,
@@ -167,8 +174,9 @@ uv run people-context watch [--interval SECONDS] [--from-start]
 
 ## Open questions
 
-1. Should staleness defaults eventually vary by relationship category?
-2. Should future elevated variants use the existing process gate?
-3. Which additional recurring date predicates should be added after birthday usage is established?
-4. Should a future `watch --once` mode be added for scripting convenience?
-5. Should reminder interoperability later add `VEVENT`, or remain `VTODO` only?
+1. Should a future write-contract hardening PR require timezone-aware reminder datetimes at creation time?
+2. Should staleness defaults eventually vary by relationship category?
+3. Should future elevated variants use the existing process gate?
+4. Which additional recurring date predicates should be added after birthday usage is established?
+5. Should a future `watch --once` mode be added for scripting convenience?
+6. Should reminder interoperability later add `VEVENT`, or remain `VTODO` only?

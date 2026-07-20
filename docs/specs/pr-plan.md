@@ -144,10 +144,13 @@ Check the matching box only in the PR that delivers it.
   - **Scope:** `BootstrapRestorer`, `RestoreSyncBundle`, `sync pull` with preview/confirmation.
   - **Pre-write validation:** wrong format/version, missing/unknown/malformed nested fields, duplicate ids, missing or
     retired origin, dangling references, watermark below any changelog/device HLC all fail before preview/prompt.
-  - **Transaction:** `BEGIN IMMEDIATE`; verify no people/changelog; reject bundled/local device-id collision;
-    reconcile vocabulary; retire imported devices; insert domain/audit/changelog verbatim; rebuild FTS; advance
-    local HLC; commit. Any failure rolls back.
-  - **Acceptance:** no new audit/changelog rows; structured refusals; concurrency and every-phase rollback tests.
+  - **Baseline target:** under `BEGIN IMMEDIATE`, require exactly one active local device, only canonical seeded
+    vocabulary, and zero rows in every mutable domain, audit, sync, staging, FTS, and optional vector table — not
+    merely zero people/changelog. Report counts/categories without deleting or exposing record contents.
+  - **Transaction:** reject bundled/local device-id collision; reconcile incoming vocabulary; retire imported
+    devices; insert domain/audit/changelog verbatim; rebuild FTS; advance local HLC; commit. Any failure rolls back.
+  - **Acceptance:** no new audit/changelog rows; structured invalid/non-baseline refusals; per-table baseline,
+    concurrency, and every-phase rollback tests.
   - **Out:** incremental replay/conflicts/encryption.
 
 - [ ] **M11.4 — Multi-device E2E sign-off**
@@ -196,16 +199,17 @@ Check the matching box only in the PR that delivers it.
 - [ ] **M13.2 — Upcoming dates MCP/CLI report**
   - **Scope:** `ListUpcomingDates(PersonContextReader, ListReminders, PersonReader, Clock)`.
   - **Acceptance:** `window_days` validated in `0..366`; inclusive window; annual projection of `YYYY-MM-DD` and
-    `--MM-DD`; actual leap days only; literal active reminder dates; missing/deleted people skipped; elevated facts
-    invisible even to skip counts.
+    `--MM-DD`; actual leap days only; stored reminder calendar-date component; missing/deleted people skipped;
+    elevated facts invisible even to skip counts.
   - **Out:** additional predicates/elevated variant.
 
 - [ ] **M13.3 — Meeting-prep skill and private reminder ICS export**
   - **Scope:** extend M10 skill; deterministic `reminders-ics` CLI using M11 private writer.
-  - **Acceptance:** canonical UTC/folding/escaping; one dated VTODO; supported exact RRULE vocabulary;
-    `skipped_undated` counts reminders not exported, while `recurrence_omitted` counts exported reminders whose
-    unsupported RRULE was omitted; byte-identical output; overwrite/symlink/failure safety inherited and tested.
-  - **Out:** VEVENT and third-party push.
+  - **Acceptance:** export only reminders with aware `due_at` and `created_at`; canonical UTC/folding/escaping;
+    `skipped_undated` and `skipped_naive_datetime` omit invalid rows without guessing a timezone; supported exact
+    RRULE vocabulary; `recurrence_omitted` counts exported reminders whose unsupported RRULE was omitted;
+    byte-identical output; overwrite/symlink/failure safety inherited and tested.
+  - **Out:** write-contract timezone enforcement, VEVENT, and third-party push.
 
 - [ ] **M13.4 — Deterministic local changelog watch**
   - **Scope:** additive ascending `list_entries_after`; JSONL polling CLI.

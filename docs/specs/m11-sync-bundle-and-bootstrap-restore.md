@@ -16,7 +16,7 @@ modified databases remains deferred.
 In scope:
 
 - `people-context sync push`: write one complete bootstrap bundle;
-- `people-context sync pull`: restore that bundle into a fresh, still-empty database only;
+- `people-context sync pull`: restore that bundle into a fresh, baseline-empty database only;
 - a single-snapshot `BundleReader`;
 - strict, versioned bundle DTOs and fail-closed validation;
 - a narrow verbatim `BootstrapRestorer` port;
@@ -114,20 +114,38 @@ Add `ports/bootstrap_restore.py::BootstrapRestorer` and
 audit rows, changelog rows, and provenance without invoking ordinary creation use cases and without minting new
 audit/changelog entries. This is the sole exception to the normal `audit_mutation` seam.
 
-A fresh destination already has one local device row and seeded relationship vocabulary. Every imported device is
-historical: restore writes all bundled device rows with `retired_at` forced set, preserving their other metadata.
-The destination's own device remains the sole active device. If any bundled device id equals the destination's
-local active device id, reject the bundle before inserting anything; never retire or overwrite the destination
-identity.
+#### Baseline-empty target definition
 
-Restore opens `BEGIN IMMEDIATE` before target-emptiness checks so no concurrent writer can interleave between
+“Fresh” is not equivalent to “no person rows”. `import_staging`, `user_preferences`, `audit_log`,
+`sync_conflicts`, or an orphan organization can exist without a person row, and restore does not own or merge those
+rows. Under the same `BEGIN IMMEDIATE` reservation used for restore, require:
+
+- exactly one device row: the destination's own non-retired local device; no retired or additional devices;
+- zero rows in every mutable domain/audit/sync/staging table:
+  `persons`, `aliases`, `organizations`, `affiliations`, `relationships`, `facts`, `observations`, `traits`,
+  `interactions`, `interaction_participants`, `reminders`, `user_preferences`, `import_staging`, `audit_log`,
+  `changelog`, and `sync_conflicts`;
+- no rows in derived person-search or optional semantic-vector storage;
+- relationship vocabulary contains only the byte-identical canonical rows seeded by the current migrations, with
+  no custom or drifted rows.
+
+Any violation returns structured `target_not_empty` details naming counts/categories, without exposing record
+contents, and performs no write. Do not delete, clear, or silently ignore staging, custom vocabulary, or derived
+rows to make the target appear fresh.
+
+A valid fresh destination has one local device and seeded vocabulary. Every imported device is historical: restore
+writes all bundled device rows with `retired_at` forced set, preserving their other metadata. The destination's own
+device remains the sole active device. If any bundled device id equals the destination's local active device id,
+reject the bundle before inserting anything; never retire or overwrite the destination identity.
+
+Restore opens `BEGIN IMMEDIATE` before target-baseline checks so no concurrent writer can interleave between
 validation and insertion. The complete sequence is:
 
 1. acquire the immediate write reservation;
-2. verify the target has no person rows, including soft-deleted rows, and no changelog entries;
+2. verify the complete baseline-empty target definition above;
 3. reject a bundled-device/local-device id collision;
-4. reconcile vocabulary, types before synonyms: identical seeded rows skip, differing rows under the same key
-   reject the whole bundle, new rows insert;
+4. reconcile incoming vocabulary, types before synonyms: identical seeded rows skip, differing rows under the same
+   key reject the whole bundle, and new bundled custom rows insert;
 5. insert all bundled device rows as retired historical devices;
 6. insert every portable domain row, including `audit_log`, verbatim;
 7. insert changelog rows verbatim;
@@ -166,7 +184,7 @@ uv run people-context sync pull --input PATH [--yes]
 
 `push` writes `DIR/people-context-sync-bundle.json` through the private-file helper and prints path, entity counts,
 changelog count, and watermark. `pull` accepts that file or a directory containing it, parses and validates the
-complete document before preview, previews counts, and requires `--yes` or interactive confirmation. A non-empty
+complete document before preview, previews counts, and requires `--yes` or interactive confirmation. A non-baseline
 target or invalid bundle returns exit code 1 with a structured, actionable message and performs no write.
 
 ## Migration needs
@@ -187,7 +205,8 @@ CLI-only. No MCP tool is added or changed.
 - Forgotten-record redaction travels verbatim. Restore never reconstructs or enriches redacted payloads.
 - Strict validation protects integrity and compatibility; it does not authenticate the sender. Authenticity and
   encrypted transport remain future protocol work.
-- Empty-target-only restore prevents the blunt verbatim writer from running against independent local history.
+- Baseline-empty-only restore prevents the blunt verbatim writer from merging with any existing primary, staging,
+  preference, audit, sync, vocabulary, or derived-search state.
 
 ## Testing strategy
 
@@ -196,17 +215,20 @@ CLI-only. No MCP tool is added or changed.
   preview/confirmation and leaves the target untouched.
 - Cross-field tests: missing origin device, retired origin, dangling changelog device, dangling domain reference,
   watermark below a changelog/device HLC, and bundled/local device-id collision.
+- Baseline tests seed each otherwise-independent mutable table in turn (including `organizations`,
+  `user_preferences`, `import_staging`, `audit_log`, `sync_conflicts`, an additional/retired device, custom
+  vocabulary, FTS, and optional vector storage) and assert structured refusal with no deletion or write.
 - Reader tests: every collection comes from one transaction and has deterministic ordering; unchanged snapshot +
   fake clock produces byte-identical JSON.
 - Restore tests: every table round-trips; seeded vocabulary skips; differing vocabulary rejects; all imported
   devices retire; destination identity remains active; HLC advances past all imported history; forced failure at
   every phase, including FTS/HLC finalization, rolls back.
-- Concurrency tests: a writer committed before `BEGIN IMMEDIATE` is observed by emptiness checks; a writer started
+- Concurrency tests: a writer committed before `BEGIN IMMEDIATE` is observed by baseline checks; a writer started
   after the reservation blocks/times out and never interleaves.
 - Private-file tests: new file mode, overwrite of pre-existing `0o644`, destination-symlink replacement without
   modifying the symlink target, cleanup after failure, and preservation of an existing valid file after failed
   replacement.
-- CLI tests: push summary, pull preview/confirmation, invalid-bundle refusal before prompt, non-empty refusal,
+- CLI tests: push summary, pull preview/confirmation, invalid-bundle refusal before prompt, non-baseline refusal,
   owner-only output, and direct-file/directory input forms.
 - E2E: A→B restore preserves portable content and custom vocabulary; a later B write uses B's device id and an HLC
   after all imported entries; B→C carries all historical device rows forward.
