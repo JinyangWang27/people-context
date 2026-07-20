@@ -272,4 +272,5 @@ The following remain candidates, not commitments:
   users);
 - CardDAV synchronization (M14 ships only one-way vCard export).
 
-See `docs/specs/` for one implementation spec per M8–M15 milestone.
+See `docs/specs/` for one implementation spec per M8–M15 milestone, and
+[docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.
