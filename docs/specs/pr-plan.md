@@ -380,28 +380,31 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
     - `src/people_context/cli.py` (`brief` subcommand, `list --json`)
     - `tests/app/test_compose_person_brief.py` (new), `tests/adapters/test_cli*.py` or equivalent CLI test module
   - **Spec:** (docs/specs/m14-ecosystem-interop.md §"`people-context brief`")
-    - `ListReminders`' person filter is required, not optional — it's the only way to surface `follow_up`/`occasion` reminders, since context/guidance include only `communication_note` ones.
-    - Sensitivity mirrors vault export exactly: elevated material needs explicit `--include-sensitive`; footer states the text is outside server disclosure controls.
+    - `ListReminders`' person filter is required, not optional — it is the only way to surface `follow_up`/`occasion` reminders, since context/guidance include only `communication_note` ones.
+    - Call `GetPersonContext.execute(..., purpose="communication", include_sensitive=flag)` so `--include-sensitive` widens context-backed facts, interactions, and communication traits. `GetCommunicationGuidance` remains ordinary-only by its existing contract; M14.1 must not silently widen that use case or expose a new MCP parameter.
+    - The footer states that exported text is outside server disclosure controls and explicitly labels guidance as ordinary-disclosure even when sensitive context is included.
     - Output: stdout by default (markdown), `--json` for the stable machine form, or `--output FILE` written with the `0o600` convention (see `cli.py`'s existing `os.open(..., 0o600)` pattern).
     - No MCP tool — CLI-only, per the non-goals list (keeps bulk-disclosure formatting human-operated).
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. Fake-port tests for `ComposePersonBrief` covering composition, sensitivity gating, deterministic ordering, and all open-reminder kinds. CLI snapshot test for `brief` including the `--include-sensitive` diff and `0o600` file-mode check. `list --json` shape test.
-  - **Out of scope:** brief style templates (open question 2, deferred); `export-vcard`; any MCP-facing change.
+  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. Fake-port tests cover composition, deterministic ordering, all open-reminder kinds, sensitive context appearing only with the flag, and unchanged ordinary-only guidance in both modes. CLI snapshots cover the `--include-sensitive` diff, disclosure labeling, and `0o600`; add a `list --json` shape test.
+  - **Out of scope:** changing `GetCommunicationGuidance` or its MCP tool contract; brief style templates; `export-vcard`; any new MCP-facing surface.
 
 - [ ] **PR M14.2 — `export-vcard` deterministic writer**
-  - **Scope:** New `adapters/filesystem/vcard_writer.py` mirroring `vault_writer.py`'s determinism rules, plus the `people-context export-vcard` CLI command. It emits the subset the existing vCard importer can round-trip without changing that importer.
+  - **Scope:** Add `ExportVCard(ExportReader, VCardWriter, Clock)`, a narrow writer port, its deterministic filesystem adapter, and the `people-context export-vcard` CLI command. The app layer builds the disclosure-gated projection; the adapter only serializes it. Emit only the subset the existing vCard importer can round-trip.
   - **Touches:**
-    - `src/people_context/adapters/filesystem/vcard_writer.py` (new)
-    - `src/people_context/app/export_vcard.py` (new, thin use case parallel to `app/export_vault.py`)
-    - `src/people_context/cli.py` (`export-vcard` subcommand)
-    - `tests/adapters/test_vcard_export.py` (new)
+    - `src/people_context/ports/vcard.py` (new — typed export DTOs plus `VCardWriter` Protocol)
+    - `src/people_context/app/export_vcard.py` (new — depends only on `ExportReader`, `VCardWriter`, and `Clock`)
+    - `src/people_context/adapters/filesystem/vcard_writer.py` (new — pure deterministic serialization)
+    - `src/people_context/cli.py` (`export-vcard` subcommand and result summary)
+    - app fake-port tests plus `tests/adapters/test_vcard_export.py` and CLI tests
   - **Spec:** (docs/specs/m14-ecosystem-interop.md §"`people-context export-vcard`")
-    - Stable person/property ordering; byte-identical re-export over unchanged data (same guarantee as `docs/vault-export.md`).
-    - Field mapping: `FN`/`N` ← canonical name, `NICKNAME` ← `nickname` aliases, `EMAIL` ← `handle` aliases parsing as addresses, `BDAY` ← `predicate="birthday"` facts.
-    - Because the existing importer consumes only the first `ORG`/`TITLE` pair, export at most one active affiliation per person, selected deterministically by normalized organization name, normalized role, then affiliation id. Report additional active affiliations as `omitted_affiliations`; do not silently imply complete affiliation portability.
-    - `--version {3.0,4.0}` dialect flag; every emitted field must round-trip through the existing `VCardImportExtractor`.
-    - Elevated-sensitivity facts follow the same `--include-sensitive` gate as vault export and `brief`.
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. `test_vcard_export.py`: determinism, sensitivity gating, deterministic affiliation selection and omission count, and a full round trip asserting people/aliases/the selected affiliation/birthday facts survive. CLI `0o600` and determinism checks.
-  - **Out of scope:** CardDAV; Outlook/WhatsApp import; multiple-affiliation vCard encoding; any change to the importer side of vCard.
+    - The app use case excludes soft-deleted people, applies the sensitivity gate, evaluates active records at `clock.now().date()`, and never imports an adapter. The writer receives an already-filtered typed projection.
+    - Stable person/property ordering yields byte-identical output for the same snapshot and injected clock.
+    - Field mapping: `FN`/`N` ← canonical name, `NICKNAME` ← `nickname` aliases, `EMAIL` ← `handle` aliases parsing as addresses.
+    - Export at most one active affiliation per person, selected by normalized organization name, normalized role, then affiliation id; count the rest in `omitted_affiliations`.
+    - Export at most one eligible `birthday` fact per person because the importer consumes only the first `BDAY`: select highest confidence, then newest `recorded_at`, then id; count the rest in `omitted_birthdays`.
+    - `--version {3.0,4.0}` selects the dialect; every emitted field must round-trip through the existing `VCardImportExtractor`.
+  - **Tests/validation:** Fake reader/writer/clock tests pin filtering, as-of behavior, both omission policies, and no adapter dependency. Adapter tests cover byte determinism and 3.0/4.0 serialization. Full importer round trip asserts people, aliases, selected affiliation, and selected birthday survive; CLI tests cover `0o600`, both omission counts, and sensitivity gating. `uv run ruff check .` and `uv run pytest -q` fully green.
+  - **Out of scope:** CardDAV; Outlook/WhatsApp import; multiple-affiliation or multiple-birthday vCard encoding; any change to the importer side of vCard.
 
 - [ ] **PR M14.3 — Outlook CSV + WhatsApp import extractors**
   - **Scope:** Add Outlook and WhatsApp extractors while explicitly widening the extractor keyword contract. Preserve all five pre-M14 accepted source values: `email`, `mbox`, `vcard`, `ics`, and `linkedin`.
@@ -452,18 +455,20 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Out of scope:** `stats`; an interactive apply-a-fix mode (open question 1 — stays report-only this release); any MCP tool surfacing these findings (explicit non-goal).
 
 - [ ] **PR M15.2 — `stats` local inventory report**
-  - **Scope:** CLI-only `people-context stats` report over existing reads plus small adapter count queries (no new port needed if existing readers suffice; otherwise a minimal additive method). Does not touch `doctor` or resolution.
+  - **Scope:** Add a narrow aggregate-only `StatsReader` port, its SQLite adapter, `ComputeStats`, and the CLI-only `people-context stats` report. Keep SQL aggregation in the adapter and formatting/redaction policy in the app/CLI; do not scatter count methods across unrelated repositories.
   - **Touches:**
-    - `src/people_context/app/compute_stats.py` (new, or a method alongside `run_doctor.py` if a shared adapter query module emerges — keep app-layer policy separate from `run_doctor`)
-    - `src/people_context/adapters/sqlite/*.py` (small additive count queries only, e.g. in `repository.py`/`context_reader.py` — no schema change)
-    - `src/people_context/cli.py` (`stats` subcommand)
-    - `tests/app/test_compute_stats.py`, extend CLI test module
+    - `src/people_context/ports/stats.py` (new — aggregate DTO plus `StatsReader` Protocol)
+    - `src/people_context/adapters/sqlite/stats_reader.py` (new — counts/distributions/database-size query set)
+    - `src/people_context/app/compute_stats.py` (new — report policy and path redaction)
+    - `src/people_context/cli.py` (`stats` subcommand; reads process gate env vars and passes explicit booleans to the use case)
+    - `tests/app/test_compute_stats.py`, `tests/adapters/test_sqlite_stats_reader.py`, and CLI tests
   - **Spec:** (docs/specs/m15-data-quality-and-credibility.md §"`people-context stats`")
     - Reports: entity counts per table, alias-kind distribution, facts/observations by `Sensitivity`, relationship-category distribution, audit-log operation counts, changelog entries per device, database size, and disclosure-gate state.
-    - Disclosure-gate section reads only the local process environment (`PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`, `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` — see `adapters/mcp/tools/people.py`/`portability.py`) — must not probe or start the server; report as "in this environment".
-    - Absolute database path is **redacted by default**; `--include-path` opts in explicitly.
-    - `--json` mirrors the human output; never emits record contents, only aggregates/counts.
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. Fake-port tests for the stats computation. CLI snapshot test over a seeded fixture including `--json` shape stability and the default-redacted-path / `--include-path` behavior.
+    - `SqliteStatsReader` returns aggregates only: it never returns record contents or absolute paths. Database size is part of the aggregate snapshot.
+    - The CLI alone reads `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` and `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT`, then passes explicit booleans to `ComputeStats`; neither the app use case nor SQLite adapter reads process environment or probes/starts the server. Report the values as "in this environment".
+    - The CLI passes the resolved database path separately; `ComputeStats` redacts it by default and includes it only under `--include-path`.
+    - `--json` mirrors the human output and contains aggregates/counts only.
+  - **Tests/validation:** Fake `StatsReader` tests pin report policy, explicit gate-state inputs, and path redaction. SQLite adapter tests pin every aggregate against a seeded DB. CLI snapshots cover `--json`, gate env combinations, and default-redacted-path / `--include-path`. `uv run ruff check .` and `uv run pytest -q` fully green.
   - **Out of scope:** `doctor`'s finding classes; any telemetry or network call (explicit non-goal — local-only).
 
 - [ ] **PR M15.3 — Additive transliteration-aware resolution details**

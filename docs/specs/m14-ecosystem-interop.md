@@ -43,32 +43,30 @@ Non-goals:
 
 ### `people-context brief`
 
-App use case `app/compose_person_brief.py` composing three existing reads — `GetPersonContext`
-(`app/get_person_context.py`), `GetCommunicationGuidance` (`app/get_communication_guidance.py`), and
-`ListReminders` (`app/list_reminders.py`) — into one deterministic markdown document: identity and aliases,
-relationships with perspective `display_type`, current affiliations, durable facts, communication guidance
-signals, and open reminders. The third dependency is required, not optional: context and guidance both
-deliberately include only `communication_note` reminders, so "open reminders" (scheduled `follow_up` and
-`occasion` kinds included) is reachable only through `ListReminders`' person filter. Sensitivity behaves
-exactly like vault export: elevated-sensitivity material requires the explicit `--include-sensitive` flag,
-and the brief's footer states that the exported text is outside server disclosure controls. Output goes to
-stdout by default (it is meant to be piped/pasted) — as markdown, or as a stable JSON document via `--json`
-(the machine form the Obsidian plugin below consumes) — or to a file via `--output` with the `0o600` export
-convention.
+App use case `app/compose_person_brief.py` composes three existing reads — `GetPersonContext`,
+`GetCommunicationGuidance`, and `ListReminders` — into one deterministic markdown/JSON document: identity and
+aliases, relationships with perspective `display_type`, current affiliations, durable facts, communication
+signals, and open reminders. `ListReminders` is required because context and guidance include only
+`communication_note` reminders, while the brief also needs scheduled `follow_up` and `occasion` rows. For
+sensitivity, call `GetPersonContext.execute(..., purpose="communication", include_sensitive=flag)` so the flag
+widens context-backed facts, interactions, and traits. `GetCommunicationGuidance` remains ordinary-disclosure by
+its existing contract; M14.1 does not widen that use case or its MCP tool. The brief labels this distinction and
+states that exported text is outside server disclosure controls. Output goes to stdout by default, as markdown or
+stable JSON, or to a file via `--output` with the `0o600` convention.
 
 ### `people-context export-vcard`
 
-New filesystem adapter `adapters/filesystem/vcard_writer.py` mirroring the vault writer's determinism rules:
-stable person ordering, stable property ordering, byte-identical re-export over unchanged data. Field mapping
-emits `FN`/`N` from the person name, `NICKNAME` from `nickname` aliases, `EMAIL` from `handle` aliases that parse as
-addresses, and `BDAY` from `predicate="birthday"` facts. The existing importer consumes only the first `ORG` and
-first `TITLE`, so this milestone deliberately exports at most one active affiliation per person: choose it by
-normalized organization name, normalized role, then affiliation id, and report additional active rows through an
-`omitted_affiliations` CLI summary count. This makes affiliation lossiness explicit while preserving a truthful
-round-trip guarantee without expanding the importer in the same PR. Elevated-sensitivity facts follow the same
-`--include-sensitive` gate as vault export. One `--version {3.0,4.0}` flag selects the dialect (default per Open
-Questions); every emitted field must round-trip through the project's own vCard importer, and tests assert the
-selected affiliation survives while omitted rows are counted deterministically.
+Add a typed `VCardWriter` port, `ExportVCard(ExportReader, VCardWriter, Clock)`, and a filesystem writer adapter.
+The app use case excludes soft-deleted people, applies the explicit sensitivity gate, evaluates active records at
+the injected clock's date, and constructs a typed projection; the filesystem adapter performs serialization only
+and is never imported by `app/`. Stable person/property ordering yields byte-identical output for the same snapshot
+and clock. Emit `FN`/`N` from the canonical name, `NICKNAME` from nickname aliases, and `EMAIL` from handle aliases
+that parse as addresses. The existing importer consumes only the first `ORG`/`TITLE` and first `BDAY`, so export at
+most one of each: choose the active affiliation by normalized organization name, normalized role, then id; choose
+an eligible birthday fact by highest confidence, newest `recorded_at`, then id. Report remaining eligible rows as
+`omitted_affiliations` and `omitted_birthdays`. One `--version {3.0,4.0}` flag selects the dialect; every emitted
+field must round-trip through the existing importer, with tests proving the selected rows survive and omission
+counts are deterministic.
 
 ### Outlook CSV and WhatsApp import extractors
 

@@ -73,15 +73,15 @@ in cron/scripts without treating findings as failures.
 
 ### `people-context stats`
 
-CLI-only report over existing reads plus small adapter count queries: entity counts per table, alias-kind
-distribution, facts/observations by `Sensitivity` level, relationship-category distribution, audit-log
-operation counts, changelog entries per device, database size, and the current disclosure-gate state
-(whether `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` / `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` are set in the
-inspecting shell's environment — reported as "in this environment", since the server's own environment may
-differ). The absolute database path is **redacted by default** (`--include-path` opts in): a path routinely
-embeds a username, employer, or client name, so the default output is what a user can share when asking for
-help. `--json` mirrors the human output. This is the M12 threat-model argument turned into a runnable
-artifact: "here is exactly what this store holds and guards."
+Add a narrow aggregate-only `ports/stats.py::StatsReader`, implemented by
+`adapters/sqlite/stats_reader.py`, plus `app/compute_stats.py`. The adapter owns SQL aggregation and returns entity
+counts, alias-kind distribution, facts/observations by `Sensitivity`, relationship-category distribution,
+audit-operation counts, changelog entries per device, and database size — never record contents or an absolute
+path. The CLI reads `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` / `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` from its own process
+and passes explicit booleans to the use case, which reports them as "in this environment" without probing or
+starting the server. The CLI also passes the resolved path separately; the app redacts it by default and includes
+it only under `--include-path`. `--json` mirrors the human aggregate output. This keeps the hexagonal boundary
+intact while turning the M12 threat-model argument into a runnable artifact.
 
 ### Transliteration-aware resolution explanations
 
