@@ -6,7 +6,6 @@ The repository is also a self-hosted Claude Code plugin marketplace. The plugin 
 
 - Claude Code 2.1.196 or newer
 - [`uv`](https://docs.astral.sh/uv/) available on `PATH`
-- Git access to this repository while it is private
 
 ## Install from GitHub
 

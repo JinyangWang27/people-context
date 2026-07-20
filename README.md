@@ -60,10 +60,6 @@ For a one-off server launch without a persistent installation:
 uvx --from people-context people-context-mcp
 ```
 
-> **PyPI migration:** the distribution was renamed from `people-context-mcp` to `people-context`. The
-> `people-context-mcp` console command remains stable. A legacy `people-context-mcp` distribution is retained as
-> a compatibility shim that depends on `people-context`; new installations should use `people-context` directly.
-
 For local development:
 
 ```bash
@@ -196,7 +192,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools and stable response contracts |
 | [docs/cli.md](docs/cli.md) | CLI commands and DB resolution |
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and M6 local foundations |
-| [docs/releasing.md](docs/releasing.md) | PyPI migration, trusted publishing, Codecov, and release procedure |
+| [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
 | [docs/roadmap.md](docs/roadmap.md) | M0 through M7 delivered; M8 through M15 planned |
 | [docs/specs](docs/specs/) | One implementation spec per planned M8–M15 milestone |
