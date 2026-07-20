@@ -108,9 +108,8 @@ Anthropic's `claude-plugins-official` marketplace is curated separately and curr
 
 Before submitting:
 
-1. Make the repository publicly accessible.
-2. Run `claude plugin validate . --strict` on the intended release commit.
-3. Confirm installation from a clean machine using the GitHub marketplace commands above.
-4. Verify that all durable data remains at the resolved database path (by default the XDG data directory).
-5. Confirm that the default tool surface excludes high-disclosure reads.
-6. Document the local execution model, required `uv` dependency, tool behavior, and privacy properties.
+1. Run `claude plugin validate . --strict` on the intended release commit.
+2. Confirm installation from a clean machine using the GitHub marketplace commands above.
+3. Verify that all durable data remains at the resolved database path (by default the XDG data directory).
+4. Confirm that the default tool surface excludes high-disclosure reads.
+5. Document the local execution model, required `uv` dependency, tool behavior, and privacy properties.
