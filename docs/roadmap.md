@@ -76,28 +76,25 @@ provide a safe human-operated Obsidian export without changing existing response
 
 ## M8 — Distribution & reach
 
-**Goals:** cut the distance between "hears about this project" and "has it running in a client" to a single
-command, without adding runtime dependencies or changing any server behavior.
+**Goals:** cut the distance between “hears about this project” and “has it running in a client” to a single
+command, without changing server behavior.
 
 **Deliverables:**
 
 - verified zero-clone install: `uvx --from people-context people-context-mcp` against the existing
-  PyPI-published package (build and trusted-publish flow already documented in
-  [docs/releasing.md](releasing.md));
-- a `server.json` following the official MCP Registry packages schema (`registryType: "pypi"` plus stdio
-  transport, with the required `mcp-name:` README ownership marker) published via `mcp-publisher`, and
-  equivalent metadata submitted to community directories (Smithery, PulseMCP, mcp.so, Glama);
-- a Claude Desktop extension (`.mcpb` bundle) wrapping the same stdio invocation pattern already used by
-  `.claude-plugin/mcp.json`;
-- documented one-line stdio configs for Claude Desktop, Cursor, Windsurf, and VS Code in the README, alongside
-  the existing generic stdio configuration and Claude Code instructions;
-- an optional Docker image (loopback stdio, bind-mounted database volume) built and published by CI, following
-  the existing publish-workflow pattern already used for PyPI (`release.yml`) and the OpenClaw plugin
-  (`package-publish.yml`);
-- README quick-start and docs-table updates reflecting the new install paths.
+  PyPI-published package;
+- root `server.json` using the official MCP Registry package schema and packaged `mcp-name:` ownership marker,
+  plus current metadata/submission coverage for Smithery, PulseMCP, mcp.so, and Glama;
+- a native-UV Claude Desktop `.mcpb` bundle containing its root manifest/project and thin Python entry point —
+  not a packaged `.claude-plugin/mcp.json` command wrapper;
+- documented one-line stdio configs for Cursor, Windsurf, and VS Code alongside the existing generic/Claude Code
+  instructions;
+- an optional non-root local-stdio Docker image with a bind-mounted database volume and GHCR release workflow;
+- pinned external validators/build CLIs, base-image digests, and Actions;
+- README quick-start and docs-table updates.
 
 No `domain`, `app`, `ports`, or MCP tool-surface changes are required; this milestone is packaging, metadata,
-and CI only.
+documentation, and CI only.
 
 **Status:** Planned.
 
@@ -108,154 +105,127 @@ extract-and-stage import pipeline to the contact sources people actually export 
 
 **Deliverables:**
 
-- `people-context init`: an interactive CLI onboarding command that optionally runs the existing vCard import
-  flow (`ImportContent` → `ReviewImport` → `CommitImport`, unchanged) against a Google/Apple/macOS Contacts
-  export, seeds a self person through the existing `RememberPerson`/`RememberPersonInput(is_self=True)` path,
-  and prompts for an initial communication philosophy via the existing `SetCommunicationPhilosophy` use case;
+- `people-context init`: an interactive CLI onboarding command that first seeds the self person through
+  `RememberPerson` with supplied email handles, then optionally runs the existing vCard
+  `ImportContent` → `ReviewImport` → `CommitImport` flow, and prompts for an initial communication philosophy;
+  the user's own contact card must not create a duplicate self record;
 - `people-context demo`: seeds a small fictional dataset into a dedicated demo database (never the user's real
-  `--db`/resolved path) using the same `RememberPerson`/`SetRelationship`/`RecordInteraction` use cases, then
-  prints example `resolve_person`, `get_relationship_graph`, and `find_connection` invocations to try;
-- two new import sources reusing the existing candidate vocabulary with zero changes to `domain`, `app`
-  contracts, `import_staging`, or the review/commit tools: `.ics` calendar attendees (`source_type="ics"`) and
-  a LinkedIn connections export (`source_type="linkedin"`);
-- `ImportExtractorRouter` (currently defined in `adapters/vcard_import.py`) moves to its own adapter module
-  before the third source type lands, so source dispatch no longer lives inside one source's module;
-- fake-port, real-SQLite, in-memory MCP, CLI, and stdio E2E coverage for both new sources and the new CLI
-  commands.
+  `--db`/resolved path), ships its data in the installed wheel, and prints path-targeted server plus
+  `resolve_person`, `get_relationship_graph`, and `find_connection` examples;
+- two new import sources reusing the existing candidate vocabulary with zero schema/review-gate changes: `.ics`
+  calendar attendees (`source_type="ics"`) and LinkedIn connections (`source_type="linkedin"`);
+- `ImportExtractorRouter` moves from `adapters/vcard_import.py` to its own adapter module without dropping the
+  existing `mbox` source;
+- fake-port, real-SQLite, in-memory MCP, CLI, packaging, and stdio E2E coverage.
 
 **Status:** Planned.
 
 ## M10 — Agent utilization
 
-**Goals:** make the existing tool surface easier for agents to use correctly and consistently — this milestone
-adds no server code, since `resolve_person`, `get_communication_guidance`, and `stage_candidates` already exist
-and are already wired into `ToolDeps`.
+**Goals:** make the existing tool surface easier for agents to use correctly and consistently. The milestone adds
+prompt/plugin behavior and at most a minimal instruction string, not new business capabilities.
 
 **Deliverables:**
 
-- a packaged Claude Code skill describing when to call `resolve_person`, `get_communication_guidance`, and the
-  stage/review/commit import flow, shipped at the plugin root (`skills/`), where Claude Code discovers it;
-- user-invocable who/remember/reminders entry points (namespaced as `/people-context:who` etc.) wrapping
-  `resolve_person`/`get_person_context`, `remember_person`, and `list_reminders` respectively;
-- an end-of-session capture instruction in the skill (deliberately no hook: `SessionEnd` cannot inject
-  prompts and a `Stop` hook fires every turn) asking the agent to propose staged candidates via
-  `stage_candidates` for anything durable learned in the session — never an automatic `commit_import`;
-- at most a small, additive extension of the `SERVER_INSTRUCTIONS` string in `adapters/mcp/server.py` mentioning
-  `get_communication_guidance` and `stage_candidates`, with no tool signature or behavior change.
+- a packaged Claude Code skill describing resolution-first behavior, communication guidance, and the
+  stage/review/commit import flow;
+- user-invocable who/remember/reminders workflows (namespaced as `/people-context:who` etc.) composing existing
+  tools;
+- an end-of-session instruction asking the agent to propose staged candidates for durable facts — never an
+  automatic `commit_import`;
+- at most a small additive `SERVER_INSTRUCTIONS` extension naming `get_communication_guidance` and
+  `stage_candidates`, without signature/annotation/response changes.
 
 **Status:** Planned.
 
 ## M11 — Sync bundle export and trusted bootstrap restore
 
-**Goals:** give the M6 changelog foundations a first consumer beyond local inspection — a file-based bundle
-that moves one device's complete state to a brand-new device, doubling as a backup. Incremental two-way replay
-between two independently-diverged devices remains the harder, deliberately deferred part of
-[the sync design](design/sync.md).
+**Goals:** give the M6 changelog foundations a first consumer beyond local inspection — a file-based bundle that
+moves one device's complete state to a brand-new device, doubling as a backup. Incremental replay between
+independently diverged devices remains deferred.
 
 **Deliverables:**
 
-- `people-context sync push --output DIR`: a CLI-only, read-only bundle export that reads the portable
-  snapshot (including relationship vocabulary), every referenced device row, the complete changelog, and the
-  originating device's HLC watermark inside one read transaction, and writes them as one versioned JSON
-  bundle file;
-- `people-context sync pull --input PATH`: a CLI-only, trusted bootstrap restore that only ever targets a
-  freshly initialized, still-empty database — never a two-way merge — and, in one atomic `BEGIN IMMEDIATE`
-  transaction, verifies emptiness, writes relationship vocabulary, retired device history, primary rows, and
-  changelog, rebuilds FTS, and advances the local device's HLC past the bundle watermark; imported device
-  identities are never active on the restored machine, and only the optional semantic reindex runs outside
-  the transaction;
-- an additive widening of `Changelog.list_entries`'s `limit` parameter to accept `None` for "all entries",
-  needed because bundle export must not silently cap history at the current default of 100;
-- explicit CLI refusal (no partial/best-effort merge) when the pull target already has primary data, with a
-  clear message pointing at the still-deferred incremental-replay work;
-- fake-port, real-SQLite, CLI, and stdio E2E coverage, including a push-from-A/pull-into-B round trip asserting
-  content parity and HLC continuity.
+- `people-context sync push --output DIR`: one strict versioned JSON bundle containing a single-transaction
+  snapshot, relationship vocabulary, referenced devices, complete changelog, and HLC watermark;
+- `people-context sync pull --input PATH`: strict format/version/nested validation before preview or writes, then
+  empty-target-only atomic `BEGIN IMMEDIATE` restore of vocabulary, retired device history, primary/audit rows,
+  and changelog, followed by FTS rebuild and local-HLC advancement;
+- imported device identities are never active and a bundle/local device-id collision is rejected;
+- an additive `Changelog.list_entries(limit=None)` read;
+- a shared atomic owner-private file writer used by bundle/JSON and later personal-data exports;
+- fake-port, strict-model, real-SQLite, concurrency, CLI, and stdio E2E coverage, including A→B→C continuity.
 
 **Status:** Planned.
 
 ## M12 — Trust, stability, and v1.0
 
-**Goals:** formalize the compatibility discipline the project has informally followed since M7 (see the
-`duplicate_relationships_removed` precedent in the README), and close the two most-requested trust gaps: at-rest
-encryption and a stated threat-model comparison against cloud memory tools.
+**Goals:** formalize the compatibility discipline followed since M7 and close trust gaps around at-rest encryption
+and cloud-memory comparisons.
 
 **Deliverables:**
 
-- a written MCP response-contract and DB-schema compatibility promise (additive-only fields within a major
-  version, stable tool names/required parameters, forward-only additive migrations under
-  `adapters/sqlite/migrations/`);
-- `pyproject.toml` version bump to `1.0.0` and a "first 1.0" addition to the existing release checklist in
-  [docs/releasing.md](releasing.md);
-- opt-in SQLCipher at-rest encryption behind a new optional dependency extra (alongside the existing `semantic`
-  extra) and an explicit `PEOPLE_CONTEXT_DB_KEY`-gated open path that leaves the default, unencrypted `open_db`
-  behavior and its entire existing test suite unchanged;
-- a threat-model comparison section appended to the existing "Threat model notes" in
-  [docs/privacy-and-safety.md](privacy-and-safety.md), contrasting local-first storage with cloud memory tools
-  (mem0, Zep, and similar);
-- README polish: a short screenshot/GIF funnel built from the M9 `people-context demo` walkthrough.
+- a written additive MCP/stable-JSON, CLI-default, and forward-only DB compatibility promise;
+- synchronized `1.0.0` primary server metadata (`pyproject.toml`, Registry package/server versions, MCPB semantic
+  version/dependency pin) plus regenerated `uv.lock`, while integration plugin/shim versions remain explicit
+  independent domains;
+- opt-in SQLCipher behind a locked optional dependency extra and `PEOPLE_CONTEXT_DB_KEY`-gated connection path,
+  leaving default `open_db` behavior unchanged;
+- a dated, primary-source threat-model comparison with cloud memory tools;
+- README demo polish based on the packaged M9 demo.
 
 **Status:** Planned.
 
 ## M13 — Daily utility & proactive signals
 
-**Goals:** give the store humane, daily reasons to be consulted beyond agent Q&A — recency signals, date
-awareness, meeting preparation, and reminders that surface in tools people already check. Every deliverable is
-a read path over data the schema already holds; nothing new is recorded.
+**Goals:** give the store daily, explainable read-side utility over data already held; nothing new is recorded.
 
 **Deliverables:**
 
-- read-only `get_stale_relationships` MCP tool and `people-context stale` CLI report: per-person
-  latest-interaction recency computed over ordinary-disclosure interactions only, one row per person with a
-  `categories` list (people can hold multiple relationship types), with explicit caps and a `truncated` flag
-  following the M7 graph-tool conventions;
-- read-only `upcoming_dates` MCP tool and CLI report over ordinary-disclosure parseable birthday/date facts
-  and due reminders within a bounded window;
-- a meeting-preparation flow in the M10 skill composing M9 `.ics` attendee resolution with
-  `get_person_context`, `get_communication_guidance`, and open reminders — plugin-side only, no new server
-  tool;
-- `people-context reminders-ics --output FILE`: CLI-only deterministic iCalendar export of reminders, using
-  the export file-permission conventions;
-- `people-context watch`: CLI-only JSON-lines tail of the changelog for local automation, cursored on the
-  changelog's deterministic HLC ordering key.
+- read-only `get_stale_relationships` MCP tool and `people-context stale` CLI, computed only over
+  ordinary-disclosure interactions with one row per person and a categories list;
+- read-only `upcoming_dates` MCP tool/CLI over ordinary birthday facts and active reminders, with annual
+  month/day projection and real leap-day behavior;
+- a meeting-preparation flow in the M10 skill;
+- deterministic `people-context reminders-ics --output FILE` using the shared atomic private-file writer; dated
+  reminders remain exported even when an unsupported recurrence rule is omitted and counted;
+- `people-context watch`: local-only JSON-lines changelog tail with explicit initial-cursor and `--from-start`
+  semantics.
 
 **Status:** Planned.
 
 ## M14 — Ecosystem & interoperability
 
-**Goals:** meet adjacent tool ecosystems where their users already are: portable person briefs for any chat
-surface, two-way vCard portability, more import funnels, and a first-class Obsidian experience beyond one-shot
-vault export.
+**Goals:** meet adjacent tool ecosystems with portable briefs, existing-import-plus-one-way-vCard-export,
+additional import funnels, and a first-class live Obsidian view.
 
 **Deliverables:**
 
-- `people-context brief PERSON [--include-sensitive]`: CLI-only compact markdown person brief for pasting into
-  any assistant, disclosure-gated with the same explicit sensitivity opt-in as vault export;
-- `people-context export-vcard`: deterministic vCard export complementing the existing importer (CardDAV stays
-  unscheduled);
-- two additional import sources through the M9 router: Outlook/Exchange contacts CSV, and WhatsApp chat-export
-  participants/dates (participants and timestamps only — message bodies are never parsed into candidates);
-- an Obsidian community plugin (developed in-repo following the `openclaw-plugin/` precedent, published
-  through a mirrored distribution repository) rendering live, read-only people pages through the CLI's
-  disclosure-gated JSON output — never by opening the database directly.
+- `people-context brief PERSON [--include-sensitive]`: CLI-only deterministic Markdown/versioned JSON, explicitly
+  distinguishing sensitive context from ordinary-only communication guidance;
+- `people-context export-vcard`: deterministic unchanged-importer round-trip for non-heuristic names, one active
+  affiliation, and one full-date birthday; partial/unparseable birthdays are counted rather than emitted
+  non-standardly;
+- Outlook contacts CSV and WhatsApp participant/date imports through the M9 router; WhatsApp bodies never enter
+  candidates/logs/errors and self participation remains implicit in the unchanged candidate contract;
+- a desktop-only Obsidian plugin using stable person ids and shell-free bounded CLI subprocesses, with typed
+  database/encryption settings, a committed Node lockfile, and deterministic mirrored release artifacts.
 
 **Status:** Planned.
 
 ## M15 — Data quality, insight, and credibility
 
-**Goals:** keep long-lived databases trustworthy, make the privacy story inspectable, and give the project
-publishable evidence and narratives.
+**Goals:** keep long-lived databases trustworthy, make the privacy story inspectable, and provide publishable
+evidence and narratives.
 
 **Deliverables:**
 
-- `people-context doctor`: report-only curation findings — likely duplicate people, contradictory facts,
-  dangling references — with suggested `merge_people`/`correct_record` follow-ups, never auto-applied;
-- `people-context stats`: local counts, sensitivity distribution, audit/changelog summaries, and a disclosure
-  gate inventory;
-- transliteration-aware resolution explanations: exact alias matches already rank at parity, so resolution
-  explanations begin naming the matched alias kind, tests pin the parity, and bilingual alias workflows get
-  documented;
-- a published evaluation comparing agent task quality with and without the server, plus a use-case gallery in
-  docs.
+- `people-context doctor`: report-only deterministic duplicate/contradiction/soft-deleted-reference findings with
+  structured id-based CLI/MCP suggested actions, never shell-interpolated or auto-applied;
+- `people-context stats`: versioned aggregate-only local inventory including sensitivity/audit/changelog summaries,
+  disclosure-gate state, path redaction, and main+WAL+SHM storage size;
+- additive transliteration-aware `match_detail` while preserving exact-match reason/ranking/ambiguity;
+- a fictional-data, locally runnable evaluation plus dated results and use-case gallery.
 
 **Status:** Planned.
 
@@ -268,8 +238,8 @@ The following remain candidates, not commitments:
 - multi-user ownership and sharing;
 - authenticated remote transport;
 - reminder notification daemon (M13 ships only a pull-based calendar-feed export);
-- read-only local web viewer (`people-context browse`; M14's Obsidian plugin covers browsing for Obsidian
-  users);
+- read-only local web viewer (`people-context browse`; M14's Obsidian plugin covers browsing for Obsidian users);
 - CardDAV synchronization (M14 ships only one-way vCard export).
 
-See `docs/specs/` for one implementation spec per M8–M15 milestone.
+See `docs/specs/` for one implementation spec per M8–M15 milestone, and
+[docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.

@@ -4,114 +4,78 @@ Status: Planned. See [docs/roadmap.md](../roadmap.md#m10--agent-utilization).
 
 ## Motivation
 
-The tools this milestone is meant to make more discoverable already exist and are already wired end to end:
-`resolve_person`, `get_communication_guidance`, and `stage_candidates` are all registered in
-`build_server()`'s `ToolDeps` (`src/people_context/adapters/mcp/server.py:194-247`) and documented in
-[docs/mcp-interface.md](../mcp-interface.md). `ImportContent` already accepts an optional `CandidateStager`
-(`src/people_context/app/import_content.py:316`), and `StageCandidates`
-(`src/people_context/app/import_content.py:271`) is a thin, already-shipped wrapper around it. What is missing
-is not capability but *guidance*: the only agent-facing instruction text today is the single
-`SERVER_INSTRUCTIONS` string in `adapters/mcp/server.py:87-97`, which nudges `resolve_person` and
-`get_person_context` but says nothing about `get_communication_guidance`, nothing about the
-stage/review/commit approval flow, and nothing about when an agent should proactively stage what it learns.
-The plugin today ships exactly `marketplace.json`, `mcp.json`, and `plugin.json` inside `.claude-plugin/`
-(verified), and no `skills/`, `commands/`, or `hooks/` directory exists at the plugin root — which is where
-Claude Code actually discovers them; only the manifests belong inside `.claude-plugin/`. So there is no
-packaged guidance beyond that one instructions string and whatever a user happens to type.
+The relevant capabilities already exist: `resolve_person`, `get_person_context`,
+`get_communication_guidance`, `list_reminders`, `remember_person`, and the
+`stage_candidates` → `review_import` → `commit_import` approval flow. What is missing is packaged guidance that
+helps agents compose those tools correctly. M10 adds no new business capability, port, tool, or response field. It
+may make one minimal adapter-level prose edit to `SERVER_INSTRUCTIONS`; that is a versioned-code change but not a
+new server behavior or contract.
 
-This is precisely the "zero server changes" adoption path called out in the source analysis: the fix is
-prompt/skill/command content shipped alongside the existing plugin, not new tools or new response fields.
+The Claude Code plugin currently has manifests under `.claude-plugin/` and no root `skills/`/`commands/` content.
+Claude Code discovers skills and compatible command fallbacks at the plugin root, not inside the manifest
+directory.
 
 ## Scope
 
 In scope:
 
-- a packaged Claude Code skill teaching an agent when to call `resolve_person`, `get_communication_guidance`,
-  and the `stage_candidates`/`review_import`/`commit_import` flow;
-- user-invocable who/remember/reminders entry points (namespaced by the plugin name — `/people-context:who`
-  etc.);
-- an end-of-session capture instruction, delivered through the skill (no hook — see Design), that proposes —
-  never silently performs — candidate staging;
-- at most a small, additive extension of `SERVER_INSTRUCTIONS` mentioning the two under-used tools by name.
+- a root-level usage skill for identity resolution, communication guidance, and staged capture;
+- user-invocable who/remember/reminders workflows under the `people-context` namespace;
+- a skill instruction to review durable learnings near session completion and propose staging;
+- at most a small additive `SERVER_INSTRUCTIONS` prose extension naming under-used existing tools.
 
 Non-goals:
 
-- any new MCP tool, port, or app use case — every capability this milestone surfaces already ships;
-- any change to `stage_candidates`'/`commit_import`'s approval semantics — staging remains proposal-only and
-  commit remains an explicit, separate step, unchanged;
-- an automatic/unattended commit path triggered by a hook — see Security below;
-- changing the write-approval annotation on any existing tool (`stage_candidates` keeps its default
-  write-approval `ToolAnnotations`, per `adapters/mcp/tools/imports.py:17,38`, not `readOnlyHint=true`).
+- new MCP tools, app use cases, ports, response fields, or write paths;
+- automatic hooks that persist data or inject a prompt every turn;
+- bypassing review or calling `commit_import` without explicit user inspection;
+- changing tool annotations or enabling elevated tools.
 
 ## Design
 
-### Skill: tool-selection guidance
+### Root usage skill
 
-A new skill under `skills/people-context-usage/` at the plugin root — Claude Code auto-discovers `skills/`,
-`commands/`, and `hooks/` at the plugin root; only `plugin.json` and its sibling manifests live inside
-`.claude-plugin/` — documents, in plain language grounded in the real contracts already published in
-[docs/mcp-interface.md](../mcp-interface.md):
+Add `skills/people-context-usage/SKILL.md` at the plugin root. It teaches:
 
-- resolve identity first (`resolve_person`) before assuming who a name refers to, matching the existing
-  `SERVER_INSTRUCTIONS` guidance, restated with the ambiguity-handling contract (`ambiguous` field) spelled out;
-- call `get_communication_guidance` (not `get_person_context`) when the task is *how* to communicate with
-  someone, not *what is known about* them — the two tools return different, complementary shapes
-  (`CommunicationGuidanceResult` vs. `PersonContextResult`);
-- when the agent learns something durable about a person during a conversation (a fact, an affiliation, a
-  completed interaction), call `stage_candidates` with the strict candidate vocabulary already defined in
-  `app/import_content.py` (`person`/`interaction`/`affiliation`/`fact`) rather than either silently discarding
-  it or fabricating a `remember_person`/`record_fact` call without the user's explicit review;
-  raw conversation text is never a candidate field, matching the existing "agents must extract concise
-  candidates from notes rather than submit or persist the notes themselves" rule
-  ([docs/import.md](../import.md#agent-candidate-staging));
-- never call `get_sensitive_person_context` or `export_data` speculatively — both are operator-gated and, per
-  [docs/mcp-interface.md](../mcp-interface.md#operator-elevated-reads), absent from ordinary tool discovery
-  unless the operator started the server with the matching environment flag; a skill that tells an agent to
-  "try" a gated tool anyway would be actively wrong guidance, so the skill states explicitly that their absence
-  from the tool list is expected, not a bug to work around.
+- resolve identity first and preserve the `ambiguous` candidate-list contract;
+- use `get_person_context` for what is known and `get_communication_guidance` for how to communicate;
+- use only the strict `person`/`interaction`/`affiliation`/`fact` candidate vocabulary;
+- extract concise candidate fields, never raw conversation/transcript text;
+- treat `stage_candidates` as proposal, `review_import` as inspection, and `commit_import` as an explicit later
+  write;
+- the absence of `get_sensitive_person_context`/`export_data` from ordinary discovery is expected process-gate
+  behavior, not something to work around.
 
-### User-invocable who/remember/reminders
+### User-invocable workflows
 
-Three user-invocable entry points, each a short prompt template that instructs the agent to call one MCP tool
-with the user's argument. Because plugin commands and skills are namespaced by the manifest name
-(`people-context`), the actual invocations are `/people-context:who`, `/people-context:remember`, and
-`/people-context:reminders` — the roadmap's short `/who` form is shorthand, not the literal user interface.
-Claude Code has folded standalone commands into the skills mechanism (a skill with user-invocation metadata
-serves the same purpose), so the preferred implementation is three small user-invocable skills at the plugin
-root, with root-level `commands/*.md` files only as a compatibility fallback if the minimum supported Claude
-Code version requires them:
+Implement three user-invocable skills, with `commands/*.md` compatibility fallbacks only if the selected minimum
+Claude Code version requires them. They are thin **workflows**, not artificially one-tool wrappers:
 
-- `/people-context:who <query>` → `resolve_person(query=...)`, then `get_person_context(person_id=...)` on an
-  unambiguous single match, surfacing the `ambiguous`/candidate-list contract when resolution is not unique;
-- `/people-context:remember <description>` → `remember_person` for an explicit new/updated person, or
-  `stage_candidates` when the agent is extracting from prior conversation context rather than the user
-  directly asserting a fact;
-- `/people-context:reminders [person]` → `list_reminders`, optionally filtered by a resolved `person_id`.
+- `/people-context:who <query>` calls `resolve_person`; on exactly one unambiguous match it then calls
+  `get_person_context`; otherwise it returns the ambiguity/candidate result without guessing.
+- `/people-context:remember <description>` uses `remember_person` only for an explicit person assertion that fits
+  that tool's contract. Facts, affiliations, interactions, or information extracted from prior context go through
+  `stage_candidates` and remain pending review.
+- `/people-context:reminders [person]` optionally resolves the person first and then calls `list_reminders` with
+  the resolved id. Ambiguity is surfaced rather than silently dropping the filter.
 
-Each entry point is a thin wrapper around one existing, already-documented tool contract; none introduces new
-response shapes for the user to learn.
+None introduces a new response schema or calls elevated tools.
 
-### End-of-session capture: skill instruction, no hook
+### End-of-session capture instruction, no hook
 
-A hook cannot itself decide *what* is worth remembering — that judgment requires the agent, not a
-deterministic script — so this deliverable is a **prompt**, not a data-computing script. No hook lifecycle
-event fits it, though: `SessionEnd` hooks support command/HTTP/MCP-tool side effects but cannot inject prompt
-text back into a conversation that is already ending, and the only prompt-capable alternative, a `Stop`-event
-hook, fires after **every** assistant turn rather than at session end — a global hook that nags for staging
-after each response, plus loop-prevention complexity for the continuation turn its own prompt produces.
+No lifecycle hook reliably injects a useful one-time prompt at session end without either being too late or firing
+on every turn. Keep capture skill-only: when a session is naturally wrapping up, the agent reviews what it learned
+and may call `stage_candidates` for concise durable candidates. It never calls `commit_import`, never stages raw
+transcript text, and does not claim guaranteed mechanical execution at session end.
 
-This milestone therefore ships the capture behavior **skill-only**: the skill instructs the agent that before
-a session wraps up, it should review what it learned and call `stage_candidates` for anything durable. This
-cannot loop, needs no lifecycle support, and fires with agent judgment about timing instead of on a mechanical
-event. The prompt never calls `commit_import` itself and never bypasses the user review step — it only
-increases the odds that something worth remembering gets staged for review later via `review_import`.
+### Minimal `SERVER_INSTRUCTIONS` extension
 
-### `SERVER_INSTRUCTIONS` extension (optional, minimal)
+The adapter string may gain one or two sentences naming `get_communication_guidance` and `stage_candidates`, while
+preserving the identity-resolution-first and approval-gate rules. This is plain adapter prose:
 
-`adapters/mcp/server.py:87-97` may gain one or two additional sentences naming `get_communication_guidance` and
-`stage_candidates`, exactly as the existing string already names `resolve_person`, `get_person_context`,
-`search_people`, and `remember_person`. This is a plain-string edit inside an adapter module with no
-port/domain/app impact and no response-shape change.
+- no tool signature/annotation/registration change;
+- no domain/app/port import impact;
+- no mention or speculative use of elevated tools.
 
 ## Migration needs
 
@@ -119,50 +83,35 @@ None.
 
 ## CLI / MCP surface changes
 
-None. No new tool, no new CLI command, no response-shape change. `SERVER_INSTRUCTIONS` (if edited) is
-server-provided prose, not a versioned contract field.
+No new CLI command or MCP tool. User-invocable plugin workflows are namespaced prompt/skill surfaces. The optional
+`SERVER_INSTRUCTIONS` prose edit is not a structured response-field change.
 
-## Security / privacy considerations
+## Security and privacy
 
-- Every instruction this milestone adds must preserve the existing approval-gating philosophy verbatim: staging
-  is proposal, review is inspection, commit is the only step that writes real rows
-  ([docs/import.md](../import.md#extract-and-stage-model)). No skill, command, or hook text may instruct an
-  agent to call `commit_import` without the user having reviewed `review_import`'s output first.
-- No skill or command may reference or attempt to enable `get_sensitive_person_context` or `export_data`; both
-  remain process-environment-gated (`PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`, `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT`)
-  and that gate is enforced in `adapters/mcp/security.py:process_elevation_enabled`, not by prompt discipline —
-  this milestone's guidance reinforces, but is not a substitute for, that process-level boundary (see
-  [docs/privacy-and-safety.md](../privacy-and-safety.md#writes-and-destructive-operations-are-annotated-for-client-side-gating)).
-- The end-of-session capture instruction must not persist or transmit session transcript content anywhere
-  outside the normal `stage_candidates` call it prompts for, matching the "never log private values" rule in
-  `AGENTS.md` — and raw conversation text is not a candidate field, so nothing in the strict candidate
-  vocabulary can carry it.
-- The user-invocable entry points must not widen disclosure: who and reminders only ever call tools already available at
-  the default (non-elevated) MCP surface, so their behavior is identical whether or not the operator has set
-  either elevation environment variable.
+- Staging is proposal-only; commit follows reviewed output and explicit approval.
+- Workflows never enable or probe gated sensitive/export tools.
+- Raw conversation content is never copied into candidates, logs, files, or hook payloads.
+- Ambiguous identity is surfaced and never resolved by guesswork.
+- `/remember` does not misuse `remember_person` to encode facts/relationships it cannot represent.
 
 ## Testing strategy
 
-- No new Python code is introduced unless `SERVER_INSTRUCTIONS` is edited, in which case existing tests that
-  assert on that string (if any exist in `tests/adapters/test_mcp_server.py` or
-  `tests/adapters/test_mcp_entrypoint.py`) must be checked and updated for the new wording.
-- Plugin validation: extend the existing `claude plugin validate . --strict` step
-  ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)) to cover the new root-level
-  `skills/` (and, if added, `commands/` and `hooks/`) paths.
-- Manual interactive verification, following the existing "Local validation" procedure exactly
-  ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)): install locally, `/reload-plugins`,
-  then exercise `/people-context:who`, `/people-context:remember`, and `/people-context:reminders` against a
-  temporary database, and confirm the skill changes observed tool-selection behavior in a scripted transcript
-  (agent calls `resolve_person` before
-  assuming an identity; agent proposes `stage_candidates` rather than fabricating a write).
+- Validate the plugin with the repository's existing reviewed/pinned validation mechanism, covering root
+  `skills/` and any compatibility `commands/` files.
+- Scripted transcript fixtures prove:
+  - resolution precedes context lookup;
+  - ambiguous `who` performs no second read;
+  - reminders resolves optional person before filtering;
+  - explicit person assertion may use `remember_person`;
+  - extracted facts/affiliations/interactions stage and do not commit;
+  - gated tools are neither called nor suggested.
+- If `SERVER_INSTRUCTIONS` changes, update exact/substring adapter tests and prove tool annotations/registrations are
+  unchanged.
+- Manual local plugin install/reload exercises all three workflows against a temporary database.
+- `uv run ruff check .` and `uv run pytest -q` remain green.
 
 ## Open questions
 
-1. What minimum Claude Code version should the plugin require for user-invocable skills (versus shipping
-   root-level `commands/*.md` fallbacks), and does the marketplace manifest need a version constraint bump from
-   the currently documented 2.1.196 floor?
-2. Should `/people-context:remember` attempt to disambiguate "explicit user assertion" (→ `remember_person`)
-   from "agent extraction from context" (→ `stage_candidates`) automatically, or should the command always
-   route through staging for consistency, accepting one extra review step even for explicit assertions?
-3. Should this milestone's `SERVER_INSTRUCTIONS` edit ship independently of the skill work (since it is the
-   only piece touching versioned server code), or stay bundled with the rest of the plugin release?
+1. What minimum Claude Code version supports user-invocable skills without command fallbacks?
+2. Should `/remember` always stage for maximum consistency, or retain the explicit-person-assertion fast path?
+3. Should the optional instructions-string edit ship with M10.1 or as the final small M10.3 PR?

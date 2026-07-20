@@ -4,171 +4,143 @@ Status: Planned. See [docs/roadmap.md](../roadmap.md#m15--data-quality-insight-a
 
 ## Motivation
 
-Memory tools die when users stop trusting their data. After M9/M14 widen the import funnel, real databases
-will accumulate near-duplicates (the same person from vCard, LinkedIn, and calendar imports under differing
-name spellings), and the longer a database lives the more its facts can drift into contradiction. The
-machinery to *fix* problems already exists — `merge_people` with its `duplicate_relationships_removed`
-dedupe, `correct_record`'s lossless before/after audit, `forget` — but nothing *finds* problems. Meanwhile
-the project's strongest differentiator, inspectable local-first privacy, is documented
-([docs/privacy-and-safety.md](../privacy-and-safety.md)) but not operationalized: there is no command that
-shows a user what the store holds, at which sensitivity, disclosed through which gates.
-
-Two further credibility gaps are cheap to close. First, bilingual identity already *works* but is invisible:
-the domain model has `AliasKind.NATIVE_SCRIPT` and `AliasKind.TRANSLITERATION` (`domain/person.py`),
-`normalize_name` (`domain/shared.py`) NFKC-normalizes, casefolds, and strips combining marks, and an exact
-normalized alias match of any kind already receives the same `1.0` score as a canonical-name match in
-`ResolvePerson` — but every such match reports the bare reason `"exact"`, so a user cannot see *which* alias
-form resolved, and no doc shows the bilingual workflow. Second, the project has no published evidence: an
-evaluation with numbers, and use-case narratives, are what turn a technically excellent README into something
-that travels.
+After M9/M14 widen imports, long-lived stores need deterministic ways to find duplicates, contradictory facts, and
+soft-deleted references. The project also needs a local aggregate inventory, visible bilingual-match explanations,
+and reproducible evidence/use-case documentation. Existing repair tools remain explicit and human-approved; M15
+finds and explains problems but never auto-fixes them.
 
 ## Scope
 
 In scope:
 
-- `people-context doctor`: report-only data-quality findings with suggested follow-up commands;
-- `people-context stats`: local inventory of counts, sensitivity distribution, audit/changelog activity, and
-  disclosure gates;
-- transliteration-aware resolution polish (ranking + explanation + documentation);
-- a scripted, reproducible evaluation under `evals/` and a use-case gallery under `docs/use-cases/`.
+- CLI-only `people-context doctor` findings;
+- CLI-only `people-context stats` aggregate inventory;
+- additive transliteration-aware resolution detail with unchanged ranking;
+- a fictional-data evaluation harness and use-case gallery.
 
 Non-goals:
 
-- any auto-applied fix — `doctor` never merges, edits, or deletes; it prints findings and the exact
-  `merge_people`/`correct_record`/CLI invocations a human could run, preserving the rule that destructive
-  operations stay explicit and human-approved;
-- LLM-based duplicate detection or fact reconciliation — findings must be deterministic and explainable
-  (shared normalized aliases, identical handles, overlapping validity periods), like the staged explanations
-  `resolve_person` already returns;
-- a hosted or telemetry-backed benchmark — the eval runs locally, and publishing results is a documentation
-  act, not a data-collection feature;
-- new MCP tools — `doctor` and `stats` are CLI-only; surfacing curation findings to agents can be revisited
-  once the report format has stabilized.
+- auto-applied repair or LLM-based adjudication;
+- hosted telemetry/benchmarking;
+- new MCP tools for doctor/stats;
+- fuzzy cross-script ranking changes.
 
 ## Design
 
 ### `people-context doctor`
 
-New narrow read port `ports/curation.py::CurationReader` implemented in `adapters/sqlite/curation_reader.py`
-(the finding *queries* live in the adapter; finding *policy* — thresholds, ordering, message text — lives in
-`app/run_doctor.py`). Deterministic finding classes, each with a stable code:
+Add `ports/curation.py::CurationReader`, `adapters/sqlite/curation_reader.py`, and `app/run_doctor.py`. SQL finds
+candidate evidence; app policy assigns stable codes, ordering, messages, and suggested actions.
 
-- `duplicate_alias`: two non-deleted persons share a normalized alias or name
-  (`persons.canonical_name_normalized` / `aliases.value_normalized`, both already indexed), the strongest
-  duplicate signal and the same normalization identity resolution already trusts;
-- `duplicate_handle`: two persons share a `handle` alias value (e.g. the same email address), which imports
-  treat as identity-bearing. Precedence over `duplicate_alias` is explicit to prevent double-reporting: a
-  person pair sharing a handle is reported once as `duplicate_handle` (the stronger signal), and
-  `duplicate_alias` evaluates only non-`handle` alias kinds plus canonical names;
-- `contradictory_fact`: one person has two facts with the same `predicate` whose validity periods
-  (`Fact.period`) overlap but whose `value`s differ — flagged, not adjudicated;
-- `dangling_reference`: relationships, affiliations, or interaction participants pointing at soft-deleted
-  people (visible via `include_deleted` reads), which merges and forgets can legitimately leave behind and a
-  user may want to prune.
+Finding classes:
 
-Output is a human-readable report (and `--json` for scripting) where every finding includes the evidence and
-a copy-pasteable suggested follow-up (`people-context show`, a `merge_people` MCP call, `correct_record`,
-or `delete`). Exit code 0 with findings; a non-zero exit is reserved for actual errors, so `doctor` can run
-in cron/scripts without treating findings as failures.
+- `duplicate_handle`: two active people share a normalized `handle`; this takes precedence for the pair;
+- `duplicate_alias`: two active people share canonical/non-handle normalized name material, excluding pairs already
+  reported as duplicate handles;
+- `contradictory_fact`: same person and predicate, different values, and periods overlapping under the existing
+  `ValidityPeriod.overlaps()` semantics (inclusive endpoints; missing bounds unbounded);
+- `dangling_reference`: relationships, affiliations, or interaction participants point at soft-deleted people.
+
+Every finding includes stable ids/evidence and a **structured** suggested action, not an interpolated shell string:
+
+- CLI action: `{ "surface": "cli", "argv": ["people-context", "show", "<person-id>"] }` or delete equivalent;
+- MCP operator action: `{ "surface": "mcp", "tool": "merge_people"|"correct_record",
+  "arguments": { ...ids... } }`.
+
+Use ids in actions, never names. Human output may render a copyable representation while JSON preserves the
+structured form. Findings do not execute anything. Exit code 0 means the report completed, even when findings
+exist; non-zero is reserved for errors.
+
+`doctor --json` is a versioned stable machine interface from its first release and follows the M12 additive-field
+rule. `--only CODE[,CODE...]` filters after validation of known codes.
 
 ### `people-context stats`
 
-CLI-only report over existing reads plus small adapter count queries: entity counts per table, alias-kind
-distribution, facts/observations by `Sensitivity` level, relationship-category distribution, audit-log
-operation counts, changelog entries per device, database size, and the current disclosure-gate state
-(whether `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` / `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` are set in the
-inspecting shell's environment — reported as "in this environment", since the server's own environment may
-differ). The absolute database path is **redacted by default** (`--include-path` opts in): a path routinely
-embeds a username, employer, or client name, so the default output is what a user can share when asking for
-help. `--json` mirrors the human output. This is the M12 threat-model argument turned into a runnable
-artifact: "here is exactly what this store holds and guards."
+Add aggregate-only `ports/stats.py::StatsReader`, its SQLite adapter, and `app/compute_stats.py`. The adapter returns
+counts/distributions only, never record text, device display names, or absolute paths:
+
+- entity counts for documented tables;
+- alias-kind distribution;
+- facts/observations by sensitivity;
+- relationship-category distribution;
+- audit operations;
+- changelog entry counts keyed by opaque device id;
+- database storage bytes.
+
+Storage bytes are the sum of the main database file and existing `-wal`/`-shm` companions, because WAL mode can
+otherwise make the reported footprint materially incomplete. The adapter may receive/derive the path internally
+but returns only byte counts. For `:memory:` or an unavailable filesystem path, return an explicit
+`storage_kind`/`database_bytes: null` state rather than a misleading zero.
+
+The CLI reads `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` and `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` from its own process and
+passes explicit booleans to the use case, reported as “in this environment”. It passes the resolved database path
+separately for optional display; the app redacts it by default and includes it only with `--include-path`.
+Neither app nor adapter starts/probes the MCP server.
+
+`stats --json` is also versioned and stable/additive from day one.
 
 ### Transliteration-aware resolution explanations
 
-Rank parity already exists — every exact normalized alias match scores `1.0` like a canonical-name match in
-`ResolvePerson` — so this deliverable is deliberately *not* a ranking change. It is explanation, regression
-protection, and documentation:
+Preserve existing score, ordering, ambiguity, and `match_reason="exact"`. Add optional descriptive
+`match_detail: str | None` for exact normalized matches:
 
-- the returned explanation names what matched (`"exact:canonical_name"`, `"exact:alias:native_script"`,
-  `"exact:alias:transliteration"`, …) instead of the current bare `"exact"`, so bilingual users can see *why*
-  a script-form query resolved;
-- fixture-backed tests with CJK + romanization pairs (and one non-CJK case, e.g. Cyrillic) pin the existing
-  rank parity in both directions — turning today's incidental behavior into a tested contract — and assert
-  the new explanation text;
-- `docs/identity-resolution.md` gains a documented bilingual workflow: store the native-script form and
-  romanization as paired aliases (kinds already exist), with examples showing both directions resolving.
+- `canonical_name` when the canonical name matches;
+- otherwise `alias:<kind>` such as `alias:native_script` or `alias:transliteration`;
+- search/fuzzy paths may leave it null.
 
-Existing response shapes are unchanged; only explanation strings change, within the M12 additive-contract
-promise (explanations are documented as descriptive text, not a parseable enum — if any consumer treats them
-as parseable, widening `"exact"` is the compatibility question to settle before shipping).
+If multiple stored values normalize to the query, canonical wins; otherwise use a documented stable alias-kind and
+id ordering. The field is descriptive, not a closed enum, so consumers tolerate future values.
 
 ### Evaluation and use-case gallery
 
-- `evals/` at the repository root: a scripted harness that seeds a fixture database, runs a fixed task set
-  through an MCP-connected agent twice — with and without the `people-context` server attached — and scores
-  results (identity disambiguation accuracy against fixture ground truth; rubric-scored communication-draft
-  quality). The harness pins model IDs and prompts in config so runs are reproducible and re-runnable as
-  models change; results are published as a dated `docs/evals.md` with the harness version. The eval is a dev
-  workflow (like `openclaw-plugin/`'s tests), not part of the shipped package, and any API keys it uses stay
-  in the runner's environment.
-- `docs/use-cases/`: three to five short narrative recipes (job-search networking, founder investor
-  relations, caregiving coordination, community organizing), each walking real commands/tools end to end and
-  linked from the README — adoption narratives for people who don't read architecture docs.
+Add root `evals/` with fictional fixtures, fixed tasks/rubrics, recorded prompts/model ids, and two runs per task
+(with/without the MCP server). Publish dated results and harness version in `docs/evals.md`; add three to five
+narrative recipes under `docs/use-cases/`. API keys remain environment-only. The harness never points at or copies a
+real personal database and is excluded from shipped package artifacts.
 
 ## Migration needs
 
-None required. As with M13, if finding queries need support, an additive index migration is permitted under
-the M12 promise; `doctor` and `stats` otherwise read existing tables only.
+No schema change is required. If `EXPLAIN QUERY PLAN` proves a finding query needs an index, use the next free
+additive migration number at implementation time.
 
 ## CLI / MCP surface changes
 
-CLI only; no MCP tool changes, and `resolve_person`'s request/response contract is unchanged (explanation
-strings are descriptive behavior, documented as such).
-
 ```text
 uv run people-context doctor [--json] [--only CODE[,CODE...]]
-uv run people-context stats [--json]
+uv run people-context stats [--json] [--include-path]
 ```
 
-## Security / privacy considerations
+No doctor/stats MCP tools. `resolve_person` gains only optional `match_detail`.
 
-- `doctor` findings necessarily juxtapose personal data (two people's names/handles side by side); output is
-  local stdout only, and `--json` documents the same user-owned-disclosure caveat as `watch` and the export
-  commands.
-- `stats` reports aggregates and counts, never record contents, and redacts the database path by default —
-  but aggregate metadata is not automatically harmless (device names, sensitivity distributions, sheer
-  counts can each say something), so the docs instruct users to read the output before sharing rather than
-  claiming it leaks nothing.
-- The disclosure-gate section of `stats` reads only the local process environment; it must not probe or start
-  the server.
-- The eval harness must ship with fictional fixture data only, and its docs must warn against pointing it at
-  a real personal database.
-- Resolution-ranking changes must not widen disclosure: `resolve_person` already returns candidate names and
-  match explanations; naming the alias *kind* adds no new personal data beyond what the match itself reveals.
+## Security and privacy
+
+- Doctor juxtaposes personal evidence, but suggested actions are structured ids/argv/tool arguments and never
+  shell-interpolated names.
+- Doctor/stats JSON is local output outside model disclosure controls; documentation warns users to inspect before
+  sharing.
+- Stats returns aggregates only and redacts the path by default; aggregate metadata can still be sensitive.
+- Gate status comes only from the local CLI process environment.
+- Eval fixtures are fictional and keys stay outside source control.
+- Alias-kind detail does not reveal an alias value not already implicated by the match.
 
 ## Testing strategy
 
-- Adapter layer: `test_sqlite_curation_reader.py` with fixture databases per finding class (planted duplicate
-  normalized aliases, shared handles, overlapping contradictory facts, dangling post-merge references),
-  asserting both detection and non-detection (clean data yields zero findings).
-- App layer: fake-port tests for `run_doctor` policy — stable finding codes, deterministic ordering, correct
-  suggested-command rendering.
-- Resolution: extend the existing resolution test suites with script-pair fixtures asserting rank parity and
-  explanation content for `native_script`/`transliteration` matches.
-- CLI layer: `doctor` and `stats` snapshot tests over a seeded fixture, including `--json` shape stability
-  (these outputs become de-facto contracts once scripts consume them).
-- Eval harness: a dry-run mode test that executes the harness end to end against a stub agent (no network),
-  verifying scoring plumbing without model calls.
+- SQLite curation fixtures cover each finding and clean non-findings; handle precedence prevents duplicate reports.
+- Contradictory-period tests cover touching inclusive endpoints and both unbounded sides via
+  `ValidityPeriod.overlaps()` parity.
+- App tests pin deterministic ordering, stable codes, `--only`, structured CLI/MCP suggested actions, and ids rather
+  than names in executable fields.
+- Doctor/stats JSON schema-version fixtures enforce additive shape stability.
+- Stats adapter tests verify every aggregate, opaque device grouping, main+WAL+SHM size, and explicit in-memory
+  state; app/CLI tests cover gate booleans and path redaction.
+- Resolution fixtures cover CJK/romanization and a non-CJK pair in both directions, unchanged ranking/reason, and
+  deterministic `match_detail`.
+- Eval dry run uses a stub agent with no network and validates scoring plumbing.
+- `uv run ruff check .` and `uv run pytest -q` fully green.
 
 ## Open questions
 
-1. Should `doctor` support an interactive mode that applies a selected merge after explicit confirmation
-   (reusing the `delete`-style `--yes` gate), or stay strictly report-only in its first release?
-2. Are `--json` outputs of `doctor`/`stats` part of the M12 compatibility promise from day one, or marked
-   experimental for one release first?
-3. Should transliteration rank parity extend to *fuzzy* matches on script-pair aliases, or only exact
-   normalized matches in the first pass (fuzzy cross-script matching has a much higher false-positive risk)?
-4. What is the minimum credible eval task set — is identity disambiguation + guided drafting enough, or
-   should staging-quality (does the agent stage good candidates?) be scored too?
-5. Should eval results live in the README (maximum visibility, fastest staleness) or only in a dated
-   `docs/evals.md` the README links (slower decay, one click away)?
+1. Should an explicitly interactive repair mode be designed only after the report format has real usage?
+2. Should future fuzzy cross-script matching remain a separate experimental capability?
+3. What is the minimum credible eval task set beyond identity disambiguation and guided drafting?
+4. Should headline eval numbers stay only in dated docs rather than the README?

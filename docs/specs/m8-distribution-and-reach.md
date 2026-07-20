@@ -4,162 +4,134 @@ Status: Planned. See [docs/roadmap.md](../roadmap.md#m8--distribution--reach).
 
 ## Motivation
 
-The project already has a working PyPI release pipeline (`.github/workflows/release.yml`, documented in
-[docs/releasing.md](../releasing.md)) and a working self-hosted Claude Code plugin marketplace
-([docs/claude-code-plugin.md](../claude-code-plugin.md)). It also already publishes a second, unrelated
-artifact — the `openclaw-plugin/` package — through its own CI workflow
-(`.github/workflows/package-publish.yml`) to the OpenClaw registry. What is missing is not a release mechanism;
-it is *surface area*: someone has to already know this repository exists and be willing to `git clone` and
-`uv sync` before trying it. The base install has three direct runtime dependencies (`mcp`, `pydantic`,
-`python-ulid`, per `pyproject.toml`'s `[project]` `dependencies`), and the entire semantic-search stack
-(`model2vec`, `sqlite-vec`) is an opt-in extra that ordinary startup and search never touch (see
-[docs/privacy-and-safety.md](../privacy-and-safety.md#local-user-owned-no-surprise-network-activity)). That
-small, optional-heavy footprint is exactly what makes the server cheap to bundle, containerize, and list in
-registries without taking on a maintenance burden disproportionate to the code it ships.
-
-This milestone turns "clone and build" into "one line in a client config," across every surface a prospective
-user is likely to encounter first: the official MCP registry, the community directories people actually search
-(Smithery, PulseMCP, mcp.so, Glama), the Claude Desktop extension flow, and the common editor/IDE MCP clients.
+The project already publishes the primary `people-context` PyPI distribution, a compatibility
+`people-context-mcp` shim, a Claude Code plugin, and an OpenClaw package. M8 reduces the distance from discovery
+to a working local stdio server: zero-clone execution, Registry/directory metadata, a native-UV Desktop bundle,
+common editor configuration, and an optional container image. All paths retain the existing local-process threat
+model and MCP behavior.
 
 ## Scope
 
 In scope:
 
-- verifying and documenting `uvx --from people-context people-context-mcp` as a zero-clone install path;
-- an MCP registry `server.json` (or equivalent per-registry metadata files) at the repository root;
-- a Claude Desktop extension (`.mcpb` bundle);
-- one-line stdio configuration snippets for Claude Desktop, Cursor, Windsurf, and VS Code in the README;
-- an optional Docker image and its CI publish job;
-- README/docs updates reflecting all of the above.
+- verify and lead with `uvx --from people-context people-context-mcp`;
+- official MCP Registry metadata and ownership proof;
+- a current submission/metadata matrix for Smithery, PulseMCP, mcp.so, and Glama, including required in-repo files;
+- a native-UV `.mcpb` Desktop extension;
+- Cursor, Windsurf, and VS Code snippets using the canonical `uvx` invocation;
+- an optional non-root stdio Docker image and GHCR release job.
 
 Non-goals:
 
-- any change to `domain`, `app`, `ports`, or the MCP tool surface — this milestone is packaging and docs only;
-- authenticated or remote transport (still explicitly out of scope per
-  [docs/mcp-interface.md](../mcp-interface.md));
-- a hosted/managed version of the server; every distribution path here still runs the server locally under the
-  user's own OS account, per the existing security model in
-  [docs/claude-code-plugin.md](../claude-code-plugin.md#security-model);
-- vendoring a Python interpreter or dependencies inside the Docker image beyond what `uv` already resolves.
+- domain/app/port/tool changes;
+- hosted service, authenticated remote transport, or HTTP-default container;
+- vendored interpreter/virtualenv inside MCPB;
+- live community-directory submission where human/account approval is required.
 
 ## Design
 
-### Zero-clone PyPI install
+### Zero-clone PyPI path
 
-`pyproject.toml` declares `[project.scripts] people-context-mcp = "people_context.adapters.mcp.server:main"`
-and `people-context = "people_context.cli:main"`. The primary PyPI distribution is `people-context`; the legacy
-`people-context-mcp` distribution is only a compatibility shim. The package is built with `hatchling` and
-published through `.github/workflows/release.yml` using PyPI Trusted Publishing (see
-[docs/releasing.md](../releasing.md)). No code change is required for
-`uvx --from people-context people-context-mcp` to work. This deliverable verifies a clean-machine
-`uvx --from people-context people-context-mcp --help` run and a real stdio round trip, then puts the same form
-ahead of the `git clone` plus `uv sync` path in the README.
+The primary distribution is `people-context`; `people-context-mcp` is compatibility-only. Verify on a clean
+machine:
 
-### MCP registry and community directories
+```text
+uvx --from people-context people-context-mcp --help
+```
 
-Add `server.json` at the repository root following the official MCP Registry server schema: a PyPI-distributed
-server is represented by a `packages` entry with `"registryType": "pypi"`, the package identifier
-`people-context` and its version, and `"transport": {"type": "stdio"}` — not by a raw `command`/`args`
-invocation, which is not how the Registry models package-based distribution. The Registry verifies PyPI
-ownership through an `mcp-name:` marker in the packaged README, so adding that marker (and keeping it present
-through every release, since it ships inside the sdist/wheel README) is a deliverable of this milestone.
-Registry initialization, validation, and publication use the Registry's own `mcp-publisher` tooling
-(`mcp-publisher validate` in CI, `mcp-publisher publish` in the release flow) — not Claude's plugin validator,
-which covers only the Claude Code plugin files. Once the `.mcpb` bundle below exists, it can be represented as
-an additional `"registryType": "mcpb"` package entry carrying the artifact URL and its SHA-256.
+and one real stdio remember/resolve/context round trip. Put this path before tool installation and source checkout
+in the README. Record exact commands and environment evidence in the implementation PR.
 
-Community directories (Smithery, PulseMCP, mcp.so, Glama) each have their own submission format; where a
-directory requires an in-repo metadata file (for example a `smithery.yaml`), add it alongside `server.json`
-rather than duplicating tool descriptions that already live in `docs/mcp-interface.md`. None of these files
-execute anything themselves — they are static metadata pointing at the same PyPI/stdio distribution the plugin
-and README already document.
+### MCP Registry and community directories
 
-### Claude Desktop extension (`.mcpb`)
+Add root `server.json` following the current official Registry schema:
 
-An `.mcpb` bundle needs a manifest describing the server's stdio invocation, analogous in spirit to
-`.claude-plugin/mcp.json`'s `{"mcpServers": {"people-context": {"type": "stdio", "command": "uv",
-"args": [...]}}}` shape, but targeting `uvx --from people-context people-context-mcp` so the bundle does not
-need to vendor a project directory. Packaging happens through a new `scripts/build-mcpb.*` step invoked from CI
-(there is currently no `scripts/` directory in the repository; this would be the first script added), producing
-a downloadable artifact attached to GitHub Releases alongside the existing PyPI publish step.
+- top-level server `version`;
+- a `packages` entry for PyPI identifier `people-context` with the same version;
+- stdio package transport, not an arbitrary command/args description;
+- packaged README `mcp-name:` ownership marker.
 
-### Editor/IDE one-line configs
+Use the Registry's own `mcp-publisher` for validation/publication. Pin the reviewed publisher version in CI and
+release automation; do not install an unbounded latest CLI. The namespace decision is recorded because it becomes
+public identity.
 
-The README's existing "MCP client configuration" section already shows the Claude Code `claude mcp add` form and
-a generic stdio JSON block. Add equivalent blocks for Cursor (`.cursor/mcp.json`), Windsurf, and VS Code
-(`.vscode/mcp.json`), all using `uvx --from people-context people-context-mcp` so there is exactly one canonical
-invocation to keep correct across every client, rather than one snippet per client with independent
-`uv run --directory ...` paths.
+In the same PR, verify the current requirements of Smithery, PulseMCP, mcp.so, and Glama from their primary
+submission documentation. Produce a table recording, for each directory:
+
+- external/manual submission versus repository metadata;
+- any required metadata filename/schema;
+- package/transport representation;
+- ownership/authentication step;
+- whether live publication remains manual.
+
+Add required static repository files where applicable and validate them with the directory's pinned official
+validator when one exists. Reuse canonical descriptions from `docs/mcp-interface.md`; do not create divergent tool
+inventories. Actual listing approval/submission may remain a documented release/manual step.
+
+### Native-UV MCPB bundle
+
+An MCPB is a ZIP with root `manifest.json` and bundled local server files, not a Claude Desktop `mcpServers`
+command block. Add:
+
+- `mcpb/manifest.json` with `server.type="uv"` and `entry_point="server/main.py"`;
+- root bundle `mcpb/pyproject.toml` pinning the matching `people-context` release;
+- thin `mcpb/server/main.py` delegating to `people_context.adapters.mcp.server:main`;
+- a build script using an exact reviewed MCPB CLI version;
+- release attachment and archive-content inspection.
+
+MCPB semantic `manifest.json.version` follows the application release. `manifest_version` is a separate schema
+version validated against the pinned tooling. The host manages Python/dependency installation; do not vendor an
+interpreter or virtual environment.
+
+### Editor/IDE snippets
+
+Add Cursor, Windsurf, and VS Code stdio configurations beside the existing client documentation. Every ordinary
+client snippet uses one canonical invocation:
+
+```text
+uvx --from people-context people-context-mcp
+```
+
+MCPB retains its native manifest shape and is not rewritten as that command.
 
 ### Optional Docker image
 
-A new `Dockerfile` builds the package with `uv` in a multi-stage image, runs as a non-root user, and starts
-`people-context-mcp` over stdio by default (Docker's own stdio-attach semantics make this usable from a client
-that shells out to `docker run -i`). The database path resolves the same way it does everywhere else
-(`config.py:resolve_db_path`), so the container's documented usage mounts a host directory at the resolved XDG
-data path and sets `PEOPLE_CONTEXT_DB` explicitly rather than inventing container-specific configuration. A new
-CI job publishes the image to GHCR on tagged releases, following the existing pattern of
-`.github/workflows/release.yml` (PyPI) and `.github/workflows/package-publish.yml` (OpenClaw) — a third,
-narrowly-scoped publish workflow rather than folding container publishing into either existing one.
+Add a multi-stage image built with `uv`, pinned base-image digests, non-root runtime, and stdio default entrypoint.
+Document an explicit bind-mounted data directory plus `PEOPLE_CONTEXT_DB`; do not invent container-only database
+resolution. Runtime behavior makes no outbound request except the already explicit semantic-model download command.
+
+Publish to GHCR on tags with pinned Actions and least-privilege `GITHUB_TOKEN` permissions. Do not add a long-lived
+registry secret when GitHub's scoped token is sufficient.
 
 ## Migration needs
 
-The PyPI distribution migration is already complete before M8: `people-context` is primary and
-`people-context-mcp` is compatibility-only. M8 metadata and examples must reference the primary distribution.
-There is no database schema, port, domain, or stored-data migration.
+None.
 
 ## CLI / MCP surface changes
 
-None. Every deliverable in this milestone wraps the existing `people-context-mcp` stdio entrypoint
-(`adapters/mcp/server.py:main`) and the existing `people-context` CLI entrypoint (`cli.py:main`); no new
-command, flag, or MCP tool is added.
+None. Packaging wraps the existing entrypoints.
 
-## Security / privacy considerations
+## Security and privacy
 
-- Registry and directory metadata files contain only public project information (name, description, repository
-  URL, tool list already published in `docs/mcp-interface.md`) — no user data, no telemetry, no analytics
-  hooks are introduced by any of these submissions.
-- The Docker image changes *how* the same local process starts, not *what* it does: it still speaks stdio only
-  by default, still resolves the database path through the existing precedence chain, and still makes no
-  outbound network call except the existing, explicit `people-context reindex --semantic` model download path
-  (see [docs/privacy-and-safety.md](../privacy-and-safety.md#local-user-owned-no-surprise-network-activity)).
-  The image must not bake in `--http` as a default command, since loopback HTTP inside a container changes the
-  effective trust boundary described in that document (container network namespaces are not the same as host
-  loopback).
-- The `.mcpb` bundle and every editor config continue to execute local Python with the launching user's
-  filesystem permissions, per the existing "installed integrations execute local code" threat-model note in
-  [docs/privacy-and-safety.md](../privacy-and-safety.md#threat-model-notes) — this milestone documents that
-  fact prominently for each new distribution channel rather than implying any of them is a sandboxed extension.
-- Trusted Publishing (already in place for PyPI) should be the model for any new publish credential this
-  milestone adds (GHCR, community-directory API tokens): short-lived, workflow-scoped, least-privilege, never a
-  long-lived secret committed anywhere.
+- Every integration runs local Python with the launching user's filesystem permissions; none is presented as a
+  sandbox.
+- Metadata contains public project information only and adds no analytics/telemetry.
+- Container stdio remains default; container loopback is not treated as equivalent to host-only loopback.
+- All Actions, base images, and external validation/release CLIs are pinned to reviewed immutable references.
+- New credentials use short-lived, workflow-scoped, least-privilege mechanisms.
 
 ## Testing strategy
 
-- CI: an `mcp-publisher validate` step for `server.json`, run alongside — not folded into — the existing
-  `claude plugin validate . --strict` step ([docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation)),
-  which covers only the Claude Code plugin files and knows nothing about Registry metadata.
-- CI: a Docker smoke job that builds the image, runs it with a temporary volume, and executes
-  `people-context-mcp --help` plus one real stdio round trip (resolve/remember/context), mirroring the existing
-  `uv run people-context-mcp --help` and `tests/adapters/test_mcp_server.py` /
-  `tests/adapters/test_email_import.py` validation already listed in
-  [docs/claude-code-plugin.md](../claude-code-plugin.md#local-validation).
-- Manual: install from each new config snippet (Cursor, Windsurf, VS Code) on a clean machine and exercise
-  `resolve_person` / `get_person_context` / `remember_person`, the same acceptance check already used for the
-  Claude Code plugin's own "Local validation" section.
-- Manual: install the `.mcpb` bundle in Claude Desktop and confirm the server connects without a local clone.
-- No new `domain`/`app`/`ports`/adapter Python code is introduced, so no new fake-port or real-SQLite unit
-  tests are required for this milestone.
+- clean-machine `uvx` help and real stdio round trip;
+- pinned `mcp-publisher validate` for `server.json` and version-equality assertion;
+- directory metadata/schema validation and link checks against the recorded matrix;
+- pinned MCPB validate/pack, archive inspection, semantic-version synchronization, Desktop smoke test;
+- manual clean installs for each editor snippet;
+- Docker build/help/stdio round trip with a temporary mounted database;
+- `uv run ruff check .` and `uv run pytest -q` remain green.
 
 ## Open questions
 
-1. Which Registry namespace should the server publish under — the GitHub-authenticated `io.github.jinyangwang27.*`
-   form or a custom domain — and does that choice constrain a later rename?
-2. Can the `.mcpb` bundle shell out to `uvx` at first run (simpler bundle, but a first-run network dependency
-   to fetch the package), or does the Desktop extension format require vendoring a self-contained interpreter?
-3. Is a single Docker image (stdio-only) sufficient, or should the milestone also ship an `--http` variant image
-   for users who already run this behind their own reverse proxy — and if so, how is the "loopback-only,
-   unauthenticated" guarantee in [docs/mcp-interface.md](../mcp-interface.md) communicated inside a container
-   context where "loopback" no longer means "only this machine" the same way it does on bare metal?
-4. Which community directories require an in-repo metadata file versus a purely external listing, and do any of
-   them impose licensing or attribution requirements beyond the existing MIT license?
+1. Which Registry namespace is the durable public identity?
+2. Which community listings require account-owner manual approval after repository metadata lands?
+3. Should a later image add an explicitly documented authenticated HTTP deployment profile?
