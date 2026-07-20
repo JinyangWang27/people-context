@@ -21,6 +21,13 @@ jobs:
       - name: Apply fail-closed corrections
         run: python .github/pr26-fix.py
 
+      - name: Remove one-off helpers before validation
+        run: |
+          rm .github/pr26-fix.py
+          rm .github/pr26-third-review-trigger
+          rm .github/workflows/pr26-third-review-fixes.yml
+          rm .github/workflows/pr26-doc-fixes-pr.yml
+
       - uses: astral-sh/setup-uv@v6
 
       - name: Validate
@@ -28,12 +35,11 @@ jobs:
           uv run ruff check .
           uv run pytest -q
 
-      - name: Commit fixes and remove one-off helpers
+      - name: Commit corrected docs
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/pr26-fix.py .github/pr26-third-review-trigger .github/workflows/pr26-third-review-fixes.yml .github/workflows/pr26-doc-fixes-pr.yml
-          git add docs/specs/pr-plan.md docs/specs/m9-cold-start-and-onboarding.md docs/specs/m11-sync-bundle-and-bootstrap-restore.md docs/specs/m12-trust-stability-v1.md docs/specs/m13-daily-utility.md docs/specs/m14-ecosystem-interop.md
+          git add -A
           git commit -m "docs: address second PR 26 review"
           git push origin HEAD:claude/m7-graph-and-vault-6vdtgf
