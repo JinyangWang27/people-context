@@ -80,6 +80,14 @@ Seed rows are reference data produced by migration, not user assertions, so they
 Custom rows created through `relationship-types add` are portable user state and flow through audit/changelog.
 A relationship type with no vocabulary row remains legal and reads as category `uncategorized`.
 
+## Curation indexes (migration 004)
+
+`organizations.name_normalized` stores the same normalization `normalize_name` applies to person names,
+backfilled at migration time through the deterministic `people_normalize` SQL function that `open_db`
+registers before migrations run, and indexed (`idx_organizations_name_norm`) so organization get-or-create
+matches by normalized name without scanning. `idx_changelog_entity` indexes `changelog(entity_id)` for
+per-entity changelog reads such as `sync-log --entity`.
+
 ## Sync-foundation tables (migration 002)
 
 `devices` holds one active installation id plus persisted hybrid logical clock state. `changelog` stores full

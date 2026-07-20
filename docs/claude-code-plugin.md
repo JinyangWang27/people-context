@@ -6,7 +6,6 @@ The repository is also a self-hosted Claude Code plugin marketplace. The plugin 
 
 - Claude Code 2.1.196 or newer
 - [`uv`](https://docs.astral.sh/uv/) available on `PATH`
-- Git access to this repository while it is private
 
 ## Install from GitHub
 
@@ -109,9 +108,8 @@ Anthropic's `claude-plugins-official` marketplace is curated separately and curr
 
 Before submitting:
 
-1. Make the repository publicly accessible.
-2. Run `claude plugin validate . --strict` on the intended release commit.
-3. Confirm installation from a clean machine using the GitHub marketplace commands above.
-4. Verify that all durable data remains at the resolved database path (by default the XDG data directory).
-5. Confirm that the default tool surface excludes high-disclosure reads.
-6. Document the local execution model, required `uv` dependency, tool behavior, and privacy properties.
+1. Run `claude plugin validate . --strict` on the intended release commit.
+2. Confirm installation from a clean machine using the GitHub marketplace commands above.
+3. Verify that all durable data remains at the resolved database path (by default the XDG data directory).
+4. Confirm that the default tool surface excludes high-disclosure reads.
+5. Document the local execution model, required `uv` dependency, tool behavior, and privacy properties.

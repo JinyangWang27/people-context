@@ -8,8 +8,8 @@
 [![Python](https://img.shields.io/pypi/pyversions/people-context)](https://pypi.org/project/people-context/)
 [![License](https://img.shields.io/github/license/JinyangWang27/people-context)](https://github.com/JinyangWang27/people-context/blob/main/LICENSE)
 
-A local-first [MCP](https://modelcontextprotocol.io) server that gives AI coding agents and personal agent
-systems durable, user-owned context about the people they mention.
+A local-first [MCP](https://modelcontextprotocol.io) server and CLI that give AI agents durable, user-owned
+context about the people in your life.
 
 ## Why
 
@@ -17,15 +17,6 @@ A model can recognize a name but does not know who that person is in the user's 
 keeps identity, aliases, relationships, roles, durable facts, concise interactions, communication preferences,
 and follow-ups in a local SQLite file, then exposes narrow tools that resolve identity and disclose only what a
 request needs.
-
-## Status
-
-**M7 — relationship graph & vault export delivered.** Relationship types are data-backed and canonicalized,
-relationship reads add perspective `display_type`, two bounded read-only graph tools are available, and the CLI
-can generate a deterministic marker-owned Obsidian vault. Existing field meanings, resolution behavior, JSON
-export envelope, and M6 sync capture remain compatible. The `merge_people` result intentionally adds the
-`duplicate_relationships_removed` field, reporting how many overlapping relationship edges were collapsed;
-callers that ignore unknown response fields require no changes.
 
 ## Features
 
@@ -59,10 +50,6 @@ For a one-off server launch without a persistent installation:
 ```bash
 uvx --from people-context people-context-mcp
 ```
-
-> **PyPI migration:** the distribution was renamed from `people-context-mcp` to `people-context`. The
-> `people-context-mcp` console command remains stable. A legacy `people-context-mcp` distribution is retained as
-> a compatibility shim that depends on `people-context`; new installations should use `people-context` directly.
 
 For local development:
 
@@ -190,16 +177,16 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | Document | Contents |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Layering, dependency rule, entrypoint wiring |
-| [docs/data-model.md](docs/data-model.md) | Schema including migrations 002/003 and `display_type` |
+| [docs/data-model.md](docs/data-model.md) | Schema, migrations, and perspective `display_type` |
 | [docs/relationship-graph.md](docs/relationship-graph.md) | Vocabulary, normalization, perspective, traversal, curation |
 | [docs/vault-export.md](docs/vault-export.md) | Layout, marker safety, determinism, sensitivity |
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools and stable response contracts |
 | [docs/cli.md](docs/cli.md) | CLI commands and DB resolution |
-| [docs/design/sync.md](docs/design/sync.md) | Sync design and M6 local foundations |
-| [docs/releasing.md](docs/releasing.md) | PyPI migration, trusted publishing, Codecov, and release procedure |
+| [docs/design/sync.md](docs/design/sync.md) | Sync design and delivered local foundations |
+| [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
-| [docs/roadmap.md](docs/roadmap.md) | M0 through M7 delivered; M8 through M15 planned |
-| [docs/specs](docs/specs/) | One implementation spec per planned M8–M15 milestone |
+| [docs/roadmap.md](docs/roadmap.md) | Delivered milestones and planned work |
+| [docs/specs](docs/specs/) | One implementation spec per planned milestone |
 
 ## Contributing
 
