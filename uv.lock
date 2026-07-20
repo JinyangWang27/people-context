@@ -1209,10 +1209,11 @@ wheels = [
 
 [[package]]
 name = "python-ulid"
-version = "3.2.0"
+version = "3.2.1"
 source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/ae/7a7184c95e6217361c23b8ee49a8aa3efa197f6b96f9c2ab75709b753ca3/python_ulid-3.2.1.tar.gz", hash = "sha256:b1f0d75b49a2dcb5ebca902c05c71080f87845a0e4ed10bc7c8c8a0c0eb2679d", size = 96662, upload-time = "2026-07-19T22:21:19.345Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/7e/b912a91fe0800585ec29ff695a6a5c4098a32c89732cba550c6fc9343380/python_ulid-3.2.0-py3-none-any.whl", hash = "sha256:7adfc206cbee3124e176b02b73e0fd19d1c9759e119fd8af7ba264d7d29c6fc0", size = 12945, upload-time = "2026-07-17T12:46:36.967Z" },
+    { url = "https://files.pythonhosted.org/packages/82/c8/bec7e80617a3b7b65578a343ab04e3d78277683d1b057738bd484822cb21/python_ulid-3.2.1-py3-none-any.whl", hash = "sha256:07aa5eb92cdd21195a922f87f4ec5b1fce6448f92e4bfa2d7b7b77345677655a", size = 12945, upload-time = "2026-07-19T22:21:18.226Z" },
 ]
 
 [[package]]
