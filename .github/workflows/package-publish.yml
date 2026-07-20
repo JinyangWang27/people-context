@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "openclaw-plugin/**"
+      - "docs/openclaw-plugin.md"
       - ".github/workflows/package-publish.yml"
   workflow_dispatch:
 

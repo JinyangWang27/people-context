@@ -16,7 +16,7 @@ exposed to the model unless the operator explicitly allowlists it.
 
 ## Requirements
 
-- OpenClaw `2026.5.17` or newer
+- OpenClaw `2026.7.1` or newer
 - Node.js `22.22.3+`, `24.15+`, or `25.9+`
 - A running `people-context-mcp` Streamable HTTP server
 
@@ -109,11 +109,11 @@ openclaw plugins inspect people-context --runtime --json
 
 ## Publish to ClawHub
 
-Install and authenticate the ClawHub CLI, then validate and dry-run before the
-first release:
+Install and authenticate the ClawHub CLI, then validate and dry-run a release:
 
 ```bash
-npm i -g clawhub
+npm i -g clawhub@latest
+clawhub --cli-version
 clawhub login
 clawhub package validate ./openclaw-plugin
 clawhub package publish ./openclaw-plugin \
@@ -125,7 +125,13 @@ clawhub package publish ./openclaw-plugin \
   --family code-plugin
 ```
 
-After the first manual publish, enable trusted GitHub Actions publishing:
+Current ClawHub releases use device-code authentication. Follow the verification URL and code printed by the CLI;
+opening that verification page is expected, but the login flow must not redirect an API token to a loopback
+callback. If `clawhub login --help` says `Log in (opens browser or stores token)` or offers `--no-browser` without
+a device flow, the installed CLI is obsolete: upgrade it with the command above, verify which binary is active,
+then rerun `clawhub login`.
+
+To publish later releases through GitHub OIDC, enable trusted GitHub Actions publishing:
 
 ```bash
 clawhub package trusted-publisher set openclaw-plugin-people-context \
@@ -134,5 +140,5 @@ clawhub package trusted-publisher set openclaw-plugin-people-context \
 ```
 
 The repository workflow performs a ClawHub dry run for pull requests and can
-publish through `workflow_dispatch`. The first publish, tag-based publishing,
-and break-glass releases still require a `CLAWHUB_TOKEN` secret.
+publish through `workflow_dispatch`. Tag-based and break-glass publishing still
+require a `CLAWHUB_TOKEN` secret.

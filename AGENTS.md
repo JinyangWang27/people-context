@@ -30,6 +30,16 @@ Use four-space indentation, complete type hints, and a 120-character line limit.
 
 Use pytest and name files `test_<subject>.py` and tests `test_<behavior>()`. Test application policy against in-memory fakes in `tests/app/fakes.py`; test persistence and transport behavior separately with SQLite and subprocess/E2E tests. Add a regression test for every bug and run focused tests before the full suite.
 
+## Code Review Guidelines
+
+Review for material defects, not for a minimum number of comments. A clean review is valid.
+
+Review against the linked issue, stated pull request scope, repository contracts, security invariants, and official API documentation. Report only concrete defects with a realistic path through supported behavior and meaningful user, security, data, or operational impact. Do not report style preferences, speculative edge cases, optional hardening, unrelated refactors, or clearly documented unsupported behavior. Do not treat an officially supported but non-canonical API form as a defect.
+
+Use P2 only for a reproducible user-visible failure or broken supported workflow. Omit P3 and nit-level findings. On the first review, inspect related and symmetric code paths together and consolidate findings by root cause. On later reviews, verify prior fixes and review the new delta; do not repeatedly mine unchanged code for additional marginal findings. Do not repeat or rephrase an existing finding unless the latest change failed to address it.
+
+When official documentation is ambiguous, state the uncertainty rather than asserting a defect. If all material findings are resolved and the latest changes introduce no regression, submit a clean review.
+
 ## Commit & Pull Request Guidelines
 
 Use concise imperative Conventional Commit subjects, matching history: `feat: add ...`, `fix: report ...`, or `docs: mark ...`. Keep commits green and narrowly scoped. Pull requests should explain behavior and privacy impact, list verification commands, link relevant issues, and update interface or architecture documentation when contracts change.
