@@ -89,7 +89,7 @@ Re-export is byte-deterministic over unchanged data. Sensitive/restricted facts 
 Install the repository as a Claude Code marketplace and add the bundled plugin:
 
 ```bash
-claude plugin marketplace add JinyangWang27/people-context-mcp
+claude plugin marketplace add JinyangWang27/people-context
 claude plugin install people-context@people-context-plugins
 ```
 
@@ -103,7 +103,7 @@ publishing details.
 Install the repository as a Codex marketplace and add the bundled plugin:
 
 ```bash
-codex plugin marketplace add JinyangWang27/people-context-mcp
+codex plugin marketplace add JinyangWang27/people-context
 codex plugin add people-context@people-context-plugins
 ```
 

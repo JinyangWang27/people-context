@@ -23,8 +23,10 @@ class TestCodexPluginPackage:
         assert manifest["version"] == project["version"]
         assert manifest["description"]
         assert manifest["author"]["name"] == project["authors"][0]["name"]
+        assert manifest["repository"] == "https://github.com/JinyangWang27/people-context"
         assert manifest["mcpServers"] == "./.mcp.json"
         assert manifest["interface"]["displayName"] == "People Context"
+        assert manifest["interface"]["websiteURL"] == manifest["repository"]
 
     def test_mcp_config_launches_bundled_stdio_server(self) -> None:
         server = _read_json(".mcp.json")["mcpServers"]["people-context"]

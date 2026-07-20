@@ -14,7 +14,7 @@ public endpoint, OAuth service, or shared database.
 Add the repository as a marketplace, then install the plugin:
 
 ```bash
-codex plugin marketplace add JinyangWang27/people-context-mcp
+codex plugin marketplace add JinyangWang27/people-context
 codex plugin add people-context@people-context-plugins
 ```
 
@@ -33,10 +33,17 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
 Codex provides `CLAUDE_PLUGIN_ROOT` for plugin compatibility. It points to Codex's installed copy of this
 repository. The server runs over stdio and does not listen on a TCP port.
 
-The plugin passes no `--db` option, so the normal resolution chain applies. The default database is
-`~/.local/share/people-context/people.db` on Linux. This user-owned path is outside the installed plugin copy,
-survives upgrades and uninstallations, and is shared with the `people-context` CLI. Set `PEOPLE_CONTEXT_DB` in
-the environment that launches Codex to choose another location.
+The plugin passes no `--db` option, so plugin launches use the first matching database location below:
+
+1. `PEOPLE_CONTEXT_DB`;
+2. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`;
+3. `{OPENCLAW_WORKSPACE}/people-context/people.db` when that workspace directory exists;
+4. `~/.openclaw/workspace/people-context/people.db` when that workspace directory exists; or
+5. `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db` as the final fallback.
+
+The selected path is outside the installed plugin copy, survives upgrades and uninstallations, and is shared
+with the `people-context` CLI. Run `people-context db-path -v` to inspect the active path and its resolution
+trace.
 
 ## Security model
 

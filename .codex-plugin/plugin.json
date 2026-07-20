@@ -7,8 +7,8 @@
     "email": "jinyang.wang27@outlook.com",
     "url": "https://github.com/JinyangWang27"
   },
-  "homepage": "https://github.com/JinyangWang27/people-context-mcp/blob/main/docs/codex-plugin.md",
-  "repository": "https://github.com/JinyangWang27/people-context-mcp",
+  "homepage": "https://github.com/JinyangWang27/people-context/blob/main/docs/codex-plugin.md",
+  "repository": "https://github.com/JinyangWang27/people-context",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -28,8 +28,8 @@
       "Read",
       "Write"
     ],
-    "websiteURL": "https://github.com/JinyangWang27/people-context-mcp",
-    "privacyPolicyURL": "https://github.com/JinyangWang27/people-context-mcp/blob/main/docs/privacy-and-safety.md",
+    "websiteURL": "https://github.com/JinyangWang27/people-context",
+    "privacyPolicyURL": "https://github.com/JinyangWang27/people-context/blob/main/docs/privacy-and-safety.md",
     "defaultPrompt": [
       "Who is this person in my life?",
       "Remember this context about someone I know.",
