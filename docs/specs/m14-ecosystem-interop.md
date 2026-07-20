@@ -60,13 +60,15 @@ convention.
 
 New filesystem adapter `adapters/filesystem/vcard_writer.py` mirroring the vault writer's determinism rules:
 stable person ordering, stable property ordering, byte-identical re-export over unchanged data. Field mapping
-inverts the existing importer: `FN`/`N` from the person name, `NICKNAME` from `nickname` aliases, `EMAIL`
-from `handle` aliases that parse as addresses, `ORG`/`TITLE` from active affiliations, `BDAY` from
-`predicate="birthday"` facts (`AliasKind` values in `domain/person.py`; affiliation/fact shapes per
-[docs/data-model.md](../data-model.md)). Elevated-sensitivity facts follow the same `--include-sensitive`
-gate as vault export. One `--version {3.0,4.0}` flag selects the dialect (default per Open Questions);
-everything emitted must round-trip through the project's own vCard importer, and a round-trip test enforces
-it.
+emits `FN`/`N` from the person name, `NICKNAME` from `nickname` aliases, `EMAIL` from `handle` aliases that parse as
+addresses, and `BDAY` from `predicate="birthday"` facts. The existing importer consumes only the first `ORG` and
+first `TITLE`, so this milestone deliberately exports at most one active affiliation per person: choose it by
+normalized organization name, normalized role, then affiliation id, and report additional active rows through an
+`omitted_affiliations` CLI summary count. This makes affiliation lossiness explicit while preserving a truthful
+round-trip guarantee without expanding the importer in the same PR. Elevated-sensitivity facts follow the same
+`--include-sensitive` gate as vault export. One `--version {3.0,4.0}` flag selects the dialect (default per Open
+Questions); every emitted field must round-trip through the project's own vCard importer, and tests assert the
+selected affiliation survives while omitted rows are counted deterministically.
 
 ### Outlook CSV and WhatsApp import extractors
 

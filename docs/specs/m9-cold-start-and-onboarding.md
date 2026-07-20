@@ -76,8 +76,11 @@ No new port or app-layer class is required; `init` is purely a new CLI compositi
 The command always uses a dedicated demo database and refuses reseeding without `--reset`. Its deterministic
 fictional dataset is runtime product data, so it must ship in installed artifacts: implement it procedurally under
 `src/people_context/` or declare package data there. Production code must not read from `tests/fixtures`, which is
-not included by the current wheel configuration. Acceptance includes building and installing the wheel in a clean
-environment and successfully running `people-context demo --reset`.
+not included by the current wheel configuration. On success it prints the absolute demo database path, an
+installed-package `people-context-mcp` launch command explicitly targeting that path, and copy-pasteable
+`resolve_person`, `get_relationship_graph`, and `find_connection` tool-call examples using known fictional seed
+identities. Acceptance builds and installs the wheel in a clean environment, runs `people-context demo --reset`,
+and asserts that all of those path-targeted examples are present in stdout.
 
 ### `.ics` calendar import
 

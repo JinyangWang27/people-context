@@ -63,11 +63,11 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
     - `.github/workflows/ci.yml` or a new step (add `mcp-publisher validate` invocation, run alongside — not folded into — the existing `claude plugin validate . --strict` step referenced from `.github/workflows/claude-plugin-validate.yml`)
     - `docs/releasing.md` (note `mcp-publisher publish` as a release-flow step, if not already automated in this PR)
   - **Spec:** (docs/specs/m8-distribution-and-reach.md, "MCP registry and community directories")
-    - `server.json` must use a `packages` entry with `"registryType": "pypi"`, package identifier `people-context`, version, and `"transport": {"type": "stdio"}` — not a raw `command`/`args` invocation.
+    - `server.json` must carry both the top-level server `version` and a `packages` entry with `"registryType": "pypi"`, package identifier `people-context`, the same package version, and `"transport": {"type": "stdio"}` — not a raw `command`/`args` invocation.
     - The `mcp-name:` marker must persist through every release since it ships inside the sdist/wheel README.
     - Use the Registry's own `mcp-publisher` tooling (`validate` in CI, `publish` in release flow) — not the Claude plugin validator, which only covers plugin files.
     - Open question (spec section "Open questions" #1): namespace choice (`io.github.jinyangwang27.*` vs custom domain) must be decided and recorded in this PR's description since it's embedded in `server.json`.
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. New: CI job step running `mcp-publisher validate server.json` (or documented local-equivalent command if the tool isn't sandboxable in CI yet) must pass. No domain/app/adapter code changes, so no new unit tests are required per spec's Testing strategy.
+  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. New: CI runs `mcp-publisher validate server.json` and a small metadata assertion that top-level `server.json.version` equals the PyPI package entry version. No domain/app/adapter code changes, so no new unit tests are required per spec's Testing strategy.
   - **Out of scope:** community-directory metadata files (Smithery/PulseMCP/mcp.so/Glama), `.mcpb` bundle and its `registryType: "mcpb"` package entry, actual `mcp-publisher publish` execution against the live Registry.
 
 - [ ] **PR M8.3 — Native-UV Claude Desktop `.mcpb` bundle + editor one-line configs**
@@ -83,7 +83,7 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Spec:** (docs/specs/m8-distribution-and-reach.md, "Claude Desktop extension (.mcpb)" and "Editor/IDE one-line configs")
     - An MCPB is a ZIP containing a root `manifest.json` plus the local server files; do not model it as `.claude-plugin/mcp.json` or a Claude Desktop `mcpServers` command block.
     - Use the current official native Python layout: `server.type = "uv"`, `server.entry_point = "server/main.py"`, and a bundled root `pyproject.toml`; the host manages Python and dependency installation.
-    - Keep the MCPB manifest version and its `people-context` dependency synchronized with the release version; fail the build on drift rather than publishing a bundle that installs a different server version.
+    - Keep MCPB semantic `manifest.json.version` and the bundled `people-context` dependency synchronized with the release version; validate schema-level `manifest_version` separately against the supported MCPB manifest schema.
     - Exactly one canonical invocation (`uvx --from people-context people-context-mcp`) applies across the ordinary editor/client config snippets. It does not override MCPB's required native `server` manifest shape.
     - Every new distribution channel must prominently document that it executes local Python with the launching user's filesystem permissions (docs/privacy-and-safety.md#threat-model-notes), not a sandboxed extension.
   - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. CI installs the official MCPB CLI, validates/packs `mcpb/`, inspects the archive for `manifest.json`, `pyproject.toml`, and `server/main.py`, and checks release-version synchronization. Manual: install the `.mcpb` in Claude Desktop on a clean machine and exercise `resolve_person`/`get_person_context`/`remember_person`; separately install each editor config and exercise the same calls.
@@ -154,10 +154,11 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
     - `init` composes existing import/self/philosophy use cases; no new app port.
     - `demo` ignores the real resolved DB, uses a dedicated path, and refuses reseeding without `--reset`.
     - Fictional seed data is deterministic and present in the built wheel.
-  - **Tests/validation:** Test onboarding branches, DB isolation/reset behavior, deterministic seed output, and a clean-environment wheel install followed by `people-context demo --reset`. `uv run ruff check .` and `uv run pytest -q` fully green.
+    - On success, print the absolute demo DB path, an installed-package server launch command targeting that path, and copy-pasteable `resolve_person`, `get_relationship_graph`, and `find_connection` tool-call examples using known fictional seed identities.
+  - **Tests/validation:** Test onboarding branches, DB isolation/reset behavior, deterministic seed output, and a clean-environment wheel install followed by `people-context demo --reset`. Assert stdout contains the demo path, the path-targeted server launch command, all three tool names, and seeded example identities. `uv run ruff check .` and `uv run pytest -q` fully green.
   - **Out of scope:** MCP onboarding and live external integrations.
 
-## M10 — Agent utilization## M10 — Agent utilization
+## M10 — Agent utilization
 
 > Ship prompt/skill/command content (no new tools, ports, or response fields) so agents reliably use the `resolve_person`, `get_communication_guidance`, and stage/review/commit flow that already exists.
 
@@ -283,13 +284,13 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Out of scope:** version bump and release-checklist update (PR M12.2); the threat-model comparison subsection (PR M12.3); README "Demo" section (can ride with M12.3 or its own follow-up, see M12.3 scope).
 
 - [ ] **PR M12.2 — Bump to 1.0.0 and synchronize distribution metadata**
-  - **Scope:** Bump `project.version` and classifier, update the release checklist, and synchronize all version-bearing M8 artifacts in the same commit.
-  - **Touches:** `pyproject.toml`, `server.json`, `mcpb/manifest.json`, `mcpb/pyproject.toml`, `docs/releasing.md`, and a metadata-sync test.
+  - **Scope:** Bump `project.version` and classifier, update the release checklist, and synchronize every release-version field introduced by M8 in the same commit.
+  - **Touches:** `pyproject.toml`, `server.json`, `mcpb/manifest.json`, `mcpb/pyproject.toml`, `docs/releasing.md`, and one canonical metadata-sync test.
   - **Spec:** (docs/specs/m12-trust-stability-v1.md, "Version and release checklist")
-    - Project version, Registry PyPI package version, MCPB semantic `version`, and MCPB `people-context` dependency pin all become `1.0.0` together.
-    - MCPB `manifest_version` is a schema version and is not coupled to the application release.
-    - CI fails on semantic-version drift, preferably via one canonical check.
-  - **Tests/validation:** Parse all four metadata artifacts and assert semantic synchronization while validating `manifest_version` separately. Existing packaging tests remain green.
+    - `pyproject.toml` project version, top-level `server.json.version`, the `people-context` Registry package entry version, MCPB semantic `manifest.json.version`, and the MCPB `people-context` dependency pin all become `1.0.0` together.
+    - MCPB `manifest_version` is a schema version and is not coupled to the application release; validate it independently against the MCPB schema supported by the build tooling.
+    - CI fails on any semantic-version drift through one canonical parser-based check.
+  - **Tests/validation:** Parse all four metadata files, locate the Registry package entry by package identifier rather than array position, assert all five release-version values match, and validate `manifest_version` separately. Existing packaging tests remain green.
   - **Out of scope:** cutting the release/tag, SQLCipher, or changing the MCPB schema version without an upstream requirement.
 
 - [ ] **PR M12.3 — Threat-model comparison and README demo polish**
@@ -335,13 +336,14 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Out of scope:** `upcoming_dates` (PR M13.2); any elevated/operator variant; relationship "health" scoring (explicit non-goal).
 
 - [ ] **PR M13.2 — `upcoming_dates` MCP tool + `people-context upcoming` CLI**
-  - **Scope:** Add `ListUpcomingDates(ContextReader, ListReminders, PersonReader, Clock)`. `Clock` anchors the date window and `PersonReader` supplies output names; expose through a read-only MCP tool and CLI.
+  - **Scope:** Add `ListUpcomingDates(PersonContextReader, ListReminders, PersonReader, Clock)`. `Clock` anchors the date window, `PersonContextReader` supplies facts, and `PersonReader` supplies output names; expose through a read-only MCP tool and CLI.
   - **Touches:** app use case, MCP registration, CLI, and app/MCP/CLI/E2E tests.
   - **Spec:** (docs/specs/m13-daily-utility.md, "`upcoming_dates` / CLI report")
-    - Use `clock.now()` only; document and test inclusive interval boundaries.
-    - Facts come from `ContextReader`, reminders from `ListReminders`, and names from `PersonReader`; skip missing/deleted people deterministically.
-    - Only ordinary birthday facts and active dated reminders inside the same window qualify.
-  - **Tests/validation:** Fake-clock tests cover today, final included date, and just-outside boundaries, plus recurring dates/leap day, name lookup, missing people, sensitivity, MCP shape, CLI snapshot, and E2E composition. `uv run ruff check .` and `uv run pytest -q` fully green.
+    - Use `clock.now()` only and the inclusive interval `[today, today + window_days]`.
+    - Birthday values in either `YYYY-MM-DD` or `--MM-DD` form are annual recurrences: project their month/day to the earliest valid occurrence on or after today, rolling into the next year when this year's date has passed. A February 29 birthday occurs only on an actual February 29; never coerce it to February 28 or March 1.
+    - Facts come from `PersonContextReader`, reminders from `ListReminders`, and names from `PersonReader`; skip missing/deleted people deterministically. Active dated reminders use their literal due date and the same inclusive window.
+    - Only ordinary birthday facts and active dated reminders inside the window qualify; the emitted `date` is the projected birthday occurrence or literal reminder due date.
+  - **Tests/validation:** Fake-clock tests cover today, `today + window_days`, just-outside boundaries, year rollover, `YYYY-MM-DD` and `--MM-DD` parity, February 29 in leap and non-leap years, name lookup, missing people, sensitivity, MCP shape, CLI snapshot, and E2E composition. `uv run ruff check .` and `uv run pytest -q` fully green.
   - **Out of scope:** more predicates, elevated variants, and meeting-prep content.
 
 - [ ] **PR M13.3 — Meeting-prep skill content + `reminders-ics` export**
@@ -386,7 +388,7 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
   - **Out of scope:** brief style templates (open question 2, deferred); `export-vcard`; any MCP-facing change.
 
 - [ ] **PR M14.2 — `export-vcard` deterministic writer**
-  - **Scope:** New `adapters/filesystem/vcard_writer.py` mirroring `vault_writer.py`'s determinism rules, plus the `people-context export-vcard` CLI command. Inverts the existing vCard importer's field mapping. Does not add any new import source.
+  - **Scope:** New `adapters/filesystem/vcard_writer.py` mirroring `vault_writer.py`'s determinism rules, plus the `people-context export-vcard` CLI command. It emits the subset the existing vCard importer can round-trip without changing that importer.
   - **Touches:**
     - `src/people_context/adapters/filesystem/vcard_writer.py` (new)
     - `src/people_context/app/export_vcard.py` (new, thin use case parallel to `app/export_vault.py`)
@@ -394,11 +396,12 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
     - `tests/adapters/test_vcard_export.py` (new)
   - **Spec:** (docs/specs/m14-ecosystem-interop.md §"`people-context export-vcard`")
     - Stable person/property ordering; byte-identical re-export over unchanged data (same guarantee as `docs/vault-export.md`).
-    - Field mapping: `FN`/`N` ← canonical name, `NICKNAME` ← `nickname` aliases, `EMAIL` ← `handle` aliases parsing as addresses, `ORG`/`TITLE` ← active affiliations, `BDAY` ← `predicate="birthday"` facts (`AliasKind` in `domain/person.py`).
-    - `--version {3.0,4.0}` dialect flag; everything emitted must round-trip through the existing `VCardImportExtractor` — enforced by a round-trip test, not just eyeballed.
+    - Field mapping: `FN`/`N` ← canonical name, `NICKNAME` ← `nickname` aliases, `EMAIL` ← `handle` aliases parsing as addresses, `BDAY` ← `predicate="birthday"` facts.
+    - Because the existing importer consumes only the first `ORG`/`TITLE` pair, export at most one active affiliation per person, selected deterministically by normalized organization name, normalized role, then affiliation id. Report additional active affiliations as `omitted_affiliations`; do not silently imply complete affiliation portability.
+    - `--version {3.0,4.0}` dialect flag; every emitted field must round-trip through the existing `VCardImportExtractor`.
     - Elevated-sensitivity facts follow the same `--include-sensitive` gate as vault export and `brief`.
-  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. `test_vcard_export.py`: determinism (byte-identical re-export), sensitivity gating, and a full round trip through `VCardImportExtractor` asserting people/aliases/affiliations/birthday facts survive. CLI `0o600` and determinism checks.
-  - **Out of scope:** CardDAV (explicit non-goal); Outlook/WhatsApp import; any change to the importer side of vCard.
+  - **Tests/validation:** `uv run ruff check .` clean, `uv run pytest -q` fully green. `test_vcard_export.py`: determinism, sensitivity gating, deterministic affiliation selection and omission count, and a full round trip asserting people/aliases/the selected affiliation/birthday facts survive. CLI `0o600` and determinism checks.
+  - **Out of scope:** CardDAV; Outlook/WhatsApp import; multiple-affiliation vCard encoding; any change to the importer side of vCard.
 
 - [ ] **PR M14.3 — Outlook CSV + WhatsApp import extractors**
   - **Scope:** Add Outlook and WhatsApp extractors while explicitly widening the extractor keyword contract. Preserve all five pre-M14 accepted source values: `email`, `mbox`, `vcard`, `ics`, and `linkedin`.
@@ -437,7 +440,7 @@ Cross-milestone dependencies (everything else orders freely by milestone number)
     - `src/people_context/adapters/sqlite/curation_reader.py` (new)
     - `src/people_context/app/run_doctor.py` (new)
     - `src/people_context/cli.py` (`doctor` subcommand)
-    - `src/people_context/adapters/sqlite/migrations/005_doctor_indexes.sql` (only if a finding query needs an additive index beyond the existing `004_curation_indexes.sql` ones — check before adding)
+    - `src/people_context/adapters/sqlite/migrations/<next-free>_doctor_indexes.sql` (only if `EXPLAIN QUERY PLAN` proves a finding query needs an additive index; determine the number at implementation time because earlier milestones may already consume `005`)
     - `tests/adapters/test_sqlite_curation_reader.py`, `tests/app/test_run_doctor.py` (new)
   - **Spec:** (docs/specs/m15-data-quality-and-credibility.md §"`people-context doctor`")
     - Four deterministic finding classes with stable codes: `duplicate_alias`, `duplicate_handle`, `contradictory_fact`, `dangling_reference`. `duplicate_handle` takes precedence over `duplicate_alias` — a handle-sharing pair is reported once, and `duplicate_alias` only evaluates non-`handle` alias kinds plus canonical names.

@@ -67,10 +67,12 @@ project's existing precise/contract-oriented voice:
 
 ### Version and release checklist
 
-Bump the project and classifier to `1.0.0`/Production-Stable. In the same commit, synchronize the Registry PyPI
-package version in `server.json`, MCPB semantic `version`, and the `people-context` dependency pin in the bundled
-MCPB `pyproject.toml`. MCPB `manifest_version` is a schema-version field and remains independent. CI parses all
-artifacts and fails on semantic-version drift. Follow the existing release procedure and add the compatibility-doc
+Bump the project and classifier to `1.0.0`/Production-Stable. In the same commit, synchronize all release-version
+fields introduced by M8: `pyproject.toml` project version, top-level `server.json.version`, the `people-context`
+Registry package entry version, MCPB semantic `manifest.json.version`, and the `people-context` dependency pin in
+the bundled MCPB `pyproject.toml`. MCPB `manifest_version` is a schema-version field and remains independent. One
+parser-based CI check locates the Registry package by identifier, asserts all five release-version values match, and
+validates `manifest_version` separately. Follow the existing release procedure and add the compatibility-doc
 checklist item; do not cut the tag in this PR.
 
 ### Opt-in SQLCipher

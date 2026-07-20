@@ -57,10 +57,10 @@ ahead of the `git clone` plus `uv sync` path in the README.
 
 ### MCP registry and community directories
 
-Add `server.json` at the repository root following the official MCP Registry server schema: a PyPI-distributed
-server is represented by a `packages` entry with `"registryType": "pypi"`, the package identifier
-`people-context` and its version, and `"transport": {"type": "stdio"}` — not by a raw `command`/`args`
-invocation, which is not how the Registry models package-based distribution. The Registry verifies PyPI
+Add `server.json` at the repository root following the official MCP Registry server schema. It carries a
+top-level server `version` plus a `packages` entry with `"registryType": "pypi"`, package identifier
+`people-context`, the matching package version, and `"transport": {"type": "stdio"}` — not a raw
+`command`/`args` invocation. The two release-version fields start equal and are kept synchronized. The Registry verifies PyPI
 ownership through an `mcp-name:` marker in the packaged README, so adding that marker (and keeping it present
 through every release, since it ships inside the sdist/wheel README) is a deliverable of this milestone.
 Registry initialization, validation, and publication use the Registry's own `mcp-publisher` tooling
@@ -85,8 +85,9 @@ manifest. It is not a packaged Claude Desktop `mcpServers` command block and mus
 vendor an interpreter or virtual environment.
 
 The bundled `pyproject.toml` depends on the same `people-context` version as the release that carries the
-artifact. The build fails if the project version, manifest version, and dependency pin drift. Packaging uses the
-official MCPB CLI (`mcpb pack`, including its manifest validation) through a new `scripts/build-mcpb.*` step,
+artifact. The build fails if the project version, MCPB semantic `manifest.json.version`, and dependency pin drift;
+MCPB `manifest_version` is validated separately as a schema-version field. Packaging uses the official MCPB CLI
+(`mcpb pack`, including its manifest validation) through a new `scripts/build-mcpb.*` step,
 and the resulting artifact is attached to GitHub Releases alongside the existing PyPI publish step.
 
 ### Editor/IDE one-line configs

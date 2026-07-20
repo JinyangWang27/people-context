@@ -90,12 +90,16 @@ minimal like graph nodes.
 
 ### `upcoming_dates` / CLI report
 
-`ListUpcomingDates` depends on `ContextReader`, `ListReminders`, `PersonReader`, and an injected `Clock`. The clock
-anchors a documented inclusive date interval; person reads supply names and allow missing/soft-deleted people to
-be skipped deterministically. Facts must pass ordinary sensitivity, use predicate `birthday`, and parse as ISO or
-`--MM-DD`; active reminders qualify when `due_at` lies inside the same window. Tests pin both boundaries, recurring
-dates, leap day, and name lookup. Output remains `{person_id, name, kind, date, label}` plus
-`skipped_unparseable`.
+`ListUpcomingDates` depends on `PersonContextReader`, `ListReminders`, `PersonReader`, and an injected `Clock`.
+The inclusive interval is `[clock.now().date(), clock.now().date() + window_days]`. Person reads supply names and
+allow missing/soft-deleted people to be skipped deterministically. Ordinary-sensitivity facts with
+`predicate="birthday"` accept `YYYY-MM-DD` and `--MM-DD`; both forms are annual recurrences whose month/day is
+projected to the earliest valid occurrence on or after today, rolling into the next year after this year's date.
+February 29 is never coerced to February 28 or March 1: its next occurrence is the next actual leap-day date.
+Active dated reminders use their literal `due_at` date and the same inclusive interval. Tests pin both boundaries,
+year rollover, both birthday formats, leap-day behavior, and name lookup. Output remains
+`{person_id, name, kind, date, label}` plus `skipped_unparseable`, with `date` set to the projected birthday
+occurrence or literal reminder due date.
 
 ### Meeting preparation (skill content, no server change)
 
