@@ -5,6 +5,7 @@
 [![CI](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JinyangWang27/people-context/graph/badge.svg)](https://codecov.io/gh/JinyangWang27/people-context)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JinyangWang27/people-context/badge)](https://scorecard.dev/viewer/?uri=github.com/JinyangWang27/people-context)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13681/badge)](https://www.bestpractices.dev/projects/13681)
 [![PyPI](https://img.shields.io/pypi/v/people-context)](https://pypi.org/project/people-context/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/people-context)](https://pypi.org/project/people-context/)
 [![Python](https://img.shields.io/pypi/pyversions/people-context)](https://pypi.org/project/people-context/)
