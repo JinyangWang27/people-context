@@ -1,0 +1,39 @@
+# Keep the Docker build context minimal, deterministic, and free of local data.
+# Only pyproject.toml, uv.lock, README.md, and src/ are copied by the Dockerfile,
+# but a tight context also speeds up the build and avoids leaking artifacts.
+
+# Version control and CI
+.git
+.github
+.gitignore
+
+# Python environments, caches, and build artifacts
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+dist
+build
+*.egg-info
+
+# Node (plugins, MCPB tooling)
+node_modules
+
+# Never ship local personal data into an image layer
+*.db
+*.db-wal
+*.db-shm
+
+# OS / editor
+.DS_Store
+.idea
+.vscode
+tmp
+
+# Docker
+Dockerfile
+.dockerignore

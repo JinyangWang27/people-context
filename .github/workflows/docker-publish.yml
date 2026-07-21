@@ -1,0 +1,85 @@
+name: Publish Docker image
+
+# Build and publish the optional non-root, local-stdio container image to the
+# GitHub Container Registry when a release tag is pushed. The image is a
+# convenience distribution of the same stdio MCP server; it is never the default
+# or only supported way to run the project.
+#
+# The Docker CLI and BuildKit are preinstalled on the runner, and base images are
+# pinned by digest in the Dockerfile, so no third-party marketplace Actions are
+# required beyond the reviewed, SHA-pinned checkout Action. Publication uses the
+# workflow-scoped GITHUB_TOKEN with least-privilege `packages: write`; no
+# long-lived registry secret is introduced.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    name: Build and push to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Derive lowercase image name and version tag
+        id: meta
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # GHCR repositories must be lowercase; the owner may contain capitals.
+          image="ghcr.io/${REPOSITORY,,}"
+          version="${REF_NAME#v}"
+          {
+            echo "image=${image}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the GitHub Container Registry
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "${GH_TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
+
+      - name: Build the image
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          SOURCE: https://github.com/${{ github.repository }}
+          REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --tag "${IMAGE}:${VERSION}" \
+            --tag "${IMAGE}:latest" \
+            --label "org.opencontainers.image.source=${SOURCE}" \
+            --label "org.opencontainers.image.version=${VERSION}" \
+            --label "org.opencontainers.image.revision=${REVISION}" \
+            .
+
+      - name: Smoke-test the image help output
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker run --rm "${IMAGE}:${VERSION}" --help
+
+      - name: Push the image
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE}:${VERSION}"
+          docker push "${IMAGE}:latest"

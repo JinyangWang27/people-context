@@ -153,6 +153,20 @@ desktop hosts (such as Claude Desktop) with one click; the host's `uv` runtime i
 Cursor, Windsurf, and VS Code use the canonical `uvx --from people-context people-context-mcp` invocation with
 per-editor config files. See [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
 
+## Docker (optional)
+
+An optional non-root container image runs the same stdio MCP server. It is a convenience distribution, not the
+default path and not a security sandbox: the server still runs local Python with your filesystem permissions.
+Mount storage at `/data`; the image sets `PEOPLE_CONTEXT_DB=/data/people.db`.
+
+```bash
+docker volume create people-context-data
+docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest
+```
+
+Loopback HTTP is not the container default, and the runtime makes no outbound network request. See
+[docs/docker.md](docs/docker.md) for bind-mount ownership, the CLI entrypoint, and MCP client configuration.
+
 ## Security model
 
 This project executes local Python with the launching user's filesystem permissions. The database is plaintext
@@ -236,6 +250,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/mcp-registry.md](docs/mcp-registry.md) | MCP Registry namespace, `server.json`, and community-directory submission matrix |
 | [docs/desktop-and-editors.md](docs/desktop-and-editors.md) | Native-UV MCPB Desktop bundle and Cursor/Windsurf/VS Code snippets |
+| [docs/docker.md](docs/docker.md) | Optional non-root stdio Docker image, data volume, and GHCR publishing |
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
 | [docs/codex-plugin.md](docs/codex-plugin.md) | Codex install, runtime, privacy, validation, and publishing |
 | [docs/openclaw-plugin.md](docs/openclaw-plugin.md) | OpenClaw install, runtime, privacy, validation, and ClawHub publishing |

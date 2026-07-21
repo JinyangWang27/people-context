@@ -96,7 +96,7 @@ command, without changing server behavior.
 No `domain`, `app`, `ports`, or MCP tool-surface changes are required; this milestone is packaging, metadata,
 documentation, and CI only.
 
-**Status:** Planned.
+**Status:** Delivered.
 
 ## M9 — Cold start & onboarding
 

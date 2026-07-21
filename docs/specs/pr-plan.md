@@ -67,7 +67,7 @@ Check the matching box only in the PR that delivers it.
     independent; archive inspected; clean-machine Desktop smoke test; local-permission warning.
   - **Out:** Docker and stable MCPB Registry URL/digest entry.
 
-- [ ] **M8.4 — Optional non-root Docker image and GHCR release**
+- [x] **M8.4 — Optional non-root Docker image and GHCR release**
   - **Scope:** Multi-stage Dockerfile, `.dockerignore`, tag-triggered GHCR workflow, README volume/env usage.
   - **Acceptance:** pinned base digest/Actions; non-root stdio runtime; explicit mounted DB; no surprise runtime
     network; image help and real stdio smoke test.
