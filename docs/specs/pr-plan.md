@@ -60,7 +60,7 @@ Check the matching box only in the PR that delivers it.
     recorded; each directory's primary docs and manual-vs-repository path are explicit; validators are pinned.
   - **Out:** live publication/approval and MCPB package entry.
 
-- [ ] **M8.3 — Native-UV MCPB bundle and editor configs**
+- [x] **M8.3 — Native-UV MCPB bundle and editor configs**
   - **Scope:** Add MCPB manifest/project/entry point, exact reviewed build tooling, release attachment, and
     Cursor/Windsurf/VS Code `uvx` snippets.
   - **Acceptance:** `server.type="uv"`; semantic version/dependency pin match release; schema `manifest_version`
