@@ -131,7 +131,9 @@ of a marker-bearing `people-context-mcp` release must therefore precede publicat
    MCP_PUBLISHER_SHA256="1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf"  # its matching digest
    curl -fLsS -o "$archive" \
      "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${archive}"
-   echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum --check --strict -
+   # Portable digest check: GNU coreutils ships sha256sum, macOS ships shasum.
+   actual="$( { sha256sum "$archive" 2>/dev/null || shasum -a 256 "$archive"; } | awk '{print $1}' )"
+   [ "$actual" = "$MCP_PUBLISHER_SHA256" ] || { echo "digest mismatch for $archive" >&2; exit 1; }
    tar -xzf "$archive" mcp-publisher
    ```
 
