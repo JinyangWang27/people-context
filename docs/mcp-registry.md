@@ -110,14 +110,25 @@ of a marker-bearing `people-context-mcp` release must therefore precede publicat
    `mcp-name:` marker in both the `people-context` and `people-context-mcp` packaged READMEs. Merge.
 2. Cut the GitHub Release so `release.yml` uploads the new marker-bearing artifacts — including the bumped
    `people-context-mcp` — to PyPI, and wait for that publication to complete.
-3. Install the pinned publisher, verified against the same immutable digest the CI job uses, and invoke that binary
-   explicitly (it is not otherwise on `PATH`):
+3. Install the pinned publisher, verified against a reviewed immutable digest, and invoke that binary explicitly
+   (it is not otherwise on `PATH`). Select the `archive`/`MCP_PUBLISHER_SHA256` pair for your platform from the
+   reviewed `v1.8.0` digests below — each is the archive's own content hash, so verification does not depend on the
+   release's own checksums file:
+
+   | Platform | `archive` | `MCP_PUBLISHER_SHA256` |
+   |---|---|---|
+   | Linux x86-64 | `mcp-publisher_linux_amd64.tar.gz` | `1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf` |
+   | Linux arm64 | `mcp-publisher_linux_arm64.tar.gz` | `c978982c60e1b4903a976de090f04dc4fac4a320daa50704fcad2dbc93433d62` |
+   | macOS x86-64 | `mcp-publisher_darwin_amd64.tar.gz` | `5350f756e8408d0e22802b7f384af941448358b503eb1e1772979a61b9b99fde` |
+   | macOS arm64 | `mcp-publisher_darwin_arm64.tar.gz` | `e74f8846c3b5d0428cfeae3f9f520bbf9031d18e68224108c3760d60b6aaf2e0` |
+
+   The Linux x86-64 row is the digest CI pins; keep it in sync with
+   `.github/workflows/mcp-registry-validate.yml`.
 
    ```bash
-   # Keep in sync with .github/workflows/mcp-registry-validate.yml.
    MCP_PUBLISHER_VERSION="v1.8.0"
-   MCP_PUBLISHER_SHA256="1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf"
-   archive="mcp-publisher_linux_amd64.tar.gz"  # pick the asset for your platform
+   archive="mcp-publisher_linux_amd64.tar.gz"                                           # your platform's row above
+   MCP_PUBLISHER_SHA256="1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf"  # its matching digest
    curl -fLsS -o "$archive" \
      "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${archive}"
    echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum --check --strict -
