@@ -30,17 +30,6 @@ Start the MCP server before OpenClaw loads the plugin:
 uv run people-context-mcp --http --host 127.0.0.1 --port 8765
 ```
 
-On Linux with systemd, the project can install and enable this backend as a user service instead:
-
-```bash
-uv run people-context service install
-uv run people-context service status
-```
-
-The command writes a loopback-only unit, starts it immediately, enables startup with the user service manager,
-and configures restart-on-failure. It is intentionally explicit: installing the Python package or OpenClaw plugin
-never starts a background service implicitly. Remove it with `uv run people-context service uninstall`.
-
 The plugin connects to `http://127.0.0.1:8765/mcp` by default. Configure a different loopback endpoint under
 `plugins.entries.people-context.config`:
 

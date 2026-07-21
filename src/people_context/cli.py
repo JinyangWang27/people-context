@@ -65,7 +65,6 @@ from people_context.domain.person import AliasKind, Person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.vault import VaultSafetyError
-from people_context.service import install_service, service_status, uninstall_service
 
 _SUMMARY_WIDTH = 40
 
@@ -216,17 +215,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicitly download/cache the pinned multilingual model and atomically rebuild semantic vectors.",
     )
 
-    service = subparsers.add_parser("service", help="Manage the optional loopback HTTP backend service.")
-    service_subcommands = service.add_subparsers(dest="service_command", required=True)
-    service_install = service_subcommands.add_parser(
-        "install",
-        help="Install and start a systemd user service for the loopback HTTP backend.",
-    )
-    service_install.add_argument("--host", choices=["127.0.0.1"], default="127.0.0.1")
-    service_install.add_argument("--port", type=int, default=8765)
-    service_subcommands.add_parser("status", help="Show the systemd user service status.")
-    service_subcommands.add_parser("uninstall", help="Stop, disable, and remove the systemd user service.")
-
     return parser
 
 
@@ -237,8 +225,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "db-path":
         return _cmd_db_path(args)
-    if args.command == "service":
-        return _cmd_service(args)
 
     ctx = _open_context(args.db)
     try:
@@ -281,24 +267,6 @@ def _cmd_db_path(args: argparse.Namespace) -> int:
     else:
         print(resolve_db_path(args.db))
     return 0
-
-
-def _cmd_service(args: argparse.Namespace) -> int:
-    try:
-        if args.service_command == "install":
-            unit_path = install_service(db_path=resolve_db_path(args.db), host=args.host, port=args.port)
-            print(f"Installed and started {unit_path}")
-            return 0
-        if args.service_command == "status":
-            return service_status()
-        if args.service_command == "uninstall":
-            uninstall_service()
-            print("Uninstalled people-context.service")
-            return 0
-    except (OSError, RuntimeError, ValueError) as exc:
-        print(f"Service operation failed: {exc}", file=sys.stderr)
-        return 1
-    raise ValueError(f"unknown service command: {args.service_command}")
 
 
 def _cmd_list(ctx: CliContext, args: argparse.Namespace) -> int:

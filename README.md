@@ -116,17 +116,6 @@ uv run people-context-mcp --http --host 127.0.0.1 --port 8765
 The endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and must be treated as accessible to other
 local processes. Prefer stdio.
 
-On Linux with systemd, install the optional backend as a persistent user service:
-
-```bash
-uv run people-context service install
-uv run people-context service status
-```
-
-This writes a user-level unit, binds only to loopback, starts it immediately, enables startup with the user
-service manager, and restarts it after failures. Installation is explicit; package installation never starts a
-background process implicitly. Remove it with `uv run people-context service uninstall`.
-
 ## Example: graph-aware context and vault
 
 After recording people and relationships through MCP, inspect structure with `get_relationship_graph` or
@@ -203,12 +192,9 @@ uv run people-context set communication_philosophy VALUE
 uv run people-context delete PERSON [--yes]
 uv run people-context sync-log [--limit N] [--entity ID] [--payloads]
 uv run people-context reindex [--semantic]
-uv run people-context service install [--port 8765]
-uv run people-context service status
-uv run people-context service uninstall
 ```
 
-The service lifecycle commands require Linux systemd. See [docs/cli.md](docs/cli.md).
+See [docs/cli.md](docs/cli.md).
 
 ## Architecture
 

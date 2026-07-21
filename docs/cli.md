@@ -27,9 +27,6 @@ curation, so validation, audit, HLC, and changelog capture match MCP writes.
 | `relationship-types add ...` | Add portable custom vocabulary (add-only in v1). |
 | `normalize-relationships [--apply]` | Dry-run or apply audited canonical rewrites of legacy edges. |
 | `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
-| `service install [--port PORT]` | Install and start the loopback HTTP backend as a systemd user service (Linux). |
-| `service status` | Show the systemd user service status. |
-| `service uninstall` | Stop, disable, and remove the systemd user service. |
 
 `show`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown references exit
 1; ambiguous names exit 2 and print candidates rather than guessing.
@@ -112,8 +109,3 @@ made canonical and replayable with `normalize-relationships --apply`.
 
 `people-context-mcp` is stdio by default. `--http --host 127.0.0.1 --port 8765` selects unauthenticated loopback
 Streamable HTTP at `/mcp`; no other bind host is accepted.
-
-`people-context service install` is an explicit Linux/systemd convenience command. It writes a user unit using the
-current Python environment, pins the resolved database path, enables startup with the user service manager, and
-starts the backend immediately. It never binds outside loopback. Package installation does not invoke it
-implicitly. Use `service uninstall` to remove the unit.
