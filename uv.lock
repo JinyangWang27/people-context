@@ -1209,11 +1209,11 @@ wheels = [
 
 [[package]]
 name = "python-ulid"
-version = "3.2.1"
+version = "4.0.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1a/ae/7a7184c95e6217361c23b8ee49a8aa3efa197f6b96f9c2ab75709b753ca3/python_ulid-3.2.1.tar.gz", hash = "sha256:b1f0d75b49a2dcb5ebca902c05c71080f87845a0e4ed10bc7c8c8a0c0eb2679d", size = 96662, upload-time = "2026-07-19T22:21:19.345Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/41/65079023c81491a21799c0120bce5925366b6913596bf797806f19973290/python_ulid-4.0.1.tar.gz", hash = "sha256:bbeec02556190bb9dc3401faa7268696acbfbe7b6db9908c155dc3548629f20c", size = 101683, upload-time = "2026-07-20T15:21:41.256Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/c8/bec7e80617a3b7b65578a343ab04e3d78277683d1b057738bd484822cb21/python_ulid-3.2.1-py3-none-any.whl", hash = "sha256:07aa5eb92cdd21195a922f87f4ec5b1fce6448f92e4bfa2d7b7b77345677655a", size = 12945, upload-time = "2026-07-19T22:21:18.226Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/15/8b39b36f55b6618ec4ca9b55134dcfd9c04cecbc72709f5d8e6bdebed9cd/python_ulid-4.0.1-py3-none-any.whl", hash = "sha256:6f1d69ceb97e99fe542df8476ebcd7a668284bf53ee14b3106bcc6a341a95ed9", size = 14609, upload-time = "2026-07-20T15:21:40.214Z" },
 ]
 
 [[package]]
