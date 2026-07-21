@@ -80,18 +80,19 @@ details.
 
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
 
-Install the published distribution, then start either the MCP server or the human-operated CLI:
+The fastest path from discovery to a working stdio server is a zero-clone, zero-install run of the published
+`people-context` distribution:
+
+```bash
+uvx --from people-context people-context-mcp
+```
+
+For a persistent installation of both the MCP server and the human-operated CLI:
 
 ```bash
 uv tool install people-context
 people-context-mcp
 people-context --help
-```
-
-For a one-off server launch without a persistent installation:
-
-```bash
-uvx --from people-context people-context-mcp
 ```
 
 For local development:
