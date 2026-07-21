@@ -1,0 +1,101 @@
+name: Validate MCP Registry metadata
+
+on:
+  pull_request:
+    paths:
+      - "server.json"
+      - "glama.json"
+      - "README.md"
+      - "pyproject.toml"
+      - "docs/mcp-registry.md"
+      - ".github/workflows/mcp-registry-validate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "server.json"
+      - "glama.json"
+      - "README.md"
+      - "pyproject.toml"
+      - "docs/mcp-registry.md"
+      - ".github/workflows/mcp-registry-validate.yml"
+
+permissions:
+  contents: read
+
+env:
+  # Reviewed mcp-publisher release. Release tags are mutable, so the archive is
+  # verified against MCP_PUBLISHER_SHA256 below — an immutable, repository-pinned
+  # content digest — rather than trusting the release's own checksums file (which an
+  # asset swap could rewrite in lockstep). Do not use a floating tag.
+  MCP_PUBLISHER_VERSION: "v1.8.0"
+  # SHA256 of mcp-publisher_linux_amd64.tar.gz for the release above. Update both
+  # together when bumping the pinned publisher.
+  MCP_PUBLISHER_SHA256: "1370446bbe74d562608e8005a6ccce02d146a661fbd78674e11cc70b9618d6cf"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install pinned mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${archive}"
+          curl --fail --location --silent --show-error --retry 3 --output "${archive}" "${url}"
+          # Verify against the repository-pinned immutable digest, not the release's checksums file.
+          echo "${MCP_PUBLISHER_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar --extract --gzip --file "${archive}" mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Validate server.json against the pinned Registry schema
+        run: ./mcp-publisher validate server.json
+
+      - name: Assert server metadata reconstructs the canonical command
+        run: |
+          python3 - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          project_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          server = json.loads(Path("server.json").read_text())
+
+          assert server["version"] == project_version, (server["version"], project_version)
+          packages = server["packages"]
+          assert len(packages) == 1, packages
+          package = packages[0]
+          assert package["registryType"] == "pypi", package
+          assert package["identifier"] == "people-context-mcp", package
+          assert package["transport"] == {"type": "stdio"}, package
+
+          def tokens(arguments):
+              rendered = []
+              for argument in arguments:
+                  if argument["type"] == "named":
+                      rendered.append(argument["name"])
+                      if "value" in argument:
+                          rendered.append(argument["value"])
+                  else:
+                      rendered.append(argument["value"])
+              return rendered
+
+          command = (
+              [package["runtimeHint"]]
+              + tokens(package.get("runtimeArguments", []))
+              + [package["identifier"]]
+              + tokens(package.get("packageArguments", []))
+          )
+          expected = ["uvx", "--from", f"people-context=={project_version}", "people-context-mcp"]
+          assert command == expected, (command, expected)
+
+          marker = f"<!-- mcp-name: {server['name']} -->"
+          for readme in ("README.md", "compat/people-context-mcp/README.md"):
+              assert marker in Path(readme).read_text(encoding="utf-8"), readme
+          print("server.json command reconstruction and marker checks passed")
+          PY

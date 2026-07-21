@@ -1,8 +1,11 @@
 # people-context
 
+<!-- mcp-name: io.github.jinyangwang27/people-context -->
+
 [![CI](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JinyangWang27/people-context/graph/badge.svg)](https://codecov.io/gh/JinyangWang27/people-context)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JinyangWang27/people-context/badge)](https://scorecard.dev/viewer/?uri=github.com/JinyangWang27/people-context)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13681/badge)](https://www.bestpractices.dev/projects/13681)
 [![PyPI](https://img.shields.io/pypi/v/people-context)](https://pypi.org/project/people-context/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/people-context)](https://pypi.org/project/people-context/)
 [![Python](https://img.shields.io/pypi/pyversions/people-context)](https://pypi.org/project/people-context/)
@@ -222,6 +225,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/cli.md](docs/cli.md) | CLI commands and DB resolution |
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and delivered local foundations |
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
+| [docs/mcp-registry.md](docs/mcp-registry.md) | MCP Registry namespace, `server.json`, and community-directory submission matrix |
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
 | [docs/codex-plugin.md](docs/codex-plugin.md) | Codex install, runtime, privacy, validation, and publishing |
 | [docs/openclaw-plugin.md](docs/openclaw-plugin.md) | OpenClaw install, runtime, privacy, validation, and ClawHub publishing |

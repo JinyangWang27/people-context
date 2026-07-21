@@ -1,5 +1,7 @@
 # people-context-mcp compatibility package
 
+<!-- mcp-name: io.github.jinyangwang27/people-context -->
+
 The project and primary PyPI distribution have moved to [`people-context`](https://pypi.org/project/people-context/).
 
 Install the new distribution directly:

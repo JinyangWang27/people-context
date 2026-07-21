@@ -46,7 +46,12 @@ exists only so installations under the other name keep resolving.
 
 ## Publish a release
 
-1. Update `project.version` in `pyproject.toml` and merge the change to `main`.
+1. Update `project.version` in `pyproject.toml`. In the same commit, update the MCP Registry metadata in
+   `server.json` — its top-level `version` and the `--from people-context==<version>` package pin — and, when the
+   Registry entry must be (re)published, bump the `version` in `compat/people-context-mcp/pyproject.toml` so the
+   marker-bearing compatibility artifact is uploaded rather than skipped. (`tests/test_registry_metadata.py`
+   fails if `server.json` drifts from `project.version`.) See [mcp-registry.md](mcp-registry.md) for the full
+   Registry publication procedure. Merge the change to `main`.
 2. Create a GitHub Release from that commit using a matching tag such as `v0.1.1`.
 3. Publish the GitHub Release.
 4. Approve the `pypi` environment deployments when prompted.
