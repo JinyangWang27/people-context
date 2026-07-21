@@ -53,7 +53,7 @@ Check the matching box only in the PR that delivers it.
     or package change.
   - **Out:** Registry, MCPB, editor configs, Docker.
 
-- [ ] **M8.2 — MCP Registry and community-directory metadata**
+- [x] **M8.2 — MCP Registry and community-directory metadata**
   - **Scope:** Add root `server.json`, packaged `mcp-name:` marker, pinned Registry validation, and a current
     Smithery/PulseMCP/mcp.so/Glama submission matrix plus any required static in-repo metadata files.
   - **Acceptance:** server/package versions match; stdio package transport is schema-valid; namespace decision

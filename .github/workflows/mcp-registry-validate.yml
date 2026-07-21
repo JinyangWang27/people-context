@@ -1,0 +1,78 @@
+name: Validate MCP Registry metadata
+
+on:
+  pull_request:
+    paths:
+      - "server.json"
+      - "glama.json"
+      - "README.md"
+      - "pyproject.toml"
+      - "docs/mcp-registry.md"
+      - ".github/workflows/mcp-registry-validate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "server.json"
+      - "glama.json"
+      - "README.md"
+      - "pyproject.toml"
+      - "docs/mcp-registry.md"
+      - ".github/workflows/mcp-registry-validate.yml"
+
+permissions:
+  contents: read
+
+env:
+  # Pinned to an exact reviewed mcp-publisher release. The immutable tag is the
+  # primary pin; the download is additionally verified against the release's own
+  # signed checksums.txt before the binary is executed. Do not use a floating tag.
+  MCP_PUBLISHER_VERSION: "v1.8.0"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install pinned mcp-publisher
+        run: |
+          set -euo pipefail
+          base="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error --retry 3 --output "${archive}" "${base}/${archive}"
+          curl --fail --location --silent --show-error --retry 3 --output checksums.txt "${base}/checksums.txt"
+          grep " ${archive}\$" checksums.txt | sha256sum --check --strict -
+          tar --extract --gzip --file "${archive}" mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Validate server.json against the pinned Registry schema
+        run: ./mcp-publisher validate server.json
+
+      - name: Assert server and package versions match pyproject
+        run: |
+          python3 - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          project_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          server = json.loads(Path("server.json").read_text())
+
+          assert server["version"] == project_version, (server["version"], project_version)
+          packages = server["packages"]
+          assert len(packages) == 1, packages
+          package = packages[0]
+          assert package["registryType"] == "pypi", package
+          assert package["identifier"] == "people-context", package
+          assert package["version"] == project_version, (package["version"], project_version)
+          assert package["transport"] == {"type": "stdio"}, package
+
+          expected_marker = f"<!-- mcp-name: {server['name']} -->"
+          readme = Path("README.md").read_text(encoding="utf-8")
+          assert expected_marker in readme, expected_marker
+          print("server.json version/package/marker checks passed")
+          PY
