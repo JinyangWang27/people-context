@@ -54,6 +54,12 @@ jobs:
         run: echo "${GH_TOKEN}" | docker login ghcr.io -u "${ACTOR}" --password-stdin
 
       - name: Build the image
+        # Published as a single-architecture linux/amd64 image, matching the
+        # runner. --platform makes that explicit and deterministic rather than
+        # relying on the daemon default. Multi-platform manifests are out of
+        # scope (they would require QEMU/Buildx tooling); the architecture limit
+        # is documented in docs/docker.md, and other architectures build the
+        # image locally.
         env:
           IMAGE: ${{ steps.meta.outputs.image }}
           VERSION: ${{ steps.meta.outputs.version }}
@@ -62,6 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           docker build \
+            --platform linux/amd64 \
             --tag "${IMAGE}:${VERSION}" \
             --tag "${IMAGE}:latest" \
             --label "org.opencontainers.image.source=${SOURCE}" \

@@ -164,8 +164,10 @@ docker volume create people-context-data
 docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest
 ```
 
-Loopback HTTP is not the container default, and the runtime makes no outbound network request. See
-[docs/docker.md](docs/docker.md) for bind-mount ownership, the CLI entrypoint, and MCP client configuration.
+Loopback HTTP is not the container default, and the runtime makes no outbound network request. The published
+image is `linux/amd64`; on other architectures, build it locally. GHCR publishes packages privately at first, so
+anonymous pulls work only after the package is made public once. See [docs/docker.md](docs/docker.md) for
+bind-mount ownership, the CLI entrypoint, MCP client configuration, and publishing.
 
 ## Security model
 

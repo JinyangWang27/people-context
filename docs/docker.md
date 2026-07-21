@@ -22,6 +22,16 @@ deployment. See the [README quick start](../README.md#quick-start).
   `people-context reindex --semantic` command may download the pinned model, and the semantic extra is not
   installed in this image.
 
+## Supported architecture
+
+The published GHCR image is **single-architecture `linux/amd64`**. Multi-platform manifests are intentionally out
+of scope. On a different architecture (for example Apple Silicon without amd64 emulation), build the image locally
+instead — the `Dockerfile` builds natively for your platform:
+
+```bash
+docker build -t people-context:local .
+```
+
 ## Database volume and environment
 
 The database is never baked into an image layer. The image sets `PEOPLE_CONTEXT_DB=/data/people.db` and declares
@@ -102,4 +112,18 @@ docker run --rm people-context:local --help
 The [`docker-publish.yml`](../.github/workflows/docker-publish.yml) workflow builds the image and pushes it to
 GHCR when a `v*` release tag is pushed. It authenticates with the workflow-scoped `GITHUB_TOKEN`
 (`packages: write`) — no long-lived registry secret is used — and publishes both the exact version tag and
-`latest`. Base-image digests and the reviewed `uv` version are pinned in the `Dockerfile`.
+`latest` for `linux/amd64`. Base-image digests and the reviewed `uv` version are pinned in the `Dockerfile`.
+
+### One-time: make the package public
+
+GHCR creates a container package as **private** on its first push, and `GITHUB_TOKEN`'s `packages: write` scope
+can push but cannot change visibility. So the anonymous `docker run ghcr.io/jinyangwang27/people-context:latest`
+commands above only work after an operator makes the package public **once**, after the first release tag
+publishes it:
+
+1. Open the package at `https://github.com/users/JinyangWang27/packages/container/package/people-context`.
+2. **Package settings → Danger Zone → Change visibility → Public**.
+
+This is deliberately a manual, one-time step rather than an automated one: automating it would require a
+longer-lived, higher-scope token than the workflow-scoped `GITHUB_TOKEN`, which this project intentionally avoids.
+After the package is public, later releases publish new tags without any further visibility change.
