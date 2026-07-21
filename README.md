@@ -144,6 +144,15 @@ Clients that support local stdio MCP servers can use:
 }
 ```
 
+## Desktop app and editors
+
+A native-UV [MCPB](https://github.com/modelcontextprotocol/mcpb) bundle installs the server into MCP-aware
+desktop hosts (such as Claude Desktop) with one click; the host's `uv` runtime installs the pinned
+`people-context` release and runs the same stdio server. Build it with `mcpb/build.sh`.
+
+Cursor, Windsurf, and VS Code use the canonical `uvx --from people-context people-context-mcp` invocation with
+per-editor config files. See [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
+
 ## Security model
 
 This project executes local Python with the launching user's filesystem permissions. The database is plaintext
@@ -226,6 +235,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and delivered local foundations |
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/mcp-registry.md](docs/mcp-registry.md) | MCP Registry namespace, `server.json`, and community-directory submission matrix |
+| [docs/desktop-and-editors.md](docs/desktop-and-editors.md) | Native-UV MCPB Desktop bundle and Cursor/Windsurf/VS Code snippets |
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
 | [docs/codex-plugin.md](docs/codex-plugin.md) | Codex install, runtime, privacy, validation, and publishing |
 | [docs/openclaw-plugin.md](docs/openclaw-plugin.md) | OpenClaw install, runtime, privacy, validation, and ClawHub publishing |

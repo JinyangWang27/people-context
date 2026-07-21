@@ -1,0 +1,14 @@
+# Build tooling and docs are not part of the runnable bundle payload.
+build.sh
+README.md
+
+# Never nest a previously built archive inside a new one.
+dist/
+*.mcpb
+
+# Transient Python and UV state must never ship inside the bundle; the host UV
+# runtime creates its own environment from pyproject.toml.
+.venv/
+__pycache__/
+*.pyc
+uv.lock

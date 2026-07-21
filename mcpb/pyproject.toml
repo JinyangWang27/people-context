@@ -1,0 +1,14 @@
+[project]
+name = "people-context-mcpb"
+version = "0.1.1"
+description = "Native-UV MCPB bundle that runs the pinned people-context MCP server"
+requires-python = ">=3.11"
+# Pin the primary distribution to the matching release so the host's UV runtime
+# installs the exact people-context version this bundle was built and reviewed
+# against. Bump this together with the manifest and root project version.
+dependencies = ["people-context==0.1.1"]
+
+[tool.uv]
+# The bundle only provides dependencies for the host UV runtime; it is not itself
+# an installable package, so UV must not try to build or install it.
+package = false
