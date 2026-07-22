@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sqlite3
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 
+from people_context.adapters.email_import import ImportExtractionError
 from people_context.adapters.filesystem import FileSystemVaultWriter
+from people_context.adapters.import_router import ImportExtractorRouter
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DOWNLOAD_SIZE,
     MODEL_ID,
@@ -27,9 +31,12 @@ from people_context.adapters.sqlite import (
     SqliteChangelog,
     SqliteContextReader,
     SqliteExportReader,
+    SqliteImportStagingStore,
     SqliteLifecycleStore,
+    SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
+    SqliteRecordStore,
     SqliteRelationshipStore,
     SqliteRelationshipVocabularyStore,
     SqliteSemanticDocumentReader,
@@ -42,31 +49,58 @@ from people_context.app import (
     AddAliasInput,
     AddRelationshipType,
     AddRelationshipTypeInput,
+    AliasInput,
+    AmbiguousPersonError,
+    CommitImport,
     EditPerson,
     EditPersonInput,
     ExportData,
     ExportVault,
     Forget,
     GetPersonContext,
+    ImportContent,
+    ImportPipelineError,
+    ImportReviewRow,
     NormalizeRelationships,
     PersonContextResult,
     PersonNameCollisionError,
     PreviewForget,
+    RecordFact,
+    RecordFactInput,
+    RecordInteraction,
+    RecordInteractionInput,
     ReindexPeople,
     ReindexSemantic,
     RelationshipTypeAlreadyExistsError,
+    RememberPerson,
+    RememberPersonInput,
     ResolvePerson,
+    ReviewImport,
     SearchPeople,
+    SelfAlreadyExistsError,
+    SetAffiliation,
+    SetAffiliationInput,
     SetCommunicationPhilosophy,
     SetCommunicationPhilosophyInput,
+    SetRelationship,
+    SetRelationshipInput,
 )
 from people_context.config import describe_resolution, resolve_db_path
+from people_context.demo_seed import (
+    DEMO_AFFILIATIONS,
+    DEMO_FACTS,
+    DEMO_INTERACTIONS,
+    DEMO_PEOPLE,
+    DEMO_RELATIONSHIPS,
+)
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
+from people_context.domain.shared import normalize_name
 from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.vault import VaultSafetyError
 
 _SUMMARY_WIDTH = 40
+_DEMO_FILENAME = "demo.db"
 
 
 @dataclass
@@ -88,7 +122,12 @@ class CliContext:
 
 
 def _open_context(db: str | None) -> CliContext:
-    conn = open_db(resolve_db_path(db))
+    return _open_context_path(resolve_db_path(db))
+
+
+def _open_context_path(db_path: str | Path) -> CliContext:
+    """Compose a CLI context for an already-resolved database path."""
+    conn = open_db(db_path)
     clock = SystemClock()
     repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
     lifecycle: SqliteLifecycleStore | IndexingLifecycleStore = SqliteLifecycleStore(conn)
@@ -215,6 +254,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicitly download/cache the pinned multilingual model and atomically rebuild semantic vectors.",
     )
 
+    subparsers.add_parser("init", help="Interactively seed self identity and optional contact data.")
+
+    demo = subparsers.add_parser("demo", help="Seed a dedicated fictional demonstration database.")
+    demo.add_argument("--reset", action="store_true", help="Replace only the dedicated demo database.")
+
     return parser
 
 
@@ -225,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "db-path":
         return _cmd_db_path(args)
+    if args.command == "demo":
+        return _cmd_demo(args)
 
     ctx = _open_context(args.db)
     try:
@@ -254,6 +300,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_sync_log(ctx, args)
         if args.command == "reindex":
             return _cmd_reindex(ctx, args)
+        if args.command == "init":
+            return _cmd_init(ctx)
         parser.error(f"unknown command: {args.command}")
         return 2
     finally:
@@ -267,6 +315,326 @@ def _cmd_db_path(args: argparse.Namespace) -> int:
     else:
         print(resolve_db_path(args.db))
     return 0
+
+
+def _cmd_init(ctx: CliContext) -> int:
+    """Run safe, additive onboarding through existing audited application use cases."""
+    target, fresh, exit_code = _preflight_init(ctx)
+    if exit_code != 0:
+        return exit_code
+    if not fresh:
+        assert target is not None
+        answer = input(f"Add onboarding data to existing self {target.canonical_name} ({target.id})? [y/N] ")
+        if answer.strip().casefold() not in {"y", "yes"}:
+            print("Aborted.")
+            return 0
+        name = target.canonical_name
+    else:
+        name = " ".join(input("Canonical name: ").split())
+        if not name:
+            print("Canonical name must not be blank.", file=sys.stderr)
+            return 2
+
+    aliases = _prompt_email_aliases()
+    if aliases is None:
+        return 2
+    if not _preflight_init_aliases(ctx, target, aliases):
+        return 1
+    raw_vcard_path = input("vCard path (leave blank to skip): ").strip()
+    vcard_path: Path | None = None
+    if raw_vcard_path:
+        vcard_path = _preflight_vcard_path(raw_vcard_path)
+        if vcard_path is None:
+            return 1
+
+    remember = RememberPerson(ctx.repo, ctx.repo, ctx.audit, ctx.clock)
+    try:
+        remembered = remember.execute(
+            RememberPersonInput(
+                name=name,
+                aliases=aliases,
+                is_self=True,
+                source="cli/init",
+            )
+        )
+    except (AmbiguousPersonError, SelfAlreadyExistsError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    target = remembered.person
+    print(f"Self identity {'created' if remembered.created else 'updated'}: {target.canonical_name} ({target.id}).")
+
+    if vcard_path:
+        import_exit = _run_init_vcard_import(ctx, vcard_path, target)
+        if import_exit != 0:
+            return import_exit
+
+    philosophy = input("Communication philosophy (optional, one line): ").strip()
+    if philosophy:
+        if "\n" in philosophy or "\r" in philosophy:
+            print("Communication philosophy must be one line.", file=sys.stderr)
+            return 2
+        SetCommunicationPhilosophy(ctx.preferences, ctx.audit, ctx.clock).execute(
+            SetCommunicationPhilosophyInput(text=philosophy, source="cli/init")
+        )
+        print("Communication philosophy recorded.")
+    print("Onboarding complete.")
+    return 0
+
+
+def _preflight_init(ctx: CliContext) -> tuple[Person | None, bool, int]:
+    people = ctx.repo.list_people(include_deleted=True)
+    if not people:
+        return None, True, 0
+    self_people = [person for person in people if person.deleted_at is None and person.is_self]
+    if len(self_people) != 1:
+        print("Cannot continue: non-empty state must contain exactly one active self person.", file=sys.stderr)
+        return None, False, 1
+    target = self_people[0]
+    matches = ctx.repo.find_by_normalized_name(normalize_name(target.canonical_name))
+    if len(matches) != 1 or matches[0].id != target.id:
+        print("Cannot continue: the existing self identity is ambiguous.", file=sys.stderr)
+        return None, False, 1
+    return target, False, 0
+
+
+def _prompt_email_aliases() -> list[AliasInput] | None:
+    raw = input("Email handles (comma-separated, optional): ")
+    aliases: list[AliasInput] = []
+    seen: set[str] = set()
+    for item in raw.split(","):
+        if not item.strip():
+            continue
+        address = normalize_name(item)
+        local, separator, domain = address.partition("@")
+        if not separator or not local or not domain or "@" in domain or any(char.isspace() for char in address):
+            print("Email handles must be valid comma-separated addresses.", file=sys.stderr)
+            return None
+        if address not in seen:
+            seen.add(address)
+            aliases.append(AliasInput(value=address, kind=AliasKind.HANDLE))
+    return aliases
+
+
+def _preflight_init_aliases(ctx: CliContext, target: Person | None, aliases: list[AliasInput]) -> bool:
+    for alias in aliases:
+        matches = ctx.repo.find_by_normalized_name(normalize_name(alias.value))
+        if not matches:
+            continue
+        if target is not None and len(matches) == 1 and matches[0].id == target.id:
+            continue
+        print(f"Cannot continue: email handle {alias.value} identifies another or ambiguous person.", file=sys.stderr)
+        return False
+    return True
+
+
+def _preflight_vcard_path(raw_path: str) -> Path | None:
+    path = Path(raw_path).expanduser().absolute()
+    try:
+        if not path.is_file():
+            raise OSError("path is not a readable file")
+        with path.open("rb") as handle:
+            handle.read(1)
+    except OSError as exc:
+        print(f"Cannot read vCard file: {exc}", file=sys.stderr)
+        return None
+    return path
+
+
+def _run_init_vcard_import(ctx: CliContext, path: Path, self_person: Person) -> int:
+    handles = [alias.value for alias in self_person.aliases if alias.kind == AliasKind.HANDLE]
+    if not handles:
+        print(
+            "Warning: self has no email handle; email-based self-card exclusion is unavailable.",
+            file=sys.stderr,
+        )
+    staging = SqliteImportStagingStore(ctx.conn)
+    records = SqliteRecordStore(ctx.conn)
+    importer = ImportContent(ctx.repo, ImportExtractorRouter(), staging, ctx.clock)
+    reviewer = ReviewImport(staging)
+    committer = CommitImport(
+        ctx.repo,
+        staging,
+        RememberPerson(ctx.repo, ctx.repo, ctx.audit, ctx.clock),
+        RecordInteraction(ctx.repo, records, ctx.audit, ctx.clock),
+        SetAffiliation(ctx.repo, SqliteOrganizationStore(ctx.conn), records, ctx.audit, ctx.clock),
+        RecordFact(ctx.repo, records, ctx.audit, ctx.clock),
+    )
+    try:
+        batch = importer.execute("vcard", path=str(path))
+        review = reviewer.execute(batch.batch_id)
+    except ImportPipelineError as exc:
+        if exc.code == "no_candidates":
+            print("No external vCard candidates found.")
+            return 0
+        print(f"vCard import failed: {exc}", file=sys.stderr)
+        return 1
+    except (ImportExtractionError, OSError) as exc:
+        print(f"vCard import failed: {exc}", file=sys.stderr)
+        return 1
+    _print_import_review(review.candidates)
+    selected = [
+        candidate_id.strip()
+        for candidate_id in input("Candidate IDs to accept (comma-separated): ").split(",")
+    ]
+    accepted_ids = list(dict.fromkeys(candidate_id for candidate_id in selected if candidate_id))
+    known_ids = {row.id for row in review.candidates}
+    unknown_ids = sorted(set(accepted_ids) - known_ids)
+    if unknown_ids:
+        print("Unknown candidate IDs: " + ", ".join(unknown_ids), file=sys.stderr)
+        return 2
+    try:
+        result = committer.execute(batch.batch_id, accepted_ids)
+    except ImportPipelineError as exc:
+        print(f"vCard commit failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Committed {len(result.committed_ids)} import candidates; {len(result.unresolved_ids)} unresolved.")
+    return 0
+
+
+def _print_import_review(rows: list[ImportReviewRow]) -> None:
+    print("Import candidates:")
+    person_names = {
+        row.id: str(row.candidate["name"])
+        for row in rows
+        if row.candidate["type"] == "person"
+    }
+    for row in rows:
+        candidate_id = row.id
+        candidate = row.candidate
+        candidate_type = candidate["type"]
+        if candidate_type == "person":
+            detail = candidate["name"]
+        elif candidate_type == "affiliation":
+            detail = f"{candidate['role']} at {candidate['org']} — {_import_owner(candidate, person_names)}"
+        elif candidate_type == "fact":
+            detail = f"{candidate['predicate']}={candidate['value']} — {_import_owner(candidate, person_names)}"
+        else:
+            detail = "summary-only interaction"
+        print(f"  {candidate_id}  {candidate_type}  {detail}")
+
+
+def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) -> str:
+    person_candidate_id = str(candidate["person_candidate_id"])
+    person_name = str(person_names.get(person_candidate_id, "unknown person"))
+    return f"{person_name} ({person_candidate_id})"
+
+
+def _cmd_demo(args: argparse.Namespace) -> int:
+    """Create only the dedicated fictional demo database."""
+    demo_path = _demo_db_path()
+    if _existing_demo_files(demo_path) and not args.reset:
+        print(f"Demo database already exists: {demo_path}. Use --reset to replace it.", file=sys.stderr)
+        return 1
+    if args.reset:
+        _remove_demo_files(demo_path)
+    ctx = _open_context_path(demo_path)
+    try:
+        people = _seed_demo(ctx)
+    finally:
+        ctx.conn.close()
+    _print_demo_instructions(demo_path, people)
+    return 0
+
+
+def _demo_db_path(env: dict[str, str] | None = None) -> Path:
+    values = os.environ if env is None else env
+    data_home = values.get("XDG_DATA_HOME")
+    if data_home:
+        base = Path(data_home).expanduser()
+    else:
+        home = values.get("HOME")
+        base = Path(home).expanduser() / ".local" / "share" if home else Path.home() / ".local" / "share"
+    return Path(os.path.abspath(base / "people-context" / _DEMO_FILENAME))
+
+
+def _existing_demo_files(demo_path: Path) -> list[Path]:
+    return [path for path in _demo_files(demo_path) if os.path.lexists(path)]
+
+
+def _remove_demo_files(demo_path: Path) -> None:
+    for path in _demo_files(demo_path):
+        path.unlink(missing_ok=True)
+
+
+def _demo_files(demo_path: Path) -> tuple[Path, Path, Path]:
+    return demo_path, Path(f"{demo_path}-wal"), Path(f"{demo_path}-shm")
+
+
+def _seed_demo(ctx: CliContext) -> dict[str, Person]:
+    records = SqliteRecordStore(ctx.conn)
+    organizations = SqliteOrganizationStore(ctx.conn)
+    relationships = ctx.relationship_store
+    vocabulary = ctx.relationship_vocabulary
+    if relationships is None or vocabulary is None:
+        raise RuntimeError("demo requires relationship adapters")
+    remember = RememberPerson(ctx.repo, ctx.repo, ctx.audit, ctx.clock)
+    set_affiliation = SetAffiliation(ctx.repo, organizations, records, ctx.audit, ctx.clock)
+    record_fact = RecordFact(ctx.repo, records, ctx.audit, ctx.clock)
+    record_interaction = RecordInteraction(ctx.repo, records, ctx.audit, ctx.clock)
+    set_relationship = SetRelationship(ctx.repo, relationships, ctx.audit, ctx.clock, vocabulary)
+
+    people: dict[str, Person] = {}
+    for seed in DEMO_PEOPLE:
+        aliases = [AliasInput(value=handle, kind=AliasKind.HANDLE) for handle in seed.handles]
+        people[seed.key] = remember.execute(
+            RememberPersonInput(
+                name=seed.name,
+                aliases=aliases,
+                summary=seed.summary,
+                is_self=seed.is_self,
+                source="demo",
+            )
+        ).person
+    for seed in DEMO_AFFILIATIONS:
+        set_affiliation.execute(
+            SetAffiliationInput(
+                person_id=people[seed.person_key].id,
+                org=seed.organization,
+                role=seed.role,
+                source="demo",
+            )
+        )
+    for seed in DEMO_FACTS:
+        record_fact.execute(
+            RecordFactInput(
+                person_id=people[seed.person_key].id,
+                predicate=seed.predicate,
+                value=seed.value,
+                valid_from=seed.valid_from,
+                source="demo",
+            )
+        )
+    for seed in DEMO_INTERACTIONS:
+        record_interaction.execute(
+            RecordInteractionInput(
+                summary=seed.summary,
+                participant_ids=[people[key].id for key in seed.participant_keys],
+                occurred_at=seed.occurred_at,
+                channel=seed.channel,
+                source="demo",
+            )
+        )
+    for seed in DEMO_RELATIONSHIPS:
+        set_relationship.execute(
+            SetRelationshipInput(
+                subject_id=people[seed.subject_key].id,
+                object_id=people[seed.object_key].id,
+                type=seed.relationship_type,
+                source="demo",
+            )
+        )
+    return people
+
+
+def _print_demo_instructions(demo_path: Path, people: dict[str, Person]) -> None:
+    print(f"Demo database: {demo_path}")
+    print(f"Start MCP server: people-context-mcp --db {shlex.quote(str(demo_path))}")
+    print(f'resolve_person {{"query": "{people["amina"].canonical_name}"}}')
+    print(f'get_relationship_graph {{"person_id": "{people["amina"].id}", "depth": 2}}')
+    print(
+        f'find_connection {{"person_a": "{people["self"].id}", '
+        f'"person_b": "{people["sofia"].id}"}}'
+    )
 
 
 def _cmd_list(ctx: CliContext, args: argparse.Namespace) -> int:

@@ -118,7 +118,7 @@ extract-and-stage import pipeline to the contact sources people actually export 
   existing `mbox` source;
 - fake-port, real-SQLite, in-memory MCP, CLI, packaging, and stdio E2E coverage.
 
-**Status:** Planned.
+**Status:** Delivered.
 
 ## M10 — Agent utilization
 

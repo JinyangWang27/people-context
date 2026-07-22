@@ -89,14 +89,14 @@ Check the matching box only in the PR that delivers it.
     malformed starts with stable reasons; never use host local timezone.
   - **Out:** recurrence expansion, DTEND/duration, LinkedIn, onboarding.
 
-- [ ] **M9.3 — LinkedIn connections CSV import**
+- [x] **M9.3 — LinkedIn connections CSV import**
   - **Scope:** Add extractor/router branch for person, optional affiliation, optional connected-date fact.
   - **Acceptance:** preserve earlier sources; tolerate documented header supersets; per-row independence; profile
     URL/free text excluded; normalized-email duplicate rows coalesce, while no-email same-name rows remain distinct;
     stable unique batch refs.
   - **Out:** onboarding commands.
 
-- [ ] **M9.4 — Safe `init` and packaged `demo`**
+- [x] **M9.4 — Safe `init` and packaged `demo`**
   - **Scope:** Compose existing use cases for onboarding; add deterministic dedicated demo database.
   - **Acceptance:** seed self first with handle aliases; own card/dependants excluded; on a fresh store a no-handle
     same-name card targets self. Non-empty/ambiguous state refuses before mutation unless one self target is

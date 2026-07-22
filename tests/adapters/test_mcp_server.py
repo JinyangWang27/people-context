@@ -363,6 +363,34 @@ def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None
     assert summary_sentinel not in str(reviewed)
 
 
+def test_linkedin_import_stages_safe_rows_and_reports_invalid_neighbors(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "linkedin.db")
+    url_sentinel = "MCP-LINKEDIN-URL-MUST-NOT-LEAK-71bd"
+    note_sentinel = "MCP-LINKEDIN-NOTE-MUST-NOT-LEAK-92ac"
+    content = "\n".join(
+        [
+            "First Name,Last Name,URL,Email Address,Company,Position,Connected On,Notes",
+            f"Alice,Example,{url_sentinel},alice@example.com,Acme,Engineer,04 Mar 2026,{note_sentinel}",
+            "Bad,Date,url,bad@example.com,Acme,Engineer,not-a-date,note",
+        ]
+    )
+
+    async def flow(client: ClientSession) -> Any:
+        imported = await client.call_tool("import_content", {"source_type": "linkedin", "content": content})
+        reviewed = await client.call_tool(
+            "review_import", {"batch_id": imported.structuredContent["batch_id"]}
+        )
+        return imported.structuredContent, reviewed.structuredContent
+
+    imported, reviewed = _run(server, flow)
+
+    assert imported["candidate_count"] == 3
+    assert imported["skipped_cards"] == [{"index": 2, "reason": "invalid_connected_on"}]
+    assert {row["source"] for row in reviewed["candidates"]} == {"import/linkedin"}
+    assert url_sentinel not in str((imported, reviewed))
+    assert note_sentinel not in str((imported, reviewed))
+
+
 def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "agent-stage.db")
 

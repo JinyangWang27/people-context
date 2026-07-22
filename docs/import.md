@@ -129,7 +129,8 @@ reach the real tables:
 
 ## Importers are adapters
 
-Import parsing lives in `adapters/email_import.py`, `adapters/vcard_import.py`, and `adapters/ics_import.py`,
+Import parsing lives in `adapters/email_import.py`, `adapters/vcard_import.py`, `adapters/ics_import.py`, and
+`adapters/linkedin_import.py`,
 dispatched by `adapters/import_router.py`, which produce candidates consumed by the shared app-layer import use
 cases. This means:
 
@@ -143,8 +144,14 @@ cases. This means:
 
 ## Status
 
-Email/mbox arrived in **M3**; vCard and strict agent staging are delivered in **M4**; `.ics` calendar
-attendee import arrived in **M9**. Email extraction uses
+Email/mbox arrived in **M3**; vCard and strict agent staging are delivered in **M4**; `.ics` calendar attendee and
+LinkedIn Connections CSV imports arrived in **M9**. LinkedIn import requires the canonical `First Name`, `Last Name`,
+`URL`, `Email Address`, `Company`, `Position`, and `Connected On` headers while allowing extra columns. It coalesces
+rows only by normalized email, stages affiliations only when company and position are both present, and accepts
+connected dates as `DD Mon YYYY` or `YYYY-MM-DD`. The export's notice preamble is discarded before the canonical
+header; profile URLs, notes, and other free text are never staged.
+
+Email extraction uses
 only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;
 correspondents are deduplicated by normalized address across a batch, self handle aliases are filtered, and
 missing/invalid dates retain person candidates while omitting the interaction. Successful staging ids are
