@@ -92,9 +92,26 @@ def test_routes_ics_content_to_ics_extractor() -> None:
     assert interactions[0]["summary"] == "Calendar event"
 
 
+def test_routes_linkedin_content_to_linkedin_extractor() -> None:
+    content = "\n".join(
+        [
+            "First Name,Last Name,URL,Email Address,Company,Position,Connected On",
+            "Alice,Example,url,alice@example.com,,,,",
+        ]
+    )
+
+    extracted = ImportExtractorRouter().extract(
+        "linkedin", content=content, path=None, self_addresses=set()
+    )
+
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "Alice Example"
+    ]
+
+
 def test_unknown_source_type_reports_supported_values() -> None:
     with pytest.raises(ImportExtractionError) as error:
         ImportExtractorRouter().extract("unknown", content="value", path=None, self_addresses=set())
 
     assert error.value.code == "invalid_source_type"
-    assert str(error.value) == "source_type must be 'email', 'mbox', 'vcard', or 'ics'"
+    assert str(error.value) == "source_type must be 'email', 'mbox', 'vcard', 'ics', or 'linkedin'"

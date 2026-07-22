@@ -89,7 +89,7 @@ Check the matching box only in the PR that delivers it.
     malformed starts with stable reasons; never use host local timezone.
   - **Out:** recurrence expansion, DTEND/duration, LinkedIn, onboarding.
 
-- [ ] **M9.3 — LinkedIn connections CSV import**
+- [x] **M9.3 — LinkedIn connections CSV import**
   - **Scope:** Add extractor/router branch for person, optional affiliation, optional connected-date fact.
   - **Acceptance:** preserve earlier sources; tolerate documented header supersets; per-row independence; profile
     URL/free text excluded; normalized-email duplicate rows coalesce, while no-email same-name rows remain distinct;
