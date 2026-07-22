@@ -210,8 +210,15 @@ def _iter_events(lines: list[str]) -> list[_Event]:
                 events.append(current)
         elif upper == "END":
             component = value.strip().upper()
-            if stack:
+            if stack and stack[-1] == component:
                 stack.pop()
+            else:
+                # A mismatched or stray END means the component nesting is malformed;
+                # the active event cannot be trusted structurally.
+                if current is not None:
+                    current.malformed = True
+                while component in stack and stack.pop() != component:
+                    pass
             if component == "VEVENT":
                 current = None
         elif current is not None and stack and stack[-1] == "VEVENT":
@@ -241,9 +248,12 @@ def _apply_property(event: _Event, name: str, params: dict[str, str], value: str
 
 def _mailto_address(value: str) -> str:
     stripped = value.strip()
-    if stripped.lower().startswith("mailto:"):
-        return stripped[len("mailto:") :].strip()
-    return ""
+    if not stripped.lower().startswith("mailto:"):
+        return ""
+    address = stripped[len("mailto:") :].strip()
+    # An RFC 6068 mailto URI may carry ?header=value query fields (e.g. ?subject=...);
+    # keep only the address so query text never becomes a handle and self matching holds.
+    return address.split("?", maxsplit=1)[0].strip()
 
 
 def _split_property(line: str) -> tuple[str, dict[str, str], str]:

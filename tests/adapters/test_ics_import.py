@@ -207,6 +207,59 @@ def test_ics_skips_missing_dtstart_and_self_only_events_independently() -> None:
     assert [person["ref"] for person in people] == ["bob@example.com"]
 
 
+def test_ics_strips_mailto_query_fields_and_still_matches_self() -> None:
+    query_sentinel = "ICS-MAILTO-QUERY-MUST-NOT-LEAK-3a19"
+    content = "\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "DTSTART:20260304T090600Z",
+            f"ATTENDEE;CN=Alice Example:mailto:alice@example.com?subject={query_sentinel}",
+            f"ATTENDEE:mailto:owner@example.com?cc={query_sentinel}",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
+
+    extracted = IcsImportExtractor().extract(
+        "ics",
+        content=content,
+        path=None,
+        self_addresses={"owner@example.com"},
+    )
+
+    people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
+    assert [person["ref"] for person in people] == ["alice@example.com"]
+    assert people[0]["aliases"][0] == {"value": "alice@example.com", "kind": "handle"}
+    interactions = [candidate for candidate in extracted.candidates if candidate["type"] == "interaction"]
+    assert interactions[0]["participant_refs"] == ["alice@example.com"]
+    assert query_sentinel not in repr(extracted)
+
+
+def test_ics_mismatched_component_end_marks_event_malformed() -> None:
+    content = "\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "DTSTART:20260304T090600Z",
+            "ATTENDEE:mailto:alice@example.com",
+            "BEGIN:VALARM",
+            "END:VEVENT",  # closes VEVENT while VALARM is still open
+            "BEGIN:VEVENT",
+            "DTSTART:20260305T090600Z",
+            "ATTENDEE:mailto:bob@example.com",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
+
+    extracted = IcsImportExtractor().extract("ics", content=content, path=None, self_addresses=set())
+
+    assert extracted.skipped_cards == [{"index": 1, "reason": "malformed_event"}]
+    people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
+    assert [person["ref"] for person in people] == ["bob@example.com"]
+
+
 def test_ics_one_malformed_event_does_not_block_neighbors() -> None:
     content = "\n".join(
         [
