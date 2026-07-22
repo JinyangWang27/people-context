@@ -18,6 +18,7 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+from people_context.adapters.import_router import ImportExtractorRouter
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DIMENSION,
@@ -48,7 +49,6 @@ from people_context.adapters.sqlite import (
     open_db,
     open_sqlite_vector_index,
 )
-from people_context.adapters.vcard_import import ImportExtractorRouter
 from people_context.app import (
     AddAlias,
     CandidateStager,

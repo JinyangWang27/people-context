@@ -6,7 +6,7 @@ import quopri
 from dataclasses import dataclass
 from pathlib import Path
 
-from people_context.adapters.email_import import EmailImportExtractor, ImportExtractionError
+from people_context.adapters.email_import import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
@@ -20,36 +20,6 @@ class _Property:
     name: str
     params: dict[str, str]
     raw_value: str
-
-
-class ImportExtractorRouter:
-    """Route supported source types to a dedicated extractor."""
-
-    def __init__(self) -> None:
-        self._email = EmailImportExtractor()
-        self._vcard = VCardImportExtractor()
-
-    def extract(
-        self,
-        source_type: str,
-        *,
-        content: str | None,
-        path: str | None,
-        self_addresses: set[str],
-    ) -> ExtractedImport:
-        if source_type == "vcard":
-            return self._vcard.extract(
-                source_type,
-                content=content,
-                path=path,
-                self_addresses=self_addresses,
-            )
-        return self._email.extract(
-            source_type,
-            content=content,
-            path=path,
-            self_addresses=self_addresses,
-        )
 
 
 class VCardImportExtractor:
