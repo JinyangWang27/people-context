@@ -12,6 +12,8 @@ curation, so validation, audit, HLC, and changelog capture match MCP writes.
 | Command | Purpose |
 |---|---|
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
+| `init` | Safely seed or add to the self identity, optionally review a vCard import, and set a philosophy. |
+| `demo [--reset]` | Seed the isolated packaged fictional demo; refuse replacement unless `--reset` is supplied. |
 | `list [--all] [--limit N]` | List people; `--all` includes soft-deleted rows. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
@@ -30,6 +32,31 @@ curation, so validation, audit, HLC, and changelog capture match MCP writes.
 
 `show`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown references exit
 1; ambiguous names exit 2 and print candidates rather than guessing.
+
+## Onboarding
+
+```bash
+uv run people-context init
+```
+
+On a fresh database, `init` asks for a canonical self name and optional comma-separated email handles. On a
+non-empty database it continues only when one unambiguous active self already exists and the operator confirms
+additive onboarding; it keeps that person's id and canonical name. Optional vCard intake uses the existing
+stage/review/commit gate and commits only the candidate ids entered at the prompt. The self identity exists before
+the file is parsed, so a card matching a self handle is excluded with all its dependent candidates. The optional
+one-line communication philosophy is prompted last.
+
+## Packaged demo
+
+```bash
+uv run people-context demo --reset
+```
+
+The demo always uses the absolute `{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db` path. It ignores the
+global `--db` option, `PEOPLE_CONTEXT_DB`, config files, and workspace discovery, and `--reset` removes only that
+database plus its explicit `-wal` and `-shm` companions. The command seeds fictional audited people, handles,
+affiliations, facts, interactions, and a connected relationship graph, then prints the path-targeted server command
+and concrete `resolve_person`, `get_relationship_graph`, and `find_connection` calls using the created ids.
 
 ## Relationship vocabulary
 
@@ -97,6 +124,7 @@ The CLI and server use the same first-match order:
 5. `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db`.
 
 Paths are expanded and parent directories are created only when SQLite opens the selected database.
+The dedicated `demo` path is the documented exception: it is deliberately isolated from this resolution chain.
 
 ## Direct SQLite access
 

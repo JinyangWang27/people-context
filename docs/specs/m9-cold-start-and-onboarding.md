@@ -1,6 +1,6 @@
 # M9 — Cold start & onboarding
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m9--cold-start--onboarding).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m9--cold-start--onboarding).
 
 ## Motivation
 
@@ -159,8 +159,8 @@ The existing free-string `import_content` tool accepts `ics` and `linkedin`; res
 - App fake-port and real-SQLite tests plus in-memory MCP and one stdio E2E case.
 - `uv run ruff check .` and `uv run pytest -q` fully green.
 
-## Open questions
+## Implementation decisions
 
-1. Should a shared RFC 5545/6350 line/property parser be extracted now or after both adapters stabilize?
-2. Which historical LinkedIn header variants should be fixture-backed at first release?
-3. Should demo data be Python constants or declared JSON package data?
+- The independently tested iCalendar and vCard parsers remain separate; no speculative shared parser was added.
+- LinkedIn accepts only the canonical documented headers while allowing arbitrary extra columns.
+- Immutable typed Python constants under `src/people_context/` are the packaged demo source.
