@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from people_context.adapters.email_import import EmailImportExtractor, ImportExtractionError
+from people_context.adapters.ics_import import IcsImportExtractor
 from people_context.adapters.vcard_import import VCardImportExtractor
 from people_context.ports.imports import ExtractedImport
 
@@ -13,6 +14,7 @@ class ImportExtractorRouter:
     def __init__(self) -> None:
         self._email = EmailImportExtractor()
         self._vcard = VCardImportExtractor()
+        self._ics = IcsImportExtractor()
 
     def extract(
         self,
@@ -37,7 +39,14 @@ class ImportExtractorRouter:
                 path=path,
                 self_addresses=self_addresses,
             )
+        if source_type == "ics":
+            return self._ics.extract(
+                source_type,
+                content=content,
+                path=path,
+                self_addresses=self_addresses,
+            )
         raise ImportExtractionError(
             "invalid_source_type",
-            "source_type must be 'email', 'mbox', or 'vcard'",
+            "source_type must be 'email', 'mbox', 'vcard', or 'ics'",
         )

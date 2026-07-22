@@ -1,7 +1,7 @@
 # Import
 
 This document describes the extract-and-stage import pipeline for bringing external content — email/mbox,
-vCard, and agent-extracted notes candidates —
+vCard, `.ics` calendar attendees, and agent-extracted notes candidates —
 into `people-context` without ever persisting raw source material. Import was delivered in **M3** (see
 [docs/roadmap.md](roadmap.md)); the `import_staging` table lives in the initial schema (see
 [docs/data-model.md](data-model.md#import_staging)).
@@ -12,7 +12,7 @@ Import is a four-step flow across four MCP tools (see [docs/mcp-interface.md](mc
 
 ```
    source/candidates      candidates staged           user review              committed
- (.eml/mbox/vCard) ─────►  in import_staging   ─────►  (accept/reject)  ─────►  real tables
+ (.eml/mbox/vCard/.ics)─►  in import_staging   ─────►  (accept/reject)  ─────►  real tables
                 import_content              review_import            commit_import
 ```
 
@@ -69,6 +69,37 @@ are independent: one malformed card never blocks valid neighbors, including in l
 - `NOTE`, `PHOTO`, `ADR`, `TEL`, and X-properties are discarded before decoding/staging. If every card is
   skipped, no batch is created and `no_candidates` carries `skipped_cards`.
 
+## iCalendar (.ics) calendar attendees
+
+`source_type="ics"` accepts exactly one UTF-8 content string or path and processes each `VEVENT`
+independently using RFC 5545 line unfolding. Only attendee identities and a single start time are retained;
+`SUMMARY`, `DESCRIPTION`, `LOCATION`, conference URLs, and every other free-text property are parsed
+in-memory and discarded. The interaction summary is the fixed neutral string `Calendar event`.
+
+- Only `ATTENDEE` properties carrying a non-empty `mailto:` address become external person candidates.
+  Addresses are normalized and deduplicated across the whole file, differing `CN` display names accumulate as
+  `other` aliases, and the address itself is staged as a `handle` alias. `ATTENDEE` lines nested inside a
+  `VALARM` and non-attendee properties such as `ORGANIZER` are ignored.
+- Addresses matching the stored self handles are excluded from both person candidates and participant
+  references. An event with no external attendee after that filtering produces no interaction and is counted
+  with a stable `no_external_attendee` skip reason; an empty participant list is never staged.
+- Every accepted `VEVENT` yields at most one interaction candidate at its parsed start. The event `UID`, when
+  present, is retained only as a narrow provenance reference (analogous to an email `Message-Id`).
+
+`DTSTART` is converted to a timezone-aware UTC `datetime` using only explicit, portable forms; the host's
+local timezone is never consulted:
+
+- a UTC date-time ending in `Z` is parsed and kept in UTC;
+- a local date-time with a resolvable `TZID` is attached to that `zoneinfo` zone and normalized to UTC;
+- an all-day `VALUE=DATE` value is represented deterministically as `00:00:00Z` for that calendar day.
+
+A floating date-time with neither `Z` nor `TZID` is skipped as `floating_dtstart_unsupported`. An unresolvable
+`TZID` (`unknown_tzid`), a DST-ambiguous wall time (`ambiguous_dtstart`), a nonexistent spring-forward wall
+time (`nonexistent_dtstart`), an impossible timestamp (`invalid_dtstart`), a missing `DTSTART`
+(`missing_dtstart`), or an otherwise malformed property/event (`malformed_dtstart` / `malformed_event`) is
+skipped with that stable one-based reason. `DTEND`, duration, recurrence expansion, and cancelled status are
+out of scope.
+
 ## Agent candidate staging
 
 `stage_candidates` uses extra-forbidden Pydantic discriminated models for person, interaction, affiliation,
@@ -98,8 +129,9 @@ reach the real tables:
 
 ## Importers are adapters
 
-Import parsing lives in `adapters/email_import.py` and `adapters/vcard_import.py`, which produce candidates consumed
-by the shared app-layer import use cases. This means:
+Import parsing lives in `adapters/email_import.py`, `adapters/vcard_import.py`, and `adapters/ics_import.py`,
+dispatched by `adapters/import_router.py`, which produce candidates consumed by the shared app-layer import use
+cases. This means:
 
 - The staging/review/commit flow, the `import_staging` schema, and the provenance rules are shared across
   every source type, including agent-side extraction.
@@ -111,7 +143,8 @@ by the shared app-layer import use cases. This means:
 
 ## Status
 
-Email/mbox arrived in **M3**; vCard and strict agent staging are delivered in **M4**. Email extraction uses
+Email/mbox arrived in **M3**; vCard and strict agent staging are delivered in **M4**; `.ics` calendar
+attendee import arrived in **M9**. Email extraction uses
 only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;
 correspondents are deduplicated by normalized address across a batch, self handle aliases are filtered, and
 missing/invalid dates retain person candidates while omitting the interaction. Successful staging ids are

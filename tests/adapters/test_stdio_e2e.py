@@ -277,6 +277,56 @@ def test_real_stdio_mbox_import_commit_and_resolve(tmp_path: Path) -> None:
     assert resolved["candidates"][0]["canonical_name"] == "Alice Example"
 
 
+def test_real_stdio_ics_import_commit_and_resolve(tmp_path: Path) -> None:
+    uv = shutil.which("uv")
+    assert uv is not None
+    project_root = Path(__file__).parents[2]
+    db_path = tmp_path / "m9-ics-stdio.db"
+    ics_path = tmp_path / "calendar.ics"
+    ics_path.write_text(
+        "\n".join(
+            [
+                "BEGIN:VCALENDAR",
+                "VERSION:2.0",
+                "BEGIN:VEVENT",
+                "UID:stdio-event@example.com",
+                "SUMMARY:ICS-STDIO-SUMMARY-MUST-NOT-LEAK",
+                "DTSTART:20260304T090600Z",
+                "ATTENDEE;CN=Alice Example:mailto:alice@example.com",
+                "ATTENDEE;CN=Bob Example:mailto:bob@example.com",
+                "END:VEVENT",
+                "END:VCALENDAR",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    parameters = StdioServerParameters(
+        command=uv,
+        args=["run", "people-context-mcp", "--db", str(db_path)],
+        cwd=project_root,
+    )
+
+    async def flow() -> tuple[dict[str, Any], dict[str, Any]]:
+        async with (
+            stdio_client(parameters) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as client,
+        ):
+            await client.initialize()
+            imported = await client.call_tool("import_content", {"source_type": "ics", "path": str(ics_path)})
+            batch_id = imported.structuredContent["batch_id"]
+            reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
+            accepted_ids = [row["id"] for row in reviewed.structuredContent["candidates"]]
+            await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": accepted_ids})
+            resolved = await client.call_tool("resolve_person", {"query": "alice@example.com"})
+            return imported.structuredContent, resolved.structuredContent
+
+    imported, resolved = anyio.run(flow)
+
+    assert imported["candidate_count"] == 3
+    assert resolved["candidates"][0]["canonical_name"] == "Alice Example"
+
+
 def test_real_stdio_graph_then_cli_vault_export_uses_matching_links(tmp_path: Path) -> None:
     uv = shutil.which("uv")
     assert uv is not None

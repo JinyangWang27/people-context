@@ -322,6 +322,47 @@ def test_all_invalid_vcards_return_no_candidates_with_skip_details(tmp_path: Pat
     assert payload["skipped_cards"] == [{"index": 1, "reason": "missing_fn"}]
 
 
+def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "ics.db")
+    summary_sentinel = "MCP-ICS-SUMMARY-MUST-NOT-LEAK-71bd"
+    content = "\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:mcp-event@example.com",
+            f"SUMMARY:{summary_sentinel}",
+            "DTSTART:20260304T090600Z",
+            "ATTENDEE;CN=Alice Example:mailto:alice@example.com",
+            "ATTENDEE:mailto:bob@example.com",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "DTSTART:20260305T090600",
+            "ATTENDEE:mailto:carol@example.com",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
+
+    async def flow(client: ClientSession) -> Any:
+        imported = await client.call_tool("import_content", {"source_type": "ics", "content": content})
+        reviewed = await client.call_tool(
+            "review_import", {"batch_id": imported.structuredContent["batch_id"]}
+        )
+        return imported.structuredContent, reviewed.structuredContent
+
+    imported, reviewed = _run(server, flow)
+
+    assert imported["candidate_count"] == 3
+    assert imported["skipped_cards"] == [{"index": 2, "reason": "floating_dtstart_unsupported"}]
+    summaries = [
+        row["candidate"]["summary"]
+        for row in reviewed["candidates"]
+        if row["candidate"]["type"] == "interaction"
+    ]
+    assert summaries == ["Calendar event"]
+    assert summary_sentinel not in str(reviewed)
+
+
 def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "agent-stage.db")
 

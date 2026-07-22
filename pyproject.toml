@@ -18,7 +18,7 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["mcp>=1.2,<2", "pydantic>=2.7", "python-ulid>=2.2"]
+dependencies = ["mcp>=1.2,<2", "pydantic>=2.7", "python-ulid>=2.2", "tzdata>=2024.1"]
 
 [project.urls]
 Homepage = "https://github.com/JinyangWang27/people-context"

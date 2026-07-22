@@ -81,7 +81,7 @@ Check the matching box only in the PR that delivers it.
     path-only semantics and E2E behavior.
   - **Out:** ICS and LinkedIn implementations.
 
-- [ ] **M9.2 — ICS attendee import with explicit time semantics**
+- [x] **M9.2 — ICS attendee import with explicit time semantics**
   - **Scope:** Add `IcsImportExtractor`, router branch, adapter/app/MCP tests.
   - **Acceptance:** cross-event email dedup/alternate names; self omitted from people/refs; self-only event omitted;
     neutral summary and raw-content sentinels absent everywhere. Support UTC `Z`, resolvable `TZID` normalized to

@@ -70,9 +70,31 @@ def test_routes_vcard_content_to_vcard_extractor() -> None:
     ]
 
 
+def test_routes_ics_content_to_ics_extractor() -> None:
+    content = "\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "DTSTART:20260304T090600Z",
+            "ATTENDEE;CN=Alice Example:mailto:alice@example.com",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
+
+    extracted = ImportExtractorRouter().extract("ics", content=content, path=None, self_addresses=set())
+
+    assert [candidate["ref"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "alice@example.com"
+    ]
+    interactions = [candidate for candidate in extracted.candidates if candidate["type"] == "interaction"]
+    assert len(interactions) == 1
+    assert interactions[0]["summary"] == "Calendar event"
+
+
 def test_unknown_source_type_reports_supported_values() -> None:
     with pytest.raises(ImportExtractionError) as error:
         ImportExtractorRouter().extract("unknown", content="value", path=None, self_addresses=set())
 
     assert error.value.code == "invalid_source_type"
-    assert str(error.value) == "source_type must be 'email', 'mbox', or 'vcard'"
+    assert str(error.value) == "source_type must be 'email', 'mbox', 'vcard', or 'ics'"
