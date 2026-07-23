@@ -4,12 +4,27 @@ on:
   release:
     types:
       - published
+  workflow_dispatch:
 
 permissions: read-all
 
 jobs:
+  verify-tag:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a version tag
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          if [[ "$RELEASE_REF" != refs/tags/v* ]]; then
+            echo "::error::Run this workflow from a v* release tag, not $RELEASE_REF."
+            exit 1
+          fi
+
   build:
     name: Build distributions
+    needs: verify-tag
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
