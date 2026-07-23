@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from people_context.app.semantic.indexing import SemanticIndexUpdater
 from people_context.domain.fact import Fact
@@ -15,7 +15,9 @@ from people_context.domain.person import Person
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.trait import Trait
-from people_context.ports.lifecycle import ForgetStoreResult, LifecycleStore, MergeStoreResult
+from people_context.ports.forget import ForgetPreviewStore, ForgetStore
+from people_context.ports.lifecycle import ForgetStoreResult, MergeStoreResult
+from people_context.ports.merge import MergeStore
 from people_context.ports.records import Record, RecordReader, RecordWriter
 from people_context.ports.repository import PersonReader, PersonSearchIndexer, PersonWriter, SearchHit
 
@@ -140,12 +142,12 @@ class IndexingRecordStore:
             self._warn(f"Semantic index refresh failed: {exc}. {_WARNING_SUFFIX}")
 
 
-class IndexingLifecycleStore:
-    """Delegate atomic lifecycle mutations, then repair affected entity vectors."""
+class IndexingMergeStore:
+    """Delegate atomic person merges, then repair affected person vectors."""
 
     def __init__(
         self,
-        delegate: LifecycleStore,
+        delegate: MergeStore,
         updater: SemanticIndexUpdater,
         warn: Callable[[str], None],
     ) -> None:
@@ -159,15 +161,49 @@ class IndexingLifecycleStore:
         self._best_effort(lambda: self._updater.delete(duplicate_id))
         return result
 
+    @property
+    def unit_of_work(self):
+        """Forward an adapter-provided transaction boundary when present."""
+        return getattr(self._delegate, "unit_of_work", None)
+
+    @property
+    def audit_log(self):
+        """Forward the lifecycle adapter's paired mutation journal."""
+        return self._delegate.audit_log
+
+    def _best_effort(self, operation: Callable[[], None]) -> None:
+        try:
+            operation()
+        except Exception as exc:  # noqa: BLE001 - derived index must never fail the primary write
+            self._warn(f"Semantic index refresh failed: {exc}. {_WARNING_SUFFIX}")
+
+
+class _ForgetLifecycleStore(ForgetStore, ForgetPreviewStore, Protocol):
+    """Combined adapter shape used only by the semantic decorator."""
+
+
+class IndexingForgetStore:
+    """Delegate forget operations, then remove affected derived vectors."""
+
+    def __init__(
+        self,
+        delegate: _ForgetLifecycleStore,
+        updater: SemanticIndexUpdater,
+        warn: Callable[[str], None],
+    ) -> None:
+        self._delegate = delegate
+        self._updater = updater
+        self._warn = warn
+
     def forget_person(self, person_id: str) -> ForgetStoreResult:
-        counts = self._delegate.forget_person(person_id)
+        result = self._delegate.forget_person(person_id)
         self._best_effort(lambda: self._updater.delete(person_id))
-        return counts
+        return result
 
     def forget_record(self, entity_type: str, entity_id: str) -> ForgetStoreResult:
-        counts = self._delegate.forget_record(entity_type, entity_id)
+        result = self._delegate.forget_record(entity_type, entity_id)
         self._best_effort(lambda: self._updater.delete(entity_id))
-        return counts
+        return result
 
     def preview_person_forget(self, person_id: str) -> dict[str, int]:
         return self._delegate.preview_person_forget(person_id)
@@ -179,7 +215,7 @@ class IndexingLifecycleStore:
 
     @property
     def audit_log(self):
-        """Forward the lifecycle adapter's paired mutation journal."""
+        """Forward the forget adapter's paired mutation journal."""
         return self._delegate.audit_log
 
     def _best_effort(self, operation: Callable[[], None]) -> None:

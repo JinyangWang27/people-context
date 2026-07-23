@@ -11,7 +11,7 @@ from people_context.adapters.filesystem.vault_writer import sanitize_filename
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteChangelog,
-    SqliteLifecycleStore,
+    SqliteMergeStore,
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRelationshipStore,
@@ -104,7 +104,7 @@ def test_merge_dedupes_overlapping_parallel_edges_and_keeps_history() -> None:
         )
     )
 
-    result = MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute(primary.id, duplicate.id)
+    result = MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
 
     assert result.duplicate_relationships_removed == 1
     remaining = [
@@ -154,7 +154,7 @@ def test_merge_never_dedupes_preexisting_primary_edges() -> None:
         )
     conn.commit()
 
-    result = MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute(primary.id, duplicate.id)
+    result = MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
 
     assert result.duplicate_relationships_removed == 0
     remaining = {row.id for row in SqliteRelationshipStore(conn).list_relationships()}
@@ -174,7 +174,7 @@ def test_merge_recanonicalizes_symmetric_edges_so_reassert_updates_in_place() ->
     set_relationship = SetRelationship(people, store, audit, clock, vocabulary)
     set_relationship.execute(SetRelationshipInput(subject_id="id-a-dup", object_id="id-b-third", type="friend_of"))
 
-    MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute("id-c-primary", "id-a-dup")
+    MergePeople(people, SqliteMergeStore(conn), clock, audit).execute("id-c-primary", "id-a-dup")
     (edge,) = SqliteRelationshipStore(conn).list_relationships()
     assert (edge.subject_id, edge.object_id) == ("id-b-third", "id-c-primary"), "must stay ID-ordered"
 

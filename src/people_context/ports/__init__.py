@@ -7,8 +7,9 @@ from people_context.ports.changelog import Changelog, ChangelogEntry
 from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.context import AffiliationRecord, PersonContextReader, RelationshipRecord
 from people_context.ports.export import ExportReader, ExportSnapshot
+from people_context.ports.forget import ForgetPreviewStore, ForgetStore
 from people_context.ports.hlc import HlcTimestamp, HybridLogicalClock
-from people_context.ports.lifecycle import LifecycleStore
+from people_context.ports.merge import MergeStore
 from people_context.ports.records import OrganizationStore, PreferencesStore, Record, RecordReader, RecordWriter
 from people_context.ports.repository import PersonReader, PersonSearchIndexer, PersonWriter, SearchHit
 from people_context.ports.semantic import (
@@ -37,7 +38,9 @@ __all__ = [
     "EmbeddingProvider",
     "HlcTimestamp",
     "HybridLogicalClock",
-    "LifecycleStore",
+    "ForgetPreviewStore",
+    "ForgetStore",
+    "MergeStore",
     "NullUnitOfWork",
     "PersonReader",
     "PersonSearchIndexer",

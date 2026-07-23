@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from people_context.adapters.email_import import ImportExtractionError
-from people_context.adapters.import_router import ImportExtractorRouter
-from people_context.adapters.linkedin_import import LinkedInImportExtractor
+from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.linkedin import LinkedInImportExtractor
+from people_context.adapters.importers.router import ImportExtractorRouter
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteImportStagingStore,

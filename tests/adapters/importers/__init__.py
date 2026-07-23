@@ -1,0 +1,1 @@
+"""Importer adapter tests."""

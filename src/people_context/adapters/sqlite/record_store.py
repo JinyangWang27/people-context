@@ -1,8 +1,7 @@
-"""SQLite persistence for M2 records, organizations, and preferences."""
+"""SQLite persistence for assertive records and reminders."""
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from collections.abc import Callable
 from datetime import date, datetime
@@ -12,12 +11,11 @@ from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
-from people_context.domain.organization import Affiliation, Organization
+from people_context.domain.organization import Affiliation
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
-from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
+from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod
 from people_context.domain.trait import Trait, TraitCategory
-from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.records import Record
 
 _TABLES = {
@@ -225,58 +223,6 @@ class SqliteRecordStore:
         )
 
 
-class SqliteOrganizationStore:
-    """SQLite organization lookup and persistence."""
-
-    def __init__(self, conn: sqlite3.Connection) -> None:
-        self._conn = conn
-
-    def get(self, org_id: str) -> Organization | None:
-        row = self._conn.execute("SELECT * FROM organizations WHERE id = ?", (org_id,)).fetchone()
-        return _organization(row) if row else None
-
-    def get_by_normalized_name(self, normalized_name: str) -> Organization | None:
-        row = self._conn.execute(
-            "SELECT * FROM organizations WHERE name_normalized = ? ORDER BY id LIMIT 1",
-            (normalized_name,),
-        ).fetchone()
-        return _organization(row) if row else None
-
-    def save(self, organization: Organization) -> None:
-        with SqliteUnitOfWork(self._conn):
-            self._conn.execute(
-                """INSERT INTO organizations (id, name, name_normalized, kind) VALUES (?, ?, ?, ?)
-                   ON CONFLICT(id) DO UPDATE SET
-                       name = excluded.name,
-                       name_normalized = excluded.name_normalized,
-                       kind = excluded.kind""",
-                (organization.id, organization.name, normalize_name(organization.name), organization.kind),
-            )
-
-
-class SqlitePreferencesStore:
-    """SQLite string preference store using JSON values."""
-
-    def __init__(self, conn: sqlite3.Connection, clock: Clock | None = None) -> None:
-        self._conn = conn
-        self._clock = clock or SystemClock()
-
-    def get(self, key: str) -> str | None:
-        row = self._conn.execute("SELECT value_json FROM user_preferences WHERE key = ?", (key,)).fetchone()
-        if row is None:
-            return None
-        value = json.loads(row["value_json"])
-        return value if isinstance(value, str) else None
-
-    def set(self, key: str, value: str) -> None:
-        with SqliteUnitOfWork(self._conn):
-            self._conn.execute(
-                """INSERT INTO user_preferences (key, value_json, updated_at) VALUES (?, ?, ?)
-                   ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at""",
-                (key, json.dumps(value, ensure_ascii=False), self._clock.now().isoformat()),
-            )
-
-
 def _period_values(period: ValidityPeriod) -> dict[str, str | None]:
     return {
         "valid_from": period.valid_from.isoformat() if period.valid_from else None,
@@ -404,10 +350,6 @@ def _reminder(row: sqlite3.Row, _: Callable[[str], list[str]] | None = None) -> 
         status=ReminderStatus(row["status"]),
         created_at=datetime.fromisoformat(row["created_at"]),
     )
-
-
-def _organization(row: sqlite3.Row) -> Organization:
-    return Organization(id=row["id"], name=row["name"], kind=row["kind"])
 
 
 _HYDRATORS: dict[str, Callable[[sqlite3.Row, Callable[[str], list[str]]], Record]] = {

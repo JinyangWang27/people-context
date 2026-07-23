@@ -9,7 +9,8 @@ import pytest
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteChangelog,
-    SqliteLifecycleStore,
+    SqliteForgetStore,
+    SqliteMergeStore,
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
@@ -166,7 +167,7 @@ def test_merge_emits_child_operations_and_parent_manifest_in_one_transaction() -
     conn.execute("DELETE FROM changelog")
     conn.commit()
 
-    MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute(primary.id, duplicate.id)
+    MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
 
     entries = SqliteChangelog(conn).list_entries(limit=100)
     assert len({entry.transaction_id for entry in entries}) == 1
@@ -201,7 +202,7 @@ def test_merge_rolls_back_when_child_changelog_capture_fails() -> None:
     def fail(_: str) -> None:
         raise RuntimeError("merge changelog failure")
 
-    lifecycle = SqliteLifecycleStore(conn, changelog_failure_hook=fail)
+    lifecycle = SqliteMergeStore(conn, changelog_failure_hook=fail)
     with pytest.raises(RuntimeError, match="merge changelog failure"):
         MergePeople(people, lifecycle, clock).execute(primary.id, duplicate.id)
 
@@ -224,11 +225,11 @@ def test_merge_then_forget_redacts_all_person_content_and_retains_id_only_tombst
     fact = RecordFact(people, records, audit, clock).execute(
         RecordFactInput(person_id=duplicate.id, predicate="private", value=sentinel)
     )
-    MergePeople(people, SqliteLifecycleStore(conn), clock, audit).execute(primary.id, duplicate.id)
+    MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
 
     from people_context.app.people import Forget
 
-    Forget(people, SqliteLifecycleStore(conn), clock, audit).execute(primary.id, "person")
+    Forget(people, SqliteForgetStore(conn), clock, audit).execute(primary.id, "person")
 
     payloads = [row["payload_json"] for row in conn.execute("SELECT payload_json FROM changelog").fetchall()]
     assert all(sentinel not in payload for payload in payloads)
@@ -267,7 +268,7 @@ def test_record_then_person_forget_keeps_both_tombstones_and_no_record_content()
     )
     from people_context.app.people import Forget
 
-    forget = Forget(people, SqliteLifecycleStore(conn), clock, audit)
+    forget = Forget(people, SqliteForgetStore(conn), clock, audit)
     forget.execute(f"fact:{fact.id}", "record")
     forget.execute(person.id, "person")
 
@@ -305,7 +306,7 @@ def test_forget_rolls_back_deletion_redaction_audit_hlc_and_tombstone_on_capture
 
     from people_context.app.people import Forget
 
-    lifecycle = SqliteLifecycleStore(conn, changelog_failure_hook=fail)
+    lifecycle = SqliteForgetStore(conn, changelog_failure_hook=fail)
     with pytest.raises(RuntimeError, match="forget changelog failure"):
         Forget(people, lifecycle, clock).execute(person.id, "person")
 

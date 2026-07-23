@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from people_context.adapters.email_import import EmailImportExtractor, ImportExtractionError
+from people_context.adapters.importers.email import EmailImportExtractor, ImportExtractionError
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteImportStagingStore,

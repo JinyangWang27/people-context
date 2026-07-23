@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from people_context.adapters.email_import import ImportExtractionError
+from people_context.adapters.importers.email import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport

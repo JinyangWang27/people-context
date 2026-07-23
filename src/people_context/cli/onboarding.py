@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from people_context.adapters.email_import import ImportExtractionError
+from people_context.adapters.importers.email import ImportExtractionError
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.context import SetCommunicationPhilosophyInput
 from people_context.app.imports import ImportPipelineError

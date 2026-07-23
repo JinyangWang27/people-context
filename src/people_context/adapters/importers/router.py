@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from people_context.adapters.email_import import EmailImportExtractor, ImportExtractionError
-from people_context.adapters.ics_import import IcsImportExtractor
-from people_context.adapters.linkedin_import import LinkedInImportExtractor
-from people_context.adapters.vcard_import import VCardImportExtractor
+from people_context.adapters.importers.email import EmailImportExtractor, ImportExtractionError
+from people_context.adapters.importers.ics import IcsImportExtractor
+from people_context.adapters.importers.linkedin import LinkedInImportExtractor
+from people_context.adapters.importers.vcard import VCardImportExtractor
 from people_context.ports.imports import ExtractedImport
 
 

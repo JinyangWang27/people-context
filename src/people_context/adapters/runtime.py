@@ -8,14 +8,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from people_context.adapters.filesystem.vault_writer import FileSystemVaultWriter
-from people_context.adapters.import_router import ImportExtractorRouter
+from people_context.adapters.importers.router import ImportExtractorRouter
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DIMENSION,
     MODEL_ID,
     create_local_embedding_provider,
 )
 from people_context.adapters.semantic_indexing import (
-    IndexingLifecycleStore,
+    IndexingForgetStore,
+    IndexingMergeStore,
     IndexingPeopleRepository,
     IndexingRecordStore,
     create_local_semantic_updater,
@@ -25,14 +26,13 @@ from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.db import open_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
+from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
-from people_context.adapters.sqlite.lifecycle import SqliteLifecycleStore
-from people_context.adapters.sqlite.record_store import (
-    SqliteOrganizationStore,
-    SqlitePreferencesStore,
-    SqliteRecordStore,
-)
+from people_context.adapters.sqlite.merge_store import SqliteMergeStore
+from people_context.adapters.sqlite.organization_store import SqliteOrganizationStore
+from people_context.adapters.sqlite.preferences_store import SqlitePreferencesStore
+from people_context.adapters.sqlite.record_store import SqliteRecordStore
 from people_context.adapters.sqlite.relationship_store import SqliteRelationshipStore
 from people_context.adapters.sqlite.relationship_vocabulary import SqliteRelationshipVocabularyStore
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
@@ -147,7 +147,8 @@ class ApplicationRuntime:
     preferences: SqlitePreferencesStore
     audit: SqliteAuditLog
     changelog: SqliteChangelog
-    lifecycle: SqliteLifecycleStore | IndexingLifecycleStore
+    merge_store: SqliteMergeStore | IndexingMergeStore
+    forget_store: SqliteForgetStore | IndexingForgetStore
     export_reader: SqliteExportReader
     vault_reader: SqliteVaultReader
     import_staging: SqliteImportStagingStore
@@ -172,7 +173,8 @@ def build_runtime(
     runtime_clock = clock or SystemClock()
     repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
     records: SqliteRecordStore | IndexingRecordStore = SqliteRecordStore(conn)
-    lifecycle: SqliteLifecycleStore | IndexingLifecycleStore = SqliteLifecycleStore(conn)
+    merge_store: SqliteMergeStore | IndexingMergeStore = SqliteMergeStore(conn)
+    forget_store: SqliteForgetStore | IndexingForgetStore = SqliteForgetStore(conn)
 
     try:
         semantic_updater = create_local_semantic_updater(conn)
@@ -185,7 +187,8 @@ def build_runtime(
     if semantic_updater is not None:
         repo = IndexingPeopleRepository(repo, semantic_updater, warn)
         records = IndexingRecordStore(records, semantic_updater, warn)
-        lifecycle = IndexingLifecycleStore(lifecycle, semantic_updater, warn)
+        merge_store = IndexingMergeStore(merge_store, semantic_updater, warn)
+        forget_store = IndexingForgetStore(forget_store, semantic_updater, warn)
 
     context_reader = SqliteContextReader(conn)
     graph_reader = SqliteGraphReader(conn, runtime_clock)
@@ -253,9 +256,9 @@ def build_runtime(
         set_communication_philosophy=SetCommunicationPhilosophy(preferences, audit, runtime_clock),
         get_communication_guidance=GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock),
         list_reminders=ListReminders(records),
-        merge_people=MergePeople(repo, lifecycle, runtime_clock, audit),
-        preview_forget=PreviewForget(repo, lifecycle),
-        forget=Forget(repo, lifecycle, runtime_clock, audit),
+        merge_people=MergePeople(repo, merge_store, runtime_clock, audit),
+        preview_forget=PreviewForget(repo, forget_store),
+        forget=Forget(repo, forget_store, runtime_clock, audit),
         export_data=ExportData(export_reader, runtime_clock),
         export_vault=ExportVault(vault_reader, FileSystemVaultWriter()),
         import_content=ImportContent(
@@ -291,7 +294,8 @@ def build_runtime(
         preferences=preferences,
         audit=audit,
         changelog=changelog,
-        lifecycle=lifecycle,
+        merge_store=merge_store,
+        forget_store=forget_store,
         export_reader=export_reader,
         vault_reader=vault_reader,
         import_staging=import_staging,

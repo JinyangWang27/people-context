@@ -13,8 +13,9 @@ import pytest
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteChangelog,
+    SqliteForgetStore,
     SqliteImportStagingStore,
-    SqliteLifecycleStore,
+    SqliteMergeStore,
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
@@ -98,18 +99,19 @@ def test_forget_and_merge_record_the_caller_source() -> None:
     conn = open_db(":memory:")
     people = SqlitePeopleRepository(conn)
     audit = SqliteAuditLog(conn)
-    lifecycle = SqliteLifecycleStore(conn)
+    merge_store = SqliteMergeStore(conn)
+    forget_store = SqliteForgetStore(conn)
     clock = _Clock()
     remember = RememberPerson(people, people, audit, clock)
     primary = remember.execute(RememberPersonInput(name="Keep Person")).person
     duplicate = remember.execute(RememberPersonInput(name="Duplicate Person")).person
     doomed = remember.execute(RememberPersonInput(name="Doomed Person")).person
 
-    MergePeople(people, lifecycle, clock, audit).execute(primary.id, duplicate.id, source="cli")
+    MergePeople(people, merge_store, clock, audit).execute(primary.id, duplicate.id, source="cli")
     merge_audit = next(entry for entry in audit.list_entries() if entry.op == "merge")
     assert merge_audit.source == "cli"
 
-    Forget(people, lifecycle, clock, audit).execute(doomed.id, "person", source="cli")
+    Forget(people, forget_store, clock, audit).execute(doomed.id, "person", source="cli")
     forget_audit = next(entry for entry in audit.list_entries() if entry.op == "forget")
     assert forget_audit.source == "cli"
     changelog_forget = next(

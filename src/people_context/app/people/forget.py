@@ -14,7 +14,8 @@ from people_context.app._mutation import (
 )
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
-from people_context.ports.lifecycle import ForgetStoreResult, LifecycleStore, LifecycleTargetNotFoundError
+from people_context.ports.forget import ForgetPreviewStore, ForgetStore
+from people_context.ports.lifecycle import ForgetStoreResult, LifecycleTargetNotFoundError
 from people_context.ports.repository import PersonReader
 
 _RECORD_TYPES = {"relationship", "affiliation", "fact", "observation", "trait", "interaction", "reminder"}
@@ -43,7 +44,7 @@ class Forget:
     def __init__(
         self,
         people: PersonReader,
-        lifecycle: LifecycleStore,
+        lifecycle: ForgetStore,
         clock: Clock,
         audit: AuditLog | None = None,
     ) -> None:
@@ -130,7 +131,7 @@ class ForgetPreview(BaseModel):
 class PreviewForget:
     """Return a non-mutating person-scope deletion preview."""
 
-    def __init__(self, people: PersonReader, lifecycle: LifecycleStore) -> None:
+    def __init__(self, people: PersonReader, lifecycle: ForgetPreviewStore) -> None:
         self._people = people
         self._lifecycle = lifecycle
 

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from people_context.adapters.email_import import ImportExtractionError
-from people_context.adapters.import_router import ImportExtractorRouter
+from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.router import ImportExtractorRouter
 
 
 def test_routes_email_content_to_email_extractor() -> None:

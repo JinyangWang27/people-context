@@ -15,7 +15,7 @@ from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import new_id, normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
-from people_context.ports.lifecycle import LifecycleStore
+from people_context.ports.merge import MergeStore
 from people_context.ports.repository import PersonReader
 
 
@@ -54,7 +54,7 @@ class MergePeople:
     def __init__(
         self,
         people: PersonReader,
-        lifecycle: LifecycleStore,
+        lifecycle: MergeStore,
         clock: Clock,
         audit: AuditLog | None = None,
     ) -> None:

@@ -9,7 +9,8 @@ import pytest
 
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
-    SqliteLifecycleStore,
+    SqliteForgetStore,
+    SqliteMergeStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
     open_db,
@@ -73,7 +74,7 @@ def test_merge_people_reparents_rows_resolves_collisions_and_refreshes_search() 
     )
     records.save_interaction(interaction)
 
-    result = MergePeople(people, SqliteLifecycleStore(conn), _Clock()).execute(primary.id, duplicate.id)
+    result = MergePeople(people, SqliteMergeStore(conn), _Clock()).execute(primary.id, duplicate.id)
 
     assert result.person.summary == "Engineer"
     assert [alias.value for alias in result.person.aliases] == ["Ally", "Alice Smith", "A. Smith"]
@@ -105,7 +106,7 @@ def test_merge_people_rolls_back_every_change_when_audit_checkpoint_fails() -> N
         raise RuntimeError("injected")
 
     with pytest.raises(RuntimeError, match="injected"):
-        MergePeople(people, SqliteLifecycleStore(conn, fail), _Clock()).execute(primary.id, duplicate.id)
+        MergePeople(people, SqliteMergeStore(conn, fail), _Clock()).execute(primary.id, duplicate.id)
 
     assert people.get(duplicate.id).deleted_at is None  # type: ignore[union-attr]
     assert people.get(primary.id).aliases == []  # type: ignore[union-attr]
@@ -119,7 +120,7 @@ def test_merge_people_validates_same_person_and_self_direction() -> None:
     other = _person("Other")
     people.save_person(self_person)
     people.save_person(other)
-    merge = MergePeople(people, SqliteLifecycleStore(conn), _Clock())
+    merge = MergePeople(people, SqliteMergeStore(conn), _Clock())
 
     with pytest.raises(MergePeopleError, match="different") as same:
         merge.execute(other.id, other.id)
@@ -167,7 +168,7 @@ def test_forget_person_deletes_graph_orphan_interactions_and_redacts_audits() ->
         )
     )
 
-    result = Forget(people, SqliteLifecycleStore(conn), _Clock()).execute(forgotten.id, "person")
+    result = Forget(people, SqliteForgetStore(conn), _Clock()).execute(forgotten.id, "person")
 
     assert result.deleted["persons"] == 1
     assert result.deleted["aliases"] == 1
@@ -195,7 +196,7 @@ def test_forget_record_removes_only_target_and_interaction_participations() -> N
     )
     records.save_interaction(interaction)
 
-    result = Forget(people, SqliteLifecycleStore(conn), _Clock()).execute(
+    result = Forget(people, SqliteForgetStore(conn), _Clock()).execute(
         f"interaction:{interaction.id}", "record"
     )
 
@@ -224,7 +225,7 @@ def test_forget_rolls_back_deletion_and_redaction_on_failure() -> None:
         raise RuntimeError("injected")
 
     with pytest.raises(RuntimeError, match="injected"):
-        Forget(people, SqliteLifecycleStore(conn, fail), _Clock()).execute(person.id, "person")
+        Forget(people, SqliteForgetStore(conn, fail), _Clock()).execute(person.id, "person")
 
     assert people.get(person.id) is not None
     assert conn.execute("SELECT payload_json FROM audit_log").fetchone()[0] == '{"name": "Alice"}'
@@ -241,7 +242,7 @@ def test_forget_accepts_soft_deleted_person_and_removes_fts_rows() -> None:
     with conn:
         conn.execute("INSERT INTO person_search (name, person_id) VALUES ('stale', ?)", (person.id,))
 
-    result = Forget(people, SqliteLifecycleStore(conn), _Clock()).execute(person.id, "person")
+    result = Forget(people, SqliteForgetStore(conn), _Clock()).execute(person.id, "person")
 
     assert result.deleted["persons"] == 1
     assert conn.execute("SELECT COUNT(*) FROM person_search WHERE person_id = ?", (person.id,)).fetchone()[0] == 0

@@ -6,8 +6,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from people_context.adapters.email_import import ImportExtractionError
-from people_context.adapters.import_router import ImportExtractorRouter
+from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.router import ImportExtractorRouter
+from people_context.adapters.importers.vcard import VCardImportExtractor
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
     SqliteImportStagingStore,
@@ -16,7 +17,6 @@ from people_context.adapters.sqlite import (
     SqliteRecordStore,
     open_db,
 )
-from people_context.adapters.vcard_import import VCardImportExtractor
 from people_context.app.imports import (
     CommitImport,
     ImportContent,
