@@ -54,9 +54,11 @@ ownership verification and client execution resolve through one PyPI project. Th
 
 This reconstructs the documented invocation, pinned for reproducibility:
 
+<!-- x-release-please-start-version -->
 ```
 uvx --from people-context==0.3.0 people-context
 ```
+<!-- x-release-please-end -->
 
 The command identifier must not also be repeated in `packageArguments`.
 
@@ -67,8 +69,8 @@ package contract in [docs/specs/m8-distribution-and-reach.md](specs/m8-distribut
 synchronization assumptions in [docs/specs/m12-trust-stability-v1.md](specs/m12-trust-stability-v1.md). The pinned
 `--from` value, the reconstructed command, the single stdio PyPI entry, and the ownership marker are asserted — and
 kept in lockstep with the server version — both in CI
-(`.github/workflows/mcp-registry-validate.yml`) and in `tests/test_registry_metadata.py`. **Every server version
-bump must update this `==` pin together with the top-level `version`.**
+(`.github/workflows/mcp-registry-validate.yml`) and in `tests/test_registry_metadata.py`. Release Please updates
+this documented command, the top-level `version`, and the `==` package pin in the same release PR.
 
 Because the Registry links a PyPI package to the server through a `mcp-name:` marker in that package's published
 README, the marker is committed to the repository-root [README.md](../README.md), which is the `people-context`
@@ -85,17 +87,18 @@ change to both `MCP_PUBLISHER_VERSION` and `MCP_PUBLISHER_SHA256` in that workfl
 
 ## Publication (manual, account-owner step)
 
-Actual Registry publication is a manual release step that requires interactive GitHub authentication and therefore
-is **out of scope for automation in this PR** (M8.2 excludes live publication/approval).
+Actual Registry publication requires interactive GitHub authentication and remains a manual account-owner action.
+Release Please automates the synchronized version changes and the GitHub/PyPI release, but it does not perform the
+Registry OAuth device flow.
 
 **Prerequisite — publish the matching `people-context` artifact first.** The Registry validates the package named by
 `identifier` by fetching its published PyPI README and confirming the `mcp-name:` marker. Publication therefore
 uses this order:
 
-1. Bump `project.version` and update `server.json` in the same commit — set the top-level `version` and the
-   `--from people-context==<version>` pin to the new release. Keep the `mcp-name:` marker in the root README. Merge.
-2. Cut the GitHub Release so `release.yml` uploads the matching `people-context` artifact to PyPI, and wait for that
-   publication to complete.
+1. Merge the generated Release Please PR after verifying that `pyproject.toml`, `server.json`, the documented
+   invocation above, and the other release metadata all carry the same version.
+2. Wait for Release Please to create the matching GitHub Release and for `release.yml` to publish the matching
+   `people-context` artifact to PyPI.
 3. Install the pinned publisher, verified against a reviewed immutable digest, and invoke that binary explicitly
    (it is not otherwise on `PATH`). Select the `archive`/`MCP_PUBLISHER_SHA256` pair for your platform from the
    reviewed `v1.8.0` digests below — each is the archive's own content hash, so verification does not depend on the
