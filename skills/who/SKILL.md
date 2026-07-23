@@ -19,6 +19,13 @@ The user asked about: **$ARGUMENTS**
    user who they mean before resolving, and do not call any other people-context
    tool first.
 
+   Parse any distinguishing context out of the query into `resolve_person`'s `hints`
+   rather than leaving it all in `query` — the name index holds names and aliases, not
+   organizations, so `who Alex at Acme` resolves best as `query: "Alex"` with
+   `hints: {"org": "Acme"}`. `hints` accepts `org`, `role`, and `relationship`, which
+   re-rank same-named candidates. When you invite the user to add distinguishing detail
+   after an ambiguous result, feed their answer back through these hints.
+
 2. **Branch on the resolver's own `ambiguous` flag — not on candidate count.**
    `resolve_person` returns ranked `candidates` and an `ambiguous` boolean. The flag,
    not the number of candidates, decides confidence: the resolver may return several

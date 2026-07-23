@@ -92,6 +92,16 @@ class TestWorkflowSkillContract:
         assert "call `export_data`" not in lowered
         assert "enable" not in lowered or "never" in lowered
 
+    @pytest.mark.parametrize("name", WORKFLOW_NAMES)
+    def test_passes_distinguishing_context_via_hints(self, name: str) -> None:
+        # Regression: resolve_person's hints (org/role/relationship) re-rank same-named
+        # candidates; the name index has no org, so distinguishing context must be
+        # parsed into hints in every resolving workflow.
+        lowered = _skill_path(name).read_text(encoding="utf-8").lower()
+
+        assert "hints" in lowered
+        assert "org" in lowered
+
 
 class TestWhoWorkflow:
     """``/people-context:who`` — resolve first, read only on one unambiguous match."""
@@ -207,6 +217,33 @@ class TestRememberWorkflow:
 
         assert "aliases: []" in lowered
         assert "invalid_candidates" in lowered
+
+    def test_staged_aliases_are_objects_with_handle_kind(self) -> None:
+        # Regression: CandidateAlias requires objects {value, kind?, lang?, script?}; a
+        # bare string list fails, and handle-based binding needs kind: "handle".
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "{value, kind?, lang?, script?}" in lowered
+        assert "bare string list" in lowered
+        assert '"handle"' in lowered
+
+    def test_preserves_sensitivity_for_private_records(self) -> None:
+        # Regression: fact/interaction candidates default sensitivity to personal, which
+        # ordinary get_person_context/who disclose; private content needs a higher tier.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "sensitivity" in lowered
+        assert "health" in lowered
+        assert "sensitive" in lowered
+
+    def test_self_assertion_guards_unrelated_contact(self) -> None:
+        # Regression: with no self record, "I am Jane" resolving to an existing non-self
+        # contact would mark that contact as the user; the workflow must not guess.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "unrelated contact" in lowered
+        assert "is_self=true" in lowered
+        assert "corrupt" in lowered
 
     def test_person_only_shared_name_update_reported_unsupported(self) -> None:
         # Regression: a person-only staged update to a shared-canonical-name person has

@@ -72,6 +72,16 @@ the assertion adds an alias or handle to the user (a new "also known as" / "goes
 nothing new to add, tell the user that nothing was recorded because their self record
 already exists.
 
+**Never mark an unrelated contact as the user.** For a self-identity assertion like
+"I am Jane" when no self record exists yet, do not blindly pass a resolved contact's name
+to `remember_person` with `is_self=true`: if `Jane` resolves to an existing non-self
+contact, `remember_person` would mark that contact as the user and corrupt both
+identities (the self guard only blocks reuse when a self record already exists). Only set
+`is_self=true` against a record that is already the user's self, or create a genuinely new
+self record. If an existing same-named contact might be a different person, confirm with
+the user first, or report that turning an existing same-named contact into the self is
+unsupported — never guess.
+
 ### 2. Extracted facts, affiliations, or interactions → resolve first, then stage
 
 Facts (predicate/value), affiliations (org/role), and interactions do **not** fit
@@ -84,9 +94,19 @@ persists that value as durable provenance on every staged row, so a raw statemen
 there would leak into stored records. Likewise never copy raw conversation, note, or
 transcript text into a candidate field.
 
-**Every `person` candidate needs its mandatory `aliases` field.** `aliases` has no
-default, so a natural `{type, ref, name}` row is rejected with `invalid_candidates`. Set
-`aliases: []` when the person has none, and otherwise list the resolved aliases/handles.
+**Every `person` candidate needs its mandatory `aliases` field, shaped as objects.**
+`aliases` has no default, so a natural `{type, ref, name}` row is rejected with
+`invalid_candidates`. Set `aliases: []` when the person has none. Each alias is an
+**object** `{value, kind?, lang?, script?}` — a bare string list like `["Al"]` is
+rejected. When the duplicate-name binding below depends on a handle, that alias must
+carry `kind: "handle"` (the stager only matches `handle`-kind aliases), e.g.
+`{"value": "al-smith", "kind": "handle"}`.
+
+**Preserve sensitivity for private content.** `fact` and `interaction` candidates
+default `sensitivity` to `personal`, which ordinary `get_person_context` (and so `/who`)
+discloses. Health, financial, and other private matters must be set to the appropriate
+higher tier (e.g. `sensitive`) so the ordinary context path cannot later surface them;
+never leave such content at the `personal` default.
 
 **Interactions need a real occurrence date.** Each `interaction` candidate's `date` is
 mandatory — there is no default. If the request does not say when it happened (for
@@ -110,9 +130,12 @@ staging "I" would create a duplicate person literally named `I`. Handle self by 
 
 ### Resolve people first
 
-Before either write, **resolve every referenced person** with `resolve_person` and use
-the resolved canonical identity (canonical name, or a known handle) — in the
-`remember_person` call for path 1, or in the `person` candidate for path 2. Both the
+Before either write, **resolve every referenced person** with `resolve_person`, parsing
+any distinguishing context (organization, role, or relationship) into its `hints`
+(`org`/`role`/`relationship`) rather than leaving it in `query` — the name index holds
+names and aliases, not organizations. Use the resolved canonical identity (canonical
+name, or a known handle) — in the `remember_person` call for path 1, or in the `person`
+candidate for path 2. Both the
 stager and `remember_person` match an existing person only by an exact normalized name
 or handle, so a partial reference like `Alice` would otherwise be recorded as a **new
 duplicate** of the stored `Alice Smith`. If resolution is `ambiguous`, surface the

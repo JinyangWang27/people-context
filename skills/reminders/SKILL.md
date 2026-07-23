@@ -19,9 +19,11 @@ Optional person filter: **$ARGUMENTS**
    last.
 
 2. **A person is named:** resolve the identity before filtering. Call `resolve_person`
-   with the given text and branch on its own `ambiguous` flag — not on candidate count.
-   The resolver may return several ranked candidates yet report `ambiguous: false`
-   when the top match is confidently ahead.
+   with the given text, parsing any distinguishing context (organization, role, or
+   relationship) into its `hints` (`org`/`role`/`relationship`) rather than leaving it
+   in `query` — the name index holds names and aliases, not organizations. Branch on its
+   own `ambiguous` flag — not on candidate count. The resolver may return several ranked
+   candidates yet report `ambiguous: false` when the top match is confidently ahead.
 
    - **`ambiguous: false` with at least one candidate:** call `list_reminders` with
      the ranked top candidate's (`candidates[0]`) `person_id`.
