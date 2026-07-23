@@ -135,7 +135,7 @@ prompt/plugin behavior and at most a minimal instruction string, not new busines
 - at most a small additive `SERVER_INSTRUCTIONS` extension naming `get_communication_guidance` and
   `stage_candidates`, without signature/annotation/response changes.
 
-**Status:** Planned.
+**Status:** Delivered.
 
 ## M11 — Sync bundle export and trusted bootstrap restore
 

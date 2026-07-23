@@ -29,7 +29,10 @@ SERVER_INSTRUCTIONS = (
     "When the user mentions someone by name, nickname, or partial reference, call `resolve_person` "
     "first to find who they mean — prefer resolving before asking the user who someone is. "
     "After resolving an identity, use `get_person_context` for a bounded, sensitivity-aware context bundle. "
+    "After resolving a person, use `get_communication_guidance` when communication help is requested. "
     "Use `search_people` for broader browsing and `remember_person` to record a new or updated person. "
+    "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
+    "later user review and never committed automatically. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
 )

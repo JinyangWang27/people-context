@@ -18,6 +18,21 @@ from people_context.adapters.sqlite.semantic import create_sqlite_vector_index
 from people_context.domain.person import Person
 from people_context.ports.semantic import SemanticDocument, SemanticIndexMetadata
 
+EXPECTED_SERVER_INSTRUCTIONS = (
+    "people-context stores durable, local-first knowledge about the people in the user's life: "
+    "their names and aliases, how they relate to the user, their organisations and roles, and "
+    "relevant past interactions. "
+    "When the user mentions someone by name, nickname, or partial reference, call `resolve_person` "
+    "first to find who they mean — prefer resolving before asking the user who someone is. "
+    "After resolving an identity, use `get_person_context` for a bounded, sensitivity-aware context bundle. "
+    "After resolving a person, use `get_communication_guidance` when communication help is requested. "
+    "Use `search_people` for broader browsing and `remember_person` to record a new or updated person. "
+    "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
+    "later user review and never committed automatically. "
+    "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
+    "can gate them behind its normal approval flow."
+)
+
 EXPECTED_TOOLS = {
     # real
     "resolve_person",
@@ -57,6 +72,34 @@ def _run(server: Any, coro_factory: Any) -> Any:
             return await coro_factory(client)
 
     return anyio.run(main)
+
+
+def test_initialize_returns_safe_tool_composition_instructions(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "instructions.db")
+
+    async def initialize() -> str | None:
+        async with create_connected_server_and_client_session(server) as client:
+            result = await client.initialize()
+            return result.instructions
+
+    instructions = anyio.run(initialize)
+
+    assert instructions == EXPECTED_SERVER_INSTRUCTIONS
+    required_tool_order = (
+        "`resolve_person`",
+        "`get_person_context`",
+        "`get_communication_guidance`",
+        "`stage_candidates`",
+    )
+    assert instructions is not None
+    assert [instructions.index(tool_name) for tool_name in required_tool_order] == sorted(
+        instructions.index(tool_name) for tool_name in required_tool_order
+    )
+    assert "only for concise structured proposals" in instructions
+    assert "not raw source text" in instructions
+    assert "later user review and never committed automatically" in instructions
+    assert "get_sensitive_person_context" not in instructions
+    assert "export_data" not in instructions
 
 
 def test_tools_list_surface_and_annotations(tmp_path: Path) -> None:

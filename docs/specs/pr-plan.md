@@ -118,7 +118,7 @@ Check the matching box only in the PR that delivers it.
     `reminders` resolves optional person; no elevated tools.
   - **Out:** automatic assertion/extraction heuristics.
 
-- [ ] **M10.3 — Name under-used tools in server instructions**
+- [x] **M10.3 — Name under-used tools in server instructions**
   - **Scope:** Minimal `SERVER_INSTRUCTIONS` string addition.
   - **Acceptance:** no signature/annotation/response change or elevated-tool encouragement; literal tests update.
   - **Out:** tool annotation changes.

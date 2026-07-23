@@ -1,6 +1,6 @@
 # M10 — Agent utilization
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m10--agent-utilization).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m10--agent-utilization).
 
 ## Motivation
 
@@ -110,8 +110,9 @@ No new CLI command or MCP tool. User-invocable plugin workflows are namespaced p
 - Manual local plugin install/reload exercises all three workflows against a temporary database.
 - `uv run ruff check .` and `uv run pytest -q` remain green.
 
-## Open questions
+## Delivered decisions
 
-1. What minimum Claude Code version supports user-invocable skills without command fallbacks?
-2. Should `/remember` always stage for maximum consistency, or retain the explicit-person-assertion fast path?
-3. Should the optional instructions-string edit ship with M10.1 or as the final small M10.3 PR?
+1. User-invocable skills require Claude Code 2.1.196 or newer; command fallbacks are unnecessary.
+2. `/remember` retains the explicit-person-assertion fast path through `remember_person`; extracted facts,
+   affiliations, and interactions continue through staged review.
+3. The minimal instructions-string edit ships as the final M10.3 pull request.
