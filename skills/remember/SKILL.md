@@ -36,8 +36,13 @@ contract. Resolve the person first; if a confident match exists, call `remember_
 with that person's **canonical name** so the existing record is updated (its lookup
 matches only the exact normalized `name`, not the supplied aliases, so a partial name
 like `Alice` would otherwise create a second record beside `Alice Smith`). Call
-`remember_person` with those fields only. If it returns `ambiguous_person`, present the
-returned candidates and let the user pick rather than guessing.
+`remember_person` with those fields only. If it returns `ambiguous_person`, the
+canonical name matches several stored people and `remember_person` has **no `person_id`
+parameter**, so re-asking the user to pick the name cannot complete the write — it only
+re-raises the same error. Target the intended person by passing their **unique handle**
+as `name` (its lookup also matches handles), and if they have no unique handle, report
+that this workflow cannot direct-write to one of several identically-named people — the
+same targeting limitation as staging — instead of looping on the error.
 
 If it returns `self_already_exists`, do not treat the error as done — the user cannot
 be resolved by a pronoun like "I", so a self assertion such as "I also go by John"
@@ -79,8 +84,10 @@ name alone is ambiguous: prefer putting the resolved person's **unique handle** 
 candidate's `aliases` so the batch binds to exactly them. If the resolved person shares
 a normalized canonical name with another and has no unique handle, staging cannot
 target them unambiguously and the batch would fail to commit — report this limitation
-instead of staging an uncommittable batch. (The direct `remember_person` write in
-path 1 is unaffected: it disambiguates via the confirmed canonical identity.)
+instead of staging an uncommittable batch. The direct `remember_person` write in path 1
+has the **same limitation** (it has no `person_id` parameter either), so apply the same
+rule there: target by a unique handle, or report that the workflow cannot write to one
+of several identically-named people.
 
 ### 3. Anything that fits neither path → report the limitation, do not force it
 

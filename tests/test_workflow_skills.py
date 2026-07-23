@@ -198,6 +198,17 @@ class TestRememberWorkflow:
         assert "unique handle" in lowered
         assert "fail to commit" in lowered or "uncommittable" in lowered
 
+    def test_direct_write_reports_duplicate_name_limitation(self) -> None:
+        # Regression: remember_person has no person_id parameter, so a non-unique
+        # canonical name cannot be targeted by re-picking; the direct write must use a
+        # unique handle or report the limitation, mirroring the staging path.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "person_id" in lowered
+        assert "identically-named" in lowered
+        # Both the staging path and the direct write name the unique-handle escape hatch.
+        assert lowered.count("unique handle") >= 2
+
     def test_resolves_referenced_people_before_staging(self) -> None:
         # Regression: the stager matches only exact normalized names/handles, so a
         # partial reference must be resolved to its canonical identity before staging
