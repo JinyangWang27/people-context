@@ -73,6 +73,34 @@ new tool or capability; it teaches agents to compose the existing tools correctl
 The skill is behavioural guidance only. It never enables elevated tools, never commits a
 staged batch automatically, and never copies raw transcript text into candidates.
 
+## User-invocable workflows
+
+The plugin also ships three user-invoked workflow skills under `skills/`, each
+invocable as a slash command in the `people-context` namespace. They are thin
+compositions of the existing tools — they add no new tool, port, response field, or
+write path — and model invocation is disabled so they run only when the user asks:
+
+- `/people-context:who <query>` calls `resolve_person` and branches on its
+  `ambiguous` flag (not candidate count): when `ambiguous` is false it reads the
+  ranked top candidate with `get_person_context`; when `ambiguous` is true, or no
+  candidate is returned, it surfaces the candidate list without guessing and performs
+  no second read.
+- `/people-context:remember <description>` records durable knowledge down one of
+  these existing paths, resolving every referenced person first (so an existing
+  contact is updated, not duplicated): an explicit person assertion uses
+  `remember_person` with the resolved canonical name, while facts, affiliations, and
+  interactions are staged with `stage_candidates` under a fixed non-content `source`
+  label and left pending `review_import`. It acts on prior conversation only when the
+  invocation explicitly asks for it, reports requests that fit neither path — notably
+  relationships, which have no staging candidate type — as unsupported, never calls
+  `commit_import`, and never copies raw text into candidate fields or the `source`.
+- `/people-context:reminders [person]` lists active reminders; when a person is named
+  it resolves the identity first and filters by the resolved id, surfacing ambiguity
+  rather than silently dropping the filter.
+
+None of the workflows call or suggest enabling the gated
+`get_sensitive_person_context` or `export_data` tools.
+
 ## Security model
 
 Installing this plugin executes the repository's Python code locally through `uv` with the permissions of your operating-system user. It is not a sandboxed, data-only extension. Install only revisions you trust.
