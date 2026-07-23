@@ -250,6 +250,19 @@ class TestRememberWorkflow:
         assert "health" in lowered
         assert "sensitive" in lowered
 
+    def test_private_affiliation_like_content_is_not_staged_ungated(self) -> None:
+        # Regression: affiliations have no sensitivity field and ordinary context
+        # returns them all, so private affiliation-like details need a gated fact
+        # representation or must be reported unsupported.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "never stage private affiliation-like content as an `affiliation`" in lowered
+        assert "have no `sensitivity` field" in lowered
+        assert "returns every active affiliation without sensitivity filtering" in lowered
+        assert "stage a `fact`" in lowered
+        assert "cannot be safely staged" in lowered
+        assert "do not emit an ungated affiliation" in lowered
+
     def test_self_assertion_guards_unrelated_contact(self) -> None:
         # Regression: with no self record, "I am Jane" resolving to an existing non-self
         # contact would mark that contact as the user; the workflow must not guess.

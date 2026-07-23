@@ -111,6 +111,15 @@ discloses. Health, financial, and other private matters must be set to the appro
 higher tier (e.g. `sensitive`) so the ordinary context path cannot later surface them;
 never leave such content at the `personal` default.
 
+**Never stage private affiliation-like content as an `affiliation`.** Affiliation
+candidates have no `sensitivity` field and reject one as extra input, while ordinary
+`get_person_context` returns every active affiliation without sensitivity filtering.
+When the private statement can be represented faithfully as a fact — for example,
+`patient_at=Mayo Clinic` — stage a `fact` with the appropriate `sensitive` or
+`restricted` sensitivity instead. If converting it to a fact would distort its meaning,
+report that the private affiliation-like information cannot be safely staged.
+Do not emit an ungated affiliation.
+
 **Interactions need a real occurrence date.** Each `interaction` candidate's `date` is
 mandatory — there is no default. If the request does not say when it happened (for
 example `Alice spoke with Bob`, with no time), ask the user for the date, or report that
