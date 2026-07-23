@@ -74,7 +74,7 @@ async function callMcpTool(config, name, args, signal) {
     signal?.throwIfAborted();
     const client = new Client({
         name: "openclaw-people-context",
-        version: "0.1.0",
+        version: "0.2.0",
     });
     const transport = new StreamableHTTPClientTransport(serverUrl(config));
     let connected = false;

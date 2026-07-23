@@ -2,7 +2,7 @@
   "id": "people-context",
   "name": "People Context",
   "description": "Resolve and retrieve contextual knowledge about people the user mentions.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "properties": {

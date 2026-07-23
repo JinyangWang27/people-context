@@ -8,7 +8,7 @@
     {
       "name": "people-context",
       "displayName": "People Context",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "source": ".",
       "description": "Give Claude Code local, durable context about the people in your life through an automatically managed stdio MCP server.",
       "author": {

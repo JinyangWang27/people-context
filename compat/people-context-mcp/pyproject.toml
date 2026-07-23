@@ -1,6 +1,6 @@
 [project]
 name = "people-context-mcp"
-version = "0.1.0.post1"
+version = "0.1.0.post2"
 description = "Compatibility package for the renamed people-context distribution"
 readme = "README.md"
 requires-python = ">=3.11"

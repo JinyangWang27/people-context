@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2026-07-22
+## [0.2.0] - 2026-07-23
 
 ### Added
 
@@ -13,11 +13,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - MCP Registry and community-directory metadata with reproducible `uvx` launch configuration.
 - Native-UV MCPB bundle and setup guides for supported desktop clients and editors.
 - Optional non-root Docker image and tag-triggered GitHub Container Registry publishing.
+- ICS calendar attendee imports through the staged review and commit workflow.
+- LinkedIn Connections CSV imports with preamble-aware, offline parsing.
+- `people-context init` for safely importing supported contact files into a reviewed staged batch.
+- `people-context demo [--reset]` for exploring an isolated database with deterministic sample data.
+- A packaged usage skill that teaches agents privacy-aware People Context tool composition.
+- User-invocable Claude Code workflows for `/people-context:who`, `/people-context:remember`, and
+  `/people-context:reminders`.
 
 ### Changed
 
 - Made the zero-clone `uvx` installation path the primary quick-start flow.
 - Moved import extractor routing into its own adapter boundary without changing import behavior.
+- Reorganized application, adapter, CLI, and persistence code by capability around a shared runtime composition root,
+  with automated architecture-boundary enforcement.
+- Bumped the Claude Code and OpenClaw plugins to `0.2.0` and the Registry compatibility package to `0.1.0.post2`.
 - Updated development, runtime, and GitHub Actions dependencies.
 
 ### Security
