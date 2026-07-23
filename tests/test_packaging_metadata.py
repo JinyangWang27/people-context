@@ -66,6 +66,10 @@ def test_reviewed_release_versions_are_synchronized() -> None:
     assert client_version in (ROOT / "openclaw-plugin/src/index.ts").read_text(encoding="utf-8")
     assert client_version in (ROOT / "openclaw-plugin/dist/index.js").read_text(encoding="utf-8")
 
+    packed_artifact = f"openclaw-plugin-people-context-{CURRENT_RELEASE_VERSION}.tgz"
+    for guide in ("docs/openclaw-plugin.md", "openclaw-plugin/README.md"):
+        assert packed_artifact in (ROOT / guide).read_text(encoding="utf-8")
+
 
 def test_current_changelog_covers_recent_user_facing_capabilities() -> None:
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")

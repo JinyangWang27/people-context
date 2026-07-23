@@ -119,7 +119,7 @@ For an end-to-end install before publication:
 ```bash
 cd openclaw-plugin
 npm pack
-openclaw plugins install npm-pack:./openclaw-plugin-people-context-0.1.0.tgz
+openclaw plugins install npm-pack:./openclaw-plugin-people-context-0.2.0.tgz
 openclaw plugins inspect people-context --runtime --json
 ```
 
