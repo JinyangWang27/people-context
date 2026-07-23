@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).parents[1]
-PRIMARY_RELEASE_VERSION = "0.3.0"
+PRIMARY_RELEASE_VERSION = "0.3.0"  # x-release-please-version
 INTEGRATION_RELEASE_VERSION = "0.2.0"
 
 
