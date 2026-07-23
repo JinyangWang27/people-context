@@ -98,9 +98,12 @@ transcript text into a candidate field.
 `aliases` has no default, so a natural `{type, ref, name}` row is rejected with
 `invalid_candidates`. Set `aliases: []` when the person has none. Each alias is an
 **object** `{value, kind?, lang?, script?}` — a bare string list like `["Al"]` is
-rejected. When the duplicate-name binding below depends on a handle, that alias must
-carry `kind: "handle"` (the stager only matches `handle`-kind aliases), e.g.
-`{"value": "al-smith", "kind": "handle"}`.
+rejected. For matching, the stager checks `handle`-kind aliases and then checks the
+person candidate's `name`; repository lookup for that `name` matches canonical names
+and aliases of **every** kind. Therefore, put a verified unique nickname, former name,
+or other non-handle alias in `name` when it must distinguish a shared canonical name.
+A verified unique handle may instead bind through `aliases`, but it must carry
+`kind: "handle"`, e.g. `{"value": "al-smith", "kind": "handle"}`.
 
 **Preserve sensitivity for private content.** `fact` and `interaction` candidates
 default `sensitivity` to `personal`, which ordinary `get_person_context` (and so `/who`)
@@ -124,9 +127,11 @@ staging "I" would create a duplicate person literally named `I`. Handle self by 
 - **Self as a fact or affiliation subject** ("I live in London", "I am an engineer at
   Acme"): these need a `person_ref`, so self must be a person candidate that binds to
   the existing self record. Stage that candidate using the self record's **resolvable
-  canonical name or handle** (never a bare "I"), so the stager matches the existing
-  self. If the self identity cannot be resolved or named that way, report the case as
-  unsupported rather than staging a duplicate `I`.
+  canonical name or any verified unique alias** (never a bare "I"), so the stager
+  matches the existing self. Put a unique non-handle alias in the candidate's `name`;
+  a unique handle may alternatively bind through `aliases` with `kind: "handle"`.
+  If no canonical name or alias resolves uniquely, report the case as unsupported
+  rather than staging a duplicate `I`.
 
 ### Resolve people first
 
@@ -134,27 +139,32 @@ Before either write, **resolve every referenced person** with `resolve_person`, 
 any distinguishing context (organization, role, or relationship) into its `hints`
 (`org`/`role`/`relationship`) rather than leaving it in `query` — the name index holds
 names and aliases, not organizations. Use the resolved canonical identity (canonical
-name, or a known handle) — in the `remember_person` call for path 1, or in the `person`
-candidate for path 2. Both the
-stager and `remember_person` match an existing person only by an exact normalized name
-or handle, so a partial reference like `Alice` would otherwise be recorded as a **new
-duplicate** of the stored `Alice Smith`. If resolution is `ambiguous`, surface the
-candidates and let the user choose before writing; do not guess. If resolution is
-empty, the person is genuinely new — create or stage them as new.
+name when it resolves uniquely, or any verified unique alias) — in the
+`remember_person` call for path 1, or in the `person` candidate's `name` for path 2.
+For staging, a known unique handle may alternatively go in `aliases` with
+`kind: "handle"`. Both the stager and `remember_person` use exact normalized repository
+lookup, which matches canonical names and aliases of every kind, so a partial reference
+like `Alice` would otherwise be recorded as a **new duplicate** of the stored
+`Alice Smith`. If resolution is `ambiguous`, surface the candidates and let the user
+choose before writing; do not guess. If resolution is empty, the person is genuinely
+new — create or stage them as new.
 
 A staged `person` candidate has **no `person_id` field**, so a person who shares a
 normalized canonical name with another stored person needs care. Accepting such a person
 candidate would fail: on commit the pipeline re-derives it by `canonical_name` and calls
 `remember_person`, which raises `ambiguous_person` for the duplicate name even when a
 handle bound the staged row. But a dependent record for that person **can** still be
-committed: give the person candidate a unique **handle** so the stager binds its
-`matched_person_id` to the existing record, stage the dependent
-(fact/affiliation/interaction) referencing it, and at commit **accept only the dependent
-row, leaving the person row unaccepted**. The pipeline resolves the reference to the
-existing person from `matched_person_id` without re-minting the person, so the dependent
-commits cleanly. Only when the person has no unique handle to bind `matched_person_id` is
-staging a dependent for one of several identically-named people unsupported — report that
-instead.
+committed when any alias identifies the intended record uniquely.
+For a verified unique nickname, former name, or other non-handle alias, put that alias in
+the person candidate's `name`; repository lookup matches every alias kind there and sets
+`matched_person_id`. A unique handle may alternatively bind through the candidate's
+`aliases` when marked `kind: "handle"`. Stage the dependent
+(fact/affiliation/interaction) referencing that candidate, then at commit
+**accept only the dependent row, leaving the matched person row unaccepted**. The
+pipeline resolves the reference to the existing person from `matched_person_id` without
+creating a person or re-minting the matched row, so the dependent commits cleanly. Only
+when no alias resolves uniquely is staging a dependent for one of several
+identically-named people unsupported — report that instead.
 
 That dependent-only path needs a dependent record. A **person-only** staged update to a
 shared-canonical-name person — for instance a pure prior-context identity detail like a

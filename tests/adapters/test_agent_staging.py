@@ -151,6 +151,49 @@ def test_agent_existing_email_match_resolves_without_accepting_person_candidate(
     assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 1
 
 
+def test_agent_unique_non_handle_alias_binds_duplicate_name_dependent_without_accepting_person() -> None:
+    conn = open_db(":memory:")
+    people, stage, review, commit = _use_cases(conn)
+    intended = Person(
+        canonical_name="Sam Lee",
+        aliases=[Alias(value="Sammy", kind=AliasKind.NICKNAME)],
+    )
+    same_named_contact = Person(
+        canonical_name="Sam Lee",
+        aliases=[Alias(value="S. Lee", kind=AliasKind.FORMER_NAME)],
+    )
+    people.save_person(intended)
+    people.save_person(same_named_contact)
+    result = stage.execute(
+        "notes",
+        [
+            {
+                "type": "person",
+                "ref": "sam",
+                "name": "Sammy",
+                "aliases": [],
+            },
+            {
+                "type": "fact",
+                "person_ref": "sam",
+                "predicate": "location",
+                "value": "Dubai",
+            },
+        ],
+    )
+    rows = review.execute(result.batch_id).candidates
+    person = next(row for row in rows if row.candidate["type"] == "person")
+    fact = next(row for row in rows if row.candidate["type"] == "fact")
+
+    assert person.candidate["matched_person_id"] == intended.id
+    assert commit.execute(result.batch_id, [fact.id]).committed_ids == [fact.id]
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 2
+    stored_fact = conn.execute("SELECT person_id, predicate, value FROM facts").fetchone()
+    assert tuple(stored_fact) == (intended.id, "location", "Dubai")
+    reviewed_person = next(row for row in review.execute(result.batch_id).candidates if row.id == person.id)
+    assert reviewed_person.status == "pending"
+
+
 @pytest.mark.parametrize(
     "candidates",
     [

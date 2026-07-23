@@ -211,14 +211,18 @@ class TestRememberWorkflow:
     def test_staging_duplicate_name_dependent_only_commit(self) -> None:
         # Regression: accepting a duplicate-canonical-name person candidate fails
         # (commit re-derives by canonical name -> ambiguous_person), but a dependent
-        # record commits when the person is bound via a unique handle and its own row is
-        # left unaccepted (CommitImport._existing_resolution uses matched_person_id).
+        # record commits when the person is bound via any unique alias and its own row
+        # is left unaccepted (CommitImport._existing_resolution uses matched_person_id).
         lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
 
         assert "ambiguous_person" in lowered
         assert "matched_person_id" in lowered
         assert "accept only the dependent" in lowered
         assert "unaccepted" in lowered
+        assert "verified unique nickname, former name, or other non-handle alias" in lowered
+        assert "person candidate's `name`" in lowered
+        assert 'aliases` when marked `kind: "handle"`' in lowered
+        assert "only when no alias resolves uniquely" in lowered
 
     def test_person_candidate_requires_aliases_field(self) -> None:
         # Regression: PersonCandidateInput.aliases is mandatory (no default), so a
@@ -304,7 +308,8 @@ class TestRememberWorkflow:
         assert "not a new person" in lowered
         # Self as a fact/affiliation subject needs a person_ref bound to the self record.
         assert "fact or affiliation subject" in lowered
-        assert "canonical name or handle" in lowered
+        assert "canonical name or any verified unique alias" in lowered
+        assert "unique non-handle alias" in lowered
 
     def test_summary_fast_path_excludes_structured_records(self) -> None:
         # Regression: a request carrying an affiliation/fact/interaction must route the
