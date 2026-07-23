@@ -10,6 +10,7 @@ import pytest
 from people_context import cli
 from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, SqlitePreferencesStore, open_db
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
+from people_context.cli import maintenance as maintenance_module
 from people_context.domain.person import Person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.ports.clock import SystemClock
@@ -357,7 +358,7 @@ def test_semantic_reindex_is_explicit_and_preserves_metadata_on_download_failure
     def fail_download() -> None:
         raise OSError("offline")
 
-    monkeypatch.setattr(cli, "download_embedding_provider", fail_download)
+    monkeypatch.setattr(maintenance_module, "download_embedding_provider", fail_download)
 
     assert cli.main(["--db", str(db_file), "reindex", "--semantic"]) == 1
     captured = capsys.readouterr()

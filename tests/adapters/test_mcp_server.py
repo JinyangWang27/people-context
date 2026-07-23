@@ -10,7 +10,7 @@ import pytest
 from mcp.client.session import ClientSession
 from mcp.shared.memory import create_connected_server_and_client_session
 
-from people_context.adapters.mcp import server as server_module
+from people_context.adapters import runtime as runtime_module
 from people_context.adapters.mcp.server import build_server
 from people_context.adapters.model2vec_embeddings import MODEL_ID
 from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, open_db
@@ -258,7 +258,7 @@ def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
         )
     finally:
         conn.close()
-    monkeypatch.setattr(server_module, "create_local_embedding_provider", FakeProvider)
+    monkeypatch.setattr(runtime_module, "create_local_embedding_provider", FakeProvider)
     server = build_server(db_path=db_path)
 
     async def flow(client: ClientSession) -> Any:

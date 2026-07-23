@@ -12,7 +12,7 @@ from people_context.app.imports import ImportPipelineError
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-    from people_context.adapters.mcp.server import ToolDeps
+    from people_context.adapters.runtime import RuntimeUseCases
 
 _WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
 
@@ -22,7 +22,7 @@ def _error(exc: ImportPipelineError | ImportExtractionError) -> dict[str, Any]:
     return {"error": exc.code, "message": str(exc), **details}
 
 
-def register(mcp: FastMCP, deps: ToolDeps) -> None:
+def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
     """Register header-only extraction, review, and selective commit tools."""
 
     @mcp.tool(annotations=_WRITE)

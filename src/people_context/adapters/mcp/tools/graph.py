@@ -11,12 +11,12 @@ from people_context.app.relationships.graph import GraphTraversalError
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
-    from people_context.adapters.mcp.server import ToolDeps
+    from people_context.adapters.runtime import RuntimeUseCases
 
 _READ_ONLY = ToolAnnotations(readOnlyHint=True)
 
 
-def register(mcp: FastMCP, deps: ToolDeps) -> None:
+def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
     """Register the two minimal-disclosure graph tools."""
 
     @mcp.tool(annotations=_READ_ONLY)

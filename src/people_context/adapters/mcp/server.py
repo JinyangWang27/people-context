@@ -12,68 +12,13 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
-from people_context.adapters.import_router import ImportExtractorRouter
 from people_context.adapters.mcp.tools import register_all
-from people_context.adapters.model2vec_embeddings import (
-    MODEL_DIMENSION,
-    MODEL_ID,
-    create_local_embedding_provider,
-)
-from people_context.adapters.semantic_indexing import (
-    IndexingLifecycleStore,
-    IndexingPeopleRepository,
-    IndexingRecordStore,
-    create_local_semantic_updater,
-)
-from people_context.adapters.sqlite import (
-    SqliteAuditLog,
-    SqliteContextReader,
-    SqliteExportReader,
-    SqliteGraphReader,
-    SqliteImportStagingStore,
-    SqliteLifecycleStore,
-    SqliteOrganizationStore,
-    SqlitePeopleRepository,
-    SqlitePreferencesStore,
-    SqliteRecordStore,
-    SqliteRelationshipStore,
-    SqliteRelationshipVocabularyStore,
-    SqliteSemanticEntityReader,
-    SqliteSemanticMetadataReader,
-    open_db,
-    open_sqlite_vector_index,
-)
-from people_context.app.context import GetCommunicationGuidance, GetPersonContext, SetCommunicationPhilosophy
-from people_context.app.exports import ExportData
-from people_context.app.imports import (
-    CandidateStager,
-    CommitImport,
-    ImportContent,
-    ReviewImport,
-    StageCandidates,
-)
-from people_context.app.people import AddAlias, Forget, MergePeople, RememberPerson, ResolvePerson, SearchPeople
-from people_context.app.records import (
-    CompleteReminder,
-    CorrectRecord,
-    ListReminders,
-    RecordFact,
-    RecordInteraction,
-    RecordObservation,
-    RecordTrait,
-    SetAffiliation,
-    SetReminder,
-)
-from people_context.app.relationships import FindConnection, GetRelationshipGraph, SetRelationship
-from people_context.app.semantic import SemanticSearch
-from people_context.config import resolve_db_path
-from people_context.ports.clock import SystemClock
+from people_context.adapters.runtime import build_runtime
 
 SERVER_NAME = "people-context"
 
@@ -90,39 +35,6 @@ SERVER_INSTRUCTIONS = (
 )
 
 _LOG_LOGGER_NAME = "people_context"
-
-
-@dataclass(frozen=True)
-class ToolDeps:
-    """Use-case dependencies injected into the tool layer (no globals/singletons)."""
-
-    resolve_person: ResolvePerson
-    get_person_context: GetPersonContext
-    get_relationship_graph: GetRelationshipGraph
-    find_connection: FindConnection
-    search_people: SearchPeople
-    semantic_search: SemanticSearch
-    remember_person: RememberPerson
-    add_alias: AddAlias
-    set_relationship: SetRelationship
-    set_affiliation: SetAffiliation
-    record_fact: RecordFact
-    record_observation: RecordObservation
-    record_trait: RecordTrait
-    record_interaction: RecordInteraction
-    correct_record: CorrectRecord
-    set_reminder: SetReminder
-    complete_reminder: CompleteReminder
-    set_communication_philosophy: SetCommunicationPhilosophy
-    get_communication_guidance: GetCommunicationGuidance
-    list_reminders: ListReminders
-    merge_people: MergePeople
-    forget: Forget
-    export_data: ExportData
-    import_content: ImportContent
-    review_import: ReviewImport
-    commit_import: CommitImport
-    stage_candidates: StageCandidates
 
 
 def _configure_logging() -> logging.Logger:
@@ -150,98 +62,11 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     application use cases, and registers every tool. Does not start any transport.
     """
     logger = _configure_logging()
-    path = resolve_db_path(db_path)
-    logger.info("people-context MCP server using database at %s", path)
-
-    conn = open_db(path)
-    clock = SystemClock()
-    repository = SqlitePeopleRepository(conn)
-    context_reader = SqliteContextReader(conn)
-    graph_reader = SqliteGraphReader(conn, clock)
-    record_store = SqliteRecordStore(conn)
-    relationship_store = SqliteRelationshipStore(conn)
-    relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
-    organization_store = SqliteOrganizationStore(conn)
-    preferences_store = SqlitePreferencesStore(conn, clock)
-    audit = SqliteAuditLog(conn)
-    lifecycle_store = SqliteLifecycleStore(conn)
-    export_reader = SqliteExportReader(conn)
-    import_staging = SqliteImportStagingStore(conn)
-    try:
-        semantic_updater = create_local_semantic_updater(conn)
-    except Exception as exc:  # noqa: BLE001 - optional derived index cannot block the server
-        logger.warning(
-            "Semantic index maintenance is unavailable: %s. Run `uv run people-context reindex --semantic`.",
-            exc,
-        )
-        semantic_updater = None
-    if semantic_updater is not None:
-        warn = logger.warning
-        repository = IndexingPeopleRepository(repository, semantic_updater, warn)
-        record_store = IndexingRecordStore(record_store, semantic_updater, warn)
-        lifecycle_store = IndexingLifecycleStore(lifecycle_store, semantic_updater, warn)
-    remember_person = RememberPerson(repository, repository, audit, clock)
-    record_interaction = RecordInteraction(repository, record_store, audit, clock)
-    candidate_stager = CandidateStager(repository, import_staging, clock)
-
-    deps = ToolDeps(
-        resolve_person=ResolvePerson(repository, context_reader, clock),
-        get_person_context=GetPersonContext(repository, context_reader, clock),
-        get_relationship_graph=GetRelationshipGraph(repository, graph_reader, relationship_vocabulary),
-        find_connection=FindConnection(repository, graph_reader, relationship_vocabulary),
-        search_people=SearchPeople(repository),
-        semantic_search=SemanticSearch(
-            SqliteSemanticMetadataReader(conn),
-            SqliteSemanticEntityReader(conn),
-            create_local_embedding_provider,
-            lambda: open_sqlite_vector_index(conn),
-            MODEL_ID,
-            MODEL_DIMENSION,
-        ),
-        remember_person=remember_person,
-        add_alias=AddAlias(repository, repository, audit, clock),
-        set_relationship=SetRelationship(
-            repository,
-            relationship_store,
-            audit,
-            clock,
-            relationship_vocabulary,
-        ),
-        set_affiliation=SetAffiliation(repository, organization_store, record_store, audit, clock),
-        record_fact=RecordFact(repository, record_store, audit, clock),
-        record_observation=RecordObservation(repository, record_store, audit, clock),
-        record_trait=RecordTrait(repository, record_store, audit, clock),
-        record_interaction=record_interaction,
-        correct_record=CorrectRecord(record_store, record_store, audit, clock, people=repository),
-        set_reminder=SetReminder(repository, record_store, audit, clock),
-        complete_reminder=CompleteReminder(record_store, record_store, audit, clock, people=repository),
-        set_communication_philosophy=SetCommunicationPhilosophy(preferences_store, audit, clock),
-        get_communication_guidance=GetCommunicationGuidance(repository, context_reader, preferences_store, clock),
-        list_reminders=ListReminders(record_store),
-        merge_people=MergePeople(repository, lifecycle_store, clock, audit),
-        forget=Forget(repository, lifecycle_store, clock, audit),
-        export_data=ExportData(export_reader, clock),
-        import_content=ImportContent(
-            repository,
-            ImportExtractorRouter(),
-            import_staging,
-            clock,
-            candidate_stager,
-        ),
-        review_import=ReviewImport(import_staging),
-        commit_import=CommitImport(
-            repository,
-            import_staging,
-            remember_person,
-            record_interaction,
-            SetAffiliation(repository, organization_store, record_store, audit, clock),
-            RecordFact(repository, record_store, audit, clock),
-        ),
-        stage_candidates=StageCandidates(candidate_stager),
-    )
+    runtime = build_runtime(db_path, warning=logger.warning)
+    logger.info("people-context MCP server using database at %s", runtime.path)
 
     mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
-    register_all(mcp, deps)
+    register_all(mcp, runtime.use_cases)
     return mcp
 
 

@@ -6,18 +6,17 @@ import argparse
 import json
 from datetime import UTC, datetime
 
+from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
-    SqliteContextReader,
     SqliteExportReader,
-    SqliteLifecycleStore,
     SqlitePeopleRepository,
     SqlitePreferencesStore,
     SqliteRecordStore,
     open_db,
 )
 from people_context.app.exports import ExportData
-from people_context.cli import CliContext, _cmd_export
+from people_context.cli.portability import cmd_export
 from people_context.domain.interaction import Interaction
 from people_context.domain.person import Alias, Person
 from people_context.domain.shared import Provenance
@@ -79,24 +78,17 @@ def test_export_contains_soft_deleted_people_preferences_interactions_and_decode
 
 
 def test_cli_and_use_case_emit_byte_equivalent_payload_with_fixed_clock(capsys) -> None:
-    conn = open_db(":memory:")
-    export_reader = SqliteExportReader(conn)
-    ctx = CliContext(
-        conn=conn,
-        repo=SqlitePeopleRepository(conn),
-        context_reader=SqliteContextReader(conn),
-        clock=_Clock(),
-        export_reader=export_reader,
-        audit=SqliteAuditLog(conn),
-        lifecycle=SqliteLifecycleStore(conn),
-        preferences=SqlitePreferencesStore(conn),
-    )
+    ctx = build_runtime(":memory:", warning=lambda _message: None, clock=_Clock())
+    export_reader = ctx.export_reader
     expected = json.dumps(
         ExportData(export_reader, _Clock()).execute().model_dump(mode="json"),
         indent=2,
         ensure_ascii=False,
     ) + "\n"
 
-    assert _cmd_export(ctx, argparse.Namespace(output=None)) == 0
+    try:
+        assert cmd_export(ctx, argparse.Namespace(output=None)) == 0
+    finally:
+        ctx.close()
 
     assert capsys.readouterr().out == expected
