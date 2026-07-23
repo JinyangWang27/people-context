@@ -188,27 +188,45 @@ class TestRememberWorkflow:
         assert "alias" in lowered
         assert "nothing was recorded" in lowered
 
-    def test_non_unique_name_uses_handle_or_reports_limitation(self) -> None:
-        # Regression: a staged person candidate has no id field, so a resolved
-        # selection among duplicate normalized names cannot be represented; the
-        # workflow must use a unique handle or report the limitation.
-        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
-
-        assert "no person" in lowered and "id field" in lowered
-        assert "unique handle" in lowered
-        assert "fail to commit" in lowered or "uncommittable" in lowered
-
-    def test_direct_write_reports_duplicate_name_limitation(self) -> None:
-        # Regression: remember_person has no person_id parameter, so a non-unique
-        # canonical name cannot be targeted by re-picking. The direct write targets via
-        # ANY unique alias (its lookup matches every alias kind); the staging binder is
-        # limited to a unique handle. Both report the limitation when none resolves.
+    def test_staging_duplicate_name_reported_unsupported(self) -> None:
+        # Regression: CommitImport._commit_person re-derives a matched person by
+        # canonical name and calls remember_person, which raises ambiguous_person for a
+        # duplicate name — so a unique handle does NOT make the batch committable, and
+        # staging must be reported unsupported for duplicate canonical names.
         lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
 
         assert "person_id" in lowered
+        assert "cannot be committed" in lowered
+        assert "ambiguous_person" in lowered
+
+    def test_direct_write_reports_duplicate_name_limitation(self) -> None:
+        # Regression: remember_person has no person_id parameter, but its name lookup
+        # matches ANY alias kind, so a non-unique canonical name is targeted via any
+        # unique alias; only when none resolves uniquely is the limitation reported.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
         assert "identically-named" in lowered
         assert "any unique alias" in lowered
-        assert "unique handle" in lowered
+
+    def test_interaction_requires_occurrence_date(self) -> None:
+        # Regression: InteractionCandidateInput.date is mandatory; the workflow must
+        # obtain the date or report it cannot stage, never substitute the current time.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "occurrence date" in lowered
+        assert "mandatory" in lowered
+        assert "current time" in lowered
+
+    def test_first_person_not_staged_as_new_person(self) -> None:
+        # Regression: resolve_person has no special handling for "I", so staging a
+        # first-person reference would create a duplicate self person (candidates have
+        # no is_self field); self participants must be omitted.
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "first-person" in lowered
+        assert "is_self" in lowered
+        assert "omit the self" in lowered
+        assert "not a new person" in lowered
 
     def test_summary_fast_path_excludes_structured_records(self) -> None:
         # Regression: a request carrying an affiliation/fact/interaction must route the

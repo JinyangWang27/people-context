@@ -76,6 +76,19 @@ persists that value as durable provenance on every staged row, so a raw statemen
 there would leak into stored records. Likewise never copy raw conversation, note, or
 transcript text into a candidate field.
 
+**Interactions need a real occurrence date.** Each `interaction` candidate's `date` is
+mandatory — there is no default. If the request does not say when it happened (for
+example `Alice spoke with Bob`, with no time), ask the user for the date, or report that
+the interaction cannot be staged yet. Never substitute the current time or otherwise
+guess when it occurred.
+
+**First-person references are the user, not a new person.** "I", "me", and "my" denote
+the user's own self record. A staged `person` candidate has no `is_self` field, so
+staging "I" would create a duplicate person literally named `I`. Omit the self
+participant from interactions — self is implicit, matching the importers — and stage
+only the resolved other people. If the only participant would be the user, there is
+nothing to stage; report that.
+
 ### Resolve people first
 
 Before either write, **resolve every referenced person** with `resolve_person` and use
@@ -87,23 +100,20 @@ duplicate** of the stored `Alice Smith`. If resolution is `ambiguous`, surface t
 candidates and let the user choose before writing; do not guess. If resolution is
 empty, the person is genuinely new — create or stage them as new.
 
-A staged `person` candidate can carry only a `name` and `aliases` — it has **no person
-id field** — and the stager binds it to an existing record only when that name or a
-handle matches exactly one person. So when two stored people share the same normalized
-canonical name, the resolved `person_id` cannot be represented in a candidate and the
-name alone is ambiguous: prefer putting the resolved person's **unique handle** in the
-candidate's `aliases` so the batch binds to exactly them. If the resolved person shares
-a normalized canonical name with another and has no unique handle, staging cannot
-target them unambiguously and the batch would fail to commit — report this limitation
-instead of staging an uncommittable batch. (The staging binder only uses a candidate's
-`handle`-kind aliases — plus its `name` — to match, so for staging the escape hatch is
-specifically a unique **handle**.)
+A staged `person` candidate has **no `person_id` field**, and staging a person who
+shares a normalized canonical name with another stored person **cannot be committed at
+all** — a unique handle does not rescue it. On commit the pipeline re-derives the person
+by `canonical_name` and calls `remember_person`, which raises `ambiguous_person` for the
+duplicate name even when a handle bound the staged row. So when the resolved person
+shares a normalized canonical name with another, do **not** stage a candidate for them;
+report that this workflow cannot record staged facts/affiliations/interactions for one
+of several identically-named people.
 
-The direct `remember_person` write in path 1 has the **same targeting limitation** — it
-has no `person_id` parameter either — but its escape hatch is broader: its `name` lookup
-matches **any** alias kind, so target the person by passing **any unique alias** (a
-nickname, handle, former name, …) as `name`. Only when no alias resolves uniquely,
-report that the workflow cannot write to one of several identically-named people.
+The direct `remember_person` write in path 1 is different: it does not go through that
+commit path, and its `name` lookup matches **any** alias kind, so a non-unique canonical
+name can still be targeted by passing **any unique alias** (a nickname, handle, former
+name, …) as `name`. Only when no alias resolves uniquely does path 1 report that it
+cannot write to one of several identically-named people.
 
 ### 3. Anything that fits neither path → report the limitation, do not force it
 
