@@ -19,7 +19,7 @@ Tests mirror these layers and capabilities under `tests/domain/`, `tests/app/`, 
 - `uv sync --extra semantic` explicitly installs optional Model2Vec and sqlite-vec support.
 - `uv run people-context-mcp` starts the default stdio MCP server.
 - `uv run people-context-mcp --http --host 127.0.0.1 --port 8765` starts loopback HTTP.
-- `uv run people-context db-path` shows the active SQLite database.
+- `uv run pctx db-path` shows the active SQLite database.
 - `uv run pytest -q` runs the complete test suite.
 - `uv run ruff check .` checks formatting-independent style and imports.
 - `uv build` creates source and wheel distributions.
