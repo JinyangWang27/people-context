@@ -86,7 +86,9 @@ files.
 5. builds and attaches the matching native-UV MCPB bundle after PyPI publication succeeds.
 
 The workflow retains its `release.published` trigger for manually created releases, and `workflow_dispatch` is
-also available for a deliberate retry from an existing release tag.
+also available for a deliberate retry from an existing release tag. Manual retries tolerate PyPI files that
+already exist so a failed downstream MCPB build or attachment can complete; release-triggered publication still
+fails loudly on duplicate filenames.
 
 PyPI release filenames and versions are immutable. If an upload partially succeeds, publish a new version rather
 than attempting to overwrite existing files.

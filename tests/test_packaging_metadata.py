@@ -5,6 +5,8 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from people_context import __version__ as package_version
+
 ROOT = Path(__file__).parents[1]
 PRIMARY_RELEASE_VERSION = "0.3.0"  # x-release-please-version
 INTEGRATION_RELEASE_VERSION = "0.2.0"
@@ -47,6 +49,7 @@ def test_reviewed_release_versions_are_synchronized() -> None:
     openclaw_lock = _json(ROOT / "openclaw-plugin/package-lock.json")
 
     assert primary_version == PRIMARY_RELEASE_VERSION
+    assert package_version == primary_version
     assert claude_plugin_version == claude_marketplace_version == INTEGRATION_RELEASE_VERSION
     assert openclaw_package_version == openclaw_manifest_version == INTEGRATION_RELEASE_VERSION
     assert openclaw_lock["version"] == INTEGRATION_RELEASE_VERSION

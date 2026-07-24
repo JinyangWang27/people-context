@@ -94,6 +94,12 @@ def test_docker_dispatch_requires_a_release_tag() -> None:
     assert 'if [[ "$RELEASE_REF" != refs/tags/v* ]]' in workflow
 
 
+def test_manual_release_retry_tolerates_existing_pypi_artifacts() -> None:
+    workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "skip-existing: ${{ github.event_name == 'workflow_dispatch' }}" in workflow
+
+
 def test_generic_updater_markers_cover_non_structured_versions() -> None:
     bundle_project = (ROOT / "mcpb/pyproject.toml").read_text(encoding="utf-8")
     packaging_test = (ROOT / "tests/test_packaging_metadata.py").read_text(encoding="utf-8")
