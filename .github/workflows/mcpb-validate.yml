@@ -9,6 +9,7 @@ on:
       - ".github/workflows/mcpb-validate.yml"
       - "pyproject.toml"
       - "uv.lock"
+  workflow_dispatch:
   push:
     branches:
       - main

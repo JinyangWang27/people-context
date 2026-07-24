@@ -110,9 +110,11 @@ docker run --rm people-context:local --help
 ## Publishing
 
 The [`docker-publish.yml`](../.github/workflows/docker-publish.yml) workflow builds the image and pushes it to
-GHCR when a `v*` release tag is pushed. It authenticates with the workflow-scoped `GITHUB_TOKEN`
-(`packages: write`) — no long-lived registry secret is used — and publishes both the exact version tag and
-`latest` for `linux/amd64`. Base-image digests and the reviewed `uv` version are pinned in the `Dockerfile`.
+GHCR from a `v*` release tag. A normal tag push triggers it directly; Release Please explicitly dispatches it at
+the new tag because GitHub suppresses workflows caused by `GITHUB_TOKEN`-created tags. The workflow rejects
+branch-based dispatches, authenticates with the workflow-scoped `GITHUB_TOKEN` (`packages: write`) — no
+long-lived registry secret is used — and publishes both the exact version tag and `latest` for `linux/amd64`.
+Base-image digests and the reviewed `uv` version are pinned in the `Dockerfile`.
 
 ### One-time: make the package public
 

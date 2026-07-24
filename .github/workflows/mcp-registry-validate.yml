@@ -9,6 +9,7 @@ on:
       - "pyproject.toml"
       - "docs/mcp-registry.md"
       - ".github/workflows/mcp-registry-validate.yml"
+  workflow_dispatch:
   push:
     branches:
       - main

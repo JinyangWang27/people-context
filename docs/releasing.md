@@ -15,9 +15,11 @@ Release Please runs from `.github/workflows/release-please.yml` with the reposit
 personal access token or long-lived release credential is stored. In **Settings > Actions > General**, enable
 **Allow GitHub Actions to create and approve pull requests** so the workflow can maintain its release PR.
 
-Pull requests created or updated with `GITHUB_TOKEN` receive CI runs in an approval-required state. A maintainer
-with write access must select **Approve workflows to run** on the Release Please PR after each automated update.
-This preserves the repository's review boundary without adding a broader token.
+GitHub suppresses workflows that would normally be triggered by a `GITHUB_TOKEN`-created pull request or tag.
+After Release Please creates or updates its pull request, the same workflow therefore dispatches CI, CodeQL, and
+each validation workflow affected by the synchronized version files at the release PR branch. When it creates a
+release, it likewise dispatches the PyPI and Docker publication workflows at the new tag. This preserves the
+repository-token boundary without adding a broader credential.
 
 ### PyPI trusted publishing
 
@@ -70,8 +72,9 @@ files.
 2. Approve its pending workflow runs and wait for required CI and CodeQL checks.
 3. Merge the Release Please PR when the accumulated changes are ready to publish.
 4. The next Release Please run creates the matching `vX.Y.Z` tag and published GitHub Release.
-5. That same workflow dispatches `.github/workflows/release.yml` at the newly created tag. The dispatch is used
-   deliberately because `GITHUB_TOKEN`-created release events do not start another workflow.
+5. That same workflow dispatches `.github/workflows/release.yml` and
+   `.github/workflows/docker-publish.yml` at the newly created tag. The dispatches are used deliberately because
+   `GITHUB_TOKEN`-created tags and releases do not start another workflow.
 6. Approve the `pypi` environment deployment when prompted.
 
 `.github/workflows/release.yml` then:

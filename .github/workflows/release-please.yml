@@ -29,9 +29,29 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Dispatch release pull request checks
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: |
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
+          gh workflow run codeql.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
+          gh workflow run claude-plugin-validate.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
+          gh workflow run mcp-registry-validate.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
+          gh workflow run codex-plugin-validate.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
+          gh workflow run mcpb-validate.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
+
       - name: Dispatch PyPI publication
         if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG_NAME: ${{ steps.release.outputs.tag_name }}
         run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG_NAME"
+
+      - name: Dispatch Docker publication
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+        run: gh workflow run docker-publish.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG_NAME"
