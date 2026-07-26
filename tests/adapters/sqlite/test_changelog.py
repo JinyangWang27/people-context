@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 
 import pytest
@@ -49,6 +50,7 @@ from people_context.app.relationships import SetRelationship, SetRelationshipInp
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.domain.reminder import ReminderKind
 from people_context.domain.trait import TraitCategory
+from people_context.ports.changelog import ChangelogEntry
 from people_context.ports.clock import Clock
 
 
@@ -319,6 +321,68 @@ def test_forget_rolls_back_deletion_redaction_audit_hlc_and_tombstone_on_capture
         == before_hlc
     )
     assert any(sentinel in row["payload_json"] for row in conn.execute("SELECT payload_json FROM changelog"))
+
+
+def test_unbounded_list_entries_returns_every_row_in_the_same_descending_order() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    appended = _append_synthetic_entries(conn, changelog, count=150)
+    expected = [entry.op_id for entry in sorted(appended, key=lambda entry: entry.comparison_key(), reverse=True)]
+
+    default_page = changelog.list_entries()
+    unbounded = changelog.list_entries(limit=None)
+
+    assert len(default_page) == 100
+    assert [entry.op_id for entry in default_page] == expected[:100]
+    assert [entry.op_id for entry in unbounded] == expected
+    assert [entry.op_id for entry in changelog.list_entries(limit=None)] == expected
+
+
+def test_unbounded_list_entries_applies_the_entity_filter() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    appended = _append_synthetic_entries(conn, changelog, count=180)
+    target = "person-1"
+    expected = [
+        entry.op_id
+        for entry in sorted(
+            (entry for entry in appended if entry.entity_id == target),
+            key=lambda entry: entry.comparison_key(),
+            reverse=True,
+        )
+    ]
+
+    entries = changelog.list_entries(limit=None, entity_id=target)
+
+    assert len(expected) > 100
+    assert [entry.op_id for entry in entries] == expected
+    assert {entry.entity_id for entry in entries} == {target}
+    assert [entry.op_id for entry in changelog.list_entries(entity_id=target)] == expected[:100]
+
+
+def _append_synthetic_entries(
+    conn: sqlite3.Connection, changelog: SqliteChangelog, count: int
+) -> list[ChangelogEntry]:
+    """Append deterministic entries, including HLC ties broken by ``op_id``."""
+    device_id = conn.execute("SELECT id FROM devices WHERE retired_at IS NULL").fetchone()["id"]
+    entries = [
+        ChangelogEntry(
+            op_id=f"op-{index:04d}",
+            device_id=device_id,
+            hlc_physical_ms=1_700_000_000_000 + index // 4,
+            hlc_logical=index % 2,
+            transaction_id=f"txn-{index:04d}",
+            entity_type="person",
+            entity_id="person-1" if index % 3 else "person-2",
+            op_kind="update",
+            payload={"index": index},
+            inserted_at=datetime(2026, 7, 17, 12, 0, tzinfo=UTC),
+        )
+        for index in range(count)
+    ]
+    for entry in entries:
+        changelog.append(entry)
+    return entries
 
 
 def _nested_keys(value: object) -> set[str]:
