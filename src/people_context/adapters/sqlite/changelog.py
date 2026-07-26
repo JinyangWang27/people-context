@@ -71,13 +71,18 @@ class SqliteChangelog:
             )
         return sorted(covered_ops), sorted(covered_transactions)
 
-    def list_entries(self, limit: int = 100, entity_id: str | None = None) -> list[ChangelogEntry]:
+    def list_entries(self, limit: int | None = 100, entity_id: str | None = None) -> list[ChangelogEntry]:
+        """Return entries newest first; ``limit=None`` returns every matching row."""
         clauses = "WHERE entity_id = ?" if entity_id is not None else ""
-        params: tuple[object, ...] = (entity_id, limit) if entity_id is not None else (limit,)
+        params: list[object] = [] if entity_id is None else [entity_id]
+        bound = ""
+        if limit is not None:
+            bound = " LIMIT ?"
+            params.append(limit)
         rows = self._conn.execute(
             f"""SELECT * FROM changelog {clauses}
-                ORDER BY hlc_physical_ms DESC, hlc_logical DESC, device_id DESC, op_id DESC LIMIT ?""",
-            params,
+                ORDER BY hlc_physical_ms DESC, hlc_logical DESC, device_id DESC, op_id DESC{bound}""",
+            tuple(params),
         ).fetchall()
         return [self._hydrate(row) for row in rows]
 

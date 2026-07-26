@@ -125,7 +125,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M11 — Sync bundle & bootstrap restore
 
-- [ ] **M11.1 — Unbounded changelog read**
+- [x] **M11.1 — Unbounded changelog read**
   - **Scope:** Widen `list_entries(limit: int | None = 100)`; `None` returns all rows.
   - **Acceptance:** existing default/descending `sync-log` unchanged; deterministic unbounded coverage.
   - **Out:** bundle export.

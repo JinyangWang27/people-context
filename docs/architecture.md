@@ -198,6 +198,11 @@ The two histories remain intentionally different:
 - `changelog` is local replay state. It stores full after-images, installation `device_id`, HLC components,
   transaction grouping, operation kind, changed fields, actor provenance, and payload schema version.
 
+`Changelog.list_entries` returns entries newest first under the deterministic
+`(hlc_physical_ms, hlc_logical, device_id, op_id)` comparison key. It reads a bounded page by default — 100 rows,
+or the `--limit` `pctx sync-log` passes — while `limit=None` returns every matching row for a full-history
+consumer.
+
 Merge writes row-level child effects and a semantic parent manifest under one `transaction_id`. Forget is the
 explicit append-only exception: it hard-deletes primary rows, redacts covered audit and changelog payloads, and
 retains an ID-only forget tombstone indefinitely in M6. `pctx sync-log` is the only new inspection
