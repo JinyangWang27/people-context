@@ -194,40 +194,55 @@ class SqliteBootstrapRestorer:
     # -- writes ----------------------------------------------------------
 
     def _reconcile_vocabulary(self, document: SyncBundleDocument) -> tuple[int, int]:
-        """Insert new vocabulary, skip identical seeded rows, and reject a differing row."""
+        """Insert new vocabulary, skip identical seeded rows, and reject a differing row.
+
+        Reconciliation must never change how a name already resolves. ``resolve()`` prefers an
+        exact type over a synonym, so a bundled type sharing a destination synonym's name — or
+        a bundled synonym already claimed by a known type — would silently redirect every later
+        assertion using that name instead of failing loudly.
+        """
         vocabulary = document.relationship_vocabulary
         existing_types = {
             row["type"]: (row["inverse"], bool(row["symmetric"]), row["category"], bool(row["canonical"]))
             for row in self._conn.execute(_TYPE_COLUMNS_SQL)
         }
+        existing_synonyms = {row["synonym"]: row["type"] for row in self._conn.execute(_SYNONYM_COLUMNS_SQL)}
+
         inserted_types = 0
         for row in vocabulary.types:
             incoming = (row.inverse, row.symmetric, row.category, row.canonical)
             current = existing_types.get(row.type)
             if current is None:
+                shadowed = existing_synonyms.get(row.type)
+                if shadowed is not None and shadowed != row.type:
+                    raise InvalidBundleError(
+                        [f"bundled relationship type would shadow a destination synonym: {row.type}"]
+                    )
                 self._conn.execute(
                     """INSERT INTO relationship_types (type, inverse, symmetric, category, canonical)
                        VALUES (?, ?, ?, ?, ?)""",
                     (row.type, row.inverse, int(row.symmetric), row.category, int(row.canonical)),
                 )
+                existing_types[row.type] = incoming
                 inserted_types += 1
             elif current != incoming:
                 raise InvalidBundleError(
                     [f"bundled relationship type conflicts with the destination vocabulary: {row.type}"]
                 )
 
-        existing_synonyms = {
-            row["synonym"]: row["type"]
-            for row in self._conn.execute(_SYNONYM_COLUMNS_SQL)
-        }
         inserted_synonyms = 0
         for synonym_row in vocabulary.synonyms:
             current_type = existing_synonyms.get(synonym_row.synonym)
             if current_type is None:
+                if synonym_row.synonym != synonym_row.type and synonym_row.synonym in existing_types:
+                    raise InvalidBundleError(
+                        [f"bundled relationship synonym is already a known type: {synonym_row.synonym}"]
+                    )
                 self._conn.execute(
                     "INSERT INTO relationship_type_synonyms (synonym, type) VALUES (?, ?)",
                     (synonym_row.synonym, synonym_row.type),
                 )
+                existing_synonyms[synonym_row.synonym] = synonym_row.type
                 inserted_synonyms += 1
             elif current_type != synonym_row.type:
                 raise InvalidBundleError(

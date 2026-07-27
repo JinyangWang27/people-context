@@ -14,6 +14,7 @@ from people_context.adapters.sqlite import (
     SqliteBootstrapRestorer,
     SqliteHybridLogicalClock,
     SqlitePeopleRepository,
+    SqliteRelationshipVocabularyStore,
     open_db,
 )
 from people_context.app.context import SetCommunicationPhilosophyInput
@@ -31,6 +32,8 @@ from people_context.domain.person import AliasKind, Person
 from people_context.domain.reminder import ReminderKind
 from people_context.domain.shared import normalize_name
 from people_context.domain.sync_bundle import (
+    BundleRelationshipSynonym,
+    BundleRelationshipType,
     InvalidBundleError,
     RestoreUnavailableError,
     SyncBundleDocument,
@@ -557,6 +560,89 @@ def test_a_bundled_device_matching_the_local_identity_is_rejected(tmp_path: Path
 
     assert any("own active device id" in detail for detail in error.value.details)
     _assert_untouched(conn, local)
+    conn.close()
+
+
+def test_an_uncategorized_relationship_type_round_trips(tmp_path: Path, capsys) -> None:
+    """A relationship whose type has no vocabulary row is legal, so it must survive restore."""
+    source = tmp_path / "uncategorized.db"
+    runtime = build_runtime(source, clock=_Clock())
+    left = runtime.use_cases.remember_person.execute(RememberPersonInput(name="Dana Okafor")).person
+    right = runtime.use_cases.remember_person.execute(RememberPersonInput(name="Eli Novak")).person
+    runtime.use_cases.set_relationship.execute(
+        SetRelationshipInput(subject_id=left.id, object_id=right.id, type="childhood_rival_of")
+    )
+    document = runtime.use_cases.export_sync_bundle.execute()
+    runtime.close()
+    assert "childhood_rival_of" not in {row.type for row in document.relationship_vocabulary.types}
+
+    target = tmp_path / "target.db"
+    conn = open_db(target)
+    _restorer(conn).restore(document)
+    stored = conn.execute("SELECT type FROM relationships").fetchall()
+    conn.close()
+
+    assert [row["type"] for row in stored] == ["childhood_rival_of"]
+    runtime = build_runtime(target, clock=_Clock())
+    uncategorized = runtime.relationship_vocabulary.list_uncategorized_types()
+    runtime.close()
+    assert uncategorized == ["childhood_rival_of"]
+    capsys.readouterr()
+
+
+def test_a_bundled_type_shadowing_a_destination_synonym_is_rejected(
+    tmp_path: Path,
+    bundle: SyncBundleDocument,
+) -> None:
+    """`resolve()` prefers an exact type, so this would silently redirect `friend`."""
+    conn = open_db(tmp_path / "target.db")
+    local = _local_device_id(conn)
+    bundle.relationship_vocabulary.types.append(
+        BundleRelationshipType(type="friend", inverse=None, symmetric=True, category="social", canonical=True)
+    )
+
+    with pytest.raises(InvalidBundleError) as error:
+        _restorer(conn).restore(bundle)
+
+    assert any("would shadow a destination synonym: friend" in detail for detail in error.value.details)
+    _assert_untouched(conn, local)
+    conn.close()
+
+
+def test_a_bundled_synonym_already_claimed_by_a_type_is_rejected(
+    tmp_path: Path,
+    bundle: SyncBundleDocument,
+) -> None:
+    """`colleague_of` is a seeded type with no self-synonym; a synonym row pointing elsewhere lies."""
+    conn = open_db(tmp_path / "target.db")
+    local = _local_device_id(conn)
+    bundle.relationship_vocabulary.synonyms.append(
+        BundleRelationshipSynonym(synonym="colleague_of", type="friend_of")
+    )
+
+    with pytest.raises(InvalidBundleError) as error:
+        _restorer(conn).restore(bundle)
+
+    assert any("already a known type: colleague_of" in detail for detail in error.value.details)
+    _assert_untouched(conn, local)
+    conn.close()
+
+
+def test_a_self_naming_synonym_for_a_bundled_type_still_reconciles(
+    tmp_path: Path,
+    bundle: SyncBundleDocument,
+) -> None:
+    """A synonym equal to its own type changes no resolution and must stay acceptable."""
+    conn = open_db(tmp_path / "target.db")
+    bundle.relationship_vocabulary.synonyms.append(
+        BundleRelationshipSynonym(synonym="co_founder_of", type="co_founder_of")
+    )
+
+    outcome = _restorer(conn).restore(bundle)
+
+    assert outcome.relationship_synonyms == 2
+    resolved = SqliteRelationshipVocabularyStore(conn).resolve("co_founder_of")
+    assert resolved is not None and resolved.type == "co_founder_of"
     conn.close()
 
 

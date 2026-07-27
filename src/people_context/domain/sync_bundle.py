@@ -476,8 +476,9 @@ def _reference_details(document: SyncBundleDocument) -> list[str]:
     snapshot = document.snapshot
     people = {person.id for person in snapshot.people}
     organizations = {organization.id for organization in snapshot.organizations}
-    # A destination always carries the seeded reference vocabulary, so a bundle may reference a
-    # seeded type it does not itself carry without dangling after restore.
+    # Vocabulary rows genuinely reference each other, so synonym targets and inverses must
+    # resolve. A destination always carries the seeded reference vocabulary, so a bundle may
+    # name a seeded type it does not itself carry without dangling after restore.
     types = {row.type for row in document.relationship_vocabulary.types} | set(SEEDED_RELATIONSHIP_TYPES)
 
     details = [
@@ -497,7 +498,9 @@ def _reference_details(document: SyncBundleDocument) -> list[str]:
             people,
             "participant",
         ),
-        *_missing("relationship", ((row.id, row.type) for row in snapshot.relationships), types, "type"),
+        # A stored relationship type deliberately needs no vocabulary row: an unmatched type is
+        # legal and reads as category "uncategorized". Requiring one here would make restore
+        # refuse a bundle that export legitimately produced.
         *_missing(
             "relationship synonym",
             ((row.synonym, row.type) for row in document.relationship_vocabulary.synonyms),

@@ -430,14 +430,20 @@ def test_dangling_domain_reference_is_rejected(path: tuple[object, ...], expecte
     assert any(detail.startswith(f"{expected} ") for detail in error.value.details)
 
 
-def test_dangling_relationship_type_is_rejected() -> None:
+def test_an_uncategorized_relationship_type_is_accepted() -> None:
+    """A stored type with no vocabulary row is legal and reads as `uncategorized`.
+
+    `SetRelationship` accepts any normalized type, so a database can hold one and `sync push`
+    will export it. Requiring a vocabulary row here would make restore refuse a bundle that
+    export legitimately produced.
+    """
     payload = _document()
     payload["snapshot"]["relationships"] = [
         {
             "id": "01J000000000000000000REL01",
             "subject_id": _PERSON_ID,
             "object_id": _PERSON_ID,
-            "type": "co_founder_of",
+            "type": "childhood_rival_of",
             "label": None,
             "period": {"valid_from": None, "valid_to": None},
             "confidence": 1.0,
@@ -446,10 +452,7 @@ def test_dangling_relationship_type_is_rejected() -> None:
         }
     ]
 
-    with pytest.raises(InvalidBundleError) as error:
-        validate_bundle_document(_validated(payload))
-
-    assert any("unknown type: co_founder_of" in detail for detail in error.value.details)
+    validate_bundle_document(_validated(payload))
 
 
 def test_dangling_vocabulary_references_are_rejected() -> None:

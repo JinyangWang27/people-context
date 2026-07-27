@@ -8,9 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, open_db
+from people_context.adapters.sqlite import (
+    SqliteAuditLog,
+    SqlitePeopleRepository,
+    SqliteRelationshipStore,
+    open_db,
+)
 from people_context.app.exports import SYNC_BUNDLE_FILENAME
 from people_context.app.people import RememberPerson, RememberPersonInput
+from people_context.app.relationships import SetRelationship, SetRelationshipInput
 from people_context.cli import main
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
@@ -91,6 +97,37 @@ def test_sync_pull_restores_after_an_interactive_yes(
     assert main(["--db", str(tmp_path / "target.db"), "sync", "pull", "--input", str(bundle)]) == 0
 
     assert "Restored 1 people" in capsys.readouterr().out
+
+
+def test_sync_pull_restores_a_bundle_carrying_an_uncategorized_relationship_type(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    """push -> pull must round-trip a stored type that has no vocabulary row."""
+    source = tmp_path / "source.db"
+    outbox = tmp_path / "outbox"
+    conn = open_db(source)
+    repository = SqlitePeopleRepository(conn)
+    audit = SqliteAuditLog(conn)
+    clock = _Clock()
+    left = RememberPerson(repository, repository, audit, clock).execute(RememberPersonInput(name="Dana"))
+    right = RememberPerson(repository, repository, audit, clock).execute(RememberPersonInput(name="Eli"))
+    SetRelationship(repository, SqliteRelationshipStore(conn), audit, clock).execute(
+        SetRelationshipInput(subject_id=left.person.id, object_id=right.person.id, type="childhood_rival_of")
+    )
+    conn.close()
+
+    assert main(["--db", str(source), "sync", "push", "--output", str(outbox)]) == 0
+    capsys.readouterr()
+    target = tmp_path / "target.db"
+
+    assert main(["--db", str(target), "sync", "pull", "--input", str(outbox), "--yes"]) == 0
+
+    assert "Restored 2 people" in capsys.readouterr().out
+    conn = open_db(target)
+    stored = [row["type"] for row in conn.execute("SELECT type FROM relationships")]
+    conn.close()
+    assert stored == ["childhood_rival_of"]
 
 
 def test_sync_pull_refuses_an_invalid_bundle_before_prompting(
