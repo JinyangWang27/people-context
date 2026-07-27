@@ -10,6 +10,8 @@ import pytest
 
 from people_context.adapters.filesystem.private_file import atomic_write_private_text
 
+_PERMISSIVE_FIXTURE_MODE = 0o640
+
 
 def _mode(path: Path) -> int:
     return stat.S_IMODE(os.stat(path).st_mode)
@@ -33,7 +35,10 @@ def test_new_file_is_written_owner_only(tmp_path: Path) -> None:
 def test_pre_existing_group_readable_file_becomes_owner_only(tmp_path: Path) -> None:
     destination = tmp_path / "bundle.json"
     destination.write_text("stale\n", encoding="utf-8")
-    os.chmod(destination, 0o644)
+    # CodeQL `security-extended` rejects creating a world-readable file even in a fixture, so the
+    # pre-existing permissive mode is group-readable. It proves the same defect: an `O_TRUNC` write
+    # would retain whatever non-owner bits the destination already had.
+    os.chmod(destination, _PERMISSIVE_FIXTURE_MODE)
 
     atomic_write_private_text(destination, "fresh\n")
 
@@ -44,7 +49,7 @@ def test_pre_existing_group_readable_file_becomes_owner_only(tmp_path: Path) -> 
 def test_destination_symlink_is_replaced_without_touching_its_target(tmp_path: Path) -> None:
     target = tmp_path / "outside.txt"
     target.write_text("do not touch\n", encoding="utf-8")
-    os.chmod(target, 0o644)
+    os.chmod(target, _PERMISSIVE_FIXTURE_MODE)
     destination = tmp_path / "bundle.json"
     destination.symlink_to(target)
 
@@ -54,7 +59,7 @@ def test_destination_symlink_is_replaced_without_touching_its_target(tmp_path: P
     assert destination.read_text(encoding="utf-8") == "fresh\n"
     assert _mode(destination) == 0o600
     assert target.read_text(encoding="utf-8") == "do not touch\n"
-    assert _mode(target) == 0o644
+    assert _mode(target) == _PERMISSIVE_FIXTURE_MODE
 
 
 def test_failed_publication_preserves_the_existing_file_and_cleans_up(

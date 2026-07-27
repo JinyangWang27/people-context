@@ -66,13 +66,15 @@ def test_sync_push_creates_a_missing_output_directory(tmp_path: Path, capsys) ->
     assert (output / SYNC_BUNDLE_FILENAME).is_file()
 
 
-def test_sync_push_replaces_a_previous_bundle_without_widening_permissions(tmp_path: Path, capsys) -> None:
+def test_sync_push_replaces_a_previous_bundle_without_retaining_its_mode(tmp_path: Path, capsys) -> None:
     db_path = tmp_path / "people.db"
     output = tmp_path / "outbox"
     output.mkdir()
     stale = output / SYNC_BUNDLE_FILENAME
     stale.write_text("stale\n", encoding="utf-8")
-    os.chmod(stale, 0o644)
+    # Group-readable rather than world-readable: CodeQL `security-extended` rejects creating a
+    # world-readable file even in a fixture, and either mode proves the stale file is narrowed.
+    os.chmod(stale, 0o640)
     _seed(db_path)
 
     assert main(["--db", str(db_path), "sync", "push", "--output", str(output)]) == 0
