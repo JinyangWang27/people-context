@@ -22,6 +22,7 @@ from people_context.adapters.semantic_indexing import (
     create_local_semantic_updater,
 )
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
+from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRestorer
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
@@ -29,6 +30,7 @@ from people_context.adapters.sqlite.db import open_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
+from people_context.adapters.sqlite.hlc import SqliteHybridLogicalClock
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
 from people_context.adapters.sqlite.merge_store import SqliteMergeStore
 from people_context.adapters.sqlite.organization_store import SqliteOrganizationStore
@@ -86,6 +88,7 @@ from people_context.app.relationships import (
     SetRelationship,
 )
 from people_context.app.semantic import ReindexPeople, SemanticSearch
+from people_context.app.sync import RestoreSyncBundle
 from people_context.config import resolve_db_path
 from people_context.ports.clock import Clock, SystemClock
 
@@ -124,6 +127,7 @@ class RuntimeUseCases:
     forget: Forget
     export_data: ExportData
     export_sync_bundle: ExportSyncBundle
+    restore_sync_bundle: RestoreSyncBundle
     export_vault: ExportVault
     import_content: ImportContent
     review_import: ReviewImport
@@ -153,6 +157,7 @@ class ApplicationRuntime:
     forget_store: SqliteForgetStore | IndexingForgetStore
     export_reader: SqliteExportReader
     bundle_reader: SqliteBundleReader
+    bootstrap_restorer: SqliteBootstrapRestorer
     vault_reader: SqliteVaultReader
     import_staging: SqliteImportStagingStore
     semantic_documents: SqliteSemanticDocumentReader
@@ -203,6 +208,7 @@ def build_runtime(
     changelog = SqliteChangelog(conn)
     export_reader = SqliteExportReader(conn)
     bundle_reader = SqliteBundleReader(conn)
+    bootstrap_restorer = SqliteBootstrapRestorer(conn, repo, SqliteHybridLogicalClock(conn))
     vault_reader = SqliteVaultReader(conn, runtime_clock)
     import_staging = SqliteImportStagingStore(conn)
     semantic_documents = SqliteSemanticDocumentReader(conn)
@@ -265,6 +271,7 @@ def build_runtime(
         forget=Forget(repo, forget_store, runtime_clock, audit),
         export_data=ExportData(export_reader, runtime_clock),
         export_sync_bundle=ExportSyncBundle(bundle_reader, runtime_clock),
+        restore_sync_bundle=RestoreSyncBundle(bootstrap_restorer),
         export_vault=ExportVault(vault_reader, FileSystemVaultWriter()),
         import_content=ImportContent(
             repo,
@@ -303,6 +310,7 @@ def build_runtime(
         forget_store=forget_store,
         export_reader=export_reader,
         bundle_reader=bundle_reader,
+        bootstrap_restorer=bootstrap_restorer,
         vault_reader=vault_reader,
         import_staging=import_staging,
         semantic_documents=semantic_documents,

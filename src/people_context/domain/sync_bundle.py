@@ -4,22 +4,34 @@ These models are the restore contract, not a loose ``dict[str, Any]`` envelope. 
 model forbids unknown fields, no field carries a silent default, timestamps must be
 timezone-aware and are normalized to UTC, and identifiers must be non-blank. Structural
 validation therefore fails closed before any consumer inspects the document.
+
+Structural parsing alone cannot prove a document is internally consistent, so
+:func:`validate_bundle_document` adds the document-level cross-field rules. It runs on the
+restore path only: export builds its document from one consistent database snapshot, and
+making the shared model reject anything a live database can legitimately hold would turn a
+readable store into an unexportable one.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
 from people_context.domain.person import AliasKind
+from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
 from people_context.domain.reminder import ReminderKind, ReminderStatus
 from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import TraitCategory
 
 SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 SYNC_BUNDLE_VERSION = 1
+
+#: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
+#: refusal into an unbounded message; the count of suppressed reasons is reported instead.
+MAX_REPORTED_DETAILS = 20
 
 
 def _require_non_blank(value: str) -> str:
@@ -298,3 +310,182 @@ class SyncBundleDocument(StrictBundleModel):
     snapshot: BundleSnapshot
     relationship_vocabulary: BundleRelationshipVocabulary
     changelog: list[BundleChangelogEntry]
+
+
+class SyncBundleError(Exception):
+    """Structured, fail-closed refusal to accept or restore one bundle.
+
+    ``details`` carries stable, machine-readable reasons that name identifiers, table names,
+    and counts only. Record contents never appear, so a refusal can be printed or logged
+    without disclosing personal data.
+    """
+
+    code: ClassVar[str] = "sync_bundle_error"
+
+    def __init__(self, details: Sequence[str]) -> None:
+        reported = list(details[:MAX_REPORTED_DETAILS])
+        suppressed = len(details) - len(reported)
+        if suppressed > 0:
+            reported.append(f"and {suppressed} further reason(s)")
+        self.details: tuple[str, ...] = tuple(reported)
+        super().__init__(f"{self.code}: " + "; ".join(self.details))
+
+
+class InvalidBundleError(SyncBundleError):
+    """The document is not a well-formed, internally consistent version-1 bundle."""
+
+    code = "invalid_bundle"
+
+
+class TargetNotEmptyError(SyncBundleError):
+    """The destination is not the baseline-empty database bootstrap restore requires."""
+
+    code = "target_not_empty"
+
+
+class RestoreUnavailableError(SyncBundleError):
+    """The destination could not be reserved exclusively for the restore transaction."""
+
+    code = "restore_unavailable"
+
+
+def validate_bundle_document(document: SyncBundleDocument) -> None:
+    """Raise :class:`InvalidBundleError` unless every document-level rule holds.
+
+    Reasons from all rules are collected in a stable order so one refusal reports the whole
+    picture rather than only the first failure a caller happens to trip over.
+    """
+    details = [
+        *_duplicate_details(document),
+        *_origin_details(document),
+        *_changelog_device_details(document),
+        *_watermark_details(document),
+        *_reference_details(document),
+    ]
+    if details:
+        raise InvalidBundleError(details)
+
+
+def _duplicate_details(document: SyncBundleDocument) -> list[str]:
+    snapshot = document.snapshot
+    collections: list[tuple[str, Iterable[str]]] = [
+        ("device id", (device.id for device in document.devices)),
+        ("changelog op_id", (entry.op_id for entry in document.changelog)),
+        ("person id", (person.id for person in snapshot.people)),
+        ("alias id", (alias.id for person in snapshot.people for alias in person.aliases)),
+        ("organization id", (organization.id for organization in snapshot.organizations)),
+        ("affiliation id", (affiliation.id for affiliation in snapshot.affiliations)),
+        ("relationship id", (relationship.id for relationship in snapshot.relationships)),
+        ("fact id", (fact.id for fact in snapshot.facts)),
+        ("observation id", (observation.id for observation in snapshot.observations)),
+        ("trait id", (trait.id for trait in snapshot.traits)),
+        ("interaction id", (interaction.id for interaction in snapshot.interactions)),
+        ("reminder id", (reminder.id for reminder in snapshot.reminders)),
+        ("preference key", (preference.key for preference in snapshot.user_preferences)),
+        ("audit entry id", (entry.id for entry in snapshot.audit_log)),
+        ("relationship type", (row.type for row in document.relationship_vocabulary.types)),
+        ("relationship synonym", (row.synonym for row in document.relationship_vocabulary.synonyms)),
+    ]
+    details = [detail for label, values in collections for detail in _repeated(label, values)]
+    for interaction in snapshot.interactions:
+        details.extend(
+            _repeated(f"participant of interaction {interaction.id}", interaction.participant_ids)
+        )
+    return details
+
+
+def _repeated(label: str, values: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    repeated: set[str] = set()
+    for value in values:
+        if value in seen:
+            repeated.add(value)
+        seen.add(value)
+    return [f"duplicate {label}: {value}" for value in sorted(repeated)]
+
+
+def _origin_details(document: SyncBundleDocument) -> list[str]:
+    origins = [device for device in document.devices if device.id == document.origin_device_id]
+    if not origins:
+        return [f"origin device is absent from the bundle devices: {document.origin_device_id}"]
+    if any(device.retired_at is not None for device in origins):
+        return [f"origin device is retired in the bundle: {document.origin_device_id}"]
+    return []
+
+
+def _changelog_device_details(document: SyncBundleDocument) -> list[str]:
+    known = {device.id for device in document.devices}
+    return sorted(
+        {
+            f"changelog entry references an unbundled device: {entry.device_id}"
+            for entry in document.changelog
+            if entry.device_id not in known
+        }
+    )
+
+
+def _watermark_details(document: SyncBundleDocument) -> list[str]:
+    watermark = (document.watermark.hlc_physical_ms, document.watermark.hlc_logical)
+    details = [
+        f"changelog entry is ahead of the bundle watermark: {entry.op_id}"
+        for entry in document.changelog
+        if (entry.hlc_physical_ms, entry.hlc_logical) > watermark
+    ]
+    details.extend(
+        f"device clock is ahead of the bundle watermark: {device.id}"
+        for device in document.devices
+        if (device.hlc_physical_ms, device.hlc_logical) > watermark
+    )
+    return details
+
+
+def _reference_details(document: SyncBundleDocument) -> list[str]:
+    snapshot = document.snapshot
+    people = {person.id for person in snapshot.people}
+    organizations = {organization.id for organization in snapshot.organizations}
+    # A destination always carries the seeded reference vocabulary, so a bundle may reference a
+    # seeded type it does not itself carry without dangling after restore.
+    types = {row.type for row in document.relationship_vocabulary.types} | set(SEEDED_RELATIONSHIP_TYPES)
+
+    details = [
+        *_missing("affiliation", ((row.id, row.person_id) for row in snapshot.affiliations), people, "person"),
+        *_missing(
+            "affiliation", ((row.id, row.org_id) for row in snapshot.affiliations), organizations, "organization"
+        ),
+        *_missing("relationship", ((row.id, row.subject_id) for row in snapshot.relationships), people, "subject"),
+        *_missing("relationship", ((row.id, row.object_id) for row in snapshot.relationships), people, "object"),
+        *_missing("fact", ((row.id, row.person_id) for row in snapshot.facts), people, "person"),
+        *_missing("observation", ((row.id, row.person_id) for row in snapshot.observations), people, "person"),
+        *_missing("trait", ((row.id, row.person_id) for row in snapshot.traits), people, "person"),
+        *_missing("reminder", ((row.id, row.person_id) for row in snapshot.reminders), people, "person"),
+        *_missing(
+            "interaction",
+            ((row.id, person_id) for row in snapshot.interactions for person_id in row.participant_ids),
+            people,
+            "participant",
+        ),
+        *_missing("relationship", ((row.id, row.type) for row in snapshot.relationships), types, "type"),
+        *_missing(
+            "relationship synonym",
+            ((row.synonym, row.type) for row in document.relationship_vocabulary.synonyms),
+            types,
+            "type",
+        ),
+    ]
+    details.extend(
+        _missing(
+            "relationship type",
+            ((row.type, row.inverse) for row in document.relationship_vocabulary.types if row.inverse is not None),
+            types,
+            "inverse",
+        )
+    )
+    return details
+
+
+def _missing(entity: str, pairs: Iterable[tuple[str, str]], known: set[str], reference: str) -> list[str]:
+    return [
+        f"{entity} {owner} references an unknown {reference}: {value}"
+        for owner, value in pairs
+        if value not in known
+    ]

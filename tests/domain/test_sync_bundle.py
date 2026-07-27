@@ -11,13 +11,17 @@ from pydantic import BaseModel, ValidationError
 
 from people_context.domain import sync_bundle
 from people_context.domain.sync_bundle import (
+    MAX_REPORTED_DETAILS,
     SYNC_BUNDLE_FORMAT,
     SYNC_BUNDLE_VERSION,
+    InvalidBundleError,
     StrictBundleModel,
     SyncBundleDocument,
+    validate_bundle_document,
 )
 
 _DEVICE_ID = "01J00000000000000000000DEV"
+_OTHER_DEVICE_ID = "01J0000000000000000000DEV2"
 _PERSON_ID = "01J000000000000000000PERSON"
 
 
@@ -327,3 +331,262 @@ def test_every_bundle_model_forbids_unknown_fields() -> None:
 
     assert permissive == []
     assert len(_strict_models()) > 15
+
+
+def _validated(payload: dict[str, Any]) -> SyncBundleDocument:
+    """Parse a payload structurally without applying the document-level rules."""
+    return SyncBundleDocument.model_validate(payload)
+
+
+def _interaction(interaction_id: str, participant_ids: list[str]) -> dict[str, Any]:
+    return {
+        "id": interaction_id,
+        "summary": "Coffee",
+        "occurred_at": "2026-07-04T00:00:00Z",
+        "channel": None,
+        "participant_ids": participant_ids,
+        "sensitivity": "personal",
+        "provenance": {"source": "user", "session": None, "stated_by": None},
+    }
+
+
+def test_complete_document_satisfies_every_document_level_rule() -> None:
+    validate_bundle_document(_validated(_document()))
+
+
+def test_relationship_may_reference_a_seeded_type_the_bundle_omits() -> None:
+    """A destination always carries the seeded vocabulary, so omitting it is not dangling."""
+    payload = _document()
+    payload["snapshot"]["relationships"] = [
+        {
+            "id": "01J000000000000000000REL01",
+            "subject_id": _PERSON_ID,
+            "object_id": _PERSON_ID,
+            "type": "friend_of",
+            "label": None,
+            "period": {"valid_from": None, "valid_to": None},
+            "confidence": 1.0,
+            "provenance": {"source": "user", "session": None, "stated_by": None},
+            "created_at": "2026-07-04T00:00:00Z",
+        }
+    ]
+
+    validate_bundle_document(_validated(payload))
+
+
+def test_missing_origin_device_is_rejected() -> None:
+    payload = _document()
+    payload["origin_device_id"] = _OTHER_DEVICE_ID
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert error.value.code == "invalid_bundle"
+    assert any("origin device is absent" in detail for detail in error.value.details)
+
+
+def test_retired_origin_device_is_rejected() -> None:
+    payload = _document()
+    payload["devices"][0]["retired_at"] = "2026-07-10T00:00:00Z"
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any("origin device is retired" in detail for detail in error.value.details)
+
+
+def test_dangling_changelog_device_is_rejected() -> None:
+    payload = _document()
+    payload["changelog"][0]["device_id"] = _OTHER_DEVICE_ID
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any("unbundled device" in detail for detail in error.value.details)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        (("snapshot", "facts", 0, "person_id"), "fact"),
+        (("snapshot", "audit_log", 0, "id"), None),
+    ],
+)
+def test_dangling_domain_reference_is_rejected(path: tuple[object, ...], expected: str | None) -> None:
+    payload = _document()
+    target: Any = payload
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = "01J0000000000000000MISSING"
+    if expected is None:
+        # An audit id is not a foreign key; changing it must stay acceptable.
+        validate_bundle_document(_validated(payload))
+        return
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any(detail.startswith(f"{expected} ") for detail in error.value.details)
+
+
+def test_dangling_relationship_type_is_rejected() -> None:
+    payload = _document()
+    payload["snapshot"]["relationships"] = [
+        {
+            "id": "01J000000000000000000REL01",
+            "subject_id": _PERSON_ID,
+            "object_id": _PERSON_ID,
+            "type": "co_founder_of",
+            "label": None,
+            "period": {"valid_from": None, "valid_to": None},
+            "confidence": 1.0,
+            "provenance": {"source": "user", "session": None, "stated_by": None},
+            "created_at": "2026-07-04T00:00:00Z",
+        }
+    ]
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any("unknown type: co_founder_of" in detail for detail in error.value.details)
+
+
+def test_dangling_vocabulary_references_are_rejected() -> None:
+    payload = _document()
+    payload["relationship_vocabulary"]["synonyms"][0]["type"] = "co_founder_of"
+    payload["relationship_vocabulary"]["types"][0]["symmetric"] = False
+    payload["relationship_vocabulary"]["types"][0]["inverse"] = "co_founded_by"
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any("unknown type: co_founder_of" in detail for detail in error.value.details)
+    assert any("unknown inverse: co_founded_by" in detail for detail in error.value.details)
+
+
+def test_dangling_interaction_participant_is_rejected() -> None:
+    payload = _document()
+    payload["snapshot"]["interactions"] = [
+        _interaction("01J000000000000000000INT01", ["01J0000000000000000MISSING"])
+    ]
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any("unknown participant" in detail for detail in error.value.details)
+
+
+@pytest.mark.parametrize("target", ["changelog", "device"])
+def test_watermark_below_bundled_history_is_rejected(target: str) -> None:
+    payload = _document()
+    if target == "changelog":
+        payload["changelog"][0]["hlc_logical"] = 4
+    else:
+        payload["devices"][0]["hlc_physical_ms"] = 1755000000001
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any("ahead of the bundle watermark" in detail for detail in error.value.details)
+
+
+def test_watermark_equal_to_the_highest_entry_is_accepted() -> None:
+    payload = _document()
+    payload["watermark"] = {"hlc_physical_ms": 1755000000000, "hlc_logical": 3}
+
+    validate_bundle_document(_validated(payload))
+
+
+@pytest.mark.parametrize(
+    ("collection", "label"),
+    [
+        ("devices", "device id"),
+        ("changelog", "changelog op_id"),
+    ],
+)
+def test_duplicate_top_level_ids_are_rejected(collection: str, label: str) -> None:
+    payload = _document()
+    payload[collection].append(copy.deepcopy(payload[collection][0]))
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any(detail.startswith(f"duplicate {label}") for detail in error.value.details)
+
+
+@pytest.mark.parametrize(
+    ("collection", "label"),
+    [
+        ("people", "person id"),
+        ("facts", "fact id"),
+        ("user_preferences", "preference key"),
+        ("audit_log", "audit entry id"),
+    ],
+)
+def test_duplicate_snapshot_primary_keys_are_rejected(collection: str, label: str) -> None:
+    payload = _document()
+    payload["snapshot"][collection].append(copy.deepcopy(payload["snapshot"][collection][0]))
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any(detail.startswith(f"duplicate {label}") for detail in error.value.details)
+
+
+def test_duplicate_alias_id_across_people_is_rejected() -> None:
+    payload = _document()
+    second = copy.deepcopy(payload["snapshot"]["people"][0])
+    second["id"] = "01J00000000000000PERSON002"
+    payload["snapshot"]["people"].append(second)
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any(detail.startswith("duplicate alias id") for detail in error.value.details)
+
+
+def test_duplicate_interaction_participant_is_rejected() -> None:
+    payload = _document()
+    payload["snapshot"]["interactions"] = [
+        _interaction("01J000000000000000000INT01", [_PERSON_ID, _PERSON_ID])
+    ]
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any(detail.startswith("duplicate participant of interaction") for detail in error.value.details)
+
+
+def test_duplicate_vocabulary_keys_are_rejected() -> None:
+    payload = _document()
+    payload["relationship_vocabulary"]["types"].append(
+        copy.deepcopy(payload["relationship_vocabulary"]["types"][0])
+    )
+    payload["relationship_vocabulary"]["synonyms"].append(
+        copy.deepcopy(payload["relationship_vocabulary"]["synonyms"][0])
+    )
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert any(detail.startswith("duplicate relationship type") for detail in error.value.details)
+    assert any(detail.startswith("duplicate relationship synonym") for detail in error.value.details)
+
+
+def test_reported_reasons_are_bounded() -> None:
+    """A badly corrupted document must not turn one refusal into an unbounded message."""
+    payload = _document()
+    payload["snapshot"]["facts"] = [
+        {
+            **copy.deepcopy(payload["snapshot"]["facts"][0]),
+            "id": f"01J0000000000000000FACT{index:03d}",
+            "person_id": f"01J000000000000000MISS{index:04d}",
+        }
+        for index in range(MAX_REPORTED_DETAILS + 5)
+    ]
+
+    with pytest.raises(InvalidBundleError) as error:
+        validate_bundle_document(_validated(payload))
+
+    assert len(error.value.details) == MAX_REPORTED_DETAILS + 1
+    assert error.value.details[-1] == "and 5 further reason(s)"
