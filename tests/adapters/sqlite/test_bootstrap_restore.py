@@ -31,6 +31,7 @@ from people_context.domain.person import AliasKind, Person
 from people_context.domain.reminder import ReminderKind
 from people_context.domain.sync_bundle import (
     InvalidBundleError,
+    RestoreUnavailableError,
     SyncBundleDocument,
     TargetNotEmptyError,
 )
@@ -619,6 +620,29 @@ def test_a_writer_starting_after_the_reservation_cannot_interleave(
         for row in conn.execute("SELECT canonical_name FROM persons").fetchall()
     )
     concurrent.close()
+    conn.close()
+
+
+def test_a_destination_already_reserved_by_another_writer_is_reported_structurally(
+    tmp_path: Path,
+    bundle: SyncBundleDocument,
+) -> None:
+    """A concurrent writer — a running server, say — must not surface as a raw sqlite error."""
+    db_path = tmp_path / "target.db"
+    conn = open_db(db_path)
+    conn.execute("PRAGMA busy_timeout=50")
+    holder = open_db(db_path)
+    holder.execute("BEGIN IMMEDIATE")
+
+    with pytest.raises(RestoreUnavailableError) as error:
+        _restorer(conn).restore(bundle)
+
+    assert error.value.code == "restore_unavailable"
+    assert any("cannot reserve the destination" in detail for detail in error.value.details)
+    assert not conn.in_transaction
+    holder.rollback()
+    assert _count(conn, "persons") == 0
+    holder.close()
     conn.close()
 
 
