@@ -19,10 +19,19 @@ from people_context.cli.people import (
     cmd_set,
     cmd_show,
 )
-from people_context.cli.portability import cmd_db_path, cmd_export, cmd_export_vault
+from people_context.cli.portability import cmd_db_path, cmd_export, cmd_export_vault, cmd_sync_push
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
+
+_SYNC_SUBCOMMANDS: dict[str, CommandHandler] = {"push": cmd_sync_push}
+
+
+def cmd_sync(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Dispatch one `sync` subcommand."""
+    handler = _SYNC_SUBCOMMANDS[args.sync_command]
+    return handler(runtime, args)
+
 
 _COMMANDS: dict[str, CommandHandler] = {
     "list": cmd_list,
@@ -36,6 +45,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "delete": cmd_delete,
     "relationship-types": cmd_relationship_types,
     "normalize-relationships": cmd_normalize_relationships,
+    "sync": cmd_sync,
     "sync-log": cmd_sync_log,
     "reindex": cmd_reindex,
 }
