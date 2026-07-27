@@ -55,7 +55,7 @@ jobs:
         run: .github/tooling/claude-code/node_modules/.bin/claude plugin validate . --strict
 
       - name: Install uv
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
       - name: Verify local MCP entry point
         run: uv run --locked people-context-mcp --help
