@@ -72,15 +72,16 @@ def test_sync_push_replaces_a_previous_bundle_without_retaining_its_mode(tmp_pat
     output.mkdir()
     stale = output / SYNC_BUNDLE_FILENAME
     stale.write_text("stale\n", encoding="utf-8")
-    # Group-readable rather than world-readable: CodeQL `security-extended` rejects creating a
-    # world-readable file even in a fixture, and either mode proves the stale file is narrowed.
-    os.chmod(stale, 0o640)
+    # Differs from 0o600 so a mode-retaining write is caught, while granting nothing to group or
+    # other: CodeQL `security-extended` reports any non-owner bit, even in a test fixture.
+    os.chmod(stale, 0o700)
     _seed(db_path)
 
     assert main(["--db", str(db_path), "sync", "push", "--output", str(output)]) == 0
 
     capsys.readouterr()
     assert stat.S_IMODE(os.stat(stale).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(stale).st_mode) & (stat.S_IRWXG | stat.S_IRWXO) == 0
     assert json.loads(stale.read_text(encoding="utf-8"))["format"] == SYNC_BUNDLE_FORMAT
 
 

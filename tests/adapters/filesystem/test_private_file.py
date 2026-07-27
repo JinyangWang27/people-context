@@ -10,7 +10,13 @@ import pytest
 
 from people_context.adapters.filesystem.private_file import atomic_write_private_text
 
-_PERMISSIVE_FIXTURE_MODE = 0o640
+# The stale-destination fixtures must differ from 0o600 so a mode-retaining `O_TRUNC` write is
+# caught, but must grant nothing to group or other: CodeQL `security-extended` reports
+# `py/overly-permissive-file` for any non-owner bit, world- or group-readable, even in a test.
+# 0o700 exercises the identical defect, because `fchmod` sets an absolute mode rather than
+# clearing selected bits.
+_STALE_FIXTURE_MODE = 0o700
+_NON_OWNER_BITS = stat.S_IRWXG | stat.S_IRWXO
 
 
 def _mode(path: Path) -> int:
@@ -29,27 +35,26 @@ def test_new_file_is_written_owner_only(tmp_path: Path) -> None:
     assert result == destination
     assert destination.read_text(encoding="utf-8") == "payload\n"
     assert _mode(destination) == 0o600
+    assert _mode(destination) & _NON_OWNER_BITS == 0
     assert _temporary_leftovers(tmp_path) == []
 
 
-def test_pre_existing_group_readable_file_becomes_owner_only(tmp_path: Path) -> None:
+def test_pre_existing_file_mode_is_reset_rather_than_retained(tmp_path: Path) -> None:
     destination = tmp_path / "bundle.json"
     destination.write_text("stale\n", encoding="utf-8")
-    # CodeQL `security-extended` rejects creating a world-readable file even in a fixture, so the
-    # pre-existing permissive mode is group-readable. It proves the same defect: an `O_TRUNC` write
-    # would retain whatever non-owner bits the destination already had.
-    os.chmod(destination, _PERMISSIVE_FIXTURE_MODE)
+    os.chmod(destination, _STALE_FIXTURE_MODE)
 
     atomic_write_private_text(destination, "fresh\n")
 
     assert destination.read_text(encoding="utf-8") == "fresh\n"
     assert _mode(destination) == 0o600
+    assert _mode(destination) & _NON_OWNER_BITS == 0
 
 
 def test_destination_symlink_is_replaced_without_touching_its_target(tmp_path: Path) -> None:
     target = tmp_path / "outside.txt"
     target.write_text("do not touch\n", encoding="utf-8")
-    os.chmod(target, _PERMISSIVE_FIXTURE_MODE)
+    os.chmod(target, _STALE_FIXTURE_MODE)
     destination = tmp_path / "bundle.json"
     destination.symlink_to(target)
 
@@ -59,7 +64,7 @@ def test_destination_symlink_is_replaced_without_touching_its_target(tmp_path: P
     assert destination.read_text(encoding="utf-8") == "fresh\n"
     assert _mode(destination) == 0o600
     assert target.read_text(encoding="utf-8") == "do not touch\n"
-    assert _mode(target) == _PERMISSIVE_FIXTURE_MODE
+    assert _mode(target) == _STALE_FIXTURE_MODE
 
 
 def test_failed_publication_preserves_the_existing_file_and_cleans_up(
