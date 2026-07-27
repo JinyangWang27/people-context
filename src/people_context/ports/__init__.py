@@ -24,11 +24,14 @@ from people_context.ports.semantic import (
     VectorIndex,
     VectorSearchHit,
 )
+from people_context.ports.sync_bundle import BundleReader, BundleSource
 from people_context.ports.unit_of_work import NullUnitOfWork, UnitOfWork
 
 __all__ = [
     "AuditEntry",
     "AuditLog",
+    "BundleReader",
+    "BundleSource",
     "AffiliationRecord",
     "Changelog",
     "ChangelogEntry",

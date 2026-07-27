@@ -385,6 +385,14 @@ Bootstrap should instead create a consistent snapshot at changelog watermark `H`
 This avoids replaying the entire historical log while retaining a precise hand-off from snapshot state to
 incremental operations.
 
+M11 implements steps 1 and 2 of that sketch. `pctx sync push` writes one strict, versioned
+`people-context-sync-bundle` document built from a single-transaction read: the portable domain snapshot, both
+relationship-vocabulary tables, every changelog entry in ascending comparison-key order, every device those
+entries reference plus the active origin device, and the origin HLC watermark `H`. The envelope and every nested
+row are explicit models that forbid unknown fields and accept no defaults, because they are the contract a later
+restore must validate before touching a destination database. Steps 3 to 6 — the trusted transactional restore
+path — remain future work, as does incremental replay past `H`.
+
 ## 7. Multi-user considerations
 
 Multi-user sharing means two human principals, not merely two devices, can read or change some of the same data.

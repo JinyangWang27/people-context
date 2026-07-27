@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
+from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.db import open_db
@@ -32,6 +33,7 @@ from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 
 __all__ = [
     "SqliteAuditLog",
+    "SqliteBundleReader",
     "SqliteChangelog",
     "SqliteContextReader",
     "SqliteExportReader",

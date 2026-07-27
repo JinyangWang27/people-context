@@ -130,7 +130,7 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** existing default/descending `sync-log` unchanged; deterministic unbounded coverage.
   - **Out:** bundle export.
 
-- [ ] **M11.2 — Strict bundle export and private-file primitive**
+- [x] **M11.2 — Strict bundle export and private-file primitive**
   - **Scope:** Strict v1 DTOs, single-snapshot reader, `ExportSyncBundle(..., Clock)`, `sync push`, and atomic private
     writer; migrate existing JSON export.
   - **Acceptance:** literal format/version, nested `extra="forbid"`, no restore-input defaults, stable ordering,

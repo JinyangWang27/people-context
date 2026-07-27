@@ -82,6 +82,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     normalize_relationships.add_argument("--apply", action="store_true", help="Execute the reported rewrites.")
 
+    sync = subparsers.add_parser("sync", help="Move this database to another device with a bootstrap bundle.")
+    sync_subcommands = sync.add_subparsers(dest="sync_command", required=True)
+    sync_push = sync_subcommands.add_parser(
+        "push",
+        help="Write one complete plaintext bootstrap bundle; store or transport it only when encrypted.",
+    )
+    sync_push.add_argument(
+        "--output",
+        required=True,
+        help="Directory that receives the owner-only people-context-sync-bundle.json file.",
+    )
+
     sync_log = subparsers.add_parser("sync-log", help="Inspect the local replayable changelog.")
     sync_log.add_argument("--limit", type=int, default=50, help="Maximum number of recent entries.")
     sync_log.add_argument("--entity", default=None, help="Filter by exact entity id.")

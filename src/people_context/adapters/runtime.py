@@ -22,6 +22,7 @@ from people_context.adapters.semantic_indexing import (
     create_local_semantic_updater,
 )
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
+from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.db import open_db
@@ -48,7 +49,7 @@ from people_context.app.context import (
     GetPersonContext,
     SetCommunicationPhilosophy,
 )
-from people_context.app.exports import ExportData, ExportVault
+from people_context.app.exports import ExportData, ExportSyncBundle, ExportVault
 from people_context.app.imports import (
     CandidateStager,
     CommitImport,
@@ -122,6 +123,7 @@ class RuntimeUseCases:
     preview_forget: PreviewForget
     forget: Forget
     export_data: ExportData
+    export_sync_bundle: ExportSyncBundle
     export_vault: ExportVault
     import_content: ImportContent
     review_import: ReviewImport
@@ -150,6 +152,7 @@ class ApplicationRuntime:
     merge_store: SqliteMergeStore | IndexingMergeStore
     forget_store: SqliteForgetStore | IndexingForgetStore
     export_reader: SqliteExportReader
+    bundle_reader: SqliteBundleReader
     vault_reader: SqliteVaultReader
     import_staging: SqliteImportStagingStore
     semantic_documents: SqliteSemanticDocumentReader
@@ -199,6 +202,7 @@ def build_runtime(
     audit = SqliteAuditLog(conn)
     changelog = SqliteChangelog(conn)
     export_reader = SqliteExportReader(conn)
+    bundle_reader = SqliteBundleReader(conn)
     vault_reader = SqliteVaultReader(conn, runtime_clock)
     import_staging = SqliteImportStagingStore(conn)
     semantic_documents = SqliteSemanticDocumentReader(conn)
@@ -260,6 +264,7 @@ def build_runtime(
         preview_forget=PreviewForget(repo, forget_store),
         forget=Forget(repo, forget_store, runtime_clock, audit),
         export_data=ExportData(export_reader, runtime_clock),
+        export_sync_bundle=ExportSyncBundle(bundle_reader, runtime_clock),
         export_vault=ExportVault(vault_reader, FileSystemVaultWriter()),
         import_content=ImportContent(
             repo,
@@ -297,6 +302,7 @@ def build_runtime(
         merge_store=merge_store,
         forget_store=forget_store,
         export_reader=export_reader,
+        bundle_reader=bundle_reader,
         vault_reader=vault_reader,
         import_staging=import_staging,
         semantic_documents=semantic_documents,
