@@ -29,6 +29,7 @@ from people_context.app.records import (
 from people_context.app.relationships import AddRelationshipTypeInput, SetRelationshipInput
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.reminder import ReminderKind
+from people_context.domain.shared import normalize_name
 from people_context.domain.sync_bundle import (
     InvalidBundleError,
     RestoreUnavailableError,
@@ -215,6 +216,48 @@ def test_a_restored_database_re_exports_the_same_snapshot_and_history(
     # The new device is the origin of its own bundle and carries the imported history forward.
     assert reexported.origin_device_id != bundle.origin_device_id
     assert {device.id for device in reexported.devices} >= {device.id for device in bundle.devices}
+
+
+def test_restore_populates_every_derived_normalized_column(
+    tmp_path: Path,
+    bundle: SyncBundleDocument,
+) -> None:
+    """Normalized columns are how lookup finds a row; a NULL one silently duplicates it."""
+    conn = open_db(tmp_path / "target.db")
+
+    _restorer(conn).restore(bundle)
+
+    for table, source, derived in (
+        ("persons", "canonical_name", "canonical_name_normalized"),
+        ("aliases", "value", "value_normalized"),
+        ("organizations", "name", "name_normalized"),
+    ):
+        rows = conn.execute(f"SELECT {source} AS source, {derived} AS derived FROM {table}").fetchall()  # noqa: S608
+        assert rows, f"{table} should have been restored"
+        assert [row["derived"] for row in rows] == [normalize_name(row["source"]) for row in rows]
+    conn.close()
+
+
+def test_a_restored_organization_is_reused_rather_than_duplicated(
+    tmp_path: Path,
+    bundle: SyncBundleDocument,
+) -> None:
+    """The user-visible consequence of an unpopulated `name_normalized`."""
+    target = tmp_path / "target.db"
+    conn = open_db(target)
+    _restorer(conn).restore(bundle)
+    conn.close()
+
+    restored = bundle.snapshot.organizations[0]
+    runtime = build_runtime(target, clock=_Clock())
+    person = runtime.use_cases.remember_person.execute(RememberPersonInput(name="Carol Lin")).person
+    runtime.use_cases.set_affiliation.execute(
+        SetAffiliationInput(person_id=person.id, org=restored.name, role="Designer")
+    )
+    organizations = runtime.conn.execute("SELECT id, name FROM organizations").fetchall()
+    runtime.close()
+
+    assert [row["id"] for row in organizations] == [restored.id]
 
 
 def test_restore_reinstates_audit_and_changelog_without_minting_new_rows(

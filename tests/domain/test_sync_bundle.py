@@ -12,6 +12,7 @@ from pydantic import BaseModel, ValidationError
 from people_context.domain import sync_bundle
 from people_context.domain.sync_bundle import (
     MAX_REPORTED_DETAILS,
+    SQLITE_MAX_INTEGER,
     SYNC_BUNDLE_FORMAT,
     SYNC_BUNDLE_VERSION,
     InvalidBundleError,
@@ -590,3 +591,115 @@ def test_reported_reasons_are_bounded() -> None:
 
     assert len(error.value.details) == MAX_REPORTED_DETAILS + 1
     assert error.value.details[-1] == "and 5 further reason(s)"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("watermark", "hlc_physical_ms"),
+        ("watermark", "hlc_logical"),
+        ("devices", 0, "hlc_physical_ms"),
+        ("devices", 0, "hlc_logical"),
+        ("changelog", 0, "hlc_physical_ms"),
+        ("changelog", 0, "hlc_logical"),
+    ],
+)
+def test_hlc_components_beyond_sqlite_storage_are_rejected(path: tuple[object, ...]) -> None:
+    """An unstorable integer must fail at parse time, not as an OverflowError mid-restore."""
+    payload = _document()
+    target: Any = payload
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = SQLITE_MAX_INTEGER
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_oversized_changelog_schema_version_is_rejected() -> None:
+    payload = _document()
+    payload["changelog"][0]["schema_version"] = SQLITE_MAX_INTEGER + 1
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_the_largest_storable_hlc_components_still_parse() -> None:
+    """The bound leaves exactly one increment of headroom for ``observe()``, no more."""
+    payload = _document()
+    largest = SQLITE_MAX_INTEGER - 1
+    payload["watermark"] = {"hlc_physical_ms": largest, "hlc_logical": largest}
+    payload["devices"][0]["hlc_physical_ms"] = largest
+    payload["devices"][0]["hlc_logical"] = largest
+    payload["changelog"][0]["hlc_physical_ms"] = largest
+    payload["changelog"][0]["hlc_logical"] = largest
+
+    validate_bundle_document(_validated(payload))
+
+
+@pytest.mark.parametrize(
+    "collection",
+    ["affiliations", "relationships", "facts"],
+)
+def test_an_inverted_validity_period_is_rejected(collection: str) -> None:
+    """Ordinary reads rehydrate `ValidityPeriod`, so an inverted window must never commit."""
+    payload = _document()
+    payload["snapshot"][collection] = [_row_with_period(collection)]
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def _row_with_period(collection: str) -> dict[str, Any]:
+    period = {"valid_from": "2026-07-10", "valid_to": "2026-07-01"}
+    provenance = {"source": "user", "session": None, "stated_by": None}
+    if collection == "affiliations":
+        return {
+            "id": "01J000000000000000000AFF01",
+            "person_id": _PERSON_ID,
+            "org_id": "01J000000000000000000ORG01",
+            "role": "Engineer",
+            "period": period,
+            "confidence": 1.0,
+            "provenance": provenance,
+            "created_at": "2026-07-04T00:00:00Z",
+        }
+    if collection == "relationships":
+        return {
+            "id": "01J000000000000000000REL01",
+            "subject_id": _PERSON_ID,
+            "object_id": _PERSON_ID,
+            "type": "friend_of",
+            "label": None,
+            "period": period,
+            "confidence": 1.0,
+            "provenance": provenance,
+            "created_at": "2026-07-04T00:00:00Z",
+        }
+    return {
+        "id": "01J00000000000000000FACT99",
+        "person_id": _PERSON_ID,
+        "predicate": "role",
+        "value": "Engineer",
+        "period": period,
+        "recorded_at": "2026-07-02T00:00:00Z",
+        "confidence": 1.0,
+        "sensitivity": "personal",
+        "provenance": provenance,
+    }
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"symmetric": True, "inverse": "colleague_of"},
+        {"symmetric": False, "canonical": False, "inverse": None},
+    ],
+)
+def test_an_impossible_relationship_direction_is_rejected(overrides: dict[str, Any]) -> None:
+    """The vocabulary store rehydrates `RelationshipType`; an impossible row must not commit."""
+    payload = _document()
+    payload["relationship_vocabulary"]["types"][0].update(overrides)
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)

@@ -246,10 +246,13 @@ class SqliteBootstrapRestorer:
 
     def _insert_domain(self, document: SyncBundleDocument) -> None:
         snapshot = document.snapshot
+        # `name_normalized` is the only column organization lookup searches. Leaving it NULL
+        # would restore rows that `SetAffiliation` cannot find by name, silently duplicating
+        # every restored organization on the next affiliation write.
         self._insert_many(
             "organizations",
-            ("id", "name", "kind"),
-            ((row.id, row.name, row.kind) for row in snapshot.organizations),
+            ("id", "name", "name_normalized", "kind"),
+            ((row.id, row.name, normalize_name(row.name), row.kind) for row in snapshot.organizations),
         )
         self._insert_many(
             "persons",

@@ -120,6 +120,34 @@ def test_sync_pull_refuses_an_invalid_bundle_before_prompting(
     conn.close()
 
 
+def test_sync_pull_refuses_an_unstorable_integer_without_a_traceback(
+    tmp_path: Path,
+    capsys,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An integer SQLite cannot persist must refuse structurally, not raise mid-restore."""
+    bundle = _bundle(tmp_path, capsys)
+    document = json.loads(bundle.read_text(encoding="utf-8"))
+    document["watermark"]["hlc_physical_ms"] = 2**63
+    bundle.write_text(json.dumps(document), encoding="utf-8")
+
+    def _refuse_to_prompt(_prompt: str = "") -> str:
+        raise AssertionError("an unstorable bundle must never reach the confirmation prompt")
+
+    monkeypatch.setattr("builtins.input", _refuse_to_prompt)
+    target = tmp_path / "target.db"
+
+    assert main(["--db", str(target), "sync", "pull", "--input", str(bundle)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "invalid_bundle" in captured.err
+    assert "watermark.hlc_physical_ms" in captured.err
+    conn = open_db(target)
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0
+    conn.close()
+
+
 def test_sync_pull_refuses_a_non_baseline_target(tmp_path: Path, capsys) -> None:
     bundle = _bundle(tmp_path, capsys)
     target = tmp_path / "target.db"

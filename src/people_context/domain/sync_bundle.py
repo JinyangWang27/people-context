@@ -18,7 +18,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
@@ -53,9 +53,17 @@ def _require_utc(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+#: SQLite persists ``INTEGER`` as a signed 64-bit value. A larger number parses happily as a
+#: Python int but raises ``OverflowError`` when bound mid-restore, which would escape the
+#: structured-refusal contract as a traceback after the user had already been prompted.
+SQLITE_MAX_INTEGER = 2**63 - 1
+
 Identifier = Annotated[str, AfterValidator(_require_non_blank)]
 UtcDatetime = Annotated[datetime, BeforeValidator(_reject_numeric_timestamp), AfterValidator(_require_utc)]
-HlcComponent = Annotated[int, Field(ge=0)]
+StoredInteger = Annotated[int, Field(ge=0, le=SQLITE_MAX_INTEGER)]
+#: One below the storable maximum: restore advances the local clock past the bundle watermark
+#: through ``observe()``, which adds one to a logical counter, and that result must still fit.
+HlcComponent = Annotated[int, Field(ge=0, le=SQLITE_MAX_INTEGER - 1)]
 
 
 class StrictBundleModel(BaseModel):
@@ -77,6 +85,18 @@ class BundleValidityPeriod(StrictBundleModel):
 
     valid_from: date | None
     valid_to: date | None
+
+    @model_validator(mode="after")
+    def _check_order(self) -> BundleValidityPeriod:
+        """Mirror the domain ``ValidityPeriod`` invariant.
+
+        Ordinary reads rehydrate stored rows through the domain model, so committing an
+        inverted window would leave a database whose own ``export``, ``show``, and context
+        reads raise. Restore must refuse it before the preview instead.
+        """
+        if self.valid_from is not None and self.valid_to is not None and self.valid_from > self.valid_to:
+            raise ValueError("valid_from must be <= valid_to")
+        return self
 
 
 class BundleAlias(StrictBundleModel):
@@ -246,6 +266,19 @@ class BundleRelationshipType(StrictBundleModel):
     category: str
     canonical: bool
 
+    @model_validator(mode="after")
+    def _validate_direction(self) -> BundleRelationshipType:
+        """Mirror the domain ``RelationshipType`` invariant.
+
+        The vocabulary store rehydrates these rows, so an impossible direction would break
+        ``relationship-types`` and every graph read on the restored database.
+        """
+        if self.symmetric and self.inverse is not None:
+            raise ValueError("symmetric relationship types cannot define an inverse")
+        if not self.canonical and self.inverse is None:
+            raise ValueError("non-canonical relationship types must name their canonical inverse")
+        return self
+
 
 class BundleRelationshipSynonym(StrictBundleModel):
     """One bundled ``relationship_type_synonyms`` row."""
@@ -294,7 +327,7 @@ class BundleChangelogEntry(StrictBundleModel):
     payload: dict[str, Any]
     changed_fields: list[str]
     actor: dict[str, Any]
-    schema_version: int
+    schema_version: StoredInteger
     inserted_at: UtcDatetime
 
 
