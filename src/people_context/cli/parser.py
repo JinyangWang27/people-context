@@ -93,6 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Directory that receives the owner-only people-context-sync-bundle.json file.",
     )
+    sync_pull = sync_subcommands.add_parser(
+        "pull",
+        help="Restore one bootstrap bundle into a freshly initialized, otherwise untouched database.",
+    )
+    sync_pull.add_argument(
+        "--input",
+        required=True,
+        help="The bundle file, or a directory containing people-context-sync-bundle.json.",
+    )
+    sync_pull.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
 
     sync_log = subparsers.add_parser("sync-log", help="Inspect the local replayable changelog.")
     sync_log.add_argument("--limit", type=int, default=50, help="Maximum number of recent entries.")

@@ -385,13 +385,23 @@ Bootstrap should instead create a consistent snapshot at changelog watermark `H`
 This avoids replaying the entire historical log while retaining a precise hand-off from snapshot state to
 incremental operations.
 
-M11 implements steps 1 and 2 of that sketch. `pctx sync push` writes one strict, versioned
+M11 implements steps 1, 2, 3, 5, and 6 of that sketch. `pctx sync push` writes one strict, versioned
 `people-context-sync-bundle` document built from a single-transaction read: the portable domain snapshot, both
 relationship-vocabulary tables, every changelog entry in ascending comparison-key order, every device those
 entries reference plus the active origin device, and the origin HLC watermark `H`. The envelope and every nested
-row are explicit models that forbid unknown fields and accept no defaults, because they are the contract a later
-restore must validate before touching a destination database. Steps 3 to 6 — the trusted transactional restore
-path — remain future work, as does incremental replay past `H`.
+row are explicit models that forbid unknown fields and accept no defaults, because they are the contract restore
+validates before touching a destination database.
+
+`pctx sync pull` is that trusted transactional restore path, deliberately narrowed to bootstrap. It refuses any
+destination that is not still exactly as `open_db` created it, so the blunt verbatim writer never merges with
+existing primary, staging, preference, audit, sync, vocabulary, or derived-search state. Under one
+`BEGIN IMMEDIATE` reservation it reconciles vocabulary, writes every bundled device as retired history, inserts
+the domain, audit, and changelog rows verbatim, rebuilds FTS, and advances the local clock past `H` — leaving
+`import_staging` empty and the destination's own device the only active identity. Semantic vectors stay outside
+the transaction because they are rebuildable cache data that may require a model download.
+
+Step 4 — replaying operations after `H` — remains future work, as does incremental replay between independently
+diverged devices, conflict resolution, acknowledgements, pairing, transport, and bundle encryption.
 
 ## 7. Multi-user considerations
 

@@ -219,6 +219,7 @@ uv run pctx add-alias PERSON VALUE [--kind KIND]
 uv run pctx set communication_philosophy VALUE
 uv run pctx delete PERSON [--yes]
 uv run pctx sync push --output DIR
+uv run pctx sync pull --input PATH [--yes]
 uv run pctx sync-log [--limit N] [--entity ID] [--payloads]
 uv run pctx reindex [--semantic]
 ```

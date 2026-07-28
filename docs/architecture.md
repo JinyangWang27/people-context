@@ -217,8 +217,18 @@ surface; no MCP tool, peer, exchange protocol, or replay engine is introduced.
 transaction and returns the portable snapshot, both relationship-vocabulary tables, every changelog entry in
 ascending comparison-key order, the devices those entries reference, the active origin device, and its HLC
 watermark. `ExportSyncBundle(BundleReader, Clock)` validates that source into the strict versioned
-`people-context-sync-bundle` document in `domain/sync_bundle.py`. Restore remains future work; the bundle is
-read-only output today.
+`people-context-sync-bundle` document in `domain/sync_bundle.py`.
+
+`pctx sync pull` closes the loop. `RestoreSyncBundle(BootstrapRestorer)` parses the document and applies the
+document-level rules in `domain/sync_bundle.py::validate_bundle_document` — duplicate keys, origin identity,
+changelog device references, watermark coverage, and every internal reference — before previewing counts or
+prompting, so a bad document never reaches the destination. `SqliteBootstrapRestorer` then does all writing under
+one `BEGIN IMMEDIATE` reservation taken *before* the baseline-empty checks, so no concurrent writer can slip a row
+in between validating the target and filling it. It reconciles vocabulary, writes bundled devices as retired
+history, inserts domain, audit, and changelog rows verbatim, rebuilds FTS through `PersonSearchIndexer`, and
+advances the local clock through `HybridLogicalClock.observe()`. It is the sole documented exception to the
+`audit_mutation` seam: reinstating recorded history must not manufacture new history. Any failure rolls the
+transaction back to the freshly initialized state.
 
 ## Single-user now, multi-user-safe choices
 

@@ -128,9 +128,25 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   payloads and audit history. Keep and transport it only on encrypted storage or through an encrypted channel.
 - Forgotten-record redaction travels verbatim. The bundle contains the already-redacted payloads and ID-only
   tombstones a local read would return; nothing is reconstructed or enriched.
-- Push is a human-operated CLI action. No MCP tool exports a bundle, and no model-callable surface changed.
+- Push and pull are human-operated CLI actions. No MCP tool exports or restores a bundle, and no model-callable
+  surface changed.
 - Strict versioned validation protects integrity and compatibility. It does not authenticate a sender:
-  authenticity and encrypted transport remain future protocol work, and restoring a bundle is not implemented.
+  authenticity and encrypted transport remain future protocol work.
+
+`pctx sync pull` restores one bundle, and only into a database that is still exactly as `open_db` created it.
+
+- The complete document is parsed and validated before any preview, confirmation prompt, or database
+  reservation, so an invalid bundle can never reach the destination.
+- The destination must be baseline-empty: one active local device, no rows in any mutable domain, preference,
+  staging, audit, sync, or derived-search table, no optional vector storage, and only seeded relationship
+  vocabulary. Refusals name tables and counts, never record contents, and write nothing. Restore never deletes,
+  clears, or merges existing state to make the target look fresh.
+- Every imported device is written as retired history and the destination keeps its own active identity, so a
+  bundle can never duplicate a live device identity or let two machines mint the same device id.
+- Restore is verbatim: original ids, timestamps, provenance, audit rows, and changelog rows are reinstated
+  without minting new audit or changelog entries. Forgotten-record redaction therefore stays redacted, and
+  nothing is reconstructed or enriched.
+- Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
 
 ## Writes and destructive operations are annotated for client-side gating
 

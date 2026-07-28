@@ -139,7 +139,7 @@ Check the matching box only in the PR that delivers it.
     old file.
   - **Out:** restore.
 
-- [ ] **M11.3 — Fail-closed bootstrap restore**
+- [x] **M11.3 — Fail-closed bootstrap restore**
   - **Scope:** `BootstrapRestorer`, `RestoreSyncBundle`, `sync pull` with preview/confirmation.
   - **Bundle validation:** wrong format/version, missing/unknown/malformed fields, duplicate ids, invalid origin,
     dangling references, and insufficient watermark fail before preview/prompt.
