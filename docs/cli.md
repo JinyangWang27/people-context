@@ -22,6 +22,8 @@ curation, so validation, audit, HLC, and changelog capture match MCP writes.
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
 | `set communication_philosophy VALUE` | Set the supported user preference. |
 | `delete PERSON [--yes]` | Preview and permanently forget a person graph. |
+| `sync push --output DIR` | Write one complete plaintext bootstrap bundle as an owner-only file. |
+| `sync pull --input PATH [--yes]` | Restore one bootstrap bundle into a freshly initialized database only. |
 | `sync-log [--limit N] [--entity ID] [--payloads]` | Inspect local replay entries; payloads are opt-in. |
 | `reindex` | Rebuild the active-person FTS index. |
 | `reindex --semantic` | Explicitly obtain the pinned model and atomically rebuild semantic vectors. |
@@ -101,6 +103,53 @@ uv run pctx normalize-relationships --apply
 Dry-run is the default and performs no writes. Apply uses the same canonical policy as `set_relationship` and
 captures every update/removal atomically in audit and changelog. Only duplicates with overlapping validity
 periods are merged; an edge active today is preferred, otherwise the older row is retained.
+
+## Bootstrap sync bundle
+
+```bash
+uv run pctx sync push --output ~/transfer
+```
+
+`push` writes `DIR/people-context-sync-bundle.json`, creating `DIR` when it does not exist, and prints the path,
+per-collection counts, device and changelog counts, and the origin device with its HLC watermark. The bundle is
+one point-in-time snapshot read inside a single transaction: the portable domain rows, both relationship
+vocabulary tables including custom rows, every changelog entry in ascending comparison-key order, the devices
+those entries reference plus the active origin device, and the current watermark. The same database and clock
+always produce byte-identical canonical JSON.
+
+The file is written through the shared atomic private-file helper: content goes to a `0600` temporary file in the
+destination directory and is then moved into place, so an interrupted export never leaves a truncated bundle, an
+existing readable file is replaced rather than widened, and a symlink at the destination is replaced instead of
+followed.
+
+The bundle is **plaintext** and carries high-fidelity personal data, audit history, and full replay payloads.
+Keep and transport it only on encrypted storage or through an encrypted channel. Push and pull are both
+human-operated CLI actions; no MCP tool writes or restores a bundle.
+
+```bash
+uv run pctx sync pull --input ~/transfer [--yes]
+```
+
+`pull` accepts the bundle file itself or a directory containing `people-context-sync-bundle.json`. It parses and
+validates the **complete** document — format, version, unknown fields, malformed rows, duplicate ids, the origin
+device, changelog device references, the watermark, and every internal reference — before printing a preview,
+asking for confirmation, or reserving the database. An invalid bundle therefore never reaches the prompt.
+
+After confirmation (or `--yes`), restore takes a single `BEGIN IMMEDIATE` reservation and only then verifies that
+the destination is baseline-empty: exactly one active local device, no rows in any mutable domain, preference,
+staging, audit, sync, or derived-search table, no optional semantic vector storage, and only the canonical seeded
+relationship vocabulary. Anything else is reported as `target_not_empty` with table names and counts — never
+record contents — and nothing is written. Restore never deletes, clears, or merges existing data to make room.
+
+Inside that same transaction it reconciles vocabulary, writes every bundled device as **retired** history, inserts
+the domain rows, audit rows, and changelog entries verbatim, rebuilds the search index, and advances the local
+hybrid logical clock past the bundle watermark. This device keeps its own active identity, so later local writes
+carry its device id and sort after everything imported. Restore is the one path that does not mint new audit or
+changelog rows: it reinstates the origin's history rather than recording a fresh mutation. Any failure rolls the
+whole transaction back to the freshly initialized state. An invalid bundle or non-baseline target exits 1.
+
+Optional semantic vectors are rebuildable cache data and are not carried in a bundle; run
+`uv run pctx reindex --semantic` on the new device if you use semantic search.
 
 ## Vault export
 

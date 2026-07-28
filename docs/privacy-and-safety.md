@@ -108,9 +108,45 @@ decoded audit payloads. Derived `person_search`/semantic vec0 rows and pending `
 excluded. M6 also excludes `devices`, `changelog`, and `sync_conflicts`: this export remains the byte-compatible
 version-1 portability snapshot, not a sync bootstrap package. Semantic model id/dimension preferences remain portable.
 
+Both `pctx export --output FILE` and `pctx sync push --output DIR` publish through one shared atomic
+private-file writer. Content is written to a `0600` temporary file created with `O_CREAT | O_EXCL` in the
+destination directory, `fsync`ed, and then moved into place. Other local accounts therefore never see a
+partially written personal-data file, an existing permissive destination is replaced rather than left with its
+old mode, a symlink at the destination is replaced instead of followed to an unexpected target, and a failed
+write leaves any previously valid file untouched.
+
 The maximal-disclosure `export_data` MCP tool is absent by default. An operator must start the server process
 with `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1` before a client can discover it. This process-level boundary, not a
 model-supplied tool argument or advisory annotation, is the security control. Prefer the CLI for routine export.
+
+## Bootstrap sync bundle
+
+`pctx sync push` writes one complete point-in-time bootstrap bundle: the portable dataset, both relationship
+vocabulary tables, every changelog entry, the referenced device rows, and the origin HLC watermark.
+
+- The bundle is **plaintext** and is strictly higher fidelity than `pctx export`, because it carries full replay
+  payloads and audit history. Keep and transport it only on encrypted storage or through an encrypted channel.
+- Forgotten-record redaction travels verbatim. The bundle contains the already-redacted payloads and ID-only
+  tombstones a local read would return; nothing is reconstructed or enriched.
+- Push and pull are human-operated CLI actions. No MCP tool exports or restores a bundle, and no model-callable
+  surface changed.
+- Strict versioned validation protects integrity and compatibility. It does not authenticate a sender:
+  authenticity and encrypted transport remain future protocol work.
+
+`pctx sync pull` restores one bundle, and only into a database that is still exactly as `open_db` created it.
+
+- The complete document is parsed and validated before any preview, confirmation prompt, or database
+  reservation, so an invalid bundle can never reach the destination.
+- The destination must be baseline-empty: one active local device, no rows in any mutable domain, preference,
+  staging, audit, sync, or derived-search table, no optional vector storage, and only seeded relationship
+  vocabulary. Refusals name tables and counts, never record contents, and write nothing. Restore never deletes,
+  clears, or merges existing state to make the target look fresh.
+- Every imported device is written as retired history and the destination keeps its own active identity, so a
+  bundle can never duplicate a live device identity or let two machines mint the same device id.
+- Restore is verbatim: original ids, timestamps, provenance, audit rows, and changelog rows are reinstated
+  without minting new audit or changelog entries. Forgotten-record redaction therefore stays redacted, and
+  nothing is reconstructed or enriched.
+- Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
 
 ## Writes and destructive operations are annotated for client-side gating
 

@@ -79,7 +79,8 @@ resolution, or the minimal-disclosure cap in context assembly) is allowed to liv
 `PersonReader` and `PersonWriter` (`ports/repository.py`), semantic embedding/vector/rebuild ports
 (`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), `Changelog` (`ports/changelog.py`),
 `MergeStore` (`ports/merge.py`), `ForgetStore` and `ForgetPreviewStore` (`ports/forget.py`),
-`HybridLogicalClock` (`ports/hlc.py`), `UnitOfWork` (`ports/unit_of_work.py`), and `Clock` (`ports/clock.py`).
+`HybridLogicalClock` (`ports/hlc.py`), `BundleReader` (`ports/sync_bundle.py`),
+`UnitOfWork` (`ports/unit_of_work.py`), and `Clock` (`ports/clock.py`).
 Splitting concerns means read, merge, forget, audit, and sync use cases depend only on capabilities they consume.
 The application layer owns transaction orchestration through the UoW port; SQLite owns BEGIN/COMMIT/ROLLBACK.
 
@@ -90,7 +91,11 @@ Concrete implementations of the ports, plus anything that talks to the outside w
 - `adapters/sqlite/` — `db.py` (connection, migrations, and local device initialization), migrations
   `001_initial.sql` and `002_sync_foundations.sql`, repositories, focused merge/forget, organization, preference,
   record, audit, changelog, HLC, and unit-of-work adapters. `record_store.py` persists only assertive records and
-  reminders. Adapter write methods join an enclosing transaction rather than committing independently.
+  reminders. `bundle_reader.py` reads every sync-bundle collection from one transaction so the exported bundle
+  describes a single point in time. Adapter write methods join an enclosing transaction rather than committing
+  independently.
+- `adapters/filesystem/` — `private_file.py` (the shared atomic owner-only writer used by every personal-data
+  file output) and `vault_writer.py`.
 - `adapters/mcp/` — `server.py` (`build_server`/`main`, tool registration and annotations), `tools/` (one
   module per tool group).
 - `adapters/importers/` — source-specific, stdlib-backed email, ICS, LinkedIn, and vCard extraction plus
@@ -207,6 +212,23 @@ Merge writes row-level child effects and a semantic parent manifest under one `t
 explicit append-only exception: it hard-deletes primary rows, redacts covered audit and changelog payloads, and
 retains an ID-only forget tombstone indefinitely in M6. `pctx sync-log` is the only new inspection
 surface; no MCP tool, peer, exchange protocol, or replay engine is introduced.
+
+`pctx sync push` adds the first consumer beyond local inspection. `SqliteBundleReader` opens one read
+transaction and returns the portable snapshot, both relationship-vocabulary tables, every changelog entry in
+ascending comparison-key order, the devices those entries reference, the active origin device, and its HLC
+watermark. `ExportSyncBundle(BundleReader, Clock)` validates that source into the strict versioned
+`people-context-sync-bundle` document in `domain/sync_bundle.py`.
+
+`pctx sync pull` closes the loop. `RestoreSyncBundle(BootstrapRestorer)` parses the document and applies the
+document-level rules in `domain/sync_bundle.py::validate_bundle_document` — duplicate keys, origin identity,
+changelog device references, watermark coverage, and every internal reference — before previewing counts or
+prompting, so a bad document never reaches the destination. `SqliteBootstrapRestorer` then does all writing under
+one `BEGIN IMMEDIATE` reservation taken *before* the baseline-empty checks, so no concurrent writer can slip a row
+in between validating the target and filling it. It reconciles vocabulary, writes bundled devices as retired
+history, inserts domain, audit, and changelog rows verbatim, rebuilds FTS through `PersonSearchIndexer`, and
+advances the local clock through `HybridLogicalClock.observe()`. It is the sole documented exception to the
+`audit_mutation` seam: reinstating recorded history must not manufacture new history. Any failure rolls the
+transaction back to the freshly initialized state.
 
 ## Single-user now, multi-user-safe choices
 
