@@ -27,6 +27,7 @@ from people_context.ports.semantic import (
     SemanticIndexMetadata,
     VectorSearchHit,
 )
+from people_context.ports.sync_bundle import BundleSource
 
 
 class FakeClock:
@@ -325,3 +326,15 @@ class FakeSemanticEntityReader:
 
     def get_semantic_entity(self, kind: str, entity_id: str) -> SemanticEntity | None:
         return self.entities.get((kind, entity_id))
+
+
+class FakeBundleReader:
+    """A bundle read port returning one fixed, pre-built snapshot."""
+
+    def __init__(self, source: BundleSource) -> None:
+        self.source = source
+        self.calls = 0
+
+    def read_bundle(self) -> BundleSource:
+        self.calls += 1
+        return self.source

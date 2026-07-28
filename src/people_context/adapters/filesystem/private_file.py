@@ -1,0 +1,72 @@
+"""Atomic owner-private text file publication for personal-data exports."""
+
+from __future__ import annotations
+
+import os
+import tempfile
+from contextlib import suppress
+from pathlib import Path
+
+PRIVATE_FILE_MODE = 0o600
+_TEMP_PREFIX = ".people-context-"
+_TEMP_SUFFIX = ".tmp"
+
+
+def atomic_write_private_text(path: str | Path, text: str) -> Path:
+    """Publish ``text`` at ``path`` as an owner-only file, atomically.
+
+    Personal data must never be visible to other local accounts, not even briefly, and a
+    failed export must never destroy a previously valid file. The content is therefore
+    written to a unique ``O_CREAT | O_EXCL`` temporary file with mode ``0o600`` in the
+    destination directory, flushed and ``fsync``ed, and only then moved into place with
+    ``os.replace``.
+
+    Passing ``0o600`` to ``os.open(..., O_TRUNC)`` is not sufficient, because an existing
+    permissive destination keeps its old mode. Replacing the directory entry also means a
+    destination symlink is replaced rather than followed, so an unexpected target outside
+    the destination directory is never truncated or overwritten.
+    """
+    destination = Path(path)
+    directory = destination.parent
+    handle, temp_name = tempfile.mkstemp(prefix=_TEMP_PREFIX, suffix=_TEMP_SUFFIX, dir=directory)
+    temp_path: Path | None = Path(temp_name)
+    try:
+        try:
+            stream = os.fdopen(handle, "w", encoding="utf-8", newline="\n")
+        except BaseException:
+            os.close(handle)
+            raise
+        with stream:
+            _restrict_to_owner(stream.fileno())
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, destination)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            with suppress(OSError):
+                os.unlink(temp_path)
+    _fsync_directory(directory)
+    return destination
+
+
+def _restrict_to_owner(fd: int) -> None:
+    """Force owner-only permissions before the file becomes reachable by name."""
+    if hasattr(os, "fchmod"):
+        with suppress(OSError, NotImplementedError):
+            os.fchmod(fd, PRIVATE_FILE_MODE)
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Persist the rename itself where the platform supports directory fsync."""
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)

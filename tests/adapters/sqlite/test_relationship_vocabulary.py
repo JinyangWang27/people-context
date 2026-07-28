@@ -18,6 +18,10 @@ from people_context.adapters.sqlite import (
 )
 from people_context.app.relationships import NormalizeRelationships, SetRelationship, SetRelationshipInput
 from people_context.domain.person import Person
+from people_context.domain.relationship_vocabulary import (
+    SEEDED_RELATIONSHIP_SYNONYMS,
+    SEEDED_RELATIONSHIP_TYPES,
+)
 from people_context.ports.clock import SystemClock
 
 
@@ -159,3 +163,25 @@ def test_normalize_relationships_dry_run_and_apply_audit_every_rewrite() -> None
     changelog = SqliteChangelog(conn).list_entries(limit=10)
     assert [entry.op_kind for entry in changelog] == ["delete", "update"]
     assert changelog[1].payload["type"] == "reports_to"
+
+
+def test_domain_seeded_vocabulary_matches_a_freshly_migrated_database(tmp_path: Path) -> None:
+    """The database is the authority; bootstrap restore relies on this mapping staying true."""
+    conn = open_db(tmp_path / "people.db")
+
+    types = {
+        row["type"]: (row["inverse"], bool(row["symmetric"]), row["category"], bool(row["canonical"]))
+        for row in conn.execute("SELECT type, inverse, symmetric, category, canonical FROM relationship_types")
+    }
+    synonyms = {
+        row["synonym"]: row["type"]
+        for row in conn.execute("SELECT synonym, type FROM relationship_type_synonyms")
+    }
+    conn.close()
+
+    assert types == {
+        key: (row.inverse, row.symmetric, row.category, row.canonical)
+        for key, row in SEEDED_RELATIONSHIP_TYPES.items()
+    }
+    assert synonyms == dict(SEEDED_RELATIONSHIP_SYNONYMS)
+    assert {synonym for row in SEEDED_RELATIONSHIP_TYPES.values() for synonym in row.synonyms} == set(synonyms)
