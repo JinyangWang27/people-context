@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from people_context.ports.audit_log import AuditEntry, AuditLog
+from people_context.ports.bootstrap_restore import BootstrapRestorer, RestoreOutcome
 from people_context.ports.changelog import Changelog, ChangelogEntry
 from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.context import AffiliationRecord, PersonContextReader, RelationshipRecord
@@ -24,11 +25,15 @@ from people_context.ports.semantic import (
     VectorIndex,
     VectorSearchHit,
 )
+from people_context.ports.sync_bundle import BundleReader, BundleSource
 from people_context.ports.unit_of_work import NullUnitOfWork, UnitOfWork
 
 __all__ = [
     "AuditEntry",
     "AuditLog",
+    "BootstrapRestorer",
+    "BundleReader",
+    "BundleSource",
     "AffiliationRecord",
     "Changelog",
     "ChangelogEntry",
@@ -60,6 +65,7 @@ __all__ = [
     "SemanticIndexMetadataReader",
     "SemanticIndexRebuilder",
     "RelationshipRecord",
+    "RestoreOutcome",
     "SystemClock",
     "UnitOfWork",
     "VectorIndex",
