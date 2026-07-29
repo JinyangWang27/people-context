@@ -139,3 +139,10 @@ available through the CLI.
 
 The Obsidian vault export is CLI-only. M7 intentionally adds no MCP tool that writes arbitrary directories.
 See [vault-export.md](vault-export.md).
+
+## Compatibility
+
+Tool names, required parameters, and existing response fields are stable within a major version; new parameters
+are optional with compatible defaults and new response fields are additive. Clients should ignore unknown fields.
+See [compatibility.md](compatibility.md) for the complete promise across MCP, database, CLI, and machine-readable
+JSON surfaces.

@@ -159,7 +159,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M12 — Trust, stability & v1.0
 
-- [ ] **M12.1 — Publish compatibility promise**
+- [x] **M12.1 — Publish compatibility promise**
   - **Scope:** Add/link `docs/compatibility.md`.
   - **Acceptance:** additive MCP/stable JSON, forward-only DB, compatible CLI defaults; vault Markdown not frozen;
     no invented deprecation window.
