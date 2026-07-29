@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
+import tomllib
 from pathlib import Path
 
 from people_context.app.exports.json import ExportDocument
-from people_context.domain.sync_bundle import SYNC_BUNDLE_FORMAT, SYNC_BUNDLE_VERSION
+from people_context.domain.sync_bundle import SYNC_BUNDLE_FORMAT, SYNC_BUNDLE_VERSION, StrictBundleModel
 
 ROOT = Path(__file__).parents[1]
 COMPATIBILITY = ROOT / "docs/compatibility.md"
@@ -67,6 +69,36 @@ def test_promise_documents_stable_json_identifiers_that_match_shipped_code() -> 
 
     assert f"| `{export_format}` | `{export_version}` |" in document
     assert f"| `{SYNC_BUNDLE_FORMAT}` | `{SYNC_BUNDLE_VERSION}` |" in document
+
+
+def test_bundle_versioning_statement_matches_the_strict_reader() -> None:
+    """The bundle reader forbids unknown fields, so an added field cannot be a within-version addition."""
+    assert StrictBundleModel.model_config["extra"] == "forbid"
+
+    json_section = _read("docs/compatibility.md").split("## Machine-readable JSON", 1)[1].split("\n## ", 1)[0]
+
+    assert "a field addition is an incompatible\n  change and advances `version`" in json_section
+    assert "not additively extensible within a version" in json_section
+    assert "producer-only" in json_section
+
+
+def test_integration_version_domains_match_release_automation() -> None:
+    """The Codex manifest is rewritten by primary releases, so the promise must not call it independent."""
+    codex_version = json.loads(_read(".codex-plugin/plugin.json"))["version"]
+    primary_version = tomllib.loads(_read("pyproject.toml"))["project"]["version"]
+    claude_version = json.loads(_read(".claude-plugin/plugin.json"))["version"]
+    release_targets = {
+        entry["path"] for entry in json.loads(_read("release-please-config.json"))["packages"]["."]["extra-files"]
+    }
+
+    assert codex_version == primary_version
+    assert ".codex-plugin/plugin.json" in release_targets
+    assert claude_version != primary_version
+    assert ".claude-plugin/plugin.json" not in release_targets
+
+    document = _read("docs/compatibility.md")
+    assert "the Codex package (`.codex-plugin/plugin.json`) is currently **coupled**" in document
+    assert "the Claude Code (`.claude-plugin`) and OpenClaw packages carry their own version" in document
 
 
 def test_promise_leaves_vault_markdown_unfrozen_and_invents_no_deprecation_window() -> None:

@@ -15,8 +15,15 @@ applied to every change today; the `0.x` series does not weaken them, it only ch
 deliberate break advances.
 
 This promise covers the primary `people-context` distribution: the `people-context` and `people-context-mcp`
-server commands and the `pctx` CLI. The `.claude-plugin`, `.codex-plugin`, and OpenClaw integration packages are
-separate version domains with their own release policy; they are not covered here.
+server commands and the `pctx` CLI.
+
+Integration packages are not covered here, and they do not share one versioning rule:
+
+- the Claude Code (`.claude-plugin`) and OpenClaw packages carry their own version, released on their own policy
+  and independent of the server version;
+- the Codex package (`.codex-plugin/plugin.json`) is currently **coupled** to the primary release version: the
+  release automation rewrites it with every primary release and packaging tests assert the two match. Treat its
+  version as a restatement of the server version, not as an independent signal about the plugin.
 
 ## MCP tools and responses
 
@@ -78,10 +85,19 @@ repurposed, and new fields are additive.
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |
 
-The `version` integer advances only for a change that an existing reader cannot tolerate; additive fields do not
-advance it. Bundle *readers* are deliberately stricter than this promise: `pctx sync pull` validates the bundle
-against an exact format and version with unknown fields forbidden, so a bundle from a future incompatible version
-fails closed rather than restoring partial state.
+The two documents differ in how a field addition is classified, because only one of them is read back by this
+project:
+
+- **Portable dataset export** is producer-only: nothing in this repository consumes it, and external readers are
+  expected to ignore unknown fields. A new field is additive and does not advance `version`; a removal or a
+  repurposing does.
+- **Bootstrap sync bundle** is read back by `pctx sync pull`, which validates the whole document — including every
+  nested object — against an exact format and version with unknown fields forbidden. A reader from an older
+  release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
+  change and advances `version`. The bundle is deliberately not additively extensible within a version.
+
+That strictness is the point: a bundle a release does not fully understand fails closed before preview or writes
+rather than restoring partial state. A bundle is restorable by releases that implement its declared version.
 
 JSON emitted by a command that is not listed above, or not explicitly documented as a stable interface, is
 human-facing output and may change.
@@ -107,7 +123,8 @@ scraped Markdown or table output.
   is available only when that extra is installed, and its models and pins may change.
 - **Third-party surfaces.** MCP client behavior, editor configuration formats, registry metadata schemas, and
   container base images follow their own upstream compatibility policies.
-- **Integration packages.** The Claude Code, Codex, and OpenClaw plugin manifests version independently.
+- **Integration packages.** The Claude Code and OpenClaw plugin manifests version independently; the Codex plugin
+  manifest tracks the primary release version, as described under [Scope and versioning](#scope-and-versioning).
 
 ## Reporting a compatibility regression
 
