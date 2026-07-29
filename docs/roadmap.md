@@ -155,7 +155,7 @@ independently diverged devices remains deferred.
 - a shared atomic owner-private file writer used by bundle/JSON and later personal-data exports;
 - fake-port, strict-model, real-SQLite, concurrency, CLI, and stdio E2E coverage, including A→B→C continuity.
 
-**Status:** Planned.
+**Status:** Delivered.
 
 ## M12 — Trust, stability, and v1.0
 

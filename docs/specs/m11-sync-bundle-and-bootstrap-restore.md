@@ -1,6 +1,6 @@
 # M11 — Sync bundle export and trusted bootstrap restore
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m11--sync-bundle-export-and-trusted-bootstrap-restore).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m11--sync-bundle-export-and-trusted-bootstrap-restore).
 
 ## Motivation
 

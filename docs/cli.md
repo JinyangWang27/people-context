@@ -151,6 +151,12 @@ whole transaction back to the freshly initialized state. An invalid bundle or no
 Optional semantic vectors are rebuildable cache data and are not carried in a bundle; run
 `uv run pctx reindex --semantic` on the new device if you use semantic search.
 
+A bootstrapped device can bootstrap the next one. Pushing from the restored device produces a bundle carrying its
+own new entries alongside everything it imported, and every device already recorded as retired history is passed
+on with its original retirement instant rather than a fresh one. Each hop still adds exactly one active identity:
+the destination's own. Bootstrap remains a one-way hand-off to an empty database — it is not a way to re-sync two
+devices that have both been written to.
+
 ## Vault export
 
 ```bash
