@@ -151,7 +151,7 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** no new audit/changelog rows; per-table baseline, concurrency, and phase-failure tests.
   - **Out:** incremental replay/conflicts/encryption.
 
-- [ ] **M11.4 — Multi-device E2E sign-off**
+- [x] **M11.4 — Multi-device E2E sign-off**
   - **Scope:** A→B stdio/CLI round trip plus B→C historical-device chain.
   - **Acceptance:** portable content/custom vocabulary parity; later B write uses B id and sorts after imports;
     imported devices remain retired/carried forward.
