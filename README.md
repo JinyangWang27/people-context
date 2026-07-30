@@ -252,6 +252,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/relationship-graph.md](docs/relationship-graph.md) | Vocabulary, normalization, perspective, traversal, curation |
 | [docs/vault-export.md](docs/vault-export.md) | Layout, marker safety, determinism, sensitivity |
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools and stable response contracts |
+| [docs/compatibility.md](docs/compatibility.md) | What stays stable across releases for MCP, DB, CLI, and JSON |
 | [docs/cli.md](docs/cli.md) | CLI commands and DB resolution |
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and delivered local foundations |
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
