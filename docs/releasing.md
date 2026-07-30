@@ -77,9 +77,11 @@ files.
 ## The 1.0 release
 
 The 1.0 milestone is requested with a `Release-As: 1.0.0` footer, which must survive into the squash commit that
-lands on `main`. Verify it is present in the merge commit message before confirming the merge; if it is lost, the
-next release pull request simply proposes the Conventional-Commit version instead, and the footer can be supplied
-again on any later commit. The repository-side preparation for the release is already merged:
+lands on `main`. Put it in the **final paragraph** of the message, alongside any other trailers — a `Release-As:`
+line separated from the last block by a blank line is not a git trailer, and `git interpret-trailers` will not
+report it. Verify it with `git show -s --format='%(trailers:key=Release-As)' <merge-commit>` after merging. If it
+is lost, the next release pull request simply proposes the Conventional-Commit version instead, and the footer
+can be supplied again on any later commit. The repository-side preparation for the release is already merged:
 
 - [compatibility.md](compatibility.md) states the MCP, database, CLI, and machine-readable-JSON guarantees that
   the major version makes binding;

@@ -79,6 +79,15 @@ def test_explicit_versions_are_never_pinned_in_configuration() -> None:
 
 
 def test_release_docs_explain_the_one_shot_milestone_footer() -> None:
+    """Verifies the documented procedure only — it cannot verify that a merge applied it.
+
+    Whether a `Release-As:` trailer reaches `main` depends on the squash message written
+    at merge time, which is not repository content and is unavailable to any test here.
+    Losing it is a visible, recoverable failure: the next release pull request proposes
+    the Conventional-Commit version instead, and the trailer can be supplied again on a
+    later commit. Keep the trailer in the final paragraph of a commit message, where
+    `git interpret-trailers` and Release Please both read it.
+    """
     docs = (ROOT / "docs/releasing.md").read_text(encoding="utf-8")
 
     assert f"Release-As: {MILESTONE_RELEASE}" in docs
