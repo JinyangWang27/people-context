@@ -58,13 +58,44 @@ Use concise Conventional Commit squash titles on pull requests merged to `main`:
 - `feat!:` or a `BREAKING CHANGE:` footer proposes a breaking release.
 
 While the project remains below `1.0.0`, breaking changes are configured to advance the minor version rather
-than implicitly creating `1.0.0`. Use a `Release-As: 1.0.0` footer when the project deliberately reaches that
-milestone. Other explicit versions can use the same footer.
+than implicitly creating `1.0.0`, so Conventional Commits alone never reach that milestone. An explicit version
+can be requested either with a `Release-As: <version>` commit footer or with a `release-as` entry in
+`release-please-config.json`. The repository uses the configuration form for the 1.0 milestone, because a
+committed value is reviewable in the pull request and survives a squash merge that rewrites the commit body.
 
 Release Please maintains one release PR containing the generated changelog and every coupled primary-version
 update: `pyproject.toml`, the package `__version__`, Registry metadata, MCPB metadata, Codex plugin metadata,
 `uv.lock`, and the release-version assertion used by packaging tests. Feature PRs must not manually bump those
 files.
+
+## The 1.0 release
+
+`release-please-config.json` pins the next release with `"release-as": "1.0.0"`. The repository-side preparation
+for that release is already merged:
+
+- [compatibility.md](compatibility.md) states the MCP, database, CLI, and machine-readable-JSON guarantees that
+  the major version makes binding;
+- `pyproject.toml` declares `Development Status :: 5 - Production/Stable`;
+- `tests/test_packaging_metadata.py` asserts that the five semantic server-release values — the root project
+  version, `server.json.version`, the Registry package's pinned `--from` requirement, `mcpb/manifest.json.version`,
+  and the `mcpb/pyproject.toml` dependency pin — plus `people_context.__version__` and the locked root project in
+  `uv.lock` all carry the same value, whatever Release Please writes;
+- `mcpb/manifest.json.manifest_version` stays the MCPB **schema** version and is asserted separately, never set to
+  the application release;
+- the Registry package is located by `identifier` rather than array position, so an added package entry cannot
+  silently move the assertions onto the wrong package.
+
+Version domains that wrap or distribute the server stay explicit rather than accidentally synchronized. The
+`.codex-plugin` manifest is deliberately coupled to the primary release and rewritten by Release Please; the
+`.claude-plugin`, OpenClaw, and any future Obsidian packages carry their own versions and are bumped on their own
+policy. If a 1.0 release intentionally publishes one of those artifacts, synchronize that package's own manifest,
+marketplace, lockfile, and documented artifact names together.
+
+After the `v1.0.0` release is published, **remove the `release-as` pin** from `release-please-config.json` and
+drop `PINNED_RELEASE_TARGET` from `tests/test_release_automation.py`; leaving the pin in place would make every
+later release PR propose `1.0.0` again. Review [compatibility.md](compatibility.md) at the same time: its
+"while the project remains below `1.0.0`" note describes the pre-1.0 minor-bump rule and no longer applies once
+the major version exists.
 
 ## Publish a release
 

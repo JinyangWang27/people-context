@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from people_context import __version__ as package_version
+from tests.test_registry_metadata import registry_package
 
 ROOT = Path(__file__).parents[1]
 PRIMARY_RELEASE_VERSION = "0.3.0"  # x-release-please-version
 INTEGRATION_RELEASE_VERSION = "0.2.0"
+#: The MCPB manifest schema version is tooling metadata, never the application release.
+MCPB_MANIFEST_SCHEMA_VERSION = "0.4"
 
 
 def _toml(path: Path) -> dict:
@@ -19,6 +22,37 @@ def _toml(path: Path) -> dict:
 
 def _json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _locked_root_version() -> str:
+    """Return the ``people-context`` version recorded in the root ``uv.lock``."""
+    editable = [
+        package
+        for package in _toml(ROOT / "uv.lock")["package"]
+        if package["name"] == "people-context" and package.get("source", {}).get("editable") == "."
+    ]
+    assert len(editable) == 1, "uv.lock must record exactly one editable root project entry"
+    return editable[0]["version"]
+
+
+def _registry_requirement_pin() -> str:
+    """Return the version pinned by the Registry package's ``--from`` runtime argument."""
+    (from_argument,) = [
+        argument
+        for argument in registry_package().get("runtimeArguments", [])
+        if argument.get("name") == "--from"
+    ]
+    name, separator, pinned = from_argument["value"].partition("==")
+    assert (name, separator) == ("people-context", "=="), "the Registry primary must be pinned with =="
+    return pinned
+
+
+def _bundle_dependency_pin() -> str:
+    """Return the version pinned by the MCPB bundle's ``people-context`` dependency."""
+    (requirement,) = _toml(ROOT / "mcpb/pyproject.toml")["project"]["dependencies"]
+    name, separator, pinned = requirement.partition("==")
+    assert (name, separator) == ("people-context", "=="), "the bundle dependency must be pinned with =="
+    return pinned
 
 
 def test_primary_distribution_uses_new_name_and_stable_entrypoints() -> None:
@@ -62,6 +96,41 @@ def test_reviewed_release_versions_are_synchronized() -> None:
     packed_artifact = f"openclaw-plugin-people-context-{INTEGRATION_RELEASE_VERSION}.tgz"
     for guide in ("docs/openclaw-plugin.md", "openclaw-plugin/README.md"):
         assert packed_artifact in (ROOT / guide).read_text(encoding="utf-8")
+
+
+def test_server_distribution_versions_are_synchronized() -> None:
+    """Every surface that names a server release moves together with the root project."""
+    primary_version = _toml(ROOT / "pyproject.toml")["project"]["version"]
+
+    # The five semantic server-release values a 1.0 (or any) release must agree on.
+    assert _json(ROOT / "server.json")["version"] == primary_version
+    assert _registry_requirement_pin() == primary_version
+    assert _json(ROOT / "mcpb/manifest.json")["version"] == primary_version
+    assert _bundle_dependency_pin() == primary_version
+    assert _toml(ROOT / "mcpb/pyproject.toml")["project"]["version"] == primary_version
+
+    # The importable package and the locked root project follow the same value, so
+    # `uv lock --check` and a built wheel cannot disagree with the declared release.
+    assert package_version == primary_version
+    assert _locked_root_version() == primary_version
+
+
+def test_mcpb_manifest_schema_version_is_not_the_release_version() -> None:
+    """`manifest_version` is the MCPB schema version and must stay an independent field."""
+    manifest = _json(ROOT / "mcpb/manifest.json")
+    primary_version = _toml(ROOT / "pyproject.toml")["project"]["version"]
+
+    assert manifest["manifest_version"] == MCPB_MANIFEST_SCHEMA_VERSION
+    assert manifest["manifest_version"] != primary_version
+
+
+def test_release_readiness_declares_production_stable() -> None:
+    """The 1.0 metadata synchronization also retires the pre-1.0 Alpha classifier."""
+    classifiers = _toml(ROOT / "pyproject.toml")["project"]["classifiers"]
+
+    assert "Development Status :: 5 - Production/Stable" in classifiers
+    development_status = [item for item in classifiers if item.startswith("Development Status ::")]
+    assert development_status == ["Development Status :: 5 - Production/Stable"]
 
 
 def test_current_changelog_covers_recent_user_facing_capabilities() -> None:

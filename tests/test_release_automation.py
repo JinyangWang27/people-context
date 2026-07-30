@@ -7,6 +7,10 @@ from typing import Any
 
 ROOT = Path(__file__).parents[1]
 RELEASE_PLEASE_ACTION_SHA = "45996ed1f6d02564a971a2fa1b5860e934307cf7"
+#: The deliberate next release. Release Please derives versions from Conventional
+#: Commits, which cannot reach 1.0.0 on its own while `bump-minor-pre-major` is set,
+#: so the milestone release is pinned in configuration and retired once published.
+PINNED_RELEASE_TARGET = "1.0.0"
 RELEASE_PR_WORKFLOWS = {
     "ci.yml",
     "codeql.yml",
@@ -19,6 +23,10 @@ RELEASE_PR_WORKFLOWS = {
 
 def _json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(component) for component in version.split("."))
 
 
 def test_release_manifest_tracks_the_primary_distribution() -> None:
@@ -57,6 +65,29 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     server = _json(ROOT / "server.json")
     requirement = server["packages"][0]["runtimeArguments"][0]["value"]
     assert requirement == f"people-context=={server['version']}"
+
+
+def test_next_release_is_pinned_to_the_declared_milestone() -> None:
+    package = _json(ROOT / "release-please-config.json")["packages"]["."]
+
+    assert package["release-as"] == PINNED_RELEASE_TARGET
+
+
+def test_pinned_release_target_is_still_ahead_of_the_last_release() -> None:
+    """A pin that the released version has caught up to would freeze every later release."""
+    released = _json(ROOT / ".release-please-manifest.json")["."]
+
+    assert _version_key(released) <= _version_key(PINNED_RELEASE_TARGET)
+
+
+def test_release_docs_explain_the_pinned_milestone_and_its_removal() -> None:
+    docs = (ROOT / "docs/releasing.md").read_text(encoding="utf-8")
+
+    assert f'"release-as": "{PINNED_RELEASE_TARGET}"' in docs
+    # The pin is one-shot: leaving it in place would republish the same version.
+    assert "remove the `release-as` pin" in docs
+    # The 1.0 checklist is anchored on the published compatibility promise.
+    assert "[compatibility.md](compatibility.md)" in docs
 
 
 def test_release_workflow_uses_pinned_action_and_tag_dispatch() -> None:
