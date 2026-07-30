@@ -79,18 +79,22 @@ def test_explicit_versions_are_never_pinned_in_configuration() -> None:
 
 
 def test_release_docs_explain_the_one_shot_milestone_footer() -> None:
-    """Verifies the documented procedure only — it cannot verify that a merge applied it.
+    """Verifies the documented release step only; no test can verify a merge performed it.
 
-    Whether a `Release-As:` trailer reaches `main` depends on the squash message written
-    at merge time, which is not repository content and is unavailable to any test here.
-    Losing it is a visible, recoverable failure: the next release pull request proposes
-    the Conventional-Commit version instead, and the trailer can be supplied again on a
-    later commit. Keep the trailer in the final paragraph of a commit message, where
-    `git interpret-trailers` and Release Please both read it.
+    Requesting a milestone version is a release action, not part of a feature pull
+    request, so the procedure must not depend on a `Release-As:` trailer surviving a
+    squash merge — that message is composed by GitHub at merge time and is not
+    repository content. The documented step is an explicit commit on `main`, which the
+    releaser verifies with `git interpret-trailers` before pushing.
     """
     docs = (ROOT / "docs/releasing.md").read_text(encoding="utf-8")
 
     assert f"Release-As: {MILESTONE_RELEASE}" in docs
+    # The documented step must be an explicit commit whose trailer is verified before
+    # the push, not an instruction to hope a squash message preserves one.
+    assert "git commit --allow-empty" in docs
+    assert "git show -s --format='%(trailers:key=Release-As)' HEAD" in docs
+    assert "Do not rely on a\n`Release-As:` trailer surviving a squash merge" in docs
     # The reason the configuration form is rejected must stay recorded, so the
     # sticky-pin failure mode is not reintroduced as a convenience.
     assert "would silently freeze" in docs

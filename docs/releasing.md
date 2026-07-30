@@ -76,12 +76,27 @@ files.
 
 ## The 1.0 release
 
-The 1.0 milestone is requested with a `Release-As: 1.0.0` footer, which must survive into the squash commit that
-lands on `main`. Put it in the **final paragraph** of the message, alongside any other trailers — a `Release-As:`
-line separated from the last block by a blank line is not a git trailer, and `git interpret-trailers` will not
-report it. Verify it with `git show -s --format='%(trailers:key=Release-As)' <merge-commit>` after merging. If it
-is lost, the next release pull request simply proposes the Conventional-Commit version instead, and the footer
-can be supplied again on any later commit. The repository-side preparation for the release is already merged:
+Requesting the milestone is a **release step, not part of any feature pull request**. Do not rely on a
+`Release-As:` trailer surviving a squash merge: the squash message is composed by GitHub at merge time from
+either the branch's commit messages or the pull request description, depending on the repository's merge
+settings, and neither is under the contributing branch's control. Instead, request it explicitly on `main`:
+
+```
+git switch main && git pull
+git commit --allow-empty -m "chore: request the 1.0.0 milestone" -m "Release-As: 1.0.0"
+git show -s --format='%(trailers:key=Release-As)' HEAD   # must print: Release-As: 1.0.0
+git push origin main
+```
+
+Keep `Release-As:` in the **final paragraph** of the message — a line separated from the last block by a blank
+line is not a git trailer, and `git interpret-trailers` will not report it. The verification line above is the
+check; if it prints nothing, fix the message before pushing.
+
+The push starts `.github/workflows/release-please.yml`, which re-renders the release pull request as
+`chore(main): release 1.0.0`. If the trailer is missing, that pull request simply keeps proposing the
+Conventional-Commit version — a visible outcome in its title, correctable by repeating the commit above.
+
+The repository-side preparation for the release is already merged:
 
 - [compatibility.md](compatibility.md) states the MCP, database, CLI, and machine-readable-JSON guarantees that
   the major version makes binding;
