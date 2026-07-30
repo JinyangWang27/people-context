@@ -7,7 +7,6 @@
   "packages": {
     ".": {
       "package-name": "people-context",
-      "release-as": "1.0.0",
       "extra-files": [
         {
           "type": "json",

@@ -7,10 +7,10 @@ from typing import Any
 
 ROOT = Path(__file__).parents[1]
 RELEASE_PLEASE_ACTION_SHA = "45996ed1f6d02564a971a2fa1b5860e934307cf7"
-#: The deliberate next release. Release Please derives versions from Conventional
-#: Commits, which cannot reach 1.0.0 on its own while `bump-minor-pre-major` is set,
-#: so the milestone release is pinned in configuration and retired once published.
-PINNED_RELEASE_TARGET = "1.0.0"
+#: The deliberate milestone release. Conventional Commits cannot reach it on their own
+#: while `bump-minor-pre-major` is set, so it is requested with a one-shot
+#: `Release-As:` commit footer rather than pinned in configuration.
+MILESTONE_RELEASE = "1.0.0"
 RELEASE_PR_WORKFLOWS = {
     "ci.yml",
     "codeql.yml",
@@ -23,10 +23,6 @@ RELEASE_PR_WORKFLOWS = {
 
 def _json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _version_key(version: str) -> tuple[int, ...]:
-    return tuple(int(component) for component in version.split("."))
 
 
 def test_release_manifest_tracks_the_primary_distribution() -> None:
@@ -67,25 +63,29 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     assert requirement == f"people-context=={server['version']}"
 
 
-def test_next_release_is_pinned_to_the_declared_milestone() -> None:
+def test_explicit_versions_are_never_pinned_in_configuration() -> None:
+    """`release-as` is sticky: once the release it names ships, it silently freezes the rest.
+
+    Release Please caps the computed version at a configured `release-as`, so
+    `.release-please-manifest.json` can never advance past it and no assertion over
+    repository content can tell a stale pin from a pending one. An explicit version is
+    therefore always requested with a one-shot `Release-As:` commit footer, which the
+    release tag consumes and which cannot outlive its release.
+    """
     package = _json(ROOT / "release-please-config.json")["packages"]["."]
 
-    assert package["release-as"] == PINNED_RELEASE_TARGET
+    assert "release-as" not in package
+    assert "release-as" not in _json(ROOT / "release-please-config.json")
 
 
-def test_pinned_release_target_is_still_ahead_of_the_last_release() -> None:
-    """A pin that the released version has caught up to would freeze every later release."""
-    released = _json(ROOT / ".release-please-manifest.json")["."]
-
-    assert _version_key(released) <= _version_key(PINNED_RELEASE_TARGET)
-
-
-def test_release_docs_explain_the_pinned_milestone_and_its_removal() -> None:
+def test_release_docs_explain_the_one_shot_milestone_footer() -> None:
     docs = (ROOT / "docs/releasing.md").read_text(encoding="utf-8")
 
-    assert f'"release-as": "{PINNED_RELEASE_TARGET}"' in docs
-    # The pin is one-shot: leaving it in place would republish the same version.
-    assert "remove the `release-as` pin" in docs
+    assert f"Release-As: {MILESTONE_RELEASE}" in docs
+    # The reason the configuration form is rejected must stay recorded, so the
+    # sticky-pin failure mode is not reintroduced as a convenience.
+    assert "would silently freeze" in docs
+    assert "while CI stays green" in docs
     # The 1.0 checklist is anchored on the published compatibility promise.
     assert "[compatibility.md](compatibility.md)" in docs
 
