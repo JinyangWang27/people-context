@@ -172,7 +172,7 @@ Check the matching box only in the PR that delivers it.
     intentionally published, then synchronize internally.
   - **Out:** tag/release and SQLCipher.
 
-- [ ] **M12.3 — Dated threat comparison and README demo**
+- [x] **M12.3 — Dated threat comparison and README demo**
   - **Scope:** Primary-source “as of” local-vs-cloud comparison; packaged-demo walkthrough.
   - **Acceptance:** storage, breach/legal exposure, offline operation, deletion; factual language and valid links.
   - **Out:** telemetry or demo behavior changes.
