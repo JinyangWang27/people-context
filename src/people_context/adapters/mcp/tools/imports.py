@@ -10,11 +10,11 @@ from people_context.adapters.importers.email import ImportExtractionError
 from people_context.app.imports import ImportPipelineError
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
-_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
 
 
 def _error(exc: ImportPipelineError | ImportExtractionError) -> dict[str, Any]:
@@ -22,11 +22,11 @@ def _error(exc: ImportPipelineError | ImportExtractionError) -> dict[str, Any]:
     return {"error": exc.code, "message": str(exc), **details}
 
 
-def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
+def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register header-only extraction, review, and selective commit tools."""
 
     @mcp.tool(annotations=_WRITE)
-    def import_content(source_type: str, content: str | None = None, path: str | None = None) -> dict[str, Any]:
+    async def import_content(source_type: str, content: str | None = None, path: str | None = None) -> dict[str, Any]:
         """Extract and atomically stage email header candidates without bodies."""
         try:
             return deps.import_content.execute(source_type, content=content, path=path).model_dump(mode="json")
@@ -36,7 +36,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_path", "message": str(exc), "path": path}
 
     @mcp.tool(annotations=_WRITE)
-    def stage_candidates(source: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    async def stage_candidates(source: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
         """Validate and atomically stage agent-extracted people, interactions, affiliations, and facts.
 
         Use this after extracting concise candidates from user-provided notes or other agent-visible text.
@@ -48,7 +48,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
             return _error(exc)
 
     @mcp.tool(annotations=_WRITE)
-    def review_import(batch_id: str) -> dict[str, Any]:
+    async def review_import(batch_id: str) -> dict[str, Any]:
         """Return staged candidates and statuses for one batch."""
         try:
             return deps.review_import.execute(batch_id).model_dump(mode="json")
@@ -56,7 +56,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
             return _error(exc)
 
     @mcp.tool(annotations=_WRITE)
-    def commit_import(batch_id: str, accepted_ids: list[str]) -> dict[str, Any]:
+    async def commit_import(batch_id: str, accepted_ids: list[str]) -> dict[str, Any]:
         """Commit accepted people and resolvable interactions idempotently."""
         try:
             return deps.commit_import.execute(batch_id, accepted_ids).model_dump(mode="json")

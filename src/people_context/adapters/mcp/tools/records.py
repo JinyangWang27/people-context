@@ -21,18 +21,18 @@ from people_context.domain.person import AliasKind
 from people_context.domain.shared import Sensitivity
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
-_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
 
 
-def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
+def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register record-oriented write tools with their locked schemas."""
 
     @mcp.tool(annotations=_WRITE)
-    def add_alias(
+    async def add_alias(
         person_id: str,
         value: str,
         kind: str | None = None,
@@ -53,7 +53,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def set_relationship(
+    async def set_relationship(
         subject_id: str,
         object_id: str,
         type: str,
@@ -78,7 +78,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def set_affiliation(
+    async def set_affiliation(
         person_id: str,
         org: str,
         role: str,
@@ -101,7 +101,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def record_fact(
+    async def record_fact(
         person_id: str,
         predicate: str,
         value: str,
@@ -126,7 +126,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def record_observation(
+    async def record_observation(
         person_id: str,
         text: str,
         observed_at: str | None = None,
@@ -145,7 +145,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def record_trait(
+    async def record_trait(
         person_id: str,
         category: str,
         value: str,
@@ -168,7 +168,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def record_interaction(
+    async def record_interaction(
         summary: str,
         participant_ids: list[str],
         occurred_at: str | None = None,
@@ -189,7 +189,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def correct_record(entity_type: str, entity_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+    async def correct_record(entity_type: str, entity_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         """Correct whitelisted assertion fields in place with before/after audit."""
         return call_action(
             lambda: deps.correct_record.execute(

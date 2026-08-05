@@ -40,7 +40,7 @@ def test_real_stdio_remember_resolve_with_hints_context_then_cli_show(tmp_path: 
                 "remember_person",
                 {"name": "Alice Example", "aliases": [{"value": "Ally"}], "summary": "Colleague"},
             )
-            person_id = remembered.structuredContent["person"]["id"]
+            person_id = remembered.structured_content["person"]["id"]
             _seed_context(db_path, person_id)
 
             resolved = await client.call_tool(
@@ -51,7 +51,7 @@ def test_real_stdio_remember_resolve_with_hints_context_then_cli_show(tmp_path: 
                 "get_person_context",
                 {"person_id": person_id, "max_items": 1},
             )
-            return person_id, resolved.structuredContent, context.structuredContent
+            return person_id, resolved.structured_content, context.structured_content
 
     person_id, resolved, context = anyio.run(flow)
 
@@ -95,10 +95,10 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
             await client.initialize()
             me = (
                 await client.call_tool("remember_person", {"name": "Me", "is_self": True})
-            ).structuredContent["person"]
+            ).structured_content["person"]
             alice = (
                 await client.call_tool("remember_person", {"name": "Alice Example"})
-            ).structuredContent["person"]
+            ).structured_content["person"]
             person_id = alice["id"]
             await client.call_tool(
                 "set_relationship",
@@ -116,7 +116,7 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
                 await client.call_tool(
                     "record_observation", {"person_id": person_id, "text": "Subjective and private"}
                 )
-            ).structuredContent
+            ).structured_content
             await client.call_tool(
                 "record_trait",
                 {
@@ -132,12 +132,12 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
             await client.call_tool("set_communication_philosophy", {"text": philosophy})
             context = (
                 await client.call_tool("get_person_context", {"person_id": person_id, "max_items": 10})
-            ).structuredContent
+            ).structured_content
             guidance = (
                 await client.call_tool(
                     "get_communication_guidance", {"person_id": person_id, "situation": "Plan launch"}
                 )
-            ).structuredContent
+            ).structured_content
             return person_id, context, guidance, observation["id"]
 
     person_id, context, guidance, observation_id = anyio.run(flow)
@@ -186,14 +186,14 @@ def test_real_stdio_remember_fact_forget_leaves_redacted_sync_log(tmp_path: Path
                 "remember_person",
                 {"name": "Forget Me", "summary": sentinel},
             )
-            person_id = remembered.structuredContent["person"]["id"]
+            person_id = remembered.structured_content["person"]["id"]
             fact = await client.call_tool(
                 "record_fact",
                 {"person_id": person_id, "predicate": "secret", "value": sentinel},
             )
-            fact_id = fact.structuredContent["id"]
+            fact_id = fact.structured_content["id"]
             forgotten = await client.call_tool("forget", {"target": person_id, "scope": "person"})
-            assert forgotten.structuredContent["scope"] == "person"
+            assert forgotten.structured_content["scope"] == "person"
             return person_id, fact_id
 
     person_id, fact_id = anyio.run(flow)
@@ -260,15 +260,15 @@ def test_real_stdio_mbox_import_commit_and_resolve(tmp_path: Path) -> None:
         ):
             await client.initialize()
             imported = await client.call_tool("import_content", {"source_type": "mbox", "path": str(mbox_path)})
-            batch_id = imported.structuredContent["batch_id"]
+            batch_id = imported.structured_content["batch_id"]
             reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
-            accepted_ids = [row["id"] for row in reviewed.structuredContent["candidates"]]
+            accepted_ids = [row["id"] for row in reviewed.structured_content["candidates"]]
             committed = await client.call_tool(
                 "commit_import",
                 {"batch_id": batch_id, "accepted_ids": accepted_ids},
             )
             resolved = await client.call_tool("resolve_person", {"query": "alice@example.com"})
-            return committed.structuredContent, resolved.structuredContent
+            return committed.structured_content, resolved.structured_content
 
     committed, resolved = anyio.run(flow)
 
@@ -314,12 +314,12 @@ def test_real_stdio_ics_import_commit_and_resolve(tmp_path: Path) -> None:
         ):
             await client.initialize()
             imported = await client.call_tool("import_content", {"source_type": "ics", "path": str(ics_path)})
-            batch_id = imported.structuredContent["batch_id"]
+            batch_id = imported.structured_content["batch_id"]
             reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
-            accepted_ids = [row["id"] for row in reviewed.structuredContent["candidates"]]
+            accepted_ids = [row["id"] for row in reviewed.structured_content["candidates"]]
             await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": accepted_ids})
             resolved = await client.call_tool("resolve_person", {"query": "alice@example.com"})
-            return imported.structuredContent, resolved.structuredContent
+            return imported.structured_content, resolved.structured_content
 
     imported, resolved = anyio.run(flow)
 
@@ -355,12 +355,12 @@ def test_real_stdio_linkedin_import_commit_and_resolve(tmp_path: Path) -> None:
         ):
             await client.initialize()
             imported = await client.call_tool("import_content", {"source_type": "linkedin", "path": str(csv_path)})
-            batch_id = imported.structuredContent["batch_id"]
+            batch_id = imported.structured_content["batch_id"]
             reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
-            accepted_ids = [row["id"] for row in reviewed.structuredContent["candidates"]]
+            accepted_ids = [row["id"] for row in reviewed.structured_content["candidates"]]
             await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": accepted_ids})
             resolved = await client.call_tool("resolve_person", {"query": "alice@example.com"})
-            return imported.structuredContent, resolved.structuredContent
+            return imported.structured_content, resolved.structured_content
 
     imported, resolved = anyio.run(flow)
 
@@ -389,7 +389,7 @@ def test_real_stdio_graph_then_cli_vault_export_uses_matching_links(tmp_path: Pa
             people: dict[str, str] = {}
             for name in ("Alice", "Bob", "Carol"):
                 remembered = await client.call_tool("remember_person", {"name": name})
-                people[name] = remembered.structuredContent["person"]["id"]
+                people[name] = remembered.structured_content["person"]["id"]
             await client.call_tool(
                 "set_relationship",
                 {"subject_id": people["Bob"], "object_id": people["Alice"], "type": "manager of"},
@@ -406,7 +406,7 @@ def test_real_stdio_graph_then_cli_vault_export_uses_matching_links(tmp_path: Pa
                 "find_connection",
                 {"person_a": people["Alice"], "person_b": people["Carol"]},
             )
-            return graph.structuredContent, connection.structuredContent
+            return graph.structured_content, connection.structured_content
 
     graph, connection = anyio.run(flow)
     assert {edge["type"] for edge in graph["edges"]} == {"reports_to"}

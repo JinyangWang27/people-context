@@ -84,7 +84,7 @@ def test_real_http_security_round_trip_and_shared_stdio_database(tmp_path: Path)
         ):
             await client.initialize()
             result = await client.call_tool("resolve_person", {"query": "Loopback Alice"})
-            return result.structuredContent
+            return result.structured_content
 
     resolved = anyio.run(resolve_over_stdio)
     assert resolved["candidates"][0]["person_id"] == person_id
@@ -103,14 +103,14 @@ async def _exercise_http(port: int) -> str:
         assert invalid_origin.status_code == 403
 
     async with (
-        streamable_http_client(endpoint) as (read_stream, write_stream, _),
+        streamable_http_client(endpoint) as (read_stream, write_stream),
         ClientSession(read_stream, write_stream) as client,
     ):
         await client.initialize()
         tools = await client.list_tools()
         assert {"remember_person", "resolve_person"} <= {tool.name for tool in tools.tools}
         remembered = await client.call_tool("remember_person", {"name": "Loopback Alice"})
-        person_id = remembered.structuredContent["person"]["id"]
+        person_id = remembered.structured_content["person"]["id"]
         resolved = await client.call_tool("resolve_person", {"query": "Loopback Alice"})
-        assert resolved.structuredContent["candidates"][0]["person_id"] == person_id
+        assert resolved.structured_content["candidates"][0]["person_id"] == person_id
         return person_id
