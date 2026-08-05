@@ -1,4 +1,4 @@
-"""Tests for the FastMCP stdio adapter via the SDK's in-memory client/server."""
+"""Tests for the MCP stdio adapter via the SDK's in-memory client/server."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ from typing import Any
 
 import anyio
 import pytest
-from mcp.client.session import ClientSession
-from mcp.shared.memory import create_connected_server_and_client_session
+from mcp.client import Client
 
 from people_context.adapters import runtime as runtime_module
 from people_context.adapters.mcp.server import build_server
@@ -67,8 +66,7 @@ EXPECTED_TOOLS = {
 
 def _run(server: Any, coro_factory: Any) -> Any:
     async def main() -> Any:
-        async with create_connected_server_and_client_session(server) as client:
-            await client.initialize()
+        async with Client(server) as client:
             return await coro_factory(client)
 
     return anyio.run(main)
@@ -78,9 +76,8 @@ def test_initialize_returns_safe_tool_composition_instructions(tmp_path: Path) -
     server = build_server(db_path=tmp_path / "instructions.db")
 
     async def initialize() -> str | None:
-        async with create_connected_server_and_client_session(server) as client:
-            result = await client.initialize()
-            return result.instructions
+        async with Client(server) as client:
+            return client.instructions
 
     instructions = anyio.run(initialize)
 
@@ -105,29 +102,29 @@ def test_initialize_returns_safe_tool_composition_instructions(tmp_path: Path) -
 def test_tools_list_surface_and_annotations(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "t.db")
 
-    async def collect(client: ClientSession) -> Any:
+    async def collect(client: Client) -> Any:
         return await client.list_tools()
 
     result = _run(server, collect)
     by_name = {tool.name: tool for tool in result.tools}
 
     assert set(by_name) >= EXPECTED_TOOLS
-    assert by_name["resolve_person"].annotations.readOnlyHint is True
-    assert by_name["semantic_search"].annotations.readOnlyHint is True
-    assert by_name["stage_candidates"].annotations.readOnlyHint is False
-    assert by_name["stage_candidates"].annotations.destructiveHint is False
-    assert by_name["get_person_context"].annotations.readOnlyHint is True
-    assert by_name["get_communication_guidance"].annotations.readOnlyHint is True
-    assert by_name["list_reminders"].annotations.readOnlyHint is True
-    assert "hints" in by_name["resolve_person"].inputSchema["properties"]
-    assert by_name["get_person_context"].inputSchema["properties"]["max_items"]["default"] == 10
-    assert "include_sensitive" not in by_name["get_person_context"].inputSchema["properties"]
+    assert by_name["resolve_person"].annotations.read_only_hint is True
+    assert by_name["semantic_search"].annotations.read_only_hint is True
+    assert by_name["stage_candidates"].annotations.read_only_hint is False
+    assert by_name["stage_candidates"].annotations.destructive_hint is False
+    assert by_name["get_person_context"].annotations.read_only_hint is True
+    assert by_name["get_communication_guidance"].annotations.read_only_hint is True
+    assert by_name["list_reminders"].annotations.read_only_hint is True
+    assert "hints" in by_name["resolve_person"].input_schema["properties"]
+    assert by_name["get_person_context"].input_schema["properties"]["max_items"]["default"] == 10
+    assert "include_sensitive" not in by_name["get_person_context"].input_schema["properties"]
     assert "get_sensitive_person_context" not in by_name
     assert "export_data" not in by_name
-    assert by_name["merge_people"].annotations.destructiveHint is True
-    assert by_name["remember_person"].annotations.readOnlyHint is False
-    assert by_name["record_fact"].annotations.readOnlyHint is False
-    assert by_name["record_fact"].annotations.destructiveHint is False
+    assert by_name["merge_people"].annotations.destructive_hint is True
+    assert by_name["remember_person"].annotations.read_only_hint is False
+    assert by_name["record_fact"].annotations.read_only_hint is False
+    assert by_name["record_fact"].annotations.destructive_hint is False
 
 
 def test_high_disclosure_tools_require_process_elevation(tmp_path: Path, monkeypatch: Any) -> None:
@@ -135,30 +132,30 @@ def test_high_disclosure_tools_require_process_elevation(tmp_path: Path, monkeyp
     monkeypatch.setenv("PEOPLE_CONTEXT_MCP_ENABLE_EXPORT", "true")
     server = build_server(db_path=tmp_path / "elevated.db")
 
-    async def collect(client: ClientSession) -> Any:
+    async def collect(client: Client) -> Any:
         return await client.list_tools()
 
     result = _run(server, collect)
     by_name = {tool.name: tool for tool in result.tools}
 
     assert "get_sensitive_person_context" in by_name
-    assert "include_sensitive" not in by_name["get_sensitive_person_context"].inputSchema["properties"]
-    assert by_name["get_sensitive_person_context"].annotations.readOnlyHint is True
+    assert "include_sensitive" not in by_name["get_sensitive_person_context"].input_schema["properties"]
+    assert by_name["get_sensitive_person_context"].annotations.read_only_hint is True
     assert "export_data" in by_name
-    assert by_name["export_data"].annotations.readOnlyHint is True
+    assert by_name["export_data"].annotations.read_only_hint is True
 
 
 def test_remember_then_resolve_and_audit_row(tmp_path: Path) -> None:
     db_path = tmp_path / "t.db"
     server = build_server(db_path=db_path)
 
-    async def flow(client: ClientSession) -> tuple[dict[str, Any], dict[str, Any]]:
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any]]:
         remembered = await client.call_tool(
             "remember_person",
             {"name": "Jinyang Wang", "aliases": [{"value": "JW", "kind": "nickname"}], "summary": "me"},
         )
         resolved = await client.call_tool("resolve_person", {"query": "Jinyang"})
-        return remembered.structuredContent, resolved.structuredContent
+        return remembered.structured_content, resolved.structured_content
 
     remember_payload, resolve_payload = _run(server, flow)
 
@@ -180,9 +177,9 @@ def test_remember_then_resolve_and_audit_row(tmp_path: Path) -> None:
 def test_import_content_returns_structured_error_for_empty_email(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "t.db")
 
-    async def call(client: ClientSession) -> dict[str, Any]:
+    async def call(client: Client) -> dict[str, Any]:
         result = await client.call_tool("import_content", {"source_type": "email", "content": "x"})
-        return result.structuredContent
+        return result.structured_content
 
     payload = _run(server, call)
     assert payload["error"] == "no_candidates"
@@ -200,10 +197,10 @@ def test_import_content_reports_skipped_dateless_interaction(tmp_path: Path) -> 
         ]
     )
 
-    async def call(client: ClientSession) -> dict[str, Any]:
+    async def call(client: Client) -> dict[str, Any]:
         result = await client.call_tool("import_content", {"source_type": "email", "content": content})
-        assert result.structuredContent is not None
-        return result.structuredContent
+        assert result.structured_content is not None
+        return result.structured_content
 
     payload = _run(server, call)
     assert payload["candidate_count"] == 2
@@ -214,10 +211,10 @@ def test_import_content_reports_dateless_interaction_without_message_id(tmp_path
     server = build_server(db_path=tmp_path / "t.db")
     content = "From: Alice <alice@example.com>\nTo: Bob <bob@example.com>\n\n"
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool("import_content", {"source_type": "email", "content": content})
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload["candidate_count"] == 2
     assert payload["skipped_message_ids"] == []
@@ -238,10 +235,10 @@ def test_semantic_search_before_reindex_is_not_available_without_network(
     monkeypatch.setattr("huggingface_hub.snapshot_download", reject_network)
     server = build_server(db_path=tmp_path / "semantic.db")
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool("semantic_search", {"query": "SQL engineer"})
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload == {
         "status": "not_available",
@@ -266,10 +263,10 @@ def test_semantic_search_refuses_model_mismatch(tmp_path: Path) -> None:
         conn.close()
     server = build_server(db_path=db_path)
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool("semantic_search", {"query": "SQL engineer"})
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload["status"] == "model_mismatch"
     assert payload["stored_model_id"] == "old/model"
@@ -304,10 +301,10 @@ def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
     monkeypatch.setattr(runtime_module, "create_local_embedding_provider", FakeProvider)
     server = build_server(db_path=db_path)
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool("semantic_search", {"query": "SQL engineer", "kinds": ["person"]})
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload["status"] == "ok"
     assert payload["model_id"] == MODEL_ID
@@ -337,13 +334,13 @@ def test_vcard_import_reports_per_card_skips_and_stages_valid_neighbors(tmp_path
         ]
     )
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool(
             "import_content",
             {"source_type": "vcard", "content": content},
         )
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload["candidate_count"] == 1
     assert payload["skipped_cards"] == [{"index": 2, "reason": "unsupported_version"}]
@@ -353,13 +350,13 @@ def test_all_invalid_vcards_return_no_candidates_with_skip_details(tmp_path: Pat
     server = build_server(db_path=tmp_path / "invalid-vcard.db")
     content = "BEGIN:VCARD\nVERSION:4.0\nEMAIL:nobody@example.com\nEND:VCARD\n"
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool(
             "import_content",
             {"source_type": "vcard", "content": content},
         )
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload["error"] == "no_candidates"
     assert payload["skipped_cards"] == [{"index": 1, "reason": "missing_fn"}]
@@ -386,12 +383,12 @@ def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None
         ]
     )
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "ics", "content": content})
         reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structuredContent["batch_id"]}
+            "review_import", {"batch_id": imported.structured_content["batch_id"]}
         )
-        return imported.structuredContent, reviewed.structuredContent
+        return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
 
@@ -418,12 +415,12 @@ def test_linkedin_import_stages_safe_rows_and_reports_invalid_neighbors(tmp_path
         ]
     )
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "linkedin", "content": content})
         reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structuredContent["batch_id"]}
+            "review_import", {"batch_id": imported.structured_content["batch_id"]}
         )
-        return imported.structuredContent, reviewed.structuredContent
+        return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
 
@@ -437,7 +434,7 @@ def test_linkedin_import_stages_safe_rows_and_reports_invalid_neighbors(tmp_path
 def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "agent-stage.db")
 
-    async def flow(client: ClientSession) -> Any:
+    async def flow(client: Client) -> Any:
         return await client.call_tool(
             "stage_candidates",
             {
@@ -454,7 +451,7 @@ def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> N
             },
         )
 
-    payload = _run(server, flow).structuredContent
+    payload = _run(server, flow).structured_content
 
     assert payload["error"] == "invalid_candidates"
     assert payload["details"][0]["type"] == "extra_forbidden"
@@ -481,10 +478,10 @@ def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path)
     conn.close()
     server = build_server(db_path=db_path)
 
-    async def flow(client: ClientSession) -> tuple[dict[str, Any], dict[str, Any]]:
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any]]:
         invalid = await client.call_tool("merge_people", {"primary_id": primary.id, "duplicate_id": primary.id})
         merged = await client.call_tool("merge_people", {"primary_id": primary.id, "duplicate_id": duplicate.id})
-        return invalid.structuredContent, merged.structuredContent
+        return invalid.structured_content, merged.structured_content
 
     invalid, merged = _run(server, flow)
 
@@ -498,9 +495,9 @@ def test_record_write_read_curation_and_guidance_flow(tmp_path: Path, monkeypatc
     db_path = tmp_path / "m2.db"
     server = build_server(db_path=db_path)
 
-    async def flow(client: ClientSession) -> dict[str, Any]:
-        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structuredContent["person"]
-        alice = (await client.call_tool("remember_person", {"name": "Alice"})).structuredContent["person"]
+    async def flow(client: Client) -> dict[str, Any]:
+        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structured_content["person"]
+        alice = (await client.call_tool("remember_person", {"name": "Alice"})).structured_content["person"]
         person_id = alice["id"]
         await client.call_tool(
             "set_relationship",
@@ -515,16 +512,16 @@ def test_record_write_read_curation_and_guidance_flow(tmp_path: Path, monkeypatc
                 "record_fact",
                 {"person_id": person_id, "predicate": "location", "value": "Dubia", "sensitivity": "public"},
             )
-        ).structuredContent
+        ).structured_content
         sensitive_fact = (
             await client.call_tool(
                 "record_fact",
                 {"person_id": person_id, "predicate": "private", "value": "secret", "sensitivity": "sensitive"},
             )
-        ).structuredContent
+        ).structured_content
         observation = (
             await client.call_tool("record_observation", {"person_id": person_id, "text": "Never disclose"})
-        ).structuredContent
+        ).structured_content
         await client.call_tool(
             "record_trait",
             {"person_id": person_id, "category": "communication_style", "value": "Prefers concise writing"},
@@ -554,54 +551,54 @@ def test_record_write_read_curation_and_guidance_flow(tmp_path: Path, monkeypatc
                     "due_at": "2025-07-01T00:00:00+00:00",
                 },
             )
-        ).structuredContent
+        ).structured_content
         note = (
             await client.call_tool(
                 "set_reminder",
                 {"person_id": person_id, "text": "Use email", "kind": "communication_note"},
             )
-        ).structuredContent
+        ).structured_content
         listed = (
             await client.call_tool(
                 "list_reminders",
                 {"person_id": person_id, "due_before": "2025-07-02T00:00:00+00:00"},
             )
-        ).structuredContent
-        completed = (await client.call_tool("complete_reminder", {"reminder_id": follow_up["id"]})).structuredContent
+        ).structured_content
+        completed = (await client.call_tool("complete_reminder", {"reminder_id": follow_up["id"]})).structured_content
         completed_twice = (
             await client.call_tool("complete_reminder", {"reminder_id": follow_up["id"]})
-        ).structuredContent
+        ).structured_content
         corrected = (
             await client.call_tool(
                 "correct_record", {"entity_type": "fact", "entity_id": fact["id"], "fields": {"value": "Dubai"}}
             )
-        ).structuredContent
+        ).structured_content
         rejected_identity = (
             await client.call_tool(
                 "correct_record",
                 {"entity_type": "fact", "entity_id": fact["id"], "fields": {"person_id": me["id"]}},
             )
-        ).structuredContent
+        ).structured_content
         rejected_provenance = (
             await client.call_tool(
                 "correct_record",
                 {"entity_type": "fact", "entity_id": fact["id"], "fields": {"provenance": {"source": "x"}}},
             )
-        ).structuredContent
+        ).structured_content
         context_default = (
             await client.call_tool("get_person_context", {"person_id": person_id, "max_items": 10})
-        ).structuredContent
+        ).structured_content
         context_sensitive = (
             await client.call_tool("get_sensitive_person_context", {"person_id": person_id, "max_items": 10})
-        ).structuredContent
+        ).structured_content
         guidance = (
             await client.call_tool(
                 "get_communication_guidance", {"person_id": person_id, "situation": "Discuss launch"}
             )
-        ).structuredContent
+        ).structured_content
         unknown = (
             await client.call_tool("record_fact", {"person_id": "missing", "predicate": "p", "value": "v"})
-        ).structuredContent
+        ).structured_content
         return {
             "person_id": person_id,
             "fact": fact,
@@ -681,14 +678,14 @@ def test_resolve_hints_are_validated_and_real_context_payload_is_returned(tmp_pa
     conn.close()
     server = build_server(db_path=db_path)
 
-    async def flow(client: ClientSession) -> tuple[Any, dict[str, Any]]:
+    async def flow(client: Client) -> tuple[Any, dict[str, Any]]:
         invalid = await client.call_tool("resolve_person", {"query": "Alice", "hints": {"unexpected": "x"}})
         context = await client.call_tool("get_person_context", {"person_id": person.id})
-        return invalid, context.structuredContent
+        return invalid, context.structured_content
 
     invalid_result, payload = _run(server, flow)
 
-    assert invalid_result.isError is True
+    assert invalid_result.is_error is True
     assert payload["found"] is True
     assert payload["identity"] == {
         "id": person.id,

@@ -12,19 +12,19 @@ from people_context.app.records import CompleteReminderInput, ListRemindersInput
 from people_context.domain.reminder import ReminderStatus
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
-_READ_ONLY = ToolAnnotations(readOnlyHint=True)
-_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+_READ_ONLY = ToolAnnotations(read_only_hint=True)
+_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
 
 
-def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
+def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register reminder tools with their locked schemas."""
 
     @mcp.tool(annotations=_READ_ONLY)
-    def list_reminders(
+    async def list_reminders(
         person_id: str | None = None,
         due_before: str | None = None,
         status: str | None = None,
@@ -41,7 +41,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         return {"reminders": [item.model_dump(mode="json") for item in deps.list_reminders.execute(data)]}
 
     @mcp.tool(annotations=_WRITE)
-    def set_reminder(
+    async def set_reminder(
         person_id: str,
         text: str,
         kind: str,
@@ -62,6 +62,6 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
-    def complete_reminder(reminder_id: str) -> dict[str, Any]:
+    async def complete_reminder(reminder_id: str) -> dict[str, Any]:
         """Transition one active reminder to completed."""
         return call_action(lambda: deps.complete_reminder.execute(CompleteReminderInput(reminder_id=reminder_id)))

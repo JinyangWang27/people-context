@@ -10,18 +10,18 @@ from people_context.app.people import ForgetError, MergePeopleError
 from people_context.app.records import PersonNotFoundError, RecordNotFoundError
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
-_DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
+_DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True)
 
 
-def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
+def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register implemented lifecycle tools."""
 
     @mcp.tool(annotations=_DESTRUCTIVE)
-    def merge_people(primary_id: str, duplicate_id: str) -> dict[str, Any]:
+    async def merge_people(primary_id: str, duplicate_id: str) -> dict[str, Any]:
         """Merge a duplicate person into a primary person atomically."""
         try:
             return deps.merge_people.execute(primary_id, duplicate_id).model_dump(mode="json")
@@ -31,7 +31,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
             return {"error": exc.code, "message": str(exc)}
 
     @mcp.tool(annotations=_DESTRUCTIVE)
-    def forget(target: str, scope: str) -> dict[str, Any]:
+    async def forget(target: str, scope: str) -> dict[str, Any]:
         """Hard-delete a person or record and redact identifying audit history."""
         try:
             return deps.forget.execute(target, scope).model_dump(mode="json")

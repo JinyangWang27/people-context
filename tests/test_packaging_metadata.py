@@ -32,6 +32,12 @@ def test_primary_distribution_uses_new_name_and_stable_entrypoints() -> None:
     }
 
 
+def test_primary_distribution_requires_mcp_v2() -> None:
+    project = _toml(ROOT / "pyproject.toml")["project"]
+
+    assert "mcp>=2,<3" in project["dependencies"]
+
+
 def test_release_workflow_targets_only_primary_project() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 

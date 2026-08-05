@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -12,7 +11,6 @@ from people_context.adapters.mcp import server as server_module
 
 class _ServerSpy:
     def __init__(self) -> None:
-        self.settings = SimpleNamespace(host=None, port=None, transport_security=None)
         self.run_calls: list[dict[str, Any]] = []
 
     def run(self, **kwargs: Any) -> None:
@@ -46,10 +44,12 @@ def test_main_configures_loopback_streamable_http_security(monkeypatch: pytest.M
 
     server_module.main(["--http", "--port", "9123", "--host", "127.0.0.1"])
 
-    assert spy.settings.host == "127.0.0.1"
-    assert spy.settings.port == 9123
-    security = spy.settings.transport_security
+    assert len(spy.run_calls) == 1
+    run_args = spy.run_calls[0]
+    assert run_args["host"] == "127.0.0.1"
+    assert run_args["port"] == 9123
+    security = run_args["transport_security"]
     assert security.enable_dns_rebinding_protection is True
     assert security.allowed_hosts == ["127.0.0.1:*", "localhost:*"]
     assert security.allowed_origins == ["http://127.0.0.1:*", "http://localhost:*"]
-    assert spy.run_calls == [{"transport": "streamable-http"}]
+    assert run_args["transport"] == "streamable-http"

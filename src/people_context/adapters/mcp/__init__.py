@@ -1,4 +1,4 @@
-"""MCP stdio adapter: FastMCP server exposing the people-context tool surface."""
+"""MCP stdio adapter exposing the people-context tool surface."""
 
 from __future__ import annotations
 
