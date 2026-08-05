@@ -124,7 +124,9 @@ def test_release_workflow_dispatches_suppressed_pull_request_checks() -> None:
     release_workflow = (ROOT / ".github/workflows/release-please.yml").read_text(encoding="utf-8")
 
     assert "steps.release.outputs.prs_created == 'true'" in release_workflow
-    assert "fromJSON(steps.release.outputs.pr).headBranchName" in release_workflow
+    assert "RELEASE_PRS: ${{ steps.release.outputs.prs }}" in release_workflow
+    assert "PR_BRANCH=\"$(jq -r '.[0].headBranchName' <<< \"$RELEASE_PRS\")\"" in release_workflow
+    assert "fromJSON(steps.release.outputs.pr)" not in release_workflow
     for workflow_name in RELEASE_PR_WORKFLOWS:
         workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
         assert "workflow_dispatch:" in workflow

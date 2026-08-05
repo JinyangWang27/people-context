@@ -33,8 +33,9 @@ jobs:
         if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
         run: |
+          PR_BRANCH="$(jq -r '.[0].headBranchName' <<< "$RELEASE_PRS")"
           gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
           gh workflow run codeql.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
           gh workflow run claude-plugin-validate.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
