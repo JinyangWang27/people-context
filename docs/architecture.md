@@ -150,13 +150,15 @@ never inside `domain` or `app`:
   cases once. CLI and MCP inject different warning callbacks without duplicating setup.
 - `adapters/mcp/server.py:build_server()` obtains the shared runtime and registers MCP tools that call its use
   cases. `main()` parses `--db` plus transport flags; it runs
-  stdio by default or applies loopback HTTP settings before `run(transport="streamable-http")`.
+  stdio by default or passes loopback host, port, and transport-security settings directly to
+  `run(transport="streamable-http", ...)`.
 
-  The server shares one SQLite connection (`check_same_thread=True`) across all tools, which is safe because
-  the pinned MCP SDK invokes synchronous tools inline on the event-loop thread. Two consequences are accepted
-  for now: a long tool call blocks the whole server, and upgrading to an SDK that dispatches sync tools to
-  worker threads would require moving to a connection-per-request (or serialized-access) design first. Revisit
-  this deliberately when bumping the `mcp` dependency — do not just flip `check_same_thread`.
+  The server shares one SQLite connection (`check_same_thread=True`) across all tools. MCP SDK 2 dispatches
+  synchronous handlers to worker threads, so the MCP adapter deliberately registers async tool wrappers that
+  call the synchronous application use cases without yielding. SQLite access therefore remains serialized on
+  the server event-loop thread. A long tool call still blocks the server; moving tool work off that thread or
+  adding awaits around database access requires a connection-per-request or explicit serialized-access design
+  first. Do not weaken this invariant by flipping `check_same_thread`.
 - `cli/main.py:main()` performs parser dispatch against the same runtime, so CLI commands and MCP tools call
   the exact same use case classes and therefore obey the exact same audit/provenance rules.
 - `__main__.py` (`python -m people_context`) is a thin alias to the stdio server entrypoint.

@@ -243,7 +243,7 @@ async def _seed_device_a(db_path: Path) -> dict[str, str]:
         ClientSession(read_stream, write_stream) as client,
     ):
         await client.initialize()
-        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structuredContent["person"]
+        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structured_content["person"]
         alice = (
             await client.call_tool(
                 "remember_person",
@@ -253,7 +253,7 @@ async def _seed_device_a(db_path: Path) -> dict[str, str]:
                     "summary": "Climbing partner and colleague",
                 },
             )
-        ).structuredContent["person"]
+        ).structured_content["person"]
         # Asserted through the custom synonym, so the canonical type only survives with its vocabulary.
         await client.call_tool(
             "set_relationship",
@@ -294,7 +294,7 @@ async def _write_on_device_b(db_path: Path) -> str:
     ):
         await client.initialize()
         remembered = await client.call_tool("remember_person", {"name": "Bob Example"})
-        return str(remembered.structuredContent["person"]["id"])
+        return str(remembered.structured_content["person"]["id"])
 
 
 async def _read_device_c(db_path: Path, alice_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -305,7 +305,7 @@ async def _read_device_c(db_path: Path, alice_id: str) -> tuple[dict[str, Any], 
         await client.initialize()
         resolved = await client.call_tool("resolve_person", {"query": "Ally"})
         context = await client.call_tool("get_person_context", {"person_id": alice_id, "max_items": 5})
-        return resolved.structuredContent, context.structuredContent
+        return resolved.structured_content, context.structured_content
 
 
 def _stdio_parameters(db_path: Path) -> StdioServerParameters:
