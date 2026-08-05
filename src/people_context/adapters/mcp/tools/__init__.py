@@ -1,4 +1,4 @@
-"""Tool registration: wire the real and stub tools onto a FastMCP instance."""
+"""Tool registration: wire the real and stub tools onto an MCPServer instance."""
 
 from __future__ import annotations
 
@@ -16,14 +16,14 @@ from people_context.adapters.mcp.tools import (
 )
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
 __all__ = ["register_all"]
 
 
-def register_all(mcp: FastMCP, deps: RuntimeUseCases) -> None:
+def register_all(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register every people-context tool (real use cases + typed stubs)."""
     people.register(mcp, deps)
     guidance.register(mcp, deps)

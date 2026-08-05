@@ -23,20 +23,20 @@ from people_context.app.people import (
 from people_context.app.semantic import SemanticSearchValidationError
 
 if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+    from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
-_READ_ONLY = ToolAnnotations(readOnlyHint=True)
-_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
+_READ_ONLY = ToolAnnotations(read_only_hint=True)
+_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
 _SENSITIVE_CONTEXT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE"
 
 
-def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
+def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the resolve/search/remember tools bound to the given use cases."""
 
     @mcp.tool(annotations=_READ_ONLY)
-    def resolve_person(query: str, hints: dict[str, Any] | None = None, limit: int = 5) -> dict[str, Any]:
+    async def resolve_person(query: str, hints: dict[str, Any] | None = None, limit: int = 5) -> dict[str, Any]:
         """Resolve a name, nickname, or partial reference to candidate people.
 
         Call this first whenever the user mentions someone, before asking who they
@@ -50,7 +50,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         return deps.resolve_person.execute(query, limit=limit, hints=validated_hints).model_dump(mode="json")
 
     @mcp.tool(annotations=_READ_ONLY)
-    def get_person_context(
+    async def get_person_context(
         person_id: str,
         purpose: str | None = None,
         max_items: int = 10,
@@ -72,7 +72,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
     if process_elevation_enabled(_SENSITIVE_CONTEXT_ENV):
 
         @mcp.tool(annotations=_READ_ONLY)
-        def get_sensitive_person_context(
+        async def get_sensitive_person_context(
             person_id: str,
             purpose: str | None = None,
             max_items: int = 10,
@@ -91,7 +91,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
             ).model_dump(mode="json")
 
     @mcp.tool(annotations=_READ_ONLY)
-    def search_people(query: str, limit: int = 10) -> dict[str, Any]:
+    async def search_people(query: str, limit: int = 10) -> dict[str, Any]:
         """Free-text search over stored people for browsing or lookup.
 
         Broader than `resolve_person`: use this to list who is known that matches a
@@ -101,7 +101,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
         return {"query": query, "results": [candidate.model_dump(mode="json") for candidate in results]}
 
     @mcp.tool(annotations=_READ_ONLY)
-    def semantic_search(
+    async def semantic_search(
         query: str,
         kinds: list[str] | None = None,
         limit: int = 10,
@@ -117,7 +117,7 @@ def register(mcp: FastMCP, deps: RuntimeUseCases) -> None:
             return {"error": exc.code, "message": str(exc)}
 
     @mcp.tool(annotations=_WRITE)
-    def remember_person(
+    async def remember_person(
         name: str,
         aliases: list[dict] | None = None,
         summary: str | None = None,

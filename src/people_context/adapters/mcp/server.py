@@ -1,4 +1,4 @@
-"""FastMCP server wiring with stdio and loopback Streamable HTTP transports.
+"""MCP server wiring with stdio and loopback Streamable HTTP transports.
 
 This adapter is the only place the MCP SDK is imported. It resolves the database
 path, opens the SQLite store, constructs the repository/audit/clock and the app
@@ -14,7 +14,7 @@ import logging
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context.adapters.mcp.tools import register_all
@@ -57,8 +57,8 @@ def _configure_logging() -> logging.Logger:
     return logger
 
 
-def build_server(db_path: str | Path | None = None) -> FastMCP:
-    """Build a fully wired FastMCP server backed by the resolved SQLite database.
+def build_server(db_path: str | Path | None = None) -> MCPServer:
+    """Build a fully wired MCP server backed by the resolved SQLite database.
 
     Resolves ``db_path`` via :func:`resolve_db_path`, logs the chosen path to
     STDERR, opens the database, constructs the repository/audit/clock and the
@@ -68,7 +68,7 @@ def build_server(db_path: str | Path | None = None) -> FastMCP:
     runtime = build_runtime(db_path, warning=logger.warning)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
-    mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+    mcp = MCPServer(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
     register_all(mcp, runtime.use_cases)
     return mcp
 
@@ -112,14 +112,17 @@ def main(argv: list[str] | None = None) -> None:
         server.run()
         return
 
-    server.settings.host = args.host
-    server.settings.port = args.port
-    server.settings.transport_security = TransportSecuritySettings(
+    transport_security = TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=["127.0.0.1:*", "localhost:*"],
         allowed_origins=["http://127.0.0.1:*", "http://localhost:*"],
     )
-    server.run(transport="streamable-http")
+    server.run(
+        transport="streamable-http",
+        host=args.host,
+        port=args.port,
+        transport_security=transport_security,
+    )
 
 
 if __name__ == "__main__":
