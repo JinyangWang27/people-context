@@ -30,9 +30,18 @@ _PRIMARY_SOURCE_HOSTS = frozenset(
         "cdn.openai.com",
         "support.anthropic.com",
         "privacy.anthropic.com",
+        "legal.anthropic.com",
+        "www.anthropic.com",
         "docs.mem0.ai",
     }
 )
+
+#: Third-party vendors compared in the table. Each must source every axis it is claimed on.
+_COMPARED_VENDORS = ("ChatGPT", "Claude", "Mem0")
+#: Axis keywords, lowercased, that a vendor's per-axis sourcing sub-bullets must between them mention.
+_SOURCED_AXES = ("storage", "legal demand", "offline", "deletion")
+#: A per-axis sourcing sub-bullet, e.g. "  - *Storage and offline:* ...".
+_AXIS_BULLET = re.compile(r"^  - \*(?P<axes>[^*]+):\*(?P<body>.*?)(?=^  - \*|\Z)", re.M | re.S)
 
 
 def _read(relative: str) -> str:
@@ -78,6 +87,25 @@ def test_comparison_cites_only_primary_vendor_documentation_over_https() -> None
         assert host in _PRIMARY_SOURCE_HOSTS, f"not a primary vendor source: {target}"
     for host in ("help.openai.com", "support.anthropic.com", "docs.mem0.ai"):
         assert any(target.split("/", 3)[2] == host for target in targets), f"unsourced vendor: {host}"
+
+
+def _vendor_sourcing(vendor: str) -> str:
+    """Return the sourcing block for one vendor, up to the next top-level bullet."""
+    blocks = _comparison_section().split("Sources, by vendor and axis:", 1)[1]
+    return blocks.split(f"- **{vendor}.**", 1)[1].split("\n- **", 1)[0]
+
+
+@pytest.mark.parametrize("vendor", _COMPARED_VENDORS)
+def test_every_compared_axis_is_backed_by_a_primary_source_for_that_vendor(vendor: str) -> None:
+    """Regression: a table cell must not claim a vendor behavior that no cited page covers."""
+    bullets = list(_AXIS_BULLET.finditer(_vendor_sourcing(vendor)))
+
+    assert bullets, f"{vendor} has no per-axis sourcing"
+    for bullet in bullets:
+        assert _EXTERNAL_LINK.findall(bullet.group("body")), f"{vendor} axis '{bullet.group('axes')}' cites nothing"
+    labelled = " ".join(bullet.group("axes") for bullet in bullets).lower()
+    for axis in _SOURCED_AXES:
+        assert axis in labelled, f"{vendor} does not source the {axis} axis"
 
 
 def test_comparison_relative_links_resolve() -> None:
