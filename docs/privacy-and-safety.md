@@ -208,3 +208,53 @@ physical deletion from an unreachable device or third-party backup.
   concurrent readers and a single writer; the CLI and the MCP server may both open the same file safely, but
   this is not a substitute for access control — anything that can open the file can read or write it, subject
   to normal filesystem permissions.
+
+### Local-first versus cloud-hosted memory, as of 2026-08-05
+
+This comparison exists so that the trade-off is judged on verifiable properties rather than on marketing. It
+compares this project with two shapes of hosted alternative — assistant-integrated memory (ChatGPT, Claude) and
+a dedicated memory platform (Mem0) — on four axes only: storage location at rest, what a vendor breach or legal
+demand can expose, whether the product works fully offline, and what deletion means. Vendor behavior is
+summarized from that vendor's own documentation on the date above and is not re-verified automatically; treat
+the linked primary sources as authoritative and re-check them before relying on this table.
+
+| Axis | `people-context` | Assistant-integrated memory (ChatGPT, Claude) | Dedicated memory platform (Mem0) |
+|---|---|---|---|
+| Storage at rest | One local SQLite file on the user's machine, plaintext in v1 | Vendor-operated servers, tied to the account | Managed cloud by default; self-hosted and air-gapped deployments are offered |
+| Vendor breach or legal demand | No vendor holds a copy, so there is no vendor account to breach or subpoena; exposure follows the user's own device, backups, and legal position | Vendor holds the data and discloses it under valid legal process | Depends on the deployment: managed cloud places the data with the vendor, self-hosting does not |
+| Fully offline | Yes for ordinary use; only `pctx reindex --semantic` may reach the network | No — memory is a feature of a hosted service | Managed cloud requires the network; self-hosted deployments need not |
+| Deletion | `forget` hard-deletes the targeted rows and redacts covered audit and changelog payloads in the same transaction | Deletion is a request to the vendor, subject to documented back-end retention windows | Delete, batch-delete, and filter-based delete APIs against the deployment holding the data |
+
+Sourced specifics behind the table:
+
+- **ChatGPT.** OpenAI's [Memory FAQ](https://help.openai.com/en/articles/8590148-memory-faq) documents that
+  saved memories can be viewed, deleted individually, cleared, or turned off in settings, that a log of deleted
+  saved memories may be retained for up to 30 days, and that memory and chat history are separate: deleting
+  memories does not delete past chats, and deleting a chat does not remove memories already saved from it.
+  Disclosure to governments follows the [privacy policy](https://openai.com/policies/row-privacy-policy/) and
+  the published
+  [law enforcement policy](https://cdn.openai.com/pdf/openai-law-enforcement-policy-v.2025-12.pdf), which
+  describes disclosure pursuant to valid legal process and, in limited emergencies, to prevent danger of death
+  or serious physical injury.
+- **Claude.** Anthropic documents memory entries in
+  [Settings > Memory](https://support.anthropic.com/en/articles/11817273-using-claude-s-chat-search-and-memory-to-build-on-previous-context),
+  which can be inspected and deleted individually, and notes that deleting or expiring a conversation does not
+  by itself remove memory entries generated from it. Deleted conversations leave the visible history
+  immediately and back-end systems
+  [within 30 days](https://privacy.anthropic.com/en/articles/7996878-can-you-delete-data-sent-via-claude-ai);
+  [retention](https://privacy.anthropic.com/en/articles/10023548-how-long-do-you-store-personal-data) is longer
+  for consumer accounts that opt in to model training.
+- **Mem0.** Mem0 documents [delete operations](https://docs.mem0.ai/core-concepts/memory-operations/delete) and
+  a [delete API](https://docs.mem0.ai/api-reference/memory/delete-memories) covering single, batch, and
+  filter-scoped removal, alongside managed-cloud, self-hosted, and air-gapped deployment options. The storage
+  and legal-exposure answers therefore follow the chosen deployment rather than the product name.
+- **This project.** The database path is resolved locally (see [docs/cli.md](cli.md)), ordinary server and CLI
+  commands make no network request, and `forget` is a hard delete rather than a hide: targeted rows are removed
+  and earlier audit rows plus every covered changelog transaction are replaced with `{"redacted": true}` in the
+  same transaction, as described in [Forget vs. soft delete](#forget-vs-soft-delete).
+
+What local-first does not buy, stated plainly: the database is plaintext SQLite, so device compromise, an
+unencrypted disk, a synced backup folder, or an exported vault or JSON file exposes the same content; there is
+no vendor security team, no server-side access logging, and no recovery path if the file is lost; and a legal
+demand can still be served on the user directly. The mitigations remain full-disk encryption, filesystem
+permissions, and deliberate handling of exports.
