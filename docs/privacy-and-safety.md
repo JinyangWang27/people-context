@@ -208,3 +208,72 @@ physical deletion from an unreachable device or third-party backup.
   concurrent readers and a single writer; the CLI and the MCP server may both open the same file safely, but
   this is not a substitute for access control — anything that can open the file can read or write it, subject
   to normal filesystem permissions.
+
+### Local-first versus cloud-hosted memory, as of 2026-08-05
+
+This comparison exists so that the trade-off is judged on verifiable properties rather than on marketing. It
+compares this project with two shapes of hosted alternative — assistant-integrated memory (ChatGPT, Claude) and
+a dedicated memory platform (Mem0) — on four axes only: storage location at rest, what a vendor breach or legal
+demand can expose, whether the product works fully offline, and what deletion means. Vendor behavior is
+summarized from that vendor's own documentation on the date above and is not re-verified automatically; treat
+the linked primary sources as authoritative and re-check them before relying on this table.
+
+Every cell is sourced per axis below. Where a vendor does not document an axis directly, the entry says what is
+documented instead of asserting more, so a claim is never wider than its source.
+
+| Axis | `people-context` | Assistant-integrated memory (ChatGPT, Claude) | Dedicated memory platform (Mem0) |
+|---|---|---|---|
+| Storage at rest | One local SQLite file on the user's machine, plaintext in v1 | Vendor-operated back-end systems, tied to the account | Managed platform storage, or an open-source deployment on infrastructure you run |
+| Vendor breach or legal demand | No vendor holds a copy, so there is no vendor account to breach or subpoena; exposure follows the user's own device, backups, and legal position | The vendor holds the data and both vendors publish policies for disclosing it under legal process | Follows the deployment: the managed platform places the data with the vendor, a self-hosted deployment does not |
+| Fully offline | Yes for ordinary use; only `pctx reindex --semantic` may reach the network | No offline mode is documented; memory is an account feature of the hosted service | The managed platform is hosted; a self-hosted deployment runs on your own infrastructure and can use local models |
+| Deletion | `forget` hard-deletes the targeted rows and redacts covered audit and changelog payloads in the same transaction | Deletion is a request to the vendor, subject to documented back-end retention windows | Delete, batch-delete, and filter-scoped delete APIs against the deployment holding the data |
+
+Sources, by vendor and axis:
+
+- **ChatGPT.**
+  - *Storage and offline:* the [Memory FAQ](https://help.openai.com/en/articles/8590148-memory-faq) describes
+    saved memories as an account-level ChatGPT feature managed in settings and carried across chats; no offline
+    mode is described there or elsewhere in that collection.
+  - *Legal demand:* the [privacy policy](https://openai.com/policies/row-privacy-policy/) and the published
+    [law enforcement policy](https://cdn.openai.com/pdf/openai-law-enforcement-policy-v.2025-12.pdf) describe
+    disclosure pursuant to valid legal process and, in limited emergencies, to prevent danger of death or
+    serious physical injury.
+  - *Deletion:* the [Memory FAQ](https://help.openai.com/en/articles/8590148-memory-faq) documents that saved
+    memories can be viewed, deleted individually, cleared, or turned off, that a log of deleted saved memories
+    may be retained for up to 30 days, and that memory and chat history delete separately — deleting memories
+    does not delete past chats, and deleting a chat does not remove memories already saved from it.
+- **Claude.**
+  - *Storage and offline:* memory entries are listed and managed in
+    [Settings > Memory](https://support.anthropic.com/en/articles/11817273-using-claude-s-chat-search-and-memory-to-build-on-previous-context)
+    within the Claude account, and
+    [data protection](https://privacy.anthropic.com/en/articles/10458704-how-does-anthropic-protect-the-personal-data-of-claude-ai-users)
+    describes Anthropic-operated storage; no offline mode is described.
+  - *Legal demand:* the privacy policy in the [Anthropic Legal Center](https://legal.anthropic.com/) covers
+    disclosure to governmental and regulatory authorities as required by law, and the
+    [Transparency Hub](https://www.anthropic.com/transparency/system-trust-reporting) describes how law
+    enforcement and government data requests, including preservation requests, are processed.
+  - *Deletion:* memory entries can be inspected and deleted individually, and deleting or expiring a
+    conversation does not by itself remove memory generated from it. Deleted conversations leave the visible
+    history immediately and back-end systems
+    [within 30 days](https://privacy.anthropic.com/en/articles/7996878-can-you-delete-data-sent-via-claude-ai);
+    [retention](https://privacy.anthropic.com/en/articles/10023548-how-long-do-you-store-personal-data) is
+    longer for consumer accounts that opt in to model training.
+- **Mem0.**
+  - *Storage, legal demand, and offline:* [Platform versus open source](https://docs.mem0.ai/platform/platform-vs-oss)
+    and the [open-source overview](https://docs.mem0.ai/open-source/overview) document the managed platform
+    alongside a self-hosted deployment that runs the same engine on your own infrastructure, with your choice
+    of vector store, embedder, and LLM — including local models. Storage location and legal exposure therefore
+    follow the chosen deployment rather than the product name.
+  - *Deletion:* [delete operations](https://docs.mem0.ai/core-concepts/memory-operations/delete) and the
+    [delete API](https://docs.mem0.ai/api-reference/memory/delete-memories) cover single, batch, and
+    filter-scoped removal.
+- **This project.** The database path is resolved locally (see [docs/cli.md](cli.md)), ordinary server and CLI
+  commands make no network request, and `forget` is a hard delete rather than a hide: targeted rows are removed
+  and earlier audit rows plus every covered changelog transaction are replaced with `{"redacted": true}` in the
+  same transaction, as described in [Forget vs. soft delete](#forget-vs-soft-delete).
+
+What local-first does not buy, stated plainly: the database is plaintext SQLite, so device compromise, an
+unencrypted disk, a synced backup folder, or an exported vault or JSON file exposes the same content; there is
+no vendor security team, no server-side access logging, and no recovery path if the file is lost; and a legal
+demand can still be served on the user directly. The mitigations remain full-disk encryption, filesystem
+permissions, and deliberate handling of exports.

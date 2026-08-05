@@ -79,6 +79,34 @@ details.
 - merge, forget/redaction, unchanged JSON export, and safe Obsidian vault export;
 - stdio by default and explicit unauthenticated loopback-only Streamable HTTP.
 
+## Demo
+
+A packaged fictional dataset is the fastest way to see identity resolution, graph traversal, and bounded
+context without touching real data:
+
+```bash
+uvx --from people-context pctx demo --reset
+```
+
+The demo always writes its own dedicated database at
+`{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`. It ignores `--db`, `PEOPLE_CONTEXT_DB`, the config
+file, and workspace discovery, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
+real database is never read or modified. Seeding writes audited fictional people, handles, affiliations, facts,
+interactions, and a connected relationship graph, then prints the path-targeted server command and concrete
+tool calls that use the ids it just created:
+
+```text
+Demo database: /home/you/.local/share/people-context/demo.db
+Start MCP server: people-context-mcp --db /home/you/.local/share/people-context/demo.db
+resolve_person {"query": "Amina Hassan"}
+get_relationship_graph {"person_id": "<amina-id>", "depth": 2}
+find_connection {"person_a": "<self-id>", "person_b": "<sofia-id>"}
+```
+
+Person ids are generated per seed, so the printed values differ from the placeholders above. Start the printed
+server command in an MCP client and run the printed calls verbatim. See
+[docs/cli.md](docs/cli.md#packaged-demo).
+
 ## Quick start
 
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
@@ -177,7 +205,9 @@ bind-mount ownership, the CLI entrypoint, MCP client configuration, and publishi
 This project executes local Python with the launching user's filesystem permissions. The database is plaintext
 SQLite; rely on filesystem permissions and full-disk encryption. Ordinary MCP discovery excludes elevated
 sensitive context and full export. Operator-gated tools require process environment flags; models cannot enable
-them through arguments. Vault export is intentionally CLI-only.
+them through arguments. Vault export is intentionally CLI-only. For a dated, sourced comparison with
+cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and deletion, see
+[docs/privacy-and-safety.md](docs/privacy-and-safety.md#local-first-versus-cloud-hosted-memory-as-of-2026-08-05).
 
 ## Optional semantic search
 

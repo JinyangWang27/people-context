@@ -9,6 +9,7 @@ ROOT = Path(__file__).parents[1]
 
 REGISTRY_NAMESPACE = "io.github.jinyangwang27/people-context"
 SERVER_SCHEMA_URL = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
+PRIMARY_PACKAGE_IDENTIFIER = "people-context"
 
 
 def _project_version() -> str:
@@ -18,6 +19,17 @@ def _project_version() -> str:
 
 def _server_json() -> dict:
     return json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+
+
+def registry_package(identifier: str = PRIMARY_PACKAGE_IDENTIFIER) -> dict:
+    """Return the Registry package entry with ``identifier``.
+
+    Selecting by identifier rather than array position keeps the assertions valid if
+    another package entry is ever added ahead of the primary distribution.
+    """
+    matches = [package for package in _server_json()["packages"] if package.get("identifier") == identifier]
+    assert len(matches) == 1, f"expected exactly one {identifier!r} package entry, found {len(matches)}"
+    return matches[0]
 
 
 def test_server_json_uses_pinned_schema_and_recorded_namespace() -> None:
@@ -45,7 +57,7 @@ def test_single_pypi_package_entry() -> None:
     packages = _server_json()["packages"]
 
     assert len(packages) == 1
-    package = packages[0]
+    package = registry_package()
     assert package["registryType"] == "pypi"
     assert package["registryBaseUrl"] == "https://pypi.org"
     # The identifier matches both the primary distribution and its MCP server
@@ -54,7 +66,7 @@ def test_single_pypi_package_entry() -> None:
 
 
 def test_package_transport_is_valid_stdio() -> None:
-    package = _server_json()["packages"][0]
+    package = registry_package()
 
     assert package["transport"] == {"type": "stdio"}
 
@@ -85,7 +97,7 @@ def _reconstruct_command(package: dict) -> list[str]:
 
 
 def test_package_reconstructs_canonical_uvx_invocation() -> None:
-    package = _server_json()["packages"][0]
+    package = registry_package()
     project_version = _project_version()
 
     assert package["runtimeHint"] == "uvx"
@@ -103,7 +115,7 @@ def test_package_reconstructs_canonical_uvx_invocation() -> None:
 
 
 def test_pinned_primary_requirement_stays_synchronized() -> None:
-    package = _server_json()["packages"][0]
+    package = registry_package()
     project_version = _project_version()
 
     (from_argument,) = [

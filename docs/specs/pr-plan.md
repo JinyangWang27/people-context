@@ -165,14 +165,14 @@ Check the matching box only in the PR that delivers it.
     no invented deprecation window.
   - **Out:** release bump, encryption, threat comparison.
 
-- [ ] **M12.2 — Synchronize 1.0 server metadata and lock**
+- [x] **M12.2 — Synchronize 1.0 server metadata and lock**
   - **Scope:** Root project, Registry, MCPB, `uv.lock`, classifier, release docs.
   - **Acceptance:** five server semantic values equal `1.0.0`; MCPB schema independent; Registry entry by identifier;
     lock root version matches and `uv lock --check` passes. Shim/plugin version domains remain independent unless
     intentionally published, then synchronize internally.
   - **Out:** tag/release and SQLCipher.
 
-- [ ] **M12.3 — Dated threat comparison and README demo**
+- [x] **M12.3 — Dated threat comparison and README demo**
   - **Scope:** Primary-source “as of” local-vs-cloud comparison; packaged-demo walkthrough.
   - **Acceptance:** storage, breach/legal exposure, offline operation, deletion; factual language and valid links.
   - **Out:** telemetry or demo behavior changes.

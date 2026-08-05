@@ -8,7 +8,7 @@ license = "MIT"
 authors = [{ name = "Jinyang Wang", email = "jinyang.wang27@outlook.com" }]
 keywords = ["ai-agents", "local-first", "mcp", "model-context-protocol", "personal-context"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",

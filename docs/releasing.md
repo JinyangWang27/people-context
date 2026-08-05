@@ -58,13 +58,67 @@ Use concise Conventional Commit squash titles on pull requests merged to `main`:
 - `feat!:` or a `BREAKING CHANGE:` footer proposes a breaking release.
 
 While the project remains below `1.0.0`, breaking changes are configured to advance the minor version rather
-than implicitly creating `1.0.0`. Use a `Release-As: 1.0.0` footer when the project deliberately reaches that
-milestone. Other explicit versions can use the same footer.
+than implicitly creating `1.0.0`, so Conventional Commits alone never reach that milestone. Request an explicit
+version with a `Release-As: <version>` footer on a commit merged to `main`.
+
+Release Please also accepts a `release-as` entry in `release-please-config.json`, and this repository
+deliberately does not use it. That entry is sticky: it caps the computed version, so once the release it names
+ships, `.release-please-manifest.json` can never advance past it and a forgotten entry would silently freeze
+every later release while CI stays green. No assertion over repository content can distinguish a stale pin from
+a pending one, because the release pull request and the merged result contain identical files. The commit footer
+has no such state — the release tag consumes it, and a footer lost during a squash merge fails loudly and
+harmlessly, as a release pull request proposing the wrong version.
 
 Release Please maintains one release PR containing the generated changelog and every coupled primary-version
 update: `pyproject.toml`, the package `__version__`, Registry metadata, MCPB metadata, Codex plugin metadata,
 `uv.lock`, and the release-version assertion used by packaging tests. Feature PRs must not manually bump those
 files.
+
+## The 1.0 release
+
+Requesting the milestone is a **release step, not part of any feature pull request**. Do not rely on a
+`Release-As:` trailer surviving a squash merge: the squash message is composed by GitHub at merge time from
+either the branch's commit messages or the pull request description, depending on the repository's merge
+settings, and neither is under the contributing branch's control. Instead, request it explicitly on `main`:
+
+```
+git switch main && git pull
+git commit --allow-empty -m "chore: request the 1.0.0 milestone" -m "Release-As: 1.0.0"
+git show -s --format='%(trailers:key=Release-As)' HEAD   # must print: Release-As: 1.0.0
+git push origin main
+```
+
+Keep `Release-As:` in the **final paragraph** of the message — a line separated from the last block by a blank
+line is not a git trailer, and `git interpret-trailers` will not report it. The verification line above is the
+check; if it prints nothing, fix the message before pushing.
+
+The push starts `.github/workflows/release-please.yml`, which re-renders the release pull request as
+`chore(main): release 1.0.0`. If the trailer is missing, that pull request simply keeps proposing the
+Conventional-Commit version — a visible outcome in its title, correctable by repeating the commit above.
+
+The repository-side preparation for the release is already merged:
+
+- [compatibility.md](compatibility.md) states the MCP, database, CLI, and machine-readable-JSON guarantees that
+  the major version makes binding;
+- `pyproject.toml` declares `Development Status :: 5 - Production/Stable`;
+- `tests/test_packaging_metadata.py` asserts that the five semantic server-release values — the root project
+  version, `server.json.version`, the Registry package's pinned `--from` requirement, `mcpb/manifest.json.version`,
+  and the `mcpb/pyproject.toml` dependency pin — plus `people_context.__version__` and the locked root project in
+  `uv.lock` all carry the same value, whatever Release Please writes;
+- `mcpb/manifest.json.manifest_version` stays the MCPB **schema** version and is asserted separately, never set to
+  the application release;
+- the Registry package is located by `identifier` rather than array position, so an added package entry cannot
+  silently move the assertions onto the wrong package.
+
+Version domains that wrap or distribute the server stay explicit rather than accidentally synchronized. The
+`.codex-plugin` manifest is deliberately coupled to the primary release and rewritten by Release Please; the
+`.claude-plugin`, OpenClaw, and any future Obsidian packages carry their own versions and are bumped on their own
+policy. If a 1.0 release intentionally publishes one of those artifacts, synchronize that package's own manifest,
+marketplace, lockfile, and documented artifact names together.
+
+The footer leaves no state to clean up after the release. One documentation review does remain: the
+"while the project remains below `1.0.0`" note in [compatibility.md](compatibility.md) describes the pre-1.0
+minor-bump rule and no longer applies once the major version exists.
 
 ## Publish a release
 
