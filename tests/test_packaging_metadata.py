@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import importlib.util
 import json
+import platform
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from people_context import __version__ as package_version
 from tests.test_registry_metadata import registry_package
@@ -153,3 +158,55 @@ def test_current_changelog_covers_recent_user_facing_capabilities() -> None:
         "`/people-context:reminders`",
     ):
         assert capability in changelog
+
+
+def _encrypted_extra() -> list[str]:
+    return _toml(ROOT / "pyproject.toml")["project"]["optional-dependencies"]["encrypted"]
+
+
+def test_encrypted_extra_pins_a_reviewed_range_on_its_supported_platform() -> None:
+    """`sqlcipher3-binary` ships manylinux x86_64 wheels only and no sdist.
+
+    The environment marker keeps resolution working on every other platform
+    instead of shipping an extra that cannot install there.
+    """
+    (requirement,) = _encrypted_extra()
+    specifier, _, marker = requirement.partition(";")
+
+    assert specifier.strip() == "sqlcipher3-binary>=0.6.0,<0.7"
+    assert marker.strip() == "sys_platform == 'linux' and platform_machine == 'x86_64'"
+
+
+def test_encrypted_binding_is_available_to_the_default_development_environment() -> None:
+    """`uv sync` (no extras) must still exercise encryption on the supported platform."""
+    dev_group = _toml(ROOT / "pyproject.toml")["dependency-groups"]["dev"]
+
+    assert _encrypted_extra()[0] in dev_group
+
+
+def test_locked_state_records_the_encrypted_binding() -> None:
+    locked = {package["name"] for package in _toml(ROOT / "uv.lock")["package"]}
+
+    assert "sqlcipher3-binary" in locked, "changing optional dependencies requires committing uv.lock"
+
+
+def test_encryption_stays_opt_in_and_off_by_default() -> None:
+    """Nothing in the shipped metadata makes encryption a runtime dependency."""
+    project = _toml(ROOT / "pyproject.toml")["project"]
+
+    assert all("sqlcipher" not in requirement for requirement in project["dependencies"])
+
+
+def test_supported_platform_actually_resolves_the_encrypted_binding() -> None:
+    """On the platform the extra claims, a locked all-extras install must really install it.
+
+    Without this, a resolution or marker mistake would silently downgrade every
+    encryption test to a skip instead of failing CI.
+    """
+    if not (sys.platform == "linux" and platform.machine() == "x86_64"):
+        pytest.skip("the encrypted extra publishes wheels for Linux x86_64 only")
+
+    assert importlib.util.find_spec("sqlcipher3") is not None, (
+        "install the encrypted extra (`uv sync --locked --all-extras`); "
+        "encryption tests must not silently skip on a supported platform"
+    )

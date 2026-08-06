@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
+from people_context.adapters.sqlite.db import EncryptedDatabaseError
 from people_context.cli.maintenance import cmd_reindex, cmd_sync_log
 from people_context.cli.onboarding import cmd_demo, cmd_init
 from people_context.cli.parser import build_parser
@@ -27,6 +28,7 @@ from people_context.cli.portability import (
     cmd_sync_push,
 )
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
+from people_context.config import MissingDatabaseKeyError
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
 
@@ -67,10 +69,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "demo":
         return cmd_demo(args)
 
-    runtime = build_runtime(
-        args.db,
-        warning=lambda message: print(f"Warning: {message}", file=sys.stderr),
-    )
+    try:
+        runtime = build_runtime(
+            args.db,
+            warning=lambda message: print(f"Warning: {message}", file=sys.stderr),
+            encrypted=args.encrypted,
+        )
+    except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+        # Refuse with the reason only; the message never carries key material.
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     try:
         if args.command == "init":
             return cmd_init(runtime)

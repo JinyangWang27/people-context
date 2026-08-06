@@ -1,7 +1,12 @@
-"""Database path resolution.
+"""Database path and encryption-key resolution.
 
 Precedence (first hit wins): explicit arg -> PEOPLE_CONTEXT_DB env ->
 config.toml db_path -> agent-workspace auto-detect -> XDG data dir.
+
+The optional at-rest encryption key has no such ladder: it comes only from the
+``PEOPLE_CONTEXT_DB_KEY`` environment variable, never from a flag value or a
+config file, so it is never recorded in a shell history, a process listing, or a
+file on disk beside the database it protects.
 """
 
 from __future__ import annotations
@@ -12,6 +17,33 @@ from collections.abc import Mapping
 from pathlib import Path
 
 DEFAULT_DB_FILENAME = "people.db"
+
+#: The only accepted source of the optional at-rest encryption key.
+DB_KEY_ENV = "PEOPLE_CONTEXT_DB_KEY"
+
+
+class MissingDatabaseKeyError(RuntimeError):
+    """Raised when encryption is requested without a usable environment key.
+
+    The message never contains key material — only the variable name.
+    """
+
+
+def resolve_db_key(env: Mapping[str, str] | None = None) -> str:
+    """Return the at-rest encryption key from the environment, or refuse.
+
+    `env` defaults to os.environ (injectable for tests). An unset, empty, or
+    whitespace-only value is refused; there is no fallback to plaintext and no
+    other configuration source.
+    """
+    env = os.environ if env is None else env
+    key = env.get(DB_KEY_ENV)
+    if key is None or not key.strip():
+        raise MissingDatabaseKeyError(
+            f"Encrypted mode requires a non-empty {DB_KEY_ENV} environment variable. "
+            "Refusing to continue; plaintext is never used as a fallback."
+        )
+    return key
 
 # Agent workspaces to auto-detect, in priority order. Each entry maps an optional
 # environment variable (checked first) to a home-relative fallback directory.

@@ -3,9 +3,15 @@
 `pctx` is the human-operated companion to the MCP server. It uses the same application use cases for
 curation, so validation, audit, HLC, and changelog capture match MCP writes.
 
-## Global option
+## Global options
 
 `--db PATH` explicitly selects the SQLite database and overrides every other location source.
+
+`--encrypted` opens that database through SQLCipher instead of plain SQLite, reading the key only from the
+`PEOPLE_CONTEXT_DB_KEY` environment variable. Without the flag nothing changes; with the flag and no non-empty
+key the command exits `2` without opening or creating anything, and never falls back to plaintext. See
+[privacy-and-safety.md](privacy-and-safety.md#optional-at-rest-encryption) for the platform support matrix and
+what encryption does and does not protect.
 
 ## Commands
 
@@ -179,11 +185,13 @@ The CLI and server use the same first-match order:
 5. `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db`.
 
 Paths are expanded and parent directories are created only when SQLite opens the selected database.
-The dedicated `demo` path is the documented exception: it is deliberately isolated from this resolution chain.
+The dedicated `demo` path is the documented exception: it is deliberately isolated from this resolution chain,
+and from `--encrypted` — the fictional demo database is always plain SQLite.
 
 ## Direct SQLite access
 
-The file is plain SQLite and may be inspected with DB Browser, Datasette, or `sqlite3`. Prefer CLI/MCP writes:
+The file is plain SQLite by default (an `--encrypted` database is not readable by these tools without the
+SQLCipher key) and may be inspected with DB Browser, Datasette, or `sqlite3`. Prefer CLI/MCP writes:
 direct SQL bypasses audit/changelog capture and can stale FTS/semantic derived indexes. Repair person FTS with
 `reindex`; repair semantic vectors with `reindex --semantic`. Directly inserted legacy relationship types may be
 made canonical and replayable with `normalize-relationships --apply`.
@@ -191,4 +199,5 @@ made canonical and replayable with `normalize-relationships --apply`.
 ## Server transport flags
 
 `people-context-mcp` is stdio by default. `--http --host 127.0.0.1 --port 8765` selects unauthenticated loopback
-Streamable HTTP at `/mcp`; no other bind host is accepted.
+Streamable HTTP at `/mcp`; no other bind host is accepted. `--encrypted` applies the same opt-in SQLCipher
+connection as the CLI flag, refusing to start without `PEOPLE_CONTEXT_DB_KEY`.

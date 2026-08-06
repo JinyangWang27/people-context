@@ -8,7 +8,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from people_context.config import DEFAULT_DB_FILENAME, describe_resolution, resolve_db_path
+import pytest
+
+from people_context.config import (
+    DB_KEY_ENV,
+    DEFAULT_DB_FILENAME,
+    MissingDatabaseKeyError,
+    describe_resolution,
+    resolve_db_key,
+    resolve_db_path,
+)
 
 
 def _base_env(tmp_path: Path) -> dict[str, str]:
@@ -94,3 +103,29 @@ def test_describe_resolution_mentions_winner(tmp_path: Path) -> None:
     assert len(won_lines) == 1
     assert "PEOPLE_CONTEXT_DB" in won_lines[0]
     assert any(line.startswith("=> resolved:") for line in lines)
+
+
+# -- optional at-rest encryption key ------------------------------------------
+
+
+def test_resolve_db_key_returns_the_environment_value_verbatim() -> None:
+    key = "  padded but not empty  "
+    assert resolve_db_key(env={DB_KEY_ENV: key}) == key
+
+
+@pytest.mark.parametrize("env", [{}, {DB_KEY_ENV: ""}, {DB_KEY_ENV: " "}, {DB_KEY_ENV: "\t\n"}])
+def test_resolve_db_key_refuses_missing_empty_or_whitespace_values(env: dict[str, str]) -> None:
+    with pytest.raises(MissingDatabaseKeyError) as exc_info:
+        resolve_db_key(env=env)
+    assert DB_KEY_ENV in str(exc_info.value)
+
+
+def test_resolve_db_key_ignores_config_files_and_db_path_sources(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    _write_config(env, str(tmp_path / "from_config.db"))
+    (Path(env["XDG_CONFIG_HOME"]) / "people-context" / "config.toml").write_text(
+        f'db_path = "{tmp_path / "from_config.db"}"\ndb_key = "never-read"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(MissingDatabaseKeyError):
+        resolve_db_key(env=env)

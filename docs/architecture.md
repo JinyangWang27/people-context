@@ -147,7 +147,11 @@ never inside `domain` or `app`:
 
 - `adapters/runtime.py:build_runtime()` resolves the DB path, opens the SQLite connection, constructs the
   concrete stores and `SystemClock`, applies optional semantic decorators, and builds the application use
-  cases once. CLI and MCP inject different warning callbacks without duplicating setup.
+  cases once. CLI and MCP inject different warning callbacks without duplicating setup. Its `encrypted`
+  argument selects `open_encrypted_db()` over the default `open_db()`; the two are separate functions rather
+  than one parameterized opener, so no existing caller can be flipped between plaintext and SQLCipher by
+  accident. Both return an opaque DB-API connection, and the stores below the seam are unaware of the
+  difference.
 - `adapters/mcp/server.py:build_server()` obtains the shared runtime and registers MCP tools that call its use
   cases. `main()` parses `--db` plus transport flags; it runs
   stdio by default or passes loopback host, port, and transport-security settings directly to
