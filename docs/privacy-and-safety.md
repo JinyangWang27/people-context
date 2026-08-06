@@ -34,6 +34,13 @@ This applies most directly to `get_person_context` (see
 [docs/mcp-interface.md](mcp-interface.md#minimal-disclosure-in-get_person_context)), but the same posture —
 never return more than the task needs — applies across the tool surface.
 
+Aggregate reports follow the same boundary. `get_stale_relationships` and `pctx stale` count only
+`public`/`personal` interactions, and they aggregate in SQL rather than filtering afterwards, so a person whose
+interactions are all `sensitive`/`restricted` produces exactly the same row as a person with no interactions at
+all. Timing metadata is disclosure too: an ordinary recency report that moved whenever an elevated interaction
+was recorded would leak when those conversations happened. The report returns names, relationship categories,
+dates, and counts only — never interaction summaries or channels.
+
 ## Sensitivity levels and defaults
 
 Every assertive record (facts, observations, traits, interactions, relationships, affiliations) carries a

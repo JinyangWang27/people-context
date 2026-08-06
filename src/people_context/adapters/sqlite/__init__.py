@@ -13,6 +13,7 @@ from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
 from people_context.adapters.sqlite.hlc import SqliteHybridLogicalClock
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
+from people_context.adapters.sqlite.insights_reader import SqliteRecencyReader
 from people_context.adapters.sqlite.merge_store import SqliteMergeStore
 from people_context.adapters.sqlite.organization_store import SqliteOrganizationStore
 from people_context.adapters.sqlite.preferences_store import SqlitePreferencesStore
@@ -48,6 +49,7 @@ __all__ = [
     "SqliteOrganizationStore",
     "SqlitePeopleRepository",
     "SqlitePreferencesStore",
+    "SqliteRecencyReader",
     "SqliteRecordStore",
     "SqliteRelationshipStore",
     "SqliteRelationshipVocabularyStore",

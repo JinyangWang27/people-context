@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import argparse
 
+from people_context.app.insights import (
+    DEFAULT_STALE_LIMIT,
+    DEFAULT_THRESHOLD_DAYS,
+    MAX_STALE_LIMIT,
+    MAX_THRESHOLD_DAYS,
+    MIN_STALE_LIMIT,
+    MIN_THRESHOLD_DAYS,
+)
 from people_context.domain.person import AliasKind
 
 
@@ -34,6 +42,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     show = subparsers.add_parser("show", help="Show a person's full record.")
     show.add_argument("person", help="A person id, or a name to resolve.")
+
+    stale = subparsers.add_parser("stale", help="Report people you have not interacted with recently.")
+    stale.add_argument("--category", default=None, help="Only people with this relationship-to-self category.")
+    stale.add_argument(
+        "--threshold-days",
+        type=int,
+        default=DEFAULT_THRESHOLD_DAYS,
+        help=f"Minimum days since the last ordinary interaction ({MIN_THRESHOLD_DAYS}..{MAX_THRESHOLD_DAYS}).",
+    )
+    stale.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_STALE_LIMIT,
+        help=f"Maximum number of reported people ({MIN_STALE_LIMIT}..{MAX_STALE_LIMIT}).",
+    )
 
     export = subparsers.add_parser("export", help="JSON dump of all people.")
     export.add_argument("--output", default=None, help="Write to this file instead of stdout.")

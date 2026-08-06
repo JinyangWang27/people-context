@@ -32,6 +32,7 @@ from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
 from people_context.adapters.sqlite.hlc import SqliteHybridLogicalClock
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
+from people_context.adapters.sqlite.insights_reader import SqliteRecencyReader
 from people_context.adapters.sqlite.merge_store import SqliteMergeStore
 from people_context.adapters.sqlite.organization_store import SqliteOrganizationStore
 from people_context.adapters.sqlite.preferences_store import SqlitePreferencesStore
@@ -59,6 +60,7 @@ from people_context.app.imports import (
     ReviewImport,
     StageCandidates,
 )
+from people_context.app.insights import GetStaleRelationships
 from people_context.app.people import (
     AddAlias,
     EditPerson,
@@ -103,6 +105,7 @@ class RuntimeUseCases:
     get_person_context: GetPersonContext
     get_relationship_graph: GetRelationshipGraph
     find_connection: FindConnection
+    get_stale_relationships: GetStaleRelationships
     search_people: SearchPeople
     semantic_search: SemanticSearch
     remember_person: RememberPerson
@@ -146,6 +149,7 @@ class ApplicationRuntime:
     repo: SqlitePeopleRepository | IndexingPeopleRepository
     context_reader: SqliteContextReader
     graph_reader: SqliteGraphReader
+    recency_reader: SqliteRecencyReader
     records: SqliteRecordStore | IndexingRecordStore
     relationship_store: SqliteRelationshipStore
     relationship_vocabulary: SqliteRelationshipVocabularyStore
@@ -205,6 +209,7 @@ def build_runtime(
 
     context_reader = SqliteContextReader(conn)
     graph_reader = SqliteGraphReader(conn, runtime_clock)
+    recency_reader = SqliteRecencyReader(conn)
     relationship_store = SqliteRelationshipStore(conn)
     relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
     organizations = SqliteOrganizationStore(conn)
@@ -229,6 +234,7 @@ def build_runtime(
         get_person_context=GetPersonContext(repo, context_reader, runtime_clock),
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
+        get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
         search_people=SearchPeople(repo),
         semantic_search=SemanticSearch(
             SqliteSemanticMetadataReader(conn),
@@ -304,6 +310,7 @@ def build_runtime(
         repo=repo,
         context_reader=context_reader,
         graph_reader=graph_reader,
+        recency_reader=recency_reader,
         records=records,
         relationship_store=relationship_store,
         relationship_vocabulary=relationship_vocabulary,
