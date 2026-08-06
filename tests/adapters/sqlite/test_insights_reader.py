@@ -14,7 +14,7 @@ from people_context.adapters.sqlite import (
     SqliteRelationshipVocabularyStore,
     open_db,
 )
-from people_context.adapters.sqlite.insights_reader import _RECENCY_SQL, ORDINARY_SENSITIVITIES
+from people_context.adapters.sqlite.insights_reader import _INTERACTIONS_SQL, ORDINARY_SENSITIVITIES
 from people_context.app.records import RecordInteraction, RecordInteractionInput
 from people_context.app.relationships import (
     AddRelationshipType,
@@ -107,14 +107,14 @@ def test_sensitivity_filtering_happens_in_sql() -> None:
     fixture.interaction(ordinary, datetime(2026, 5, 6, tzinfo=UTC), sensitivity=Sensitivity.PERSONAL)
 
     # Execute the adapter's own statement directly: the elevated row must already be
-    # absent from the aggregate SQLite returns, never filtered afterwards in Python.
-    rows = {
-        row["person_id"]: (row["last_interaction_at"], row["interaction_count"])
-        for row in fixture.conn.execute(_RECENCY_SQL, ORDINARY_SENSITIVITIES).fetchall()
-    }
+    # absent from what SQLite returns, never filtered afterwards in Python.
+    rows = [
+        (row["person_id"], row["occurred_at"])
+        for row in fixture.conn.execute(_INTERACTIONS_SQL, ORDINARY_SENSITIVITIES).fetchall()
+    ]
 
-    assert rows[elevated_only.id] == (None, 0)
-    assert rows[ordinary.id] == ("2026-05-06T00:00:00+00:00", 1)
+    assert rows == [(ordinary.id, "2026-05-06T00:00:00+00:00")]
+    assert elevated_only.id not in {person_id for person_id, _ in rows}
 
 
 def test_the_latest_interaction_is_chosen_by_instant_not_by_stored_text() -> None:
@@ -134,23 +134,39 @@ def test_the_latest_interaction_is_chosen_by_instant_not_by_stored_text() -> Non
     assert signal.interaction_count == 2
 
 
-def test_sub_millisecond_ties_order_by_stored_precision_not_by_creation_order() -> None:
+def test_sub_millisecond_ties_are_resolved_by_instant_not_by_creation_order() -> None:
     fixture = _Fixture()
     person = fixture.person("Same millisecond")
-    # Both round to ...123Z under the normalized key, so the key alone ties. The later
-    # microsecond is recorded second-to-last, giving it the smaller id, which is why
-    # falling through to creation order would pick the wrong one.
+    # Both round to ...123Z, so any millisecond-resolution key ties. The later
+    # microsecond is recorded second, giving it the larger id, so ordering by id would
+    # be right here by accident; the next test removes that coincidence.
     later_microsecond = datetime(2026, 5, 6, 12, 0, 0, 123499, tzinfo=UTC)
     earlier_microsecond = datetime(2026, 5, 6, 12, 0, 0, 123400, tzinfo=UTC)
-    fixture.interaction(person, later_microsecond)
     fixture.interaction(person, earlier_microsecond)
+    fixture.interaction(person, later_microsecond)
+
+    assert fixture.signals()[person.id].last_interaction_at == later_microsecond
+
+
+def test_a_sub_millisecond_tie_across_offsets_picks_the_later_instant_and_its_date() -> None:
+    fixture = _Fixture()
+    person = fixture.person("Mixed offsets in one millisecond")
+    # Same millisecond, different offsets, and — crucially — different stored calendar
+    # dates. Text ordering picks the +00:00 row because "2026-06-02" > "2026-06-01",
+    # but the -05:00 row is the later instant by 99 microseconds. Since the age is
+    # measured from the selected timestamp's own date, picking wrong moves days_since.
+    earlier_instant_later_date = datetime(2026, 6, 2, 0, 0, 0, 123400, tzinfo=UTC)
+    later_instant_earlier_date = datetime(
+        2026, 6, 1, 19, 0, 0, 123499, tzinfo=timezone(timedelta(hours=-5))
+    )
+    fixture.interaction(person, earlier_instant_later_date)
+    fixture.interaction(person, later_instant_earlier_date)
 
     signal = fixture.signals()[person.id]
 
-    assert signal.last_interaction_at == later_microsecond
-    # Whichever side of such a tie wins, the calendar date — and so the age the report
-    # computes from it — is identical, because the tie requires the same millisecond.
-    assert earlier_microsecond.date() == later_microsecond.date()
+    assert signal.last_interaction_at == later_instant_earlier_date
+    assert signal.last_interaction_at.date() == date(2026, 6, 1)
+    assert signal.interaction_count == 2
 
 
 def test_the_reported_timestamp_keeps_its_stored_precision_and_offset() -> None:
