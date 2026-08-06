@@ -106,10 +106,16 @@ is indistinguishable from a person with none: `last_interaction_at` is `null`, `
 `interaction_count` is `0`. No summaries, channels, or other interaction content are returned.
 
 A person is reported when `last_interaction_at` is `null`, or when the signed calendar age
-`days_since = today - last_interaction_at.date()` is at least `threshold_days`. A future timestamp yields a
-negative `days_since`, which is neither clamped nor reported as stale. Rows are ordered by null interaction
-first, then oldest interaction, normalized name, and id; `limit` is applied after filtering and ordering, and
-`truncated` becomes `true` when further qualifying rows exist.
+`days_since = today - last_interaction_at` is at least `threshold_days`. A future timestamp yields a negative
+`days_since`, which is neither clamped nor reported as stale. Rows are ordered by null interaction first, then
+oldest interaction, normalized name, and id; `limit` is applied after filtering and ordering, and `truncated`
+becomes `true` when further qualifying rows exist.
+
+Stored interaction timestamps keep whatever UTC offset the writer supplied, and some rows are naive. Choosing
+the latest interaction, measuring its age, and ordering the report all compare UTC instants: an aware timestamp
+is converted, and a naive one is read as UTC rather than in the host timezone. `last_interaction_at` still
+reports the stored value unchanged, at its original offset and precision — normalization decides comparisons,
+it never rewrites what is returned.
 
 `threshold_days` accepts `0..36500` and `limit` accepts `1..100`. An out-of-range value returns
 `{"error": "invalid_parameter", "message": "..."}` rather than a partial report. An optional `category` is

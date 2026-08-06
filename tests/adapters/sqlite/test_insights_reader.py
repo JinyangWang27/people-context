@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
@@ -115,6 +115,32 @@ def test_sensitivity_filtering_happens_in_sql() -> None:
 
     assert rows[elevated_only.id] == (None, 0)
     assert rows[ordinary.id] == ("2026-05-06T00:00:00+00:00", 1)
+
+
+def test_the_latest_interaction_is_chosen_by_instant_not_by_stored_text() -> None:
+    fixture = _Fixture()
+    person = fixture.person("Mixed offsets")
+    # 23:30-05:00 is 04:30Z the next day, so it is the later instant even though its
+    # stored text sorts before the +00:00 row.
+    earlier_instant = datetime(2026, 6, 2, 2, 0, tzinfo=UTC)
+    later_instant = datetime(2026, 6, 1, 23, 30, tzinfo=timezone(timedelta(hours=-5)))
+    fixture.interaction(person, earlier_instant)
+    fixture.interaction(person, later_instant)
+
+    signal = fixture.signals()[person.id]
+
+    assert signal.last_interaction_at == later_instant
+    assert signal.last_interaction_at.utcoffset() == timedelta(hours=-5)
+    assert signal.interaction_count == 2
+
+
+def test_the_reported_timestamp_keeps_its_stored_precision_and_offset() -> None:
+    fixture = _Fixture()
+    person = fixture.person("Precise")
+    occurred_at = datetime(2026, 5, 6, 12, 0, 0, 123456, tzinfo=timezone(timedelta(hours=2)))
+    fixture.interaction(person, occurred_at)
+
+    assert fixture.signals()[person.id].last_interaction_at == occurred_at
 
 
 def test_soft_deleted_and_self_people_are_not_reported() -> None:

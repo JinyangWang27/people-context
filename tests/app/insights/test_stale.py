@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone
 
 import pytest
 
@@ -100,6 +100,35 @@ def test_older_interaction_sorts_before_newer_one() -> None:
     ).execute()
 
     assert [row.person_id for row in result.people] == ["O", "N"]
+
+
+def test_age_and_order_use_the_utc_instant_not_the_local_calendar_date() -> None:
+    # 20:00-05:00 on 31 May is 01:00Z on 1 June: the same UTC day as the clock, so the
+    # age is zero even though the stored calendar date reads a day earlier.
+    same_utc_day = datetime(2026, 5, 31, 20, 0, tzinfo=timezone(timedelta(hours=-5)))
+    plainly_older = datetime(2026, 5, 31, 12, 0, tzinfo=UTC)
+
+    result = _use_case(
+        _signal("L", "Local", last=same_utc_day, count=1),
+        _signal("U", "Utc", last=plainly_older, count=1),
+    ).execute(threshold_days=0)
+
+    assert [row.person_id for row in result.people] == ["U", "L"]
+    assert [row.days_since for row in result.people] == [1, 0]
+    # The stored representation is reported unchanged; only comparison is normalized.
+    assert result.people[1].last_interaction_at == same_utc_day
+
+
+def test_naive_timestamps_are_read_as_utc_rather_than_host_local_time() -> None:
+    naive = datetime(2026, 3, 1, 0, 0)
+    aware = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+
+    result = _use_case(
+        _signal("N", "Naive", last=naive, count=1),
+        _signal("A", "Aware", last=aware, count=1),
+    ).execute()
+
+    assert {row.person_id: row.days_since for row in result.people} == {"N": 92, "A": 92}
 
 
 def test_limit_applies_after_filtering_and_reports_truncation() -> None:

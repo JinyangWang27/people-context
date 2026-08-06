@@ -10,21 +10,34 @@ from people_context.ports.insights import RecencySignal
 # Ordinary disclosure levels. Elevated interactions must not shift recency, so the
 # filter lives in SQL: a person with only sensitive/restricted interactions has to
 # aggregate to exactly the same row as a person with none at all.
-ORDINARY_SENSITIVITIES = ("public", "personal")
+ORDINARY_SENSITIVITIES = {"public": "public", "personal": "personal"}
 
-_RECENCY_SQL = """
+# `occurred_at` is stored as the writer's own ISO-8601 text, so a caller may record
+# `2026-06-01T23:30:00-05:00` alongside `2026-06-02T02:00:00+00:00`. Plain TEXT
+# comparison would call the second one later even though the first is the later
+# instant, so the latest interaction is chosen by a UTC-normalized sort key. The
+# selected row still reports its stored value, at full precision: the normalized key
+# orders, it never replaces. `strftime` returns NULL for text SQLite cannot parse,
+# and NULL sorts last under DESC, so an unparseable row can never win.
+_UTC_SORT_KEY = "strftime('%Y-%m-%dT%H:%M:%fZ', i.occurred_at)"
+
+_RECENCY_SQL = f"""
 SELECT p.id AS person_id,
        p.canonical_name AS name,
-       MAX(i.occurred_at) AS last_interaction_at,
-       COUNT(i.id) AS interaction_count
+       (SELECT i.occurred_at
+          FROM interactions i
+          JOIN interaction_participants ip ON ip.interaction_id = i.id
+         WHERE ip.person_id = p.id AND i.sensitivity IN (:public, :personal)
+         ORDER BY {_UTC_SORT_KEY} DESC, i.id DESC
+         LIMIT 1) AS last_interaction_at,
+       (SELECT COUNT(*)
+          FROM interactions i
+          JOIN interaction_participants ip ON ip.interaction_id = i.id
+         WHERE ip.person_id = p.id AND i.sensitivity IN (:public, :personal)) AS interaction_count
 FROM persons p
-LEFT JOIN interaction_participants ip ON ip.person_id = p.id
-LEFT JOIN interactions i
-       ON i.id = ip.interaction_id AND i.sensitivity IN (?, ?)
 WHERE p.deleted_at IS NULL AND p.is_self = 0
-GROUP BY p.id, p.canonical_name
 ORDER BY p.id
-"""
+"""  # noqa: S608 - the interpolated fragment is a module constant; all values remain bound
 
 _CATEGORIES_SQL = """
 SELECT CASE WHEN r.subject_id = :self_id THEN r.object_id ELSE r.subject_id END AS person_id,
