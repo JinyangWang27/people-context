@@ -19,6 +19,12 @@ ORDINARY_SENSITIVITIES = {"public": "public", "personal": "personal"}
 # selected row still reports its stored value, at full precision: the normalized key
 # orders, it never replaces. `strftime` returns NULL for text SQLite cannot parse,
 # and NULL sorts last under DESC, so an unparseable row can never win.
+#
+# The key resolves to the nearest millisecond, so two timestamps inside one
+# millisecond tie on it. The stored text breaks that tie ahead of the id, which
+# orders by full stored precision whenever the offsets match instead of falling
+# through to creation order. Such a tie cannot move `days_since`: identical keys
+# render an identical date.
 _UTC_SORT_KEY = "strftime('%Y-%m-%dT%H:%M:%fZ', i.occurred_at)"
 
 _RECENCY_SQL = f"""
@@ -28,7 +34,7 @@ SELECT p.id AS person_id,
           FROM interactions i
           JOIN interaction_participants ip ON ip.interaction_id = i.id
          WHERE ip.person_id = p.id AND i.sensitivity IN (:public, :personal)
-         ORDER BY {_UTC_SORT_KEY} DESC, i.id DESC
+         ORDER BY {_UTC_SORT_KEY} DESC, i.occurred_at DESC, i.id DESC
          LIMIT 1) AS last_interaction_at,
        (SELECT COUNT(*)
           FROM interactions i

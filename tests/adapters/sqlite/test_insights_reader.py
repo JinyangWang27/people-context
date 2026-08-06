@@ -134,6 +134,25 @@ def test_the_latest_interaction_is_chosen_by_instant_not_by_stored_text() -> Non
     assert signal.interaction_count == 2
 
 
+def test_sub_millisecond_ties_order_by_stored_precision_not_by_creation_order() -> None:
+    fixture = _Fixture()
+    person = fixture.person("Same millisecond")
+    # Both round to ...123Z under the normalized key, so the key alone ties. The later
+    # microsecond is recorded second-to-last, giving it the smaller id, which is why
+    # falling through to creation order would pick the wrong one.
+    later_microsecond = datetime(2026, 5, 6, 12, 0, 0, 123499, tzinfo=UTC)
+    earlier_microsecond = datetime(2026, 5, 6, 12, 0, 0, 123400, tzinfo=UTC)
+    fixture.interaction(person, later_microsecond)
+    fixture.interaction(person, earlier_microsecond)
+
+    signal = fixture.signals()[person.id]
+
+    assert signal.last_interaction_at == later_microsecond
+    # Whichever side of such a tie wins, the calendar date — and so the age the report
+    # computes from it — is identical, because the tie requires the same millisecond.
+    assert earlier_microsecond.date() == later_microsecond.date()
+
+
 def test_the_reported_timestamp_keeps_its_stored_precision_and_offset() -> None:
     fixture = _Fixture()
     person = fixture.person("Precise")
