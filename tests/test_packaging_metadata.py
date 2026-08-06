@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import importlib.util
 import json
-import platform
-import sys
 import tomllib
 from pathlib import Path
 from typing import Any
-
-import pytest
 
 from people_context import __version__ as package_version
 from tests.test_registry_metadata import registry_package
@@ -177,11 +172,17 @@ def test_encrypted_extra_pins_a_reviewed_range_on_its_supported_platform() -> No
     assert marker.strip() == "sys_platform == 'linux' and platform_machine == 'x86_64'"
 
 
-def test_encrypted_binding_is_available_to_the_default_development_environment() -> None:
-    """`uv sync` (no extras) must still exercise encryption on the supported platform."""
+def test_encrypted_binding_stays_out_of_the_default_development_environment() -> None:
+    """`uv sync` must not fail where the manylinux wheel cannot install.
+
+    PEP 508 has no libc marker, so the extra's marker also matches musl-based
+    Linux x86_64 (Alpine), where no compatible artifact exists. Keeping the
+    binding out of the default dev group means the documented `uv sync` command
+    never breaks there; only an explicit opt-in can.
+    """
     dev_group = _toml(ROOT / "pyproject.toml")["dependency-groups"]["dev"]
 
-    assert _encrypted_extra()[0] in dev_group
+    assert all("sqlcipher" not in requirement for requirement in dev_group)
 
 
 def test_locked_state_records_the_encrypted_binding() -> None:
@@ -197,16 +198,14 @@ def test_encryption_stays_opt_in_and_off_by_default() -> None:
     assert all("sqlcipher" not in requirement for requirement in project["dependencies"])
 
 
-def test_supported_platform_actually_resolves_the_encrypted_binding() -> None:
-    """On the platform the extra claims, a locked all-extras install must really install it.
+def test_ci_fails_loudly_when_the_encrypted_extra_is_missing() -> None:
+    """A locked all-extras install must be proven, not assumed.
 
-    Without this, a resolution or marker mistake would silently downgrade every
-    encryption test to a skip instead of failing CI.
+    The encryption tests skip when the binding is absent, so CI needs an explicit
+    import check; otherwise a resolution or marker mistake would look like a pass.
     """
-    if not (sys.platform == "linux" and platform.machine() == "x86_64"):
-        pytest.skip("the encrypted extra publishes wheels for Linux x86_64 only")
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
-    assert importlib.util.find_spec("sqlcipher3") is not None, (
-        "install the encrypted extra (`uv sync --locked --all-extras`); "
-        "encryption tests must not silently skip on a supported platform"
-    )
+    install_index = workflow.index("uv sync --locked --all-extras")
+    verify_index = workflow.index('uv run --locked python -c "import sqlcipher3"')
+    assert install_index < verify_index, "the import check must run after the locked install"

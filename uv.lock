@@ -937,7 +937,6 @@ dev = [
     { name = "model2vec" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "sqlcipher3-binary", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "sqlite-vec" },
 ]
 
@@ -959,7 +958,6 @@ dev = [
     { name = "model2vec", specifier = ">=0.8.2,<0.9" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
-    { name = "sqlcipher3-binary", marker = "platform_machine == 'x86_64' and sys_platform == 'linux'", specifier = ">=0.6.0,<0.7" },
     { name = "sqlite-vec", specifier = ">=0.1.9,<0.2" },
 ]
 

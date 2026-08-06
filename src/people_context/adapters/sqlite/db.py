@@ -28,10 +28,11 @@ SQLCIPHER_MODULE = "sqlcipher3.dbapi2"
 
 #: Platforms the `encrypted` extra installs a wheel for. `sqlcipher3-binary`
 #: publishes manylinux x86_64 wheels only and no source distribution, so the
-#: extra is marked for that platform and documented as limited to it rather
-#: than claimed everywhere. Other platforms can still supply a compatible
-#: `sqlcipher3` build themselves.
-ENCRYPTED_EXTRA_PLATFORMS = "Linux x86_64"
+#: extra is marked for Linux x86_64 and documented as limited to it rather than
+#: claimed everywhere. PEP 508 has no libc marker, so musl-based Linux is not
+#: covered by those wheels either. Any other platform can supply a compatible
+#: `sqlcipher3` build itself.
+ENCRYPTED_EXTRA_PLATFORMS = "glibc-based Linux x86_64"
 
 
 class EncryptedDatabaseError(RuntimeError):

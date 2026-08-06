@@ -223,7 +223,8 @@ uv run people-context-mcp --encrypted
 
 The key is read only from `PEOPLE_CONTEXT_DB_KEY` — never a flag value, config file, or log. Without a non-empty
 key the flag refuses to start and never falls back to plaintext, and losing the key means losing the data.
-Prebuilt wheels cover Linux x86_64 only; other platforms need a locally built `sqlcipher3`. See
+Prebuilt wheels cover glibc-based Linux x86_64 only; macOS, Windows, arm64, and musl/Alpine need a locally built
+`sqlcipher3`. See
 [docs/privacy-and-safety.md](docs/privacy-and-safety.md#optional-at-rest-encryption) for what this protects.
 
 ## Optional semantic search

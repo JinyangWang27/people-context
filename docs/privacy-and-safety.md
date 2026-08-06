@@ -129,11 +129,19 @@ What this does and does not protect:
 - **Not covered by this milestone:** key rotation, OS keychain integration, and multiple keys.
 
 **Platform support.** The `encrypted` extra installs `sqlcipher3-binary`, which publishes prebuilt wheels for
-Linux x86_64 only and no source distribution. The dependency is therefore marked for that platform, so
-`pip install 'people-context[encrypted]'` and `uv sync --all-extras` keep working everywhere else without
-silently claiming an unavailable binding. On another platform, install a compatible `sqlcipher3` build yourself
-(it needs a local SQLCipher library); the `--encrypted` flag refuses with installation guidance until one is
-importable.
+**glibc-based Linux x86_64** (`manylinux2014`) only, and no source distribution. The dependency is marked
+`sys_platform == 'linux' and platform_machine == 'x86_64'`, so macOS, Windows, and non-x86_64 resolution keeps
+working without silently claiming an unavailable binding.
+
+PEP 508 defines no libc marker, so that marker cannot exclude **musl-based Linux x86_64 (Alpine)**, where no
+compatible artifact exists: requesting the extra there fails to install. For that reason the binding is not part
+of the default `dependency-groups.dev`, so the plain `uv sync` development command never breaks on musl — only an
+explicit `--extra encrypted` or `--all-extras` can.
+
+On musl, macOS, Windows, or arm64, install a compatible `sqlcipher3` build yourself (it needs a local SQLCipher
+library); the `--encrypted` flag refuses with installation guidance until one is importable. CI installs the
+extra on the platform it claims and asserts the binding actually imports, so a marker or resolution mistake
+fails the build instead of quietly skipping the encryption tests.
 
 Losing the key means losing the data. There is no recovery path, by design.
 

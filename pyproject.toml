@@ -31,9 +31,11 @@ semantic = [
     "sqlite-vec>=0.1.9,<0.2",
 ]
 # Opt-in SQLCipher at-rest encryption. `sqlcipher3-binary` publishes only
-# manylinux x86_64 wheels and no source distribution, so the marker limits the
-# extra to the platform it can actually install on instead of breaking
-# resolution elsewhere. See docs/privacy-and-safety.md#optional-at-rest-encryption.
+# manylinux x86_64 wheels and no source distribution, so the marker keeps macOS,
+# Windows, and non-x86_64 resolution working instead of failing there. PEP 508
+# has no libc marker, so musl-based Linux (Alpine) cannot be excluded here and is
+# documented as uncovered; a locally built `sqlcipher3` serves it and every other
+# platform. See docs/privacy-and-safety.md#optional-at-rest-encryption.
 encrypted = [
     "sqlcipher3-binary>=0.6.0,<0.7; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
@@ -50,7 +52,6 @@ dev = [
     "ruff>=0.6",
     "model2vec>=0.8.2,<0.9",
     "sqlite-vec>=0.1.9,<0.2",
-    "sqlcipher3-binary>=0.6.0,<0.7; sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
 
 [build-system]
