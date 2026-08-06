@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from people_context.adapters.runtime import build_runtime
+from people_context.adapters.sqlite import db as db_module
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
     open_db,
@@ -256,3 +257,32 @@ def test_runtime_without_the_flag_still_opens_plaintext(tmp_path: Path, monkeypa
         assert plain.execute("SELECT count(*) FROM sqlite_master").fetchone()[0] > 0
     finally:
         plain.close()
+
+
+@requires_sqlcipher
+def test_a_failed_migration_closes_the_encrypted_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A partially set-up encrypted database must not leak an open handle."""
+    import sqlcipher3.dbapi2 as dbapi
+
+    opened: list[object] = []
+    real_connect = dbapi.connect
+
+    def _tracking_connect(target: str, *args: object, **kwargs: object) -> object:
+        conn = real_connect(target, *args, **kwargs)
+        opened.append(conn)
+        return conn
+
+    def _failing_migration(_conn: object) -> None:
+        raise RuntimeError("migration boom")
+
+    monkeypatch.setattr(dbapi, "connect", _tracking_connect)
+    monkeypatch.setattr(db_module, "_run_migrations", _failing_migration)
+
+    with pytest.raises(RuntimeError, match="migration boom"):
+        open_encrypted_db(tmp_path / "people.db", KEY)
+
+    assert len(opened) == 1
+    with pytest.raises(dbapi.ProgrammingError):
+        opened[0].execute("SELECT 1")  # type: ignore[attr-defined]
