@@ -7,7 +7,7 @@ from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRest
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
-from people_context.adapters.sqlite.db import open_db
+from people_context.adapters.sqlite.db import EncryptedDatabaseError, open_db, open_encrypted_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
@@ -33,6 +33,7 @@ from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 
 __all__ = [
+    "EncryptedDatabaseError",
     "SqliteAuditLog",
     "SqliteBootstrapRestorer",
     "SqliteBundleReader",
@@ -58,6 +59,7 @@ __all__ = [
     "SqliteVectorIndex",
     "create_sqlite_vector_index",
     "open_db",
+    "open_encrypted_db",
     "open_sqlite_vector_index",
     "read_semantic_metadata",
 ]

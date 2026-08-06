@@ -113,7 +113,9 @@ class SqliteBootstrapRestorer:
             raise RestoreUnavailableError(["restore must own its transaction; an outer transaction is open"])
         try:
             self._conn.execute("BEGIN IMMEDIATE")
-        except sqlite3.OperationalError as exc:
+        # DB-API exposes the driver's own exception classes on the connection, so
+        # this stays correct for both the stdlib and the SQLCipher binding.
+        except self._conn.OperationalError as exc:
             raise RestoreUnavailableError([f"cannot reserve the destination for writing: {exc}"]) from exc
 
     def _hook(self, phase: str) -> None:
@@ -180,7 +182,7 @@ class SqliteBootstrapRestorer:
             return []
         try:
             count = self._count(_VECTOR_TABLE)
-        except sqlite3.OperationalError:
+        except self._conn.OperationalError:
             return [f"{_VECTOR_TABLE}: present but unreadable on this connection"]
         return [f"{_VECTOR_TABLE}: {count} row(s)"] if count else []
 

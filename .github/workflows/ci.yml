@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
+      # The encrypted extra is marked for Linux x86_64, which this runner is.
+      # Without this check a resolution or marker mistake would silently downgrade
+      # every encryption test to a skip instead of failing the build.
+      - name: Verify the encrypted extra installed
+        run: uv run --locked python -c "import sqlcipher3"
+
       - name: Run Ruff
         run: uv run --locked ruff check .
 

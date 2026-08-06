@@ -2,18 +2,28 @@
 
 from __future__ import annotations
 
+import importlib.util
 import mailbox
+import os
 import shutil
+import sqlite3
 import subprocess
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
 import anyio
+import pytest
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from people_context.adapters.sqlite import SqliteAuditLog, SqliteContextReader, open_db
+from people_context.adapters.sqlite import (
+    SqliteAuditLog,
+    SqliteContextReader,
+    open_db,
+    open_encrypted_db,
+)
+from people_context.config import DB_KEY_ENV
 
 
 def test_real_stdio_remember_resolve_with_hints_context_then_cli_show(tmp_path: Path) -> None:
@@ -474,3 +484,50 @@ def _seed_context(db_path: Path, person_id: str) -> None:
             )
     finally:
         conn.close()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("sqlcipher3") is None,
+    reason="the optional `encrypted` extra is not installed on this platform",
+)
+def test_real_stdio_round_trip_against_an_encrypted_database(tmp_path: Path) -> None:
+    """A full remember/resolve round trip works over `--encrypted`, and the file stays opaque."""
+    uv = shutil.which("uv")
+    assert uv is not None
+    project_root = Path(__file__).parents[2]
+    db_path = tmp_path / "people.db"
+    key = "correct horse battery staple"
+    parameters = StdioServerParameters(
+        command=uv,
+        args=["run", "people-context-mcp", "--encrypted", "--db", str(db_path)],
+        cwd=project_root,
+        env={**os.environ, DB_KEY_ENV: key},
+    )
+
+    async def flow() -> str:
+        async with (
+            stdio_client(parameters) as (read_stream, write_stream),
+            ClientSession(read_stream, write_stream) as client,
+        ):
+            await client.initialize()
+            remembered = await client.call_tool("remember_person", {"name": "Alice Example"})
+            person_id: str = remembered.structured_content["person"]["id"]
+            resolved = await client.call_tool("resolve_person", {"query": "Alice Example"})
+            assert resolved.structured_content["candidates"][0]["person_id"] == person_id
+            return person_id
+
+    person_id = anyio.run(flow)
+
+    payload = db_path.read_bytes()
+    assert b"Alice Example" not in payload
+    assert person_id.encode() not in payload
+    assert key.encode() not in payload
+
+    with pytest.raises(sqlite3.DatabaseError):
+        sqlite3.connect(db_path).execute("SELECT name FROM sqlite_master").fetchall()
+
+    reopened = open_encrypted_db(db_path, key)
+    try:
+        assert reopened.execute("SELECT canonical_name FROM persons").fetchone()[0] == "Alice Example"
+    finally:
+        reopened.close()

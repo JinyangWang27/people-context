@@ -26,7 +26,7 @@ from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRest
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
-from people_context.adapters.sqlite.db import open_db
+from people_context.adapters.sqlite.db import open_db, open_encrypted_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
@@ -89,7 +89,7 @@ from people_context.app.relationships import (
 )
 from people_context.app.semantic import ReindexPeople, SemanticSearch
 from people_context.app.sync import RestoreSyncBundle
-from people_context.config import resolve_db_path
+from people_context.config import resolve_db_key, resolve_db_path
 from people_context.ports.clock import Clock, SystemClock
 
 WarningCallback = Callable[[str], None]
@@ -173,11 +173,16 @@ def build_runtime(
     *,
     warning: WarningCallback | None = None,
     clock: Clock | None = None,
+    encrypted: bool = False,
 ) -> ApplicationRuntime:
-    """Build all concrete adapters and application use cases for one process."""
+    """Build all concrete adapters and application use cases for one process.
+
+    `encrypted` selects the opt-in SQLCipher connection, whose key is read only
+    from the environment. It refuses rather than falling back to plaintext.
+    """
     warn = warning or (lambda _message: None)
     path = resolve_db_path(db_path)
-    conn = open_db(path)
+    conn = open_encrypted_db(path, resolve_db_key()) if encrypted else open_db(path)
     runtime_clock = clock or SystemClock()
     repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
     records: SqliteRecordStore | IndexingRecordStore = SqliteRecordStore(conn)

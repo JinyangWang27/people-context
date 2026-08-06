@@ -19,6 +19,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.runtime import build_runtime
+from people_context.adapters.sqlite.db import EncryptedDatabaseError
+from people_context.config import MissingDatabaseKeyError
 
 SERVER_NAME = "people-context"
 
@@ -57,15 +59,19 @@ def _configure_logging() -> logging.Logger:
     return logger
 
 
-def build_server(db_path: str | Path | None = None) -> MCPServer:
+def build_server(db_path: str | Path | None = None, *, encrypted: bool = False) -> MCPServer:
     """Build a fully wired MCP server backed by the resolved SQLite database.
 
     Resolves ``db_path`` via :func:`resolve_db_path`, logs the chosen path to
     STDERR, opens the database, constructs the repository/audit/clock and the
     application use cases, and registers every tool. Does not start any transport.
+
+    ``encrypted`` opens the database through SQLCipher using the
+    ``PEOPLE_CONTEXT_DB_KEY`` environment variable; without a usable key the
+    server refuses to start instead of opening anything in plaintext.
     """
     logger = _configure_logging()
-    runtime = build_runtime(db_path, warning=logger.warning)
+    runtime = build_runtime(db_path, warning=logger.warning, encrypted=encrypted)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
     mcp = MCPServer(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
@@ -83,6 +89,14 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         default=None,
         help="Path to the SQLite database file (overrides env/config/auto-detect).",
+    )
+    parser.add_argument(
+        "--encrypted",
+        action="store_true",
+        help=(
+            "Open the database with SQLCipher using the PEOPLE_CONTEXT_DB_KEY environment variable; "
+            "refuses to start without a non-empty key."
+        ),
     )
     parser.add_argument(
         "--http",
@@ -107,7 +121,12 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     """Select stdio by default or explicitly configured loopback Streamable HTTP."""
     args = _build_parser().parse_args(argv)
-    server = build_server(args.db)
+    try:
+        server = build_server(args.db, encrypted=args.encrypted)
+    except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+        # Refuse with the reason only; the message never carries key material.
+        _configure_logging().error("%s", exc)
+        raise SystemExit(2) from None
     if not args.http:
         server.run()
         return

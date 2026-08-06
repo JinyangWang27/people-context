@@ -11,6 +11,14 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argparse parser and its subcommands."""
     parser = argparse.ArgumentParser(prog="pctx", description="Inspect and search your people data.")
     parser.add_argument("--db", default=None, help="Explicit database path, overriding other resolution sources.")
+    parser.add_argument(
+        "--encrypted",
+        action="store_true",
+        help=(
+            "Open the database with SQLCipher using the PEOPLE_CONTEXT_DB_KEY environment variable; "
+            "refuses to run without a non-empty key."
+        ),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     db_path = subparsers.add_parser("db-path", help="Print the resolved database path.")

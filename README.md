@@ -203,11 +203,29 @@ bind-mount ownership, the CLI entrypoint, MCP client configuration, and publishi
 ## Security model
 
 This project executes local Python with the launching user's filesystem permissions. The database is plaintext
-SQLite; rely on filesystem permissions and full-disk encryption. Ordinary MCP discovery excludes elevated
+SQLite by default; rely on filesystem permissions and full-disk encryption, or opt into at-rest encryption as
+shown below. Ordinary MCP discovery excludes elevated
 sensitive context and full export. Operator-gated tools require process environment flags; models cannot enable
 them through arguments. Vault export is intentionally CLI-only. For a dated, sourced comparison with
 cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and deletion, see
 [docs/privacy-and-safety.md](docs/privacy-and-safety.md#local-first-versus-cloud-hosted-memory-as-of-2026-08-05).
+
+## Optional at-rest encryption
+
+Plaintext SQLite remains the default. Opt into SQLCipher explicitly:
+
+```bash
+uv sync --extra encrypted
+export PEOPLE_CONTEXT_DB_KEY='your passphrase'
+uv run pctx --encrypted list
+uv run people-context-mcp --encrypted
+```
+
+The key is read only from `PEOPLE_CONTEXT_DB_KEY` — never a flag value, config file, or log. Without a non-empty
+key the flag refuses to start and never falls back to plaintext, and losing the key means losing the data.
+Prebuilt wheels cover glibc-based Linux x86_64 only; macOS, Windows, arm64, and musl/Alpine need a locally built
+`sqlcipher3`. See
+[docs/privacy-and-safety.md](docs/privacy-and-safety.md#optional-at-rest-encryption) for what this protects.
 
 ## Optional semantic search
 

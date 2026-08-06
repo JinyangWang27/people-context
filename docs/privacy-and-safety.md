@@ -100,6 +100,51 @@ Two distinct deletion mechanisms exist, and they are not interchangeable:
 
 See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-level detail.
 
+## Optional at-rest encryption
+
+By default the database is plain SQLite, readable by any process running as the user and by anyone who can read
+the file. That default has not changed. `people-context-mcp --encrypted` and the global CLI form
+`pctx --encrypted ...` opt into SQLCipher instead, which encrypts the main database file and its WAL and shared
+memory companions.
+
+The key comes only from the `PEOPLE_CONTEXT_DB_KEY` environment variable. It is never a flag value (which a
+process listing or shell history would expose), never a config-file entry, and never written to a log, an
+exception message, an audit payload, or a changelog payload. An unset, empty, or whitespace-only key is refused
+before anything is opened, and there is no fallback to plaintext: a refusal exits non-zero rather than quietly
+writing an unencrypted file. A wrong key produces one generic message that distinguishes neither key material
+nor page contents. SQLCipher itself also writes its own `hmac check failed` diagnostics to stderr in that case;
+they carry no key material or record text, and stdout stays clean so the stdio protocol is never corrupted.
+
+Encryption is applied before any schema metadata is read, so a new and an existing encrypted database both run
+the ordinary forward-only migrations afterwards. Every mutation still flows through the same audit and changelog
+seam; encryption changes how the file is stored, not what is recorded.
+
+What this does and does not protect:
+
+- **Protected:** a stolen disk or backup, a copied database file, and another local account reading the file
+  directly — the main file, `-wal`, and `-shm` all fail to open without the key.
+- **Not protected:** the running process itself. While the server or CLI is running the key is in memory and the
+  data is decrypted for use. Encryption is not a substitute for full-disk encryption or OS account separation,
+  and it does not protect exports: `pctx export` and `pctx sync push` write plaintext files regardless.
+- **Not covered by this milestone:** key rotation, OS keychain integration, and multiple keys.
+
+**Platform support.** The `encrypted` extra installs `sqlcipher3-binary`, which publishes prebuilt wheels for
+**glibc-based Linux x86_64** (`manylinux2014`) only, and no source distribution. The dependency is marked
+`sys_platform == 'linux' and platform_machine == 'x86_64'`, so macOS, Windows, and non-x86_64 resolution keeps
+working without silently claiming an unavailable binding.
+
+PEP 508 defines no libc marker, so that marker cannot exclude **musl-based Linux x86_64 (Alpine)**, where no
+compatible artifact exists: requesting the extra there fails to install. For that reason the binding is not part
+of the default `dependency-groups.dev`, so the plain `uv sync` development command never breaks on musl — only an
+explicit `--extra encrypted` or `--all-extras` can.
+
+On musl, macOS, Windows, or arm64, install a compatible `sqlcipher3` build yourself (it needs a local SQLCipher
+library); the `--encrypted` flag refuses with installation guidance until one is importable. CI installs the
+extra on the platform it claims and asserts the binding actually imports, so a marker or resolution mistake
+fails the build instead of quietly skipping the encryption tests.
+
+Losing the key means losing the data. There is no recovery path, by design.
+
 ## Export for portability
 
 The human-operated `pctx export` CLI produces a deterministic, domain-shaped JSON export of the

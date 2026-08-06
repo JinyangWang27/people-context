@@ -177,7 +177,7 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** storage, breach/legal exposure, offline operation, deletion; factual language and valid links.
   - **Out:** telemetry or demo behavior changes.
 
-- [ ] **M12.4 — Opt-in SQLCipher with locked dependency state**
+- [x] **M12.4 — Opt-in SQLCipher with locked dependency state**
   - **Scope:** encrypted extra, `open_encrypted_db`, server/global CLI flag, `uv.lock`, tests/docs.
   - **Acceptance:** key before schema/migrations; non-empty env key only; no fallback/leakage; correct/wrong/plain
     reader/WAL sentinel tests; supported-platform wheel probe; locked all-extras CI actually installs it.
