@@ -83,10 +83,11 @@ The report is a recency signal, not a health score: it shows ids, names, categor
 the signed day count, and an interaction count, and never interaction summaries. Only `public`/`personal`
 interactions are counted, so a person you only have `sensitive`/`restricted` interactions with appears as
 `never` — the CLI report deliberately does not widen the disclosure level here. Your own self identity is not
-reported, and a future-dated interaction is never treated as stale. Ages and ordering compare UTC instants, so a
-timestamp recorded with a different offset is placed by when it happened; a naive stored timestamp is read as UTC
-rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and id;
-when more people qualify than `--limit`, the command says so.
+reported, and a future-dated interaction is never treated as stale. The day count is measured from the last
+interaction date the report prints, so the two always agree; ordering instead compares instants, so a timestamp
+recorded with a different offset is placed by when it actually happened, and a naive stored timestamp is read as
+UTC rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and
+id; when more people qualify than `--limit`, the command says so.
 
 ## Relationship vocabulary
 

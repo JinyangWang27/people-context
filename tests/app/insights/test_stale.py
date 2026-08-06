@@ -102,32 +102,46 @@ def test_older_interaction_sorts_before_newer_one() -> None:
     assert [row.person_id for row in result.people] == ["O", "N"]
 
 
-def test_age_and_order_use_the_utc_instant_not_the_local_calendar_date() -> None:
-    # 20:00-05:00 on 31 May is 01:00Z on 1 June: the same UTC day as the clock, so the
-    # age is zero even though the stored calendar date reads a day earlier.
-    same_utc_day = datetime(2026, 5, 31, 20, 0, tzinfo=timezone(timedelta(hours=-5)))
-    plainly_older = datetime(2026, 5, 31, 12, 0, tzinfo=UTC)
+def test_age_uses_the_stored_calendar_date_the_report_displays() -> None:
+    # 20:00-05:00 on 31 May is 01:00Z on 1 June. The report shows 31 May, so the age
+    # must be measured from 31 May too — normalizing to UTC here would show a 31 May
+    # interaction and call it zero days old.
+    crosses_utc_midnight = datetime(2026, 5, 31, 20, 0, tzinfo=timezone(timedelta(hours=-5)))
+
+    result = _use_case(_signal("L", "Local", last=crosses_utc_midnight, count=1)).execute(threshold_days=1)
+
+    assert [row.person_id for row in result.people] == ["L"]
+    assert result.people[0].days_since == 1
+    assert result.people[0].last_interaction_at == crosses_utc_midnight
+    assert result.people[0].last_interaction_at.date().isoformat() == "2026-05-31"
+
+
+def test_ordering_compares_instants_even_when_ages_are_equal() -> None:
+    # Same stored calendar date, so the same age; the earlier instant sorts first.
+    later_instant = datetime(2026, 5, 31, 20, 0, tzinfo=timezone(timedelta(hours=-5)))
+    earlier_instant = datetime(2026, 5, 31, 12, 0, tzinfo=UTC)
 
     result = _use_case(
-        _signal("L", "Local", last=same_utc_day, count=1),
-        _signal("U", "Utc", last=plainly_older, count=1),
-    ).execute(threshold_days=0)
+        _signal("L", "Later", last=later_instant, count=1),
+        _signal("E", "Earlier", last=earlier_instant, count=1),
+    ).execute(threshold_days=1)
 
-    assert [row.person_id for row in result.people] == ["U", "L"]
-    assert [row.days_since for row in result.people] == [1, 0]
-    # The stored representation is reported unchanged; only comparison is normalized.
-    assert result.people[1].last_interaction_at == same_utc_day
+    assert [row.person_id for row in result.people] == ["E", "L"]
+    assert [row.days_since for row in result.people] == [1, 1]
 
 
-def test_naive_timestamps_are_read_as_utc_rather_than_host_local_time() -> None:
-    naive = datetime(2026, 3, 1, 0, 0)
-    aware = datetime(2026, 3, 1, 0, 0, tzinfo=UTC)
+def test_naive_and_aware_timestamps_are_ordered_and_aged_without_a_host_timezone() -> None:
+    naive = datetime(2026, 3, 1, 6, 0)
+    aware = datetime(2026, 3, 1, 3, 0, tzinfo=UTC)
 
     result = _use_case(
         _signal("N", "Naive", last=naive, count=1),
         _signal("A", "Aware", last=aware, count=1),
     ).execute()
 
+    # A naive value is read as UTC for ordering, never in the host timezone, so the
+    # 03:00 row is always the older one regardless of where this test runs.
+    assert [row.person_id for row in result.people] == ["A", "N"]
     assert {row.person_id: row.days_since for row in result.people} == {"N": 92, "A": 92}
 
 

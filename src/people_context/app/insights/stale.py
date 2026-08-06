@@ -61,7 +61,7 @@ class GetStaleRelationships:
     ) -> StaleRelationshipsResult:
         """Return people with no ordinary interaction, or one at least `threshold_days` old."""
         _validate(threshold_days, limit)
-        today = self._clock.now().astimezone(UTC).date()
+        today = self._clock.now().date()
         signals = self._recency.list_recency_signals(as_of=today, category=_canonical_category(category))
         qualifying: list[StalePersonResult] = []
         for signal in signals:
@@ -104,18 +104,23 @@ def _as_utc(value: datetime) -> datetime:
     """Return one comparable UTC instant for a stored timestamp.
 
     Stored interaction timestamps keep whatever offset the writer supplied, and some
-    legacy rows are naive. Ages and ordering are measured against the UTC clock, so an
-    aware value is converted and a naive one is read as UTC. The host timezone is never
-    consulted, which is what `astimezone()` on a naive value would do.
+    rows are naive. Ordering compares instants, so an aware value is converted and a
+    naive one is read as UTC. The host timezone is never consulted, which is what
+    `astimezone()` on a naive value would do.
     """
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _days_since(signal: RecencySignal, today: date) -> int | None:
-    """Return signed calendar days since the last ordinary interaction, if any."""
+    """Return signed calendar days since the last ordinary interaction, if any.
+
+    The age deliberately uses the stored timestamp's own calendar date rather than a
+    UTC-normalized one, so it always agrees with the `last_interaction_at` the report
+    displays. Converting here would let a report show 31 May and call it zero days old.
+    """
     if signal.last_interaction_at is None:
         return None
-    return (today - _as_utc(signal.last_interaction_at).date()).days
+    return (today - signal.last_interaction_at.date()).days
 
 
 def _sort_key(row: StalePersonResult) -> tuple[int, datetime, str, str]:
