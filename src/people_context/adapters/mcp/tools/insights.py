@@ -9,7 +9,9 @@ from mcp.types import ToolAnnotations
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
+    DEFAULT_WINDOW_DAYS,
     StaleRelationshipsError,
+    UpcomingDatesError,
 )
 
 if TYPE_CHECKING:
@@ -37,4 +39,18 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 limit=limit,
             ).model_dump(mode="json")
         except StaleRelationshipsError as exc:
+            return {"error": "invalid_parameter", "message": str(exc)}
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def upcoming_dates(
+        window_days: int = DEFAULT_WINDOW_DAYS,
+        person_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return ordinary birthdays and dated active reminders inside an inclusive upcoming window."""
+        try:
+            return deps.list_upcoming_dates.execute(
+                window_days=window_days,
+                person_id=person_id,
+            ).model_dump(mode="json")
+        except UpcomingDatesError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}

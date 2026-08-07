@@ -192,7 +192,7 @@ Check the matching box only in the PR that delivers it.
     are not stale; SQL sensitivity tests.
   - **Out:** health score/elevated variant.
 
-- [ ] **M13.2 — Upcoming dates MCP/CLI report**
+- [x] **M13.2 — Upcoming dates MCP/CLI report**
   - **Scope:** `ListUpcomingDates(PersonContextReader, ListReminders, PersonReader, Clock)`.
   - **Acceptance:** `window_days 0..366`; inclusive window; annual full/partial birthdays; real leap days; stored
     reminder date component; missing/deleted skipped; elevated facts invisible to counts.

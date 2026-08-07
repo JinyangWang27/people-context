@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import EncryptedDatabaseError
-from people_context.cli.insights import cmd_stale
+from people_context.cli.insights import cmd_stale, cmd_upcoming
 from people_context.cli.maintenance import cmd_reindex, cmd_sync_log
 from people_context.cli.onboarding import cmd_demo, cmd_init
 from people_context.cli.parser import build_parser
@@ -46,6 +46,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "list": cmd_list,
     "search": cmd_search,
     "stale": cmd_stale,
+    "upcoming": cmd_upcoming,
     "show": cmd_show,
     "export": cmd_export,
     "export-vault": cmd_export_vault,

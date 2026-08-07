@@ -22,8 +22,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
 | `find_connection` | One deterministic shortest relationship path. | `person_a`, `person_b`, `max_depth=4` | Ordered perspective-rendered hops or not-connected. |
 | `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
+| `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` | Ordered entries and `skipped_unparseable`. |
 
-All nine tools are annotated `readOnlyHint=true`.
+All ten tools are annotated `readOnlyHint=true`.
 
 ## M7 graph contracts
 
@@ -128,6 +129,51 @@ comparisons; it never rewrites what is returned.
 `{"error": "invalid_parameter", "message": "..."}` rather than a partial report. An optional `category` is
 normalized with the shared relationship vocabulary rules, so `"Professional"` and `"professional"` select the
 same rows.
+
+## M13 upcoming-dates contract
+
+### `upcoming_dates`
+
+```json
+{
+  "entries": [{
+    "person_id": "A",
+    "name": "Alice",
+    "kind": "birthday",
+    "date": "2026-06-10",
+    "label": "Birthday"
+  }],
+  "skipped_unparseable": 0
+}
+```
+
+The report covers the inclusive interval `[today, today + window_days]`, where `today` is `clock.now().date()`
+and `window_days` accepts `0..366` (default 30). A window of `0` reports today only. An out-of-range value
+returns `{"error": "invalid_parameter", "message": "..."}` rather than a partial report. The optional
+`person_id` restricts the report to one person.
+
+`kind` is `"birthday"` or `"reminder"`. `label` is the constant `"Birthday"` for a birthday and the reminder's
+own text for a reminder, so a birthday entry discloses the upcoming date without disclosing the stored birth
+year. Entries are ordered by date, then normalized name, person id, kind, label, and the source record id, so
+repeated calls against unchanged data return byte-identical output.
+
+Two record types contribute:
+
+- **Birthday facts** qualify only when the fact's `sensitivity` is `public` or `personal`, its `predicate` is
+  exactly `birthday`, and its `value` is `YYYY-MM-DD` or `--MM-DD`. Both forms are annual recurrences: the
+  month/day is projected to the earliest real occurrence on or after today. 29 February is never coerced to
+  28 February or 1 March — a common year simply has no occurrence, so the next occurrence is the next actual
+  leap day, which may fall outside every accepted window.
+- **Active reminders** with a `due_at` contribute their stored calendar-date component. This report never
+  reinterprets a naive stored datetime as a timezone, and never converts an aware one, so an entry always
+  carries the calendar day the reminder was written with. Undated reminders (communication notes) and
+  completed or cancelled reminders contribute nothing.
+
+`skipped_unparseable` counts ordinary birthday facts whose value is not one of the two accepted forms —
+including impossible dates such as `1985-02-29` or `--02-30`. Sensitive and restricted facts are invisible:
+they contribute neither entries nor skip counts, so the count itself cannot signal that an elevated birthday
+exists. Missing and soft-deleted people are skipped deterministically, which also removes any reminder pointing
+at them.
 
 ## Person context compatibility
 
