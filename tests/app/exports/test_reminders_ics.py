@@ -72,6 +72,10 @@ def _export(*reminders: Reminder) -> ReminderCalendarResult:
     return ExportReminderCalendar(ListReminders(reader)).execute()
 
 
+def _parse_utc(value: str) -> datetime:
+    return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+
+
 def _content_lines(calendar: str) -> list[str]:
     """Return unfolded content lines, dropping the trailing empty element after the final CRLF."""
     unfolded = calendar.replace("\r\n ", "")
@@ -222,10 +226,35 @@ class TestRecurrence:
         result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="yearly"))
 
         lines = _content_lines(result.calendar)
-        assert "DTSTART:20260601T123000Z" in lines
-        assert lines.index("DTSTART:20260601T123000Z") < lines.index("RRULE:FREQ=YEARLY")
-        # DUE must not precede DTSTART; the same stored instant satisfies that exactly.
-        assert lines.index("DTSTART:20260601T123000Z") < lines.index("DUE:20260601T123000Z")
+        assert "DTSTART:20260601T122959Z" in lines
+        assert lines.index("DTSTART:20260601T122959Z") < lines.index("RRULE:FREQ=YEARLY")
+        assert lines.index("DTSTART:20260601T122959Z") < lines.index("DUE:20260601T123000Z")
+
+    def test_due_is_strictly_later_than_the_recurrence_anchor(self) -> None:
+        # Section 3.8.2.3 requires DUE to be strictly later than DTSTART, so an anchor
+        # equal to the deadline would be invalid; the one-second lead is the whole point.
+        result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="monthly"))
+
+        lines = _content_lines(result.calendar)
+        start = next(line for line in lines if line.startswith("DTSTART:")).removeprefix("DTSTART:")
+        due = next(line for line in lines if line.startswith("DUE:")).removeprefix("DUE:")
+        assert start < due
+        assert _parse_utc(due) - _parse_utc(start) == timedelta(seconds=1)
+        # The lead is the component's duration, so every generated instance is still due
+        # at exactly the stored instant rather than one second early.
+        assert _parse_utc(due) == DUE
+
+    def test_unrepresentable_anchor_drops_the_rule_without_losing_the_reminder(self) -> None:
+        # Subtracting the lead from the earliest representable instant would overflow;
+        # one such row must not cost the export every other reminder.
+        result = _export(
+            _reminder(kind=ReminderKind.OCCASION, recurrence="yearly", due_at=datetime.min.replace(tzinfo=UTC))
+        )
+
+        assert result.exported == 1
+        assert result.recurrence_omitted == 1
+        assert "DTSTART" not in result.calendar
+        assert "RRULE" not in result.calendar
 
     def test_non_recurring_todo_has_no_dtstart(self) -> None:
         assert "DTSTART" not in _export(_reminder()).calendar

@@ -91,7 +91,7 @@ def test_writes_a_canonical_owner_only_calendar(tmp_path: Path, capsys: pytest.C
     out = capsys.readouterr().out
     assert "Wrote 2 reminder(s)" in out
     assert "Skipped 1 reminder(s) without a due date." in out
-    assert "Exported 1 reminder(s) without an unsupported recurrence rule." in out
+    assert "Exported 1 reminder(s) with the recurrence rule omitted." in out
     assert "outside the server's disclosure controls" in out
 
 
@@ -150,6 +150,51 @@ def test_stored_naive_timestamps_are_skipped_rather_than_localized(
 
     assert "BEGIN:VTODO" not in output.read_bytes().decode("utf-8")
     assert "Skipped 1 reminder(s) whose stored timestamps have no timezone." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("suffix", ["", "-wal", "-shm", "-journal"])
+def test_refuses_to_publish_over_the_active_database(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    suffix: str,
+) -> None:
+    # Publication replaces the destination's directory entry while SQLite holds the old
+    # inode open, so an unguarded write here would silently destroy the whole store.
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    before = db_path.read_bytes()
+    target = db_path.with_name(db_path.name + suffix)
+
+    assert main(["--db", str(db_path), "reminders-ics", "--output", str(target)]) == 2
+
+    assert db_path.read_bytes() == before
+    assert "Refusing to write the reminder calendar" in capsys.readouterr().err
+
+
+def test_refuses_an_indirect_path_to_the_active_database(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    before = db_path.read_bytes()
+    link = tmp_path / "link"
+    link.symlink_to(tmp_path, target_is_directory=True)
+
+    assert main(["--db", str(db_path), "reminders-ics", "--output", str(link / "people.db")]) == 2
+
+    assert db_path.read_bytes() == before
+    assert "Refusing to write the reminder calendar" in capsys.readouterr().err
+
+
+def test_a_neighbouring_file_beside_the_database_is_still_allowed(tmp_path: Path) -> None:
+    db_path = tmp_path / "people.db"
+    output = tmp_path / "people.db.ics"
+    _seed(db_path)
+
+    assert main(["--db", str(db_path), "reminders-ics", "--output", str(output)]) == 0
+
+    assert output.read_bytes().decode("utf-8").startswith("BEGIN:VCALENDAR\r\n")
 
 
 def test_missing_destination_directory_reports_without_writing(

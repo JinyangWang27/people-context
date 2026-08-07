@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -22,6 +23,8 @@ BASELINE_TARGET_NOTICE = (
     "Restore only ever fills a freshly initialized database. It never merges with, clears, "
     "or overwrites existing local data."
 )
+# SQLite keeps these alongside the main database file; replacing any of them loses data.
+_DATABASE_SIDECARS = ("-wal", "-shm", "-journal")
 REMINDER_CALENDAR_WARNING = (
     "This calendar file is plaintext personal data outside the server's disclosure controls. "
     "Keep it on encrypted storage and hand it to a calendar application only deliberately."
@@ -51,8 +54,18 @@ def cmd_export(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
 
 def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Write active dated reminders as one owner-only iCalendar file."""
-    result = runtime.use_cases.export_reminder_calendar.execute()
     destination = Path(args.output).expanduser()
+    if _collides_with_database(destination, runtime.path):
+        # Publication replaces the destination's directory entry while SQLite still holds
+        # the old inode open, so writing over the live database or one of its sidecars
+        # would silently destroy the store when the connection closes.
+        print(
+            f"Refusing to write the reminder calendar to {destination}: "
+            f"it is the database this command is reading, or one of its sidecar files.",
+            file=sys.stderr,
+        )
+        return 2
+    result = runtime.use_cases.export_reminder_calendar.execute()
     try:
         written = atomic_write_private_text(destination, result.calendar)
     except OSError as exc:
@@ -67,9 +80,28 @@ def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
         # move a reminder across a day boundary, so the row is reported instead.
         print(f"Skipped {result.skipped_naive_datetime} reminder(s) whose stored timestamps have no timezone.")
     if result.recurrence_omitted:
-        print(f"Exported {result.recurrence_omitted} reminder(s) without an unsupported recurrence rule.")
+        print(f"Exported {result.recurrence_omitted} reminder(s) with the recurrence rule omitted.")
     print(REMINDER_CALENDAR_WARNING)
     return 0
+
+
+def _collides_with_database(destination: Path, database: Path) -> bool:
+    """Return whether publishing at `destination` would replace the live database entry.
+
+    Only the final directory entry is compared, because atomic publication replaces that
+    entry rather than following it: a symlink named elsewhere is replaced harmlessly, and
+    a second hard link to the database keeps the data alive. SQLite's WAL, shared-memory,
+    and rollback sidecars carry the same loss, so they are refused alongside the database.
+    """
+    target = _entry_identity(destination)
+    reserved = {_entry_identity(database)}
+    reserved.update(_entry_identity(database.with_name(database.name + suffix)) for suffix in _DATABASE_SIDECARS)
+    return target in reserved
+
+
+def _entry_identity(path: Path) -> tuple[str, str]:
+    """Identify one directory entry by its resolved parent and its own final name."""
+    return os.path.realpath(path.parent), path.name
 
 
 def cmd_sync_push(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
