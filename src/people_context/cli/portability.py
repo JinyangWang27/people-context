@@ -99,14 +99,31 @@ def _collides_with_database(destination: Path, database: Path) -> bool:
     differ. Reserving the given spelling too costs only a symlink the user was about to
     overwrite with a calendar anyway. WAL, shared-memory, and rollback sidecars carry the
     same loss, so they are reserved for both spellings as well.
+
+    Two comparisons run, because neither is sufficient alone. Filesystem identity settles
+    spellings the name cannot: on a case-insensitive volume `PEOPLE.DB` and `people.db`
+    are one entry. It only answers for entries that already exist, so the name comparison
+    still covers a reserved sidecar that SQLite has not created yet. Identity also refuses
+    a separate hard link to the database, which replacing would in fact leave intact; that
+    is a deliberately conservative miss, since a spurious refusal costs a rename and the
+    alternative costs the store.
     """
-    reserved: set[tuple[str, str]] = set()
-    for candidate in (database, Path(os.path.realpath(database))):
-        reserved.add(_entry_identity(candidate))
-        reserved.update(
-            _entry_identity(candidate.with_name(candidate.name + suffix)) for suffix in _DATABASE_SIDECARS
-        )
-    return _entry_identity(destination) in reserved
+    reserved = [
+        candidate.with_name(candidate.name + suffix)
+        for candidate in (database, Path(os.path.realpath(database)))
+        for suffix in ("", *_DATABASE_SIDECARS)
+    ]
+    if _entry_identity(destination) in {_entry_identity(path) for path in reserved}:
+        return True
+    return any(_is_same_existing_file(destination, path) for path in reserved)
+
+
+def _is_same_existing_file(destination: Path, reserved: Path) -> bool:
+    """Return whether two existing paths are the same file; a missing path is never one."""
+    try:
+        return os.path.samefile(destination, reserved)
+    except OSError:
+        return False
 
 
 def _entry_identity(path: Path) -> tuple[str, str]:

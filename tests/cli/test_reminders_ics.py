@@ -222,6 +222,42 @@ def test_refuses_the_symlink_spelling_of_a_symlinked_database(tmp_path: Path) ->
     assert link.is_symlink()
 
 
+def test_refuses_an_existing_alias_of_the_database(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A name that differs from the database's but resolves to the same file must be
+    # refused: on a case-insensitive volume `PEOPLE.DB` is the database's own entry, and
+    # only filesystem identity can tell. A hard link exercises that comparison portably.
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    before = db_path.read_bytes()
+    alias = tmp_path / "alias.db"
+    os.link(db_path, alias)
+
+    assert main(["--db", str(db_path), "reminders-ics", "--output", str(alias)]) == 2
+
+    assert db_path.read_bytes() == before
+    assert "Refusing to write the reminder calendar" in capsys.readouterr().err
+
+
+def test_refuses_a_case_variant_on_a_case_insensitive_filesystem(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    variant = tmp_path / "PEOPLE.DB"
+    if not variant.exists():
+        pytest.skip("filesystem is case-sensitive, so this spelling is a different file")
+    before = db_path.read_bytes()
+
+    assert main(["--db", str(db_path), "reminders-ics", "--output", str(variant)]) == 2
+
+    assert db_path.read_bytes() == before
+    assert "Refusing to write the reminder calendar" in capsys.readouterr().err
+
+
 def test_an_output_symlink_pointing_elsewhere_is_still_allowed(tmp_path: Path) -> None:
     # Publication replaces the output entry instead of following it, so this is harmless
     # and the guard must not become broad enough to refuse it.
