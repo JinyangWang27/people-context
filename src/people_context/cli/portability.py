@@ -86,17 +86,27 @@ def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
 
 
 def _collides_with_database(destination: Path, database: Path) -> bool:
-    """Return whether publishing at `destination` would replace the live database entry.
+    """Return whether publishing at `destination` would replace a live database entry.
 
-    Only the final directory entry is compared, because atomic publication replaces that
-    entry rather than following it: a symlink named elsewhere is replaced harmlessly, and
-    a second hard link to the database keeps the data alive. SQLite's WAL, shared-memory,
-    and rollback sidecars carry the same loss, so they are refused alongside the database.
+    The destination is compared as its own final directory entry, because atomic
+    publication replaces that entry rather than following it: an output symlink pointing
+    somewhere unrelated is replaced harmlessly, and a second hard link to the database
+    keeps the data alive.
+
+    Both the database path as given and its fully resolved target are reserved. SQLite
+    follows a symlinked `--db`, so the entry holding the data is the resolved one, and
+    naming that target as the output would destroy the store even though the two spellings
+    differ. Reserving the given spelling too costs only a symlink the user was about to
+    overwrite with a calendar anyway. WAL, shared-memory, and rollback sidecars carry the
+    same loss, so they are reserved for both spellings as well.
     """
-    target = _entry_identity(destination)
-    reserved = {_entry_identity(database)}
-    reserved.update(_entry_identity(database.with_name(database.name + suffix)) for suffix in _DATABASE_SIDECARS)
-    return target in reserved
+    reserved: set[tuple[str, str]] = set()
+    for candidate in (database, Path(os.path.realpath(database))):
+        reserved.add(_entry_identity(candidate))
+        reserved.update(
+            _entry_identity(candidate.with_name(candidate.name + suffix)) for suffix in _DATABASE_SIDECARS
+        )
+    return _entry_identity(destination) in reserved
 
 
 def _entry_identity(path: Path) -> tuple[str, str]:

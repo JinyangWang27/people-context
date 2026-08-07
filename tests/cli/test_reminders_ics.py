@@ -187,6 +187,58 @@ def test_refuses_an_indirect_path_to_the_active_database(
     assert "Refusing to write the reminder calendar" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("suffix", ["", "-wal", "-shm", "-journal"])
+def test_refuses_the_resolved_target_of_a_symlinked_database(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    suffix: str,
+) -> None:
+    # SQLite follows a symlinked `--db`, so the entry holding the data is the resolved
+    # one; naming that target as the output must be refused even though the spellings
+    # differ, or the store is replaced with calendar text.
+    real = tmp_path / "real.db"
+    _seed(real)
+    link = tmp_path / "link.db"
+    link.symlink_to(real)
+    before = real.read_bytes()
+    target = real.with_name(real.name + suffix)
+
+    assert main(["--db", str(link), "reminders-ics", "--output", str(target)]) == 2
+
+    assert real.read_bytes() == before
+    assert "Refusing to write the reminder calendar" in capsys.readouterr().err
+
+
+def test_refuses_the_symlink_spelling_of_a_symlinked_database(tmp_path: Path) -> None:
+    real = tmp_path / "real.db"
+    _seed(real)
+    link = tmp_path / "link.db"
+    link.symlink_to(real)
+    before = real.read_bytes()
+
+    assert main(["--db", str(link), "reminders-ics", "--output", str(link)]) == 2
+
+    assert real.read_bytes() == before
+    assert link.is_symlink()
+
+
+def test_an_output_symlink_pointing_elsewhere_is_still_allowed(tmp_path: Path) -> None:
+    # Publication replaces the output entry instead of following it, so this is harmless
+    # and the guard must not become broad enough to refuse it.
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    unrelated = tmp_path / "unrelated.txt"
+    unrelated.write_text("keep me\n", encoding="utf-8")
+    output = tmp_path / "reminders.ics"
+    output.symlink_to(unrelated)
+
+    assert main(["--db", str(db_path), "reminders-ics", "--output", str(output)]) == 0
+
+    assert unrelated.read_text(encoding="utf-8") == "keep me\n"
+    assert not output.is_symlink()
+    assert output.read_bytes().decode("utf-8").startswith("BEGIN:VCALENDAR\r\n")
+
+
 def test_a_neighbouring_file_beside_the_database_is_still_allowed(tmp_path: Path) -> None:
     db_path = tmp_path / "people.db"
     output = tmp_path / "people.db.ics"
