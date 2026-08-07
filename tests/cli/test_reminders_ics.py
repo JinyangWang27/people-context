@@ -22,6 +22,12 @@ from people_context.domain.reminder import Reminder, ReminderKind
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
 _DUE = datetime(2026, 6, 1, 12, 30, tzinfo=UTC)
+# Matches `tests/adapters/filesystem/test_private_file.py`: the stale-destination fixture must
+# differ from 0o600 so a mode-retaining `O_TRUNC` write is caught, but must grant nothing to
+# group or other, because CodeQL `security-extended` reports `py/overly-permissive-file` for any
+# non-owner bit even in a test. 0o700 exercises the identical defect, because `fchmod` sets an
+# absolute mode rather than clearing selected bits.
+_STALE_FIXTURE_MODE = 0o700
 
 
 class _Clock:
@@ -89,16 +95,17 @@ def test_writes_a_canonical_owner_only_calendar(tmp_path: Path, capsys: pytest.C
     assert "outside the server's disclosure controls" in out
 
 
-def test_overwriting_a_permissive_file_leaves_it_owner_only(tmp_path: Path) -> None:
+def test_pre_existing_file_mode_is_reset_rather_than_retained(tmp_path: Path) -> None:
     db_path = tmp_path / "people.db"
     output = tmp_path / "reminders.ics"
     _seed(db_path)
     output.write_text("stale\n", encoding="utf-8")
-    os.chmod(output, 0o644)
+    os.chmod(output, _STALE_FIXTURE_MODE)
 
     assert main(["--db", str(db_path), "reminders-ics", "--output", str(output)]) == 0
 
     assert stat.S_IMODE(os.stat(output).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(output).st_mode) & (stat.S_IRWXG | stat.S_IRWXO) == 0
     assert "stale" not in output.read_text(encoding="utf-8")
 
 
