@@ -23,6 +23,7 @@ what encryption does and does not protect.
 | `list [--all] [--limit N]` | List people; `--all` includes soft-deleted rows. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
+| `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
@@ -88,6 +89,30 @@ interaction date the report prints, so the two always agree; ordering instead co
 recorded with a different offset is placed by when it actually happened, and a naive stored timestamp is read as
 UTC rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and
 id; when more people qualify than `--limit`, the command says so.
+
+## Upcoming dates
+
+```bash
+uv run pctx upcoming --window-days 60 --person "Alice"
+```
+
+Prints one row per upcoming birthday or dated reminder inside the inclusive window `[today, today + N]`.
+`--window-days` accepts `0..366` (default 30); `0` reports today only, and an out-of-range value exits `2`
+without printing a partial report. `--person` takes an id or a resolvable name and behaves like every other
+person argument: an unknown name exits `1` and an ambiguous one exits `2` with candidates.
+
+Birthdays come from `public`/`personal` facts whose predicate is exactly `birthday` and whose value is
+`YYYY-MM-DD` or `--MM-DD`; both are treated as annual recurrences and projected to the next real occurrence.
+29 February is never moved to the 28th or to 1 March, so it only appears when the window actually reaches the
+next leap day. Reminders come from active reminders with a `due_at`, reported on the calendar day they were
+stored with — the command never reinterprets a naive stored datetime in the host timezone, and never converts
+an aware one.
+
+A birthday row is labelled `Birthday` rather than the stored value, so the report shows when the date falls
+without printing the birth year. Ordinary birthday facts whose value is neither accepted form — including
+impossible dates such as `1985-02-29` — are counted in a trailing skipped line rather than guessed at.
+`sensitive`/`restricted` facts are invisible here: they produce no row and are not counted, so the skipped
+count cannot reveal that an elevated birthday exists.
 
 ## Relationship vocabulary
 

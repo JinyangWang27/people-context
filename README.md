@@ -71,6 +71,8 @@ details.
 - canonical relationship vocabulary, synonyms, inverse pairs, symmetric types, and uncategorized extensions;
 - minimal-disclosure relationship graph and shortest-path MCP tools with explicit caps/truncation;
 - ordinary-disclosure staleness reporting over stored interaction recency, as an MCP tool and CLI command;
+- ordinary-disclosure upcoming birthdays and dated reminders, with real leap-day projection, as an MCP tool
+  and CLI command;
 - organizations and time-aware affiliations;
 - separate facts, observations, traits, and concise interaction summaries;
 - communication guidance grounded in traits, interaction friction, reminders, and user-authored philosophy;
@@ -259,6 +261,7 @@ uv run pctx list [--all]
 uv run pctx search <query>
 uv run pctx show <person>
 uv run pctx stale [--category C] [--threshold-days N] [--limit N]
+uv run pctx upcoming [--window-days N] [--person PERSON]
 uv run pctx export [--output FILE]
 uv run pctx relationship-types
 uv run pctx relationship-types add TYPE --category C [--inverse T | --symmetric]

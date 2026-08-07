@@ -41,6 +41,12 @@ all. Timing metadata is disclosure too: an ordinary recency report that moved wh
 was recorded would leak when those conversations happened. The report returns names, relationship categories,
 dates, and counts only — never interaction summaries or channels.
 
+`upcoming_dates` and `pctx upcoming` apply the same rule to date facts. Only `public`/`personal` birthday facts
+are projected, and an elevated birthday contributes neither an entry nor a `skipped_unparseable` increment, so
+the counter cannot be used to detect that one exists. A birthday entry is labelled `Birthday` rather than the
+stored value, so the upcoming date is disclosed without the birth year. The report also never guesses a
+timezone for a stored reminder datetime; it reports the calendar day the reminder was written with.
+
 ## Sensitivity levels and defaults
 
 Every assertive record (facts, observations, traits, interactions, relationships, affiliations) carries a

@@ -60,7 +60,7 @@ from people_context.app.imports import (
     ReviewImport,
     StageCandidates,
 )
-from people_context.app.insights import GetStaleRelationships
+from people_context.app.insights import GetStaleRelationships, ListUpcomingDates
 from people_context.app.people import (
     AddAlias,
     EditPerson,
@@ -106,6 +106,7 @@ class RuntimeUseCases:
     get_relationship_graph: GetRelationshipGraph
     find_connection: FindConnection
     get_stale_relationships: GetStaleRelationships
+    list_upcoming_dates: ListUpcomingDates
     search_people: SearchPeople
     semantic_search: SemanticSearch
     remember_person: RememberPerson
@@ -228,6 +229,7 @@ def build_runtime(
     set_affiliation = SetAffiliation(repo, organizations, records, audit, runtime_clock)
     record_fact = RecordFact(repo, records, audit, runtime_clock)
     candidate_stager = CandidateStager(repo, import_staging, runtime_clock)
+    list_reminders = ListReminders(records)
 
     use_cases = RuntimeUseCases(
         resolve_person=ResolvePerson(repo, context_reader, runtime_clock),
@@ -235,6 +237,7 @@ def build_runtime(
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
+        list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
         search_people=SearchPeople(repo),
         semantic_search=SemanticSearch(
             SqliteSemanticMetadataReader(conn),
@@ -276,7 +279,7 @@ def build_runtime(
         complete_reminder=CompleteReminder(records, records, audit, runtime_clock, people=repo),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences, audit, runtime_clock),
         get_communication_guidance=GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock),
-        list_reminders=ListReminders(records),
+        list_reminders=list_reminders,
         merge_people=MergePeople(repo, merge_store, runtime_clock, audit),
         preview_forget=PreviewForget(repo, forget_store),
         forget=Forget(repo, forget_store, runtime_clock, audit),

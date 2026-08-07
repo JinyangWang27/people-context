@@ -7,10 +7,13 @@ import argparse
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
+    DEFAULT_WINDOW_DAYS,
     MAX_STALE_LIMIT,
     MAX_THRESHOLD_DAYS,
+    MAX_WINDOW_DAYS,
     MIN_STALE_LIMIT,
     MIN_THRESHOLD_DAYS,
+    MIN_WINDOW_DAYS,
 )
 from people_context.domain.person import AliasKind
 
@@ -57,6 +60,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_STALE_LIMIT,
         help=f"Maximum number of reported people ({MIN_STALE_LIMIT}..{MAX_STALE_LIMIT}).",
     )
+
+    upcoming = subparsers.add_parser("upcoming", help="Report birthdays and dated reminders coming up.")
+    upcoming.add_argument(
+        "--window-days",
+        type=int,
+        default=DEFAULT_WINDOW_DAYS,
+        help=f"Inclusive number of days ahead to report ({MIN_WINDOW_DAYS}..{MAX_WINDOW_DAYS}).",
+    )
+    upcoming.add_argument("--person", default=None, help="Only this person; an id, or a name to resolve.")
 
     export = subparsers.add_parser("export", help="JSON dump of all people.")
     export.add_argument("--output", default=None, help="Write to this file instead of stdout.")
