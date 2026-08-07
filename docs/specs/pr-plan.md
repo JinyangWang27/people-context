@@ -198,7 +198,7 @@ Check the matching box only in the PR that delivers it.
     reminder date component; missing/deleted skipped; elevated facts invisible to counts.
   - **Out:** additional predicates/elevated variant.
 
-- [ ] **M13.3 — Meeting-prep skill and private reminder ICS export**
+- [x] **M13.3 — Meeting-prep skill and private reminder ICS export**
   - **Scope:** Extend skill; deterministic `reminders-ics` using M11 writer.
   - **Acceptance:** only aware `due_at`/`created_at`; canonical UTC/folding/escaping; `skipped_undated` and
     `skipped_naive_datetime` omit rows without guessing timezone; supported RRULEs; `recurrence_omitted` counts

@@ -1,6 +1,6 @@
 ---
 name: people-context-usage
-description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, or shares information worth remembering about people. Covers identity resolution first, context vs. guidance, the strict staged-capture vocabulary, and the review-before-commit approval flow.
+description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, or shares information worth remembering about people. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, and the review-before-commit approval flow.
 ---
 
 # Using people-context
@@ -33,6 +33,31 @@ These answer two different questions:
 Resolve the person first, then call the tool that matches the question. When the user
 wants help writing to or preparing for someone, `get_communication_guidance` is the
 right tool; do not infer tone from raw context alone.
+
+## Preparing for a meeting or conversation
+
+When the user is about to meet, call, or write to one or more people, build the brief
+from resolved records rather than from memory or guesswork:
+
+1. Resolve every attendee with `resolve_person`, one name at a time. When a name comes
+   back `ambiguous`, present the candidates and let the user pick before you read
+   anything; never guess which attendee was meant, and never invent one.
+2. For each resolved person, call `get_person_context` for the bounded,
+   sensitivity-aware view of who they are, how they relate to the user, and what
+   happened recently.
+3. Call `get_communication_guidance` for each of them when the user wants help with
+   tone, framing, or approach. Context says what is known; guidance says how to
+   communicate. Do not infer tone from context alone.
+4. Call `list_reminders` with that `person_id` to surface the open follow-ups and
+   communication notes already recorded for them.
+5. Compose one short brief per attendee: who they are, how they relate to the user,
+   what happened last, open follow-ups, and how to communicate with them.
+
+Preparation is a read-only flow. Do not stage or record anything the meeting has not
+produced yet, and do not treat a thin brief as a reason to reach for elevated tools —
+what `get_person_context` returns is the intended complete ordinary view. After the
+meeting, the end-of-session capture rules below apply unchanged: propose with
+`stage_candidates`, and leave the commit to the user.
 
 ## Capturing new knowledge: propose, review, then commit
 

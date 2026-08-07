@@ -54,6 +54,20 @@ class TestUsageSkill:
         assert "get_person_context" in body
         assert "get_communication_guidance" in body
 
+    def test_meeting_preparation_composes_existing_reads_only(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = body.lower()
+
+        assert "meeting" in lowered
+        # The brief is composed from resolution plus the three bounded reads, and adds no
+        # server tool: identity first, then context, guidance, and that person's reminders.
+        assert "resolve_person" in body
+        assert "get_person_context" in body
+        assert "get_communication_guidance" in body
+        assert "list_reminders" in body
+        # Preparation records nothing; capture stays an after-the-fact user-approved flow.
+        assert "read-only" in lowered
+
     def test_teaches_strict_candidate_vocabulary(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
 
