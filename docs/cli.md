@@ -241,11 +241,13 @@ Reminder timestamps are not yet required to be timezone-aware, and this read pat
 is reported and omitted when it has no `due_at` (`Skipped N reminder(s) without a due date.`) or when either
 `due_at` or `created_at` is naive (`Skipped N reminder(s) whose stored timestamps have no timezone.`).
 
-Recurrence maps only for the exact stored values `yearly`, `monthly`, and `weekly`. A mapped rule also emits a
-`DTSTART` one second before `DUE`, because RFC 5545 builds the recurrence set from `DTSTART` and requires `DUE`
-to be strictly later than it; that one second is the component's duration, so every generated occurrence is still
-due at exactly the stored instant. Any other non-empty recurrence value still exports one dated occurrence with
-its `RRULE` omitted and counted.
+Recurrence maps only for the exact stored values `yearly`, `monthly`, and `weekly`. A mapped rule is anchored by
+a `DTSTART` at the stored instant and carries no `DUE`: RFC 5545 builds the recurrence set from `DTSTART`, an
+unqualified `FREQ` takes its month and day-of-month from that anchor, and `DUE` would have to be strictly later
+than it. Anchoring on the deadline's own calendar fields is what makes a monthly first-of-month reminder repeat
+on the first rather than on the last day of the preceding month. A non-recurring reminder is unchanged and
+carries `DUE` only. Any other non-empty recurrence value still exports one dated occurrence with its `RRULE`
+omitted and counted.
 
 The command refuses, without writing anything, when `--output` names the database it is reading or one of that
 database's `-wal`, `-shm`, or `-journal` sidecars: publication replaces the destination's directory entry while

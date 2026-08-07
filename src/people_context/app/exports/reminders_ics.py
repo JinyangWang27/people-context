@@ -8,7 +8,7 @@ rather than silently read in the host timezone and moved across a day boundary.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from pydantic import BaseModel
 
@@ -24,10 +24,6 @@ SUPPORTED_RECURRENCES: dict[str, str] = {
     "monthly": "MONTHLY",
     "weekly": "WEEKLY",
 }
-
-# A recurring VTODO needs a DTSTART strictly before its DUE. One second is the smallest
-# gap the canonical date-time form can express, so it is the least invented anchor.
-_RECURRENCE_ANCHOR_LEAD = timedelta(seconds=1)
 
 # RFC 5545 section 3.1: content lines are folded so no line exceeds 75 octets, and a
 # continuation line begins with one linear white-space octet that is not part of the value.
@@ -110,7 +106,6 @@ def _render_todo(reminder: Reminder, due_at: datetime) -> tuple[list[str], bool]
     only its rule is dropped, so the caller counts it separately from a skipped reminder.
     """
     frequency = SUPPORTED_RECURRENCES.get(reminder.recurrence) if reminder.recurrence else None
-    anchor = _recurrence_anchor(due_at) if frequency is not None else None
     lines = [
         "BEGIN:VTODO",
         f"UID:{_escape_text(reminder.id)}",
@@ -118,36 +113,22 @@ def _render_todo(reminder: Reminder, due_at: datetime) -> tuple[list[str], bool]
         # exports of unchanged data are byte-identical.
         f"DTSTAMP:{_format_utc(reminder.created_at)}",
     ]
-    if anchor is not None:
-        # RFC 5545 section 3.8.5.3 generates the recurrence set from the component's
-        # DTSTART, so an RRULE without one has no anchor and a conforming consumer may
-        # import only a single occurrence. Section 3.8.2.3 additionally requires DUE to be
-        # strictly later than DTSTART, so the anchor sits one second earlier. That second
-        # is the component's duration, which section 3.8.5.3 applies to every generated
-        # instance, so each occurrence is still due at exactly the stored instant.
-        lines.append(f"DTSTART:{_format_utc(anchor)}")
-    lines.extend(
-        [
-            # Non-recurring to-dos stay DUE-only: a start equal to the deadline would be
-            # both invalid and untrue, and the store holds no separate start instant.
-            f"DUE:{_format_utc(due_at)}",
-            f"SUMMARY:{_escape_text(reminder.text)}",
-        ]
-    )
-    if anchor is not None:
+    if frequency is None:
+        lines.append(f"DUE:{_format_utc(due_at)}")
+    else:
+        # Section 3.8.5.3 generates the recurrence set from DTSTART, and an unqualified
+        # FREQ takes its month and day-of-month from that anchor, so the anchor must carry
+        # the deadline's own calendar fields: a monthly reminder anchored one second early
+        # at midnight would repeat on the 31st and skip every shorter month. Section
+        # 3.8.2.3 also requires DUE to be strictly later than DTSTART, and the store holds
+        # exactly one instant, so a recurring to-do carries the anchor and no DUE rather
+        # than an invented second. DUE is optional in a VTODO (section 3.6.2).
+        lines.append(f"DTSTART:{_format_utc(due_at)}")
+    lines.append(f"SUMMARY:{_escape_text(reminder.text)}")
+    if frequency is not None:
         lines.append(f"RRULE:FREQ={frequency}")
     lines.append("END:VTODO")
-    # A rule is also dropped when no valid anchor exists, so one unrepresentable reminder
-    # never costs the export every other one.
-    return lines, bool(reminder.recurrence) and anchor is None
-
-
-def _recurrence_anchor(due_at: datetime) -> datetime | None:
-    """Return the instant one second before `due_at`, or `None` if it is unrepresentable."""
-    try:
-        return due_at - _RECURRENCE_ANCHOR_LEAD
-    except OverflowError:
-        return None
+    return lines, bool(reminder.recurrence) and frequency is None
 
 
 def _is_aware(moment: datetime) -> bool:

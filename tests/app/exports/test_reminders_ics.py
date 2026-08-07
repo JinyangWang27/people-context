@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta, timezone
 
+import pytest
+
 from people_context.app.exports import ExportReminderCalendar, ReminderCalendarResult
 from people_context.app.records import ListReminders
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
@@ -70,10 +72,6 @@ def _reminder(
 def _export(*reminders: Reminder) -> ReminderCalendarResult:
     reader = _FakeReminderReader(list(reminders))
     return ExportReminderCalendar(ListReminders(reader)).execute()
-
-
-def _parse_utc(value: str) -> datetime:
-    return datetime.strptime(value, "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
 
 
 def _content_lines(calendar: str) -> list[str]:
@@ -220,41 +218,44 @@ class TestRecurrence:
             assert result.recurrence_omitted == 0
             assert result.exported == 1
 
-    def test_recurring_todo_anchors_its_rule_with_a_dtstart(self) -> None:
+    def test_recurring_todo_anchors_its_rule_at_the_stored_instant(self) -> None:
         # RFC 5545 generates the recurrence set from DTSTART; without one a conforming
         # consumer has no anchor and may import a single occurrence instead of a series.
         result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="yearly"))
 
         lines = _content_lines(result.calendar)
-        assert "DTSTART:20260601T122959Z" in lines
-        assert lines.index("DTSTART:20260601T122959Z") < lines.index("RRULE:FREQ=YEARLY")
-        assert lines.index("DTSTART:20260601T122959Z") < lines.index("DUE:20260601T123000Z")
+        assert "DTSTART:20260601T123000Z" in lines
+        assert lines.index("DTSTART:20260601T123000Z") < lines.index("RRULE:FREQ=YEARLY")
 
-    def test_due_is_strictly_later_than_the_recurrence_anchor(self) -> None:
-        # Section 3.8.2.3 requires DUE to be strictly later than DTSTART, so an anchor
-        # equal to the deadline would be invalid; the one-second lead is the whole point.
-        result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="monthly"))
+    def test_recurring_todo_carries_no_due_beside_its_anchor(self) -> None:
+        # Section 3.8.2.3 requires DUE to be strictly later than DTSTART. The store holds
+        # exactly one instant, so the anchor keeps it and DUE — optional in a VTODO — is
+        # omitted rather than invented a second later.
+        result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="weekly"))
 
-        lines = _content_lines(result.calendar)
-        start = next(line for line in lines if line.startswith("DTSTART:")).removeprefix("DTSTART:")
-        due = next(line for line in lines if line.startswith("DUE:")).removeprefix("DUE:")
-        assert start < due
-        assert _parse_utc(due) - _parse_utc(start) == timedelta(seconds=1)
-        # The lead is the component's duration, so every generated instance is still due
-        # at exactly the stored instant rather than one second early.
-        assert _parse_utc(due) == DUE
-
-    def test_unrepresentable_anchor_drops_the_rule_without_losing_the_reminder(self) -> None:
-        # Subtracting the lead from the earliest representable instant would overflow;
-        # one such row must not cost the export every other reminder.
-        result = _export(
-            _reminder(kind=ReminderKind.OCCASION, recurrence="yearly", due_at=datetime.min.replace(tzinfo=UTC))
-        )
-
+        assert "DUE:" not in result.calendar
         assert result.exported == 1
-        assert result.recurrence_omitted == 1
-        assert "DTSTART" not in result.calendar
-        assert "RRULE" not in result.calendar
+
+    @pytest.mark.parametrize(
+        ("recurrence", "due_at", "expected"),
+        [
+            ("monthly", datetime(2026, 6, 1, tzinfo=UTC), "DTSTART:20260601T000000Z"),
+            ("yearly", datetime(2026, 3, 1, tzinfo=UTC), "DTSTART:20260301T000000Z"),
+            ("yearly", datetime(2026, 1, 1, tzinfo=UTC), "DTSTART:20260101T000000Z"),
+        ],
+    )
+    def test_midnight_recurrence_keeps_the_deadline_calendar_date(
+        self,
+        recurrence: str,
+        due_at: datetime,
+        expected: str,
+    ) -> None:
+        # An anchor shifted off the deadline's own date changes what an unqualified FREQ
+        # repeats on: a monthly first-of-month deadline anchored at 23:59:59 the previous
+        # day repeats on the 31st and silently skips every shorter month.
+        result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence=recurrence, due_at=due_at))
+
+        assert expected in _content_lines(result.calendar)
 
     def test_non_recurring_todo_has_no_dtstart(self) -> None:
         assert "DTSTART" not in _export(_reminder()).calendar
