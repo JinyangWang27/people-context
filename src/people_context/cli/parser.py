@@ -81,6 +81,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include sensitive and restricted facts in files outside server disclosure controls.",
     )
 
+    reminders_ics = subparsers.add_parser(
+        "reminders-ics",
+        help="Export active dated reminders as an owner-only iCalendar file.",
+    )
+    reminders_ics.add_argument(
+        "--output",
+        required=True,
+        help="Destination .ics file; an existing file is atomically replaced.",
+    )
+
     edit = subparsers.add_parser("edit", help="Edit a person's canonical name or summary.")
     edit.add_argument("person", help="An active person id, or a name to resolve.")
     edit.add_argument("--name", default=None, help="New canonical name.")

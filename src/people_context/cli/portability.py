@@ -22,6 +22,10 @@ BASELINE_TARGET_NOTICE = (
     "Restore only ever fills a freshly initialized database. It never merges with, clears, "
     "or overwrites existing local data."
 )
+REMINDER_CALENDAR_WARNING = (
+    "This calendar file is plaintext personal data outside the server's disclosure controls. "
+    "Keep it on encrypted storage and hand it to a calendar application only deliberately."
+)
 
 
 def cmd_db_path(args: argparse.Namespace) -> int:
@@ -42,6 +46,29 @@ def cmd_export(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         atomic_write_private_text(args.output, text + "\n")
     else:
         print(text)
+    return 0
+
+
+def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Write active dated reminders as one owner-only iCalendar file."""
+    result = runtime.use_cases.export_reminder_calendar.execute()
+    destination = Path(args.output).expanduser()
+    try:
+        written = atomic_write_private_text(destination, result.calendar)
+    except OSError as exc:
+        print(f"Cannot write the reminder calendar to {destination}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+
+    print(f"Wrote {result.exported} reminder(s) to {written}.")
+    if result.skipped_undated:
+        print(f"Skipped {result.skipped_undated} reminder(s) without a due date.")
+    if result.skipped_naive_datetime:
+        # The write contract still accepts naive datetimes; guessing a timezone here could
+        # move a reminder across a day boundary, so the row is reported instead.
+        print(f"Skipped {result.skipped_naive_datetime} reminder(s) whose stored timestamps have no timezone.")
+    if result.recurrence_omitted:
+        print(f"Exported {result.recurrence_omitted} reminder(s) without an unsupported recurrence rule.")
+    print(REMINDER_CALENDAR_WARNING)
     return 0
 
 
