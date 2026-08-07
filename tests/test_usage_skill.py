@@ -65,6 +65,11 @@ class TestUsageSkill:
         assert "get_person_context" in body
         assert "get_communication_guidance" in body
         assert "list_reminders" in body
+        # Guidance is fetched for every attendee, not only when the user says "tone":
+        # the composed brief promises how to communicate with them. Compare against
+        # collapsed whitespace so the assertion survives Markdown line wrapping.
+        flowed = " ".join(lowered.split())
+        assert "do not skip it because the user did not use the word" in flowed
         # Preparation records nothing; capture stays an after-the-fact user-approved flow.
         assert "read-only" in lowered
 

@@ -31,6 +31,12 @@ _MAX_LINE_OCTETS = 75
 _LINE_BREAK = "\r\n"
 _CONTINUATION = " "
 
+# RFC 5545 section 3.3.11: `TSAFE-CHAR` allows tab among the C0 controls but no other one,
+# and stops below DEL. CR and LF are kept here and escaped as line endings instead.
+_CONTROL_CHARACTERS = dict.fromkeys(
+    [code for code in range(0x20) if code not in (0x09, 0x0A, 0x0D)] + [0x7F]
+)
+
 
 class ReminderCalendarResult(BaseModel):
     """One rendered calendar plus the non-sensitive counts explaining what it omits."""
@@ -99,24 +105,31 @@ def _render_todo(reminder: Reminder, due_at: datetime) -> tuple[list[str], bool]
     A reminder with an unsupported recurrence is still exported as one dated occurrence;
     only its rule is dropped, so the caller counts it separately from a skipped reminder.
     """
+    frequency = SUPPORTED_RECURRENCES.get(reminder.recurrence) if reminder.recurrence else None
     lines = [
         "BEGIN:VTODO",
         f"UID:{_escape_text(reminder.id)}",
         # DTSTAMP comes from stored provenance rather than wall-clock time, so repeated
         # exports of unchanged data are byte-identical.
         f"DTSTAMP:{_format_utc(reminder.created_at)}",
-        f"DUE:{_format_utc(due_at)}",
-        f"SUMMARY:{_escape_text(reminder.text)}",
     ]
-    omitted = False
-    if reminder.recurrence:
-        frequency = SUPPORTED_RECURRENCES.get(reminder.recurrence)
-        if frequency is None:
-            omitted = True
-        else:
-            lines.append(f"RRULE:FREQ={frequency}")
+    if frequency is not None:
+        # RFC 5545 section 3.8.5.3 generates the recurrence set from the component's
+        # DTSTART, so an RRULE without one has no anchor and a conforming consumer may
+        # import only a single occurrence. The stored due instant is that anchor, and it
+        # keeps DUE at or after DTSTART as section 3.6.2 requires. Non-recurring to-dos
+        # stay DUE-only: giving them a start equal to their deadline says nothing true.
+        lines.append(f"DTSTART:{_format_utc(due_at)}")
+    lines.extend(
+        [
+            f"DUE:{_format_utc(due_at)}",
+            f"SUMMARY:{_escape_text(reminder.text)}",
+        ]
+    )
+    if frequency is not None:
+        lines.append(f"RRULE:FREQ={frequency}")
     lines.append("END:VTODO")
-    return lines, omitted
+    return lines, bool(reminder.recurrence) and frequency is None
 
 
 def _is_aware(moment: datetime) -> bool:
@@ -132,11 +145,18 @@ def _format_utc(moment: datetime) -> str:
 def _escape_text(value: str) -> str:
     """Escape a TEXT value per RFC 5545 section 3.3.11.
 
-    The backslash is escaped first so the escapes introduced afterwards are not doubled,
-    and every line ending is normalized to the literal `\\n` the format defines.
+    Control characters are dropped first. `TSAFE-CHAR` admits only tab among the C0
+    controls, and the write contract does not reject a stored NUL or form feed, so
+    copying one through would produce a file a strict consumer can refuse in full —
+    losing every other reminder with it. CR and LF survive this step because the line
+    endings below turn them into the escaped form the format defines.
+
+    The backslash is escaped before the other replacements so the escapes introduced
+    afterwards are not doubled.
     """
     return (
-        value.replace("\\", "\\\\")
+        value.translate(_CONTROL_CHARACTERS)
+        .replace("\\", "\\\\")
         .replace("\r\n", "\n")
         .replace("\r", "\n")
         .replace(";", "\\;")

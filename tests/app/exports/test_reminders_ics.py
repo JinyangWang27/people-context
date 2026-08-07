@@ -216,6 +216,27 @@ class TestRecurrence:
             assert result.recurrence_omitted == 0
             assert result.exported == 1
 
+    def test_recurring_todo_anchors_its_rule_with_a_dtstart(self) -> None:
+        # RFC 5545 generates the recurrence set from DTSTART; without one a conforming
+        # consumer has no anchor and may import a single occurrence instead of a series.
+        result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="yearly"))
+
+        lines = _content_lines(result.calendar)
+        assert "DTSTART:20260601T123000Z" in lines
+        assert lines.index("DTSTART:20260601T123000Z") < lines.index("RRULE:FREQ=YEARLY")
+        # DUE must not precede DTSTART; the same stored instant satisfies that exactly.
+        assert lines.index("DTSTART:20260601T123000Z") < lines.index("DUE:20260601T123000Z")
+
+    def test_non_recurring_todo_has_no_dtstart(self) -> None:
+        assert "DTSTART" not in _export(_reminder()).calendar
+
+    def test_omitted_recurrence_leaves_a_plain_dated_todo(self) -> None:
+        result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="fortnightly"))
+
+        assert "DTSTART" not in result.calendar
+        assert "RRULE" not in result.calendar
+        assert result.exported == 1
+
     def test_unsupported_recurrence_still_exports_one_dated_occurrence(self) -> None:
         result = _export(_reminder(kind=ReminderKind.OCCASION, recurrence="every other thursday"))
 
@@ -246,6 +267,26 @@ class TestTextEscapingAndFolding:
 
         summary = next(line for line in _content_lines(result.calendar) if line.startswith("SUMMARY:"))
         assert summary == "SUMMARY:a\\\\b\\;c\\,d\\ne\\nf\\ng"
+
+    def test_drops_control_characters_that_text_values_exclude(self) -> None:
+        # A stored NUL or form feed is accepted by the write contract but is not a
+        # TSAFE-CHAR; emitting one can make a strict consumer reject the whole file.
+        result = _export(_reminder(text="a\x00b\x0cc\x1fd\x7fe"))
+
+        summary = next(line for line in _content_lines(result.calendar) if line.startswith("SUMMARY:"))
+        assert summary == "SUMMARY:abcde"
+
+    def test_keeps_tab_which_text_values_allow(self) -> None:
+        result = _export(_reminder(text="a\tb"))
+
+        summary = next(line for line in _content_lines(result.calendar) if line.startswith("SUMMARY:"))
+        assert summary == "SUMMARY:a\tb"
+
+    def test_control_stripping_preserves_real_line_endings(self) -> None:
+        result = _export(_reminder(text="a\r\nb\x00c"))
+
+        summary = next(line for line in _content_lines(result.calendar) if line.startswith("SUMMARY:"))
+        assert summary == "SUMMARY:a\\nbc"
 
     def test_folds_long_lines_at_seventy_five_octets_with_a_leading_space(self) -> None:
         result = _export(_reminder(text="x" * 200))

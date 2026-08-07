@@ -45,9 +45,10 @@ from resolved records rather than from memory or guesswork:
 2. For each resolved person, call `get_person_context` for the bounded,
    sensitivity-aware view of who they are, how they relate to the user, and what
    happened recently.
-3. Call `get_communication_guidance` for each of them when the user wants help with
-   tone, framing, or approach. Context says what is known; guidance says how to
-   communicate. Do not infer tone from context alone.
+3. Call `get_communication_guidance` for each of them too. Preparation always needs
+   both reads: context says what is known, guidance says how to communicate, and the
+   brief below promises the second. Do not skip it because the user did not use the
+   word "tone", and do not infer tone from context alone.
 4. Call `list_reminders` with that `person_id` to surface the open follow-ups and
    communication notes already recorded for them.
 5. Compose one short brief per attendee: who they are, how they relate to the user,
