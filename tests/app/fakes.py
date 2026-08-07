@@ -21,6 +21,7 @@ from people_context.domain.shared import normalize_name
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
+from people_context.ports.insights import RecencySignal
 from people_context.ports.repository import SearchHit
 from people_context.ports.semantic import (
     SemanticEntity,
@@ -171,6 +172,20 @@ class FakeContextReader:
             record
             for record in self.reminders
             if record.person_id == person_id and record.status == ReminderStatus.ACTIVE
+        ]
+
+
+class FakeRecencyReader:
+    """In-memory RecencyReader returning pre-built stored aggregates."""
+
+    def __init__(self, signals: list[RecencySignal] | None = None) -> None:
+        self.signals = signals or []
+        self.calls: list[tuple[date, str | None]] = []
+
+    def list_recency_signals(self, *, as_of: date, category: str | None = None) -> list[RecencySignal]:
+        self.calls.append((as_of, category))
+        return [
+            signal for signal in self.signals if category is None or category in signal.categories
         ]
 
 

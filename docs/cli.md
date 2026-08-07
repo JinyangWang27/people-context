@@ -22,6 +22,7 @@ what encryption does and does not protect.
 | `demo [--reset]` | Seed the isolated packaged fictional demo; refuse replacement unless `--reset` is supplied. |
 | `list [--all] [--limit N]` | List people; `--all` includes soft-deleted rows. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
+| `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
@@ -65,6 +66,28 @@ global `--db` option, `PEOPLE_CONTEXT_DB`, config files, and workspace discovery
 database plus its explicit `-wal` and `-shm` companions. The command seeds fictional audited people, handles,
 affiliations, facts, interactions, and a connected relationship graph, then prints the path-targeted server command
 and concrete `resolve_person`, `get_relationship_graph`, and `find_connection` calls using the created ids.
+
+## Stale relationships
+
+```bash
+uv run pctx stale --category professional --threshold-days 120 --limit 25
+```
+
+Prints one row per active person you have not interacted with for at least `--threshold-days` days, plus everyone
+with no ordinary interaction at all (shown as `never`). `--category` keeps only people whose relationship to you
+is in that category today; the value uses the same normalization as relationship vocabulary, so `Professional`
+and `professional` behave identically. `--threshold-days` accepts `0..36500` (default 90) and `--limit` accepts
+`1..100` (default 20); an out-of-range value exits `2` without printing a partial report.
+
+The report is a recency signal, not a health score: it shows ids, names, categories, the last interaction date,
+the signed day count, and an interaction count, and never interaction summaries. Only `public`/`personal`
+interactions are counted, so a person you only have `sensitive`/`restricted` interactions with appears as
+`never` — the CLI report deliberately does not widen the disclosure level here. Your own self identity is not
+reported, and a future-dated interaction is never treated as stale. The day count is measured from the last
+interaction date the report prints, so the two always agree; ordering instead compares instants, so a timestamp
+recorded with a different offset is placed by when it actually happened, and a naive stored timestamp is read as
+UTC rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and
+id; when more people qualify than `--limit`, the command says so.
 
 ## Relationship vocabulary
 

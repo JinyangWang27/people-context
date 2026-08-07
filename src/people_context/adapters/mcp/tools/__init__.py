@@ -8,6 +8,7 @@ from people_context.adapters.mcp.tools import (
     graph,
     guidance,
     imports,
+    insights,
     lifecycle,
     people,
     portability,
@@ -30,6 +31,7 @@ def register_all(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     reminders.register(mcp, deps)
     records.register(mcp, deps)
     graph.register(mcp, deps)
+    insights.register(mcp, deps)
     lifecycle.register(mcp, deps)
     portability.register(mcp, deps)
     imports.register(mcp, deps)

@@ -21,8 +21,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `list_reminders` | Pull-based reminder listing. | optional person/due/status filters | Ordered reminders. |
 | `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
 | `find_connection` | One deterministic shortest relationship path. | `person_a`, `person_b`, `max_depth=4` | Ordered perspective-rendered hops or not-connected. |
+| `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
 
-All eight tools are annotated `readOnlyHint=true`.
+All nine tools are annotated `readOnlyHint=true`.
 
 ## M7 graph contracts
 
@@ -77,6 +78,56 @@ canonical edge plus `display_type` from the previous person's perspective:
 
 Disconnected result: `{"connected": false, "hops": [], "reason": "not_connected"}`. Unknown/deleted endpoint
 ids use the same structured `person_not_found` shape as graph lookup.
+
+## M13 recency contract
+
+### `get_stale_relationships`
+
+```json
+{
+  "people": [{
+    "person_id": "A",
+    "name": "Alice",
+    "categories": ["professional", "social"],
+    "last_interaction_at": "2026-03-01T00:00:00Z",
+    "days_since": 140,
+    "interaction_count": 12
+  }],
+  "truncated": false
+}
+```
+
+The report covers active, non-deleted people other than the self identity, whose relationship-to-self is
+undefined. `categories` lists the deduplicated categories of the relationships that are active today between
+that person and self; a person with no relationship to self reports `[]`.
+
+Only `public`/`personal` interactions participate. A person whose interactions are all `sensitive`/`restricted`
+is indistinguishable from a person with none: `last_interaction_at` is `null`, `days_since` is `null`, and
+`interaction_count` is `0`. No summaries, channels, or other interaction content are returned.
+
+A person is reported when `last_interaction_at` is `null`, or when the signed calendar age
+`days_since = clock.now().date() - last_interaction_at.date()` is at least `threshold_days`. A future timestamp
+yields a negative `days_since`, which is neither clamped nor reported as stale. Rows are ordered by null
+interaction first, then oldest interaction, normalized name, and id; `limit` is applied after filtering and
+ordering, and `truncated` becomes `true` when further qualifying rows exist.
+
+Stored interaction timestamps keep whatever UTC offset the writer supplied, and some rows are naive, so the two
+comparisons are deliberately different:
+
+- **Selecting the latest interaction, and ordering the report, compare instants.** An aware timestamp is
+  converted to UTC and a naive one is read as UTC — never in the host timezone. Text comparison would otherwise
+  rank `2026-06-01T23:30:00-05:00` before `2026-06-02T02:00:00+00:00` despite it being the later instant.
+- **`days_since` uses the stored timestamp's own calendar date**, so the age always agrees with the
+  `last_interaction_at` the response carries. Normalizing here would let a response report a 31 May interaction
+  and simultaneously call it zero days old.
+
+`last_interaction_at` is always the stored value, at its original offset and precision. Normalization decides
+comparisons; it never rewrites what is returned.
+
+`threshold_days` accepts `0..36500` and `limit` accepts `1..100`. An out-of-range value returns
+`{"error": "invalid_parameter", "message": "..."}` rather than a partial report. An optional `category` is
+normalized with the shared relationship vocabulary rules, so `"Professional"` and `"professional"` select the
+same rows.
 
 ## Person context compatibility
 

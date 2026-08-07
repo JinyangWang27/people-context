@@ -185,7 +185,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M13 — Daily utility
 
-- [ ] **M13.1 — Stale relationships MCP/CLI report**
+- [x] **M13.1 — Stale relationships MCP/CLI report**
   - **Scope:** `GetStaleRelationships(RecencyReader, Clock)`, SQLite aggregate query, read-only MCP tool, CLI.
   - **Acceptance:** one row/person/all active categories; only ordinary interactions; app computes signed days via
     fakeable clock; `threshold_days 0..36500`, `limit 1..100`; null first, stable sort, truncation; future timestamps
