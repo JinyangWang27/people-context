@@ -52,7 +52,7 @@ from people_context.app.context import (
     GetPersonContext,
     SetCommunicationPhilosophy,
 )
-from people_context.app.exports import ExportData, ExportSyncBundle, ExportVault
+from people_context.app.exports import ExportData, ExportReminderCalendar, ExportSyncBundle, ExportVault
 from people_context.app.imports import (
     CandidateStager,
     CommitImport,
@@ -131,6 +131,7 @@ class RuntimeUseCases:
     forget: Forget
     export_data: ExportData
     export_sync_bundle: ExportSyncBundle
+    export_reminder_calendar: ExportReminderCalendar
     restore_sync_bundle: RestoreSyncBundle
     export_vault: ExportVault
     import_content: ImportContent
@@ -285,6 +286,7 @@ def build_runtime(
         forget=Forget(repo, forget_store, runtime_clock, audit),
         export_data=ExportData(export_reader, runtime_clock),
         export_sync_bundle=ExportSyncBundle(bundle_reader, runtime_clock),
+        export_reminder_calendar=ExportReminderCalendar(list_reminders),
         restore_sync_bundle=RestoreSyncBundle(bootstrap_restorer),
         export_vault=ExportVault(vault_reader, FileSystemVaultWriter()),
         import_content=ImportContent(

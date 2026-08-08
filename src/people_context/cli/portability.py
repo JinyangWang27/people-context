@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,12 @@ PLAINTEXT_BUNDLE_WARNING = (
 BASELINE_TARGET_NOTICE = (
     "Restore only ever fills a freshly initialized database. It never merges with, clears, "
     "or overwrites existing local data."
+)
+# SQLite keeps these alongside the main database file; replacing any of them loses data.
+_DATABASE_SIDECARS = ("-wal", "-shm", "-journal")
+REMINDER_CALENDAR_WARNING = (
+    "This calendar file is plaintext personal data outside the server's disclosure controls. "
+    "Keep it on encrypted storage and hand it to a calendar application only deliberately."
 )
 
 
@@ -43,6 +50,85 @@ def cmd_export(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     else:
         print(text)
     return 0
+
+
+def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Write active dated reminders as one owner-only iCalendar file."""
+    destination = Path(args.output).expanduser()
+    if _collides_with_database(destination, runtime.path):
+        # Publication replaces the destination's directory entry while SQLite still holds
+        # the old inode open, so writing over the live database or one of its sidecars
+        # would silently destroy the store when the connection closes.
+        print(
+            f"Refusing to write the reminder calendar to {destination}: "
+            f"it is the database this command is reading, or one of its sidecar files.",
+            file=sys.stderr,
+        )
+        return 2
+    result = runtime.use_cases.export_reminder_calendar.execute()
+    try:
+        written = atomic_write_private_text(destination, result.calendar)
+    except OSError as exc:
+        print(f"Cannot write the reminder calendar to {destination}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+
+    print(f"Wrote {result.exported} reminder(s) to {written}.")
+    if result.skipped_undated:
+        print(f"Skipped {result.skipped_undated} reminder(s) without a due date.")
+    if result.skipped_naive_datetime:
+        # The write contract still accepts naive datetimes; guessing a timezone here could
+        # move a reminder across a day boundary, so the row is reported instead.
+        print(f"Skipped {result.skipped_naive_datetime} reminder(s) whose stored timestamps have no timezone.")
+    if result.recurrence_omitted:
+        print(f"Exported {result.recurrence_omitted} reminder(s) with the recurrence rule omitted.")
+    print(REMINDER_CALENDAR_WARNING)
+    return 0
+
+
+def _collides_with_database(destination: Path, database: Path) -> bool:
+    """Return whether publishing at `destination` would replace a live database entry.
+
+    The destination is compared as its own final directory entry, because atomic
+    publication replaces that entry rather than following it: an output symlink pointing
+    somewhere unrelated is replaced harmlessly, and a second hard link to the database
+    keeps the data alive.
+
+    Both the database path as given and its fully resolved target are reserved. SQLite
+    follows a symlinked `--db`, so the entry holding the data is the resolved one, and
+    naming that target as the output would destroy the store even though the two spellings
+    differ. Reserving the given spelling too costs only a symlink the user was about to
+    overwrite with a calendar anyway. WAL, shared-memory, and rollback sidecars carry the
+    same loss, so they are reserved for both spellings as well.
+
+    Two comparisons run, because neither is sufficient alone. Filesystem identity settles
+    spellings the name cannot: on a case-insensitive volume `PEOPLE.DB` and `people.db`
+    are one entry. It only answers for entries that already exist, so the name comparison
+    still covers a reserved sidecar that SQLite has not created yet. Identity also refuses
+    a separate hard link to the database, which replacing would in fact leave intact; that
+    is a deliberately conservative miss, since a spurious refusal costs a rename and the
+    alternative costs the store.
+    """
+    reserved = [
+        candidate.with_name(candidate.name + suffix)
+        for candidate in (database, Path(os.path.realpath(database)))
+        for suffix in ("", *_DATABASE_SIDECARS)
+    ]
+    if _entry_identity(destination) in {_entry_identity(path) for path in reserved}:
+        return True
+    return any(_is_same_existing_file(destination, path) for path in reserved)
+
+
+def _is_same_existing_file(destination: Path, reserved: Path) -> bool:
+    """Return whether two existing paths are the same file; a missing path is never one."""
+    try:
+        return os.path.samefile(destination, reserved)
+    except OSError:
+        return False
+
+
+def _entry_identity(path: Path) -> tuple[str, str]:
+    """Identify one directory entry by its resolved parent and its own final name."""
+    return os.path.realpath(path.parent), path.name
 
 
 def cmd_sync_push(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

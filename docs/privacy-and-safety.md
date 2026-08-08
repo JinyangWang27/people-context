@@ -177,6 +177,19 @@ The maximal-disclosure `export_data` MCP tool is absent by default. An operator 
 with `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1` before a client can discover it. This process-level boundary, not a
 model-supplied tool argument or advisory annotation, is the security control. Prefer the CLI for routine export.
 
+## Reminder calendar export
+
+`pctx reminders-ics --output FILE` is a human-operated, CLI-only export of active reminders as iCalendar
+`VTODO` entries. It is a read path: it records nothing, mints no audit or changelog rows, and adds no
+model-callable tool. It publishes through the same shared atomic private-file writer, so the destination is
+`0600`, an existing permissive file is replaced rather than left with its old mode, a destination symlink is
+replaced instead of followed, and a failed write preserves any previously valid file.
+
+The file carries reminder text, due dates, and creation timestamps in plaintext, outside the server's
+disclosure controls. Handing it to a calendar application or a sync service is the operator's own disclosure
+decision. The export never invents a timezone for a stored naive timestamp: such reminders are counted and
+omitted rather than silently reinterpreted in the host timezone.
+
 ## Bootstrap sync bundle
 
 `pctx sync push` writes one complete point-in-time bootstrap bundle: the portable dataset, both relationship

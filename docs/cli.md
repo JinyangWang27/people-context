@@ -39,6 +39,7 @@ what encryption does and does not protect.
 | `relationship-types add ...` | Add portable custom vocabulary (add-only in v1). |
 | `normalize-relationships [--apply]` | Dry-run or apply audited canonical rewrites of legacy edges. |
 | `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
+| `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
 
 `show`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown references exit
 1; ambiguous names exit 2 and print candidates rather than guessing.
@@ -221,6 +222,38 @@ The destination must be nonexistent, empty, or already contain `.people-context-
 directory is refused without changes. Re-export replaces only the marker plus `People/` and `Organizations/`;
 `.obsidian/` and every other user-created path are preserved. Use `--include-sensitive` only with explicit intent;
 exported Markdown is outside the server's disclosure controls. See [vault-export.md](vault-export.md).
+
+## Reminder calendar export
+
+```bash
+uv run pctx reminders-ics --output ~/people-context-reminders.ics
+```
+
+Serializes one `VTODO` per active reminder into a single `VCALENDAR` file, written through the same atomic
+private-file writer as `export` and `sync push`: the result is `0600`, an existing permissive destination is
+replaced rather than left with its old mode, and a failed write leaves any previous file untouched.
+
+The output is deterministic. `DTSTAMP` comes from the reminder's stored `created_at` rather than wall-clock
+time, entries are ordered by `(due_at, id)`, and text is escaped and folded per RFC 5545, so re-exporting
+unchanged data produces byte-identical output.
+
+Reminder timestamps are not yet required to be timezone-aware, and this read path never guesses one. A reminder
+is reported and omitted when it has no `due_at` (`Skipped N reminder(s) without a due date.`) or when either
+`due_at` or `created_at` is naive (`Skipped N reminder(s) whose stored timestamps have no timezone.`).
+
+Recurrence maps only for the exact stored values `yearly`, `monthly`, and `weekly`. A mapped rule is anchored by
+a `DTSTART` at the stored instant and carries no `DUE`: RFC 5545 builds the recurrence set from `DTSTART`, an
+unqualified `FREQ` takes its month and day-of-month from that anchor, and `DUE` would have to be strictly later
+than it. Anchoring on the deadline's own calendar fields is what makes a monthly first-of-month reminder repeat
+on the first rather than on the last day of the preceding month. A non-recurring reminder is unchanged and
+carries `DUE` only. Any other non-empty recurrence value still exports one dated occurrence with its `RRULE`
+omitted and counted.
+
+The command refuses, without writing anything, when `--output` names the database it is reading or one of that
+database's `-wal`, `-shm`, or `-journal` sidecars: publication replaces the destination's directory entry while
+SQLite still holds the old file open, so such a write would destroy the store. The file it does write is
+plaintext personal data outside the server's disclosure controls — keep it on encrypted storage and hand it to a
+calendar application deliberately.
 
 ## Database location resolution
 
