@@ -21,6 +21,7 @@ from people_context.domain.shared import Provenance, Sensitivity
 from people_context.domain.trait import Trait, TraitCategory
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
 from tests.app.fakes import FakeClock, FakeContextReader, FakePeopleRepository, FakePreferencesStore, FakeRecordStore
+from tests.conftest import HOST_TIMEZONE_UTC_MINUS_12
 
 _NOW = datetime(2025, 6, 10, 10, 0, tzinfo=UTC)
 _PROVENANCE = Provenance(source="test")
@@ -158,3 +159,41 @@ def test_list_reminders_filters_due_items_and_keeps_communication_notes_last() -
     )
 
     assert [reminder.id for reminder in result] == [due_soon.id, note.id]
+
+
+def test_friction_notes_order_by_utc_instant_regardless_of_the_host_timezone(host_timezone) -> None:
+    # Same root cause as the person-context ranking: a naive stored timestamp read in the
+    # host timezone would reorder these notes, and the friction-note limit truncates the
+    # ordered list, so twelve hours west of UTC a different note would be dropped.
+    people = FakePeopleRepository()
+    context = FakeContextReader()
+    person = Person(canonical_name="Alice", created_at=_NOW, updated_at=_NOW)
+    people.save_person(person)
+    context.interactions.extend(
+        [
+            Interaction(
+                summary="Naive row",
+                occurred_at=datetime(2025, 6, 1, 23, 0),
+                participant_ids=[person.id],
+                provenance=_PROVENANCE,
+            ),
+            Interaction(
+                summary="Aware row",
+                occurred_at=datetime(2025, 6, 2, 1, 0, tzinfo=UTC),
+                participant_ids=[person.id],
+                provenance=_PROVENANCE,
+            ),
+        ]
+    )
+    use_case = GetCommunicationGuidance(people, context, FakePreferencesStore(), FakeClock(_NOW))
+
+    under_utc = use_case.execute(person.id)
+    limited_under_utc = use_case.execute(person.id, friction_notes_limit=1)
+    host_timezone(HOST_TIMEZONE_UTC_MINUS_12)
+    shifted = use_case.execute(person.id)
+    limited_shifted = use_case.execute(person.id, friction_notes_limit=1)
+
+    assert under_utc.friction_notes == ["Aware row", "Naive row"]
+    assert shifted.friction_notes == ["Aware row", "Naive row"]
+    assert limited_under_utc.friction_notes == ["Aware row"]
+    assert limited_shifted.friction_notes == ["Aware row"]

@@ -18,6 +18,7 @@ from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod
 from people_context.domain.trait import Trait, TraitCategory
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
 from tests.app.fakes import FakeClock, FakeContextReader, FakePeopleRepository
+from tests.conftest import HOST_TIMEZONE_UTC_MINUS_12
 
 _NOW = datetime(2025, 1, 10, 12, tzinfo=UTC)
 _PROVENANCE = Provenance(source="test")
@@ -248,3 +249,55 @@ def test_negative_disclosure_budget_is_rejected_explicitly() -> None:
 
     with pytest.raises(ValueError, match="max_items"):
         use_case.execute(person.id, max_items=-1)
+
+
+def test_naive_timestamps_rank_as_utc_regardless_of_the_host_timezone(host_timezone) -> None:
+    # A naive stored timestamp is supported by the write contract, and `datetime.timestamp()`
+    # reads one in the host timezone. Twelve hours west of UTC the naive value below would
+    # look newer than the aware one, reversing the ranking and — because facts and
+    # interactions share one budget — changing which record survives the cutoff.
+    use_case, _, context, person = _use_case()
+    naive_interaction = Interaction(
+        summary="Naive row",
+        occurred_at=datetime(2025, 1, 1, 23, 0),
+        participant_ids=[person.id],
+        provenance=_PROVENANCE,
+    )
+    aware_interaction = Interaction(
+        summary="Aware row",
+        occurred_at=datetime(2025, 1, 2, 1, 0, tzinfo=UTC),
+        participant_ids=[person.id],
+        provenance=_PROVENANCE,
+    )
+    context.interactions.extend([naive_interaction, aware_interaction])
+
+    under_utc = use_case.execute(person.id)
+    under_utc_cutoff = use_case.execute(person.id, max_items=1)
+    host_timezone(HOST_TIMEZONE_UTC_MINUS_12)
+    shifted = use_case.execute(person.id)
+    shifted_cutoff = use_case.execute(person.id, max_items=1)
+
+    assert [record.summary for record in under_utc.interactions] == ["Aware row", "Naive row"]
+    assert [record.summary for record in shifted.interactions] == ["Aware row", "Naive row"]
+    assert [record.summary for record in under_utc_cutoff.interactions] == ["Aware row"]
+    assert [record.summary for record in shifted_cutoff.interactions] == ["Aware row"]
+
+
+def test_naive_timestamps_are_returned_unchanged_after_ranking(host_timezone) -> None:
+    # Only the ranking normalizes; the emitted record still carries what was stored.
+    use_case, _, context, person = _use_case()
+    stored = datetime(2025, 1, 1, 23, 0)
+    context.interactions.append(
+        Interaction(
+            summary="Naive row",
+            occurred_at=stored,
+            participant_ids=[person.id],
+            provenance=_PROVENANCE,
+        )
+    )
+    host_timezone(HOST_TIMEZONE_UTC_MINUS_12)
+
+    result = use_case.execute(person.id)
+
+    assert result.interactions[0].occurred_at == stored
+    assert result.interactions[0].occurred_at.tzinfo is None

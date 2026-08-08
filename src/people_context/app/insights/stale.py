@@ -7,7 +7,7 @@ from datetime import UTC, date, datetime
 from pydantic import BaseModel, Field
 
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
-from people_context.domain.shared import normalize_name
+from people_context.domain.shared import as_utc, normalize_name
 from people_context.ports.clock import Clock
 from people_context.ports.insights import RecencyReader, RecencySignal
 
@@ -100,17 +100,6 @@ def _canonical_category(category: str | None) -> str | None:
     return normalized or None
 
 
-def _as_utc(value: datetime) -> datetime:
-    """Return one comparable UTC instant for a stored timestamp.
-
-    Stored interaction timestamps keep whatever offset the writer supplied, and some
-    rows are naive. Ordering compares instants, so an aware value is converted and a
-    naive one is read as UTC. The host timezone is never consulted, which is what
-    `astimezone()` on a naive value would do.
-    """
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-
-
 def _days_since(signal: RecencySignal, today: date) -> int | None:
     """Return signed calendar days since the last ordinary interaction, if any.
 
@@ -127,7 +116,7 @@ def _sort_key(row: StalePersonResult) -> tuple[int, datetime, str, str]:
     """Order never-interacted people first, then oldest interaction, name, and id."""
     return (
         0 if row.last_interaction_at is None else 1,
-        datetime.min.replace(tzinfo=UTC) if row.last_interaction_at is None else _as_utc(row.last_interaction_at),
+        datetime.min.replace(tzinfo=UTC) if row.last_interaction_at is None else as_utc(row.last_interaction_at),
         normalize_name(row.name),
         row.person_id,
     )

@@ -143,8 +143,11 @@ build integrations on the JSON.
 
 Ordering does not depend on the order rows come back from storage: relationships, affiliations, traits, and
 reminders each sort by a key ending in a record id, and facts and interactions keep the relevance ranking person
-context already imposes. Dated reminders precede undated ones and are ordered by their stored timestamp spelling,
-because a naive and an aware value cannot be compared as instants and this read never guesses a timezone.
+context already imposes. Nor does it depend on the machine: wherever a stored timestamp is compared as an
+instant — the shared fact/interaction budget and the guidance friction-note limit both truncate an ordered list —
+a naive value is read as UTC rather than in the host timezone, matching `stale`. Dated reminders precede undated
+ones and are ordered by their stored timestamp spelling instead, because a naive and an aware value cannot be
+compared as instants at all.
 
 `--output` publishes through the same atomic private-file writer as `export` and `sync push`: the result is
 `0600`, an existing permissive destination is replaced rather than left with its old mode, a destination symlink

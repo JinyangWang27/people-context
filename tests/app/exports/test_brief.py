@@ -33,6 +33,7 @@ from tests.app.fakes import (
     FakePreferencesStore,
     FakeRecordStore,
 )
+from tests.conftest import HOST_TIMEZONE_UTC_MINUS_12
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
 _PROVENANCE = Provenance(source="test")
@@ -338,6 +339,41 @@ def test_markdown_labels_both_disclosure_levels_and_keeps_empty_sections() -> No
     # and interaction notes all stay visible when empty.
     assert text.count("_None recorded._") == 8
     assert "Philosophy: (none set)" in text
+
+
+def test_document_is_identical_under_a_non_utc_host_timezone(host_timezone) -> None:
+    # The JSON document promises deterministic ordering, so nothing in it may depend on the
+    # machine that produced it. Naive stored timestamps are the case that can: they reach
+    # both the shared context budget and the friction-note limit through instant comparisons.
+    harness = _Harness()
+    person = harness.add_person()
+    for index, occurred_at in enumerate(
+        (datetime(2026, 1, 1, 23, 0), datetime(2026, 1, 2, 1, 0, tzinfo=UTC))
+    ):
+        harness.context.interactions.append(
+            Interaction(
+                summary=f"Row {index}",
+                occurred_at=occurred_at,
+                participant_ids=[person.id],
+                provenance=_PROVENANCE,
+            )
+        )
+    harness.context.facts.append(
+        Fact(
+            person_id=person.id,
+            predicate="role",
+            value="Engineer",
+            provenance=_PROVENANCE,
+            recorded_at=datetime(2026, 1, 1, 22, 0),
+        )
+    )
+    harness.add_reminder(_reminder(person.id, "Send the notes", ReminderKind.FOLLOW_UP, _NOW))
+
+    under_utc = render_brief_json(harness.brief.execute(person.id))
+    host_timezone(HOST_TIMEZONE_UTC_MINUS_12)
+    shifted = render_brief_json(harness.brief.execute(person.id))
+
+    assert under_utc == shifted
 
 
 def test_rendering_is_byte_stable_for_unchanged_data() -> None:
