@@ -9,6 +9,10 @@ from pydantic import BaseModel, Field
 
 from people_context.domain.shared import new_id
 
+#: The deterministic replication ordering key of one entry, as returned by
+#: :meth:`ChangelogEntry.comparison_key`.
+ChangelogCursor = tuple[int, int, str, str]
+
 
 class ChangelogEntry(BaseModel):
     """One durable, idempotent operation ordered by an HLC."""
@@ -27,7 +31,7 @@ class ChangelogEntry(BaseModel):
     schema_version: int = 1
     inserted_at: datetime
 
-    def comparison_key(self) -> tuple[int, int, str, str]:
+    def comparison_key(self) -> ChangelogCursor:
         """Return the deterministic replication ordering key."""
         return (self.hlc_physical_ms, self.hlc_logical, self.device_id, self.op_id)
 
@@ -40,4 +44,14 @@ class Changelog(Protocol):
 
     def list_entries(self, limit: int | None = 100, entity_id: str | None = None) -> list[ChangelogEntry]:
         """Return entries newest first; ``limit=None`` returns every matching row."""
+        ...
+
+    def list_entries_after(self, cursor: ChangelogCursor | None, limit: int = 100) -> list[ChangelogEntry]:
+        """Return up to `limit` entries ordered oldest first, strictly after `cursor`.
+
+        The cursor is a full comparison key, so an entry is returned only when its own
+        key sorts strictly after it; `None` starts before the minimum key and therefore
+        replays everything. Comparing the complete key rather than the HLC alone keeps
+        the tail exact when two devices mint the same physical/logical pair.
+        """
         ...

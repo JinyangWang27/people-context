@@ -190,6 +190,19 @@ disclosure controls. Handing it to a calendar application or a sync service is t
 decision. The export never invents a timezone for a stored naive timestamp: such reminders are counted and
 omitted rather than silently reinterpreted in the host timezone.
 
+## Changelog watch
+
+`pctx watch` is a human-operated, CLI-only tail of the local changelog. It is a read path: it records nothing,
+mints no audit or changelog rows, persists no cursor between invocations, adds no model-callable tool, and makes
+no network call.
+
+Unlike `pctx sync-log`, whose payloads are opt-in behind `--payloads`, `watch` always prints the full replay
+payload of every entry, because a partial tail is not a usable change feed. Those payloads carry the same
+personal data the record itself holds, at every sensitivity level, and the command prints them to local stdout
+only. Redirecting that stream to a file, a pipeline, or another program is the operator's own disclosure
+decision, and the command says so on stderr before the first entry so that stdout stays a clean stream of JSON
+lines.
+
 ## Bootstrap sync bundle
 
 `pctx sync push` writes one complete point-in-time bootstrap bundle: the portable dataset, both relationship

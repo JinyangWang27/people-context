@@ -391,3 +391,106 @@ def _nested_keys(value: object) -> set[str]:
     if isinstance(value, list):
         return {key for item in value for key in _nested_keys(item)}
     return set()
+
+
+def test_list_entries_after_a_none_cursor_replays_everything_oldest_first() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    appended = _append_synthetic_entries(conn, changelog, count=150)
+    expected = [entry.op_id for entry in sorted(appended, key=ChangelogEntry.comparison_key)]
+
+    entries = changelog.list_entries_after(None, limit=len(appended))
+
+    assert [entry.op_id for entry in entries] == expected
+    # The default bound still applies when the caller does not widen it.
+    assert [entry.op_id for entry in changelog.list_entries_after(None)] == expected[:100]
+
+
+def test_list_entries_after_is_bounded_and_resumable_batch_by_batch() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    appended = _append_synthetic_entries(conn, changelog, count=120)
+    expected = [entry.op_id for entry in sorted(appended, key=ChangelogEntry.comparison_key)]
+
+    drained: list[str] = []
+    cursor: tuple[int, int, str, str] | None = None
+    while True:
+        batch = changelog.list_entries_after(cursor, limit=25)
+        if not batch:
+            break
+        assert len(batch) <= 25
+        drained.extend(entry.op_id for entry in batch)
+        cursor = batch[-1].comparison_key()
+
+    assert drained == expected
+
+
+def test_list_entries_after_excludes_the_cursor_entry_itself() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    appended = _append_synthetic_entries(conn, changelog, count=10)
+    ordered = sorted(appended, key=ChangelogEntry.comparison_key)
+
+    entries = changelog.list_entries_after(ordered[3].comparison_key(), limit=100)
+
+    assert [entry.op_id for entry in entries] == [entry.op_id for entry in ordered[4:]]
+    # The newest entry's own key is the end of the tail.
+    assert changelog.list_entries_after(ordered[-1].comparison_key(), limit=100) == []
+
+
+def test_list_entries_after_breaks_hlc_ties_by_device_and_op_id() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    local_device = conn.execute("SELECT id FROM devices WHERE retired_at IS NULL").fetchone()["id"]
+    other_device = "device-zzzz"
+    conn.execute(
+        "INSERT INTO devices (id, created_at, retired_at) VALUES (?, ?, ?)",
+        (other_device, "2026-07-01T00:00:00+00:00", "2026-07-01T00:00:00+00:00"),
+    )
+    conn.commit()
+    # One shared HLC pair across two devices, plus a same-device pair split only by op_id.
+    tied = [
+        _tied_entry(changelog, op_id="op-b", device_id=other_device),
+        _tied_entry(changelog, op_id="op-a", device_id=local_device),
+        _tied_entry(changelog, op_id="op-c", device_id=local_device),
+    ]
+    ordered = sorted(tied, key=ChangelogEntry.comparison_key)
+    assert [entry.op_id for entry in ordered] == ["op-a", "op-c", "op-b"]
+
+    from_beginning = changelog.list_entries_after(None, limit=10)
+    after_first = changelog.list_entries_after(ordered[0].comparison_key(), limit=10)
+    after_second = changelog.list_entries_after(ordered[1].comparison_key(), limit=10)
+
+    assert [entry.op_id for entry in from_beginning] == ["op-a", "op-c", "op-b"]
+    # A cursor on one device must not hide the tied entry recorded by the other one.
+    assert [entry.op_id for entry in after_first] == ["op-c", "op-b"]
+    assert [entry.op_id for entry in after_second] == ["op-b"]
+
+
+def test_list_entries_after_reverses_the_order_list_entries_returns() -> None:
+    conn = open_db(":memory:")
+    changelog = SqliteChangelog(conn)
+    _append_synthetic_entries(conn, changelog, count=40)
+
+    ascending = changelog.list_entries_after(None, limit=100)
+    descending = changelog.list_entries(limit=100)
+
+    assert [entry.op_id for entry in ascending] == [entry.op_id for entry in reversed(descending)]
+
+
+def _tied_entry(changelog: SqliteChangelog, *, op_id: str, device_id: str) -> ChangelogEntry:
+    """Append one entry sharing a fixed HLC pair with every other tied entry."""
+    entry = ChangelogEntry(
+        op_id=op_id,
+        device_id=device_id,
+        hlc_physical_ms=1_700_000_000_000,
+        hlc_logical=7,
+        transaction_id=f"txn-{op_id}",
+        entity_type="person",
+        entity_id="person-1",
+        op_kind="update",
+        payload={"op": op_id},
+        inserted_at=datetime(2026, 7, 17, 12, 0, tzinfo=UTC),
+    )
+    changelog.append(entry)
+    return entry

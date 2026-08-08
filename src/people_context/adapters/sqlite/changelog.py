@@ -8,7 +8,12 @@ from collections.abc import Callable
 from datetime import datetime
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
-from people_context.ports.changelog import ChangelogEntry
+from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
+
+# The replication ordering key, matching `ChangelogEntry.comparison_key`. Migration
+# `005_changelog_replication_order.sql` indexes exactly these columns in this order, so a
+# tail seeks straight to its cursor instead of rescanning history on every poll.
+_ASCENDING_ORDER = "hlc_physical_ms ASC, hlc_logical ASC, device_id ASC, op_id ASC"
 
 
 class SqliteChangelog:
@@ -83,6 +88,23 @@ class SqliteChangelog:
             f"""SELECT * FROM changelog {clauses}
                 ORDER BY hlc_physical_ms DESC, hlc_logical DESC, device_id DESC, op_id DESC{bound}""",
             tuple(params),
+        ).fetchall()
+        return [self._hydrate(row) for row in rows]
+
+    def list_entries_after(self, cursor: ChangelogCursor | None, limit: int = 100) -> list[ChangelogEntry]:
+        """Return up to `limit` entries ordered oldest first, strictly after `cursor`."""
+        if cursor is None:
+            # No key sorts before the minimum one, so an unfiltered scan is the whole history.
+            rows = self._conn.execute(
+                f"SELECT * FROM changelog ORDER BY {_ASCENDING_ORDER} LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [self._hydrate(row) for row in rows]
+        rows = self._conn.execute(
+            f"""SELECT * FROM changelog
+                WHERE (hlc_physical_ms, hlc_logical, device_id, op_id) > (?, ?, ?, ?)
+                ORDER BY {_ASCENDING_ORDER} LIMIT ?""",
+            (*cursor, limit),
         ).fetchall()
         return [self._hydrate(row) for row in rows]
 

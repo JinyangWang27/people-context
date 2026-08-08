@@ -15,6 +15,11 @@ from people_context.app.insights import (
     MIN_THRESHOLD_DAYS,
     MIN_WINDOW_DAYS,
 )
+from people_context.app.sync import (
+    DEFAULT_INTERVAL_SECONDS,
+    MAX_INTERVAL_SECONDS,
+    MIN_INTERVAL_SECONDS,
+)
 from people_context.domain.person import AliasKind
 
 
@@ -164,6 +169,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--payloads",
         action="store_true",
         help="Include full replay payloads; hidden by default because they may contain sensitive data.",
+    )
+
+    watch = subparsers.add_parser(
+        "watch",
+        help="Follow the local changelog, printing one JSON object per new entry.",
+    )
+    watch.add_argument(
+        "--interval",
+        type=float,
+        default=DEFAULT_INTERVAL_SECONDS,
+        help=f"Seconds between polls ({MIN_INTERVAL_SECONDS}..{MAX_INTERVAL_SECONDS}).",
+    )
+    watch.add_argument(
+        "--from-start",
+        action="store_true",
+        help="Replay every existing entry before following new ones.",
     )
 
     reindex = subparsers.add_parser("reindex", help="Rebuild active-person full-text search rows.")

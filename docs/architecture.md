@@ -36,6 +36,7 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
                          │  ports/hlc.py           HybridLogicalClock     │
                          │  ports/unit_of_work.py  UnitOfWork             │
                          │  ports/clock.py         Clock, SystemClock     │
+                         │  ports/sleep.py         Sleeper, SystemSleeper │
                          └───────────────────┬─────────────────────────┘
                                              │ depended on by (never implemented in)
                          ┌───────────────────▼─────────────────────────┐
@@ -80,7 +81,8 @@ resolution, or the minimal-disclosure cap in context assembly) is allowed to liv
 (`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), `Changelog` (`ports/changelog.py`),
 `MergeStore` (`ports/merge.py`), `ForgetStore` and `ForgetPreviewStore` (`ports/forget.py`),
 `HybridLogicalClock` (`ports/hlc.py`), `BundleReader` (`ports/sync_bundle.py`),
-`RecencyReader` (`ports/insights.py`), `UnitOfWork` (`ports/unit_of_work.py`), and `Clock` (`ports/clock.py`).
+`RecencyReader` (`ports/insights.py`), `UnitOfWork` (`ports/unit_of_work.py`), `Clock` (`ports/clock.py`), and
+`Sleeper` (`ports/sleep.py`).
 Splitting concerns means read, merge, forget, audit, and sync use cases depend only on capabilities they consume.
 The application layer owns transaction orchestration through the UoW port; SQLite owns BEGIN/COMMIT/ROLLBACK.
 
