@@ -90,9 +90,10 @@ from people_context.app.relationships import (
     SetRelationship,
 )
 from people_context.app.semantic import ReindexPeople, SemanticSearch
-from people_context.app.sync import RestoreSyncBundle
+from people_context.app.sync import RestoreSyncBundle, WatchChangelog
 from people_context.config import resolve_db_key, resolve_db_path
 from people_context.ports.clock import Clock, SystemClock
+from people_context.ports.sleep import Sleeper, SystemSleeper
 
 WarningCallback = Callable[[str], None]
 
@@ -133,6 +134,7 @@ class RuntimeUseCases:
     export_sync_bundle: ExportSyncBundle
     export_reminder_calendar: ExportReminderCalendar
     restore_sync_bundle: RestoreSyncBundle
+    watch_changelog: WatchChangelog
     export_vault: ExportVault
     import_content: ImportContent
     review_import: ReviewImport
@@ -179,6 +181,7 @@ def build_runtime(
     *,
     warning: WarningCallback | None = None,
     clock: Clock | None = None,
+    sleeper: Sleeper | None = None,
     encrypted: bool = False,
 ) -> ApplicationRuntime:
     """Build all concrete adapters and application use cases for one process.
@@ -288,6 +291,7 @@ def build_runtime(
         export_sync_bundle=ExportSyncBundle(bundle_reader, runtime_clock),
         export_reminder_calendar=ExportReminderCalendar(list_reminders),
         restore_sync_bundle=RestoreSyncBundle(bootstrap_restorer),
+        watch_changelog=WatchChangelog(changelog, sleeper or SystemSleeper()),
         export_vault=ExportVault(vault_reader, FileSystemVaultWriter()),
         import_content=ImportContent(
             repo,

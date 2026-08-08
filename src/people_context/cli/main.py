@@ -9,7 +9,7 @@ from collections.abc import Callable
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import EncryptedDatabaseError
 from people_context.cli.insights import cmd_stale, cmd_upcoming
-from people_context.cli.maintenance import cmd_reindex, cmd_sync_log
+from people_context.cli.maintenance import cmd_reindex, cmd_sync_log, cmd_watch
 from people_context.cli.onboarding import cmd_demo, cmd_init
 from people_context.cli.parser import build_parser
 from people_context.cli.people import (
@@ -60,6 +60,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "normalize-relationships": cmd_normalize_relationships,
     "sync": cmd_sync,
     "sync-log": cmd_sync_log,
+    "watch": cmd_watch,
     "reindex": cmd_reindex,
 }
 

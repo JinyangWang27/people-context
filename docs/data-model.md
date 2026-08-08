@@ -2,7 +2,10 @@
 
 The primary store is one user-owned SQLite database. Migration `001_initial.sql` creates the core people data,
 `002_sync_foundations.sql` adds local replay capture, and `003_relationship_vocabulary.sql` adds the M7
-relationship vocabulary. Domain and application code reach these tables only through ports and SQLite adapters.
+relationship vocabulary. `004_curation_indexes.sql` and `005_changelog_replication_order.sql` add indexes only:
+the latter indexes the changelog's global replication ordering key so an ordered tail seeks to its cursor
+instead of rescanning history. Domain and application code reach these tables only through ports and SQLite
+adapters.
 
 ## Conventions
 

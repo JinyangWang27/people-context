@@ -33,6 +33,7 @@ what encryption does and does not protect.
 | `sync push --output DIR` | Write one complete plaintext bootstrap bundle as an owner-only file. |
 | `sync pull --input PATH [--yes]` | Restore one bootstrap bundle into a freshly initialized database only. |
 | `sync-log [--limit N] [--entity ID] [--payloads]` | Inspect local replay entries; payloads are opt-in. |
+| `watch [--interval S] [--from-start]` | Follow the local changelog as JSON lines until interrupted. |
 | `reindex` | Rebuild the active-person FTS index. |
 | `reindex --semantic` | Explicitly obtain the pinned model and atomically rebuild semantic vectors. |
 | `relationship-types` | List vocabulary and uncategorized types currently used by active edges. |
@@ -254,6 +255,35 @@ database's `-wal`, `-shm`, or `-journal` sidecars: publication replaces the dest
 SQLite still holds the old file open, so such a write would destroy the store. The file it does write is
 plaintext personal data outside the server's disclosure controls — keep it on encrypted storage and hand it to a
 calendar application deliberately.
+
+## Changelog watch
+
+```bash
+uv run pctx watch
+uv run pctx watch --interval 0.5 --from-start
+```
+
+Follows the local replayable changelog and prints one canonical JSON object per entry, in replication order,
+until you interrupt it with `Ctrl-C`. Each line is a complete changelog entry — the same fields `sync-log`
+shows, plus the full replay payload — with sorted keys and no interior spacing, so the stream pipes directly
+into `jq` or a line-oriented reader. Each line mirrors one stored changelog row, including the row's own
+`schema_version`; the stream is not one of the frozen JSON documents in
+[compatibility.md](compatibility.md#machine-readable-json).
+
+By default the tail reports only what happens from now on: it reads the current newest entry once, adopts it as
+its starting cursor, and emits no history. `--from-start` begins before the first entry instead and replays
+everything already recorded before following new writes.
+
+Polling is deterministic and bounded. `--interval` is the pause between polls, in seconds, accepted between
+`0.1` and `3600`; one poll reads at most 200 entries, and a poll that fills its batch is followed immediately by
+the next one, so a long replay drains at full speed and only an idle tail waits. The cursor advances only to an
+entry that has actually been printed, so an empty poll changes nothing and no entry is skipped. The cursor is
+the entry's complete `(hlc_physical_ms, hlc_logical, device_id, op_id)` key, which keeps the tail exact when two
+devices mint the same HLC pair. Nothing is persisted between invocations: every run establishes its own cursor.
+
+`watch` records nothing and makes no network call, but the payloads it prints carry personal data at every
+sensitivity level. They go to local stdout only; a notice on stderr says so before the first entry, and
+redirecting the stream elsewhere is your own disclosure decision.
 
 ## Database location resolution
 

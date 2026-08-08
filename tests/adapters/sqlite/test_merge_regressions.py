@@ -22,6 +22,7 @@ from people_context.app.people.remember import RememberPerson, RememberPersonInp
 from people_context.app.relationships.commands import SetRelationship, SetRelationshipInput
 from people_context.domain.organization import Organization
 from people_context.domain.person import Person
+from people_context.domain.shared import normalize_name
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
 
@@ -51,7 +52,7 @@ def test_migration_004_backfills_org_normalized_name(tmp_path: Path) -> None:
     legacy.close()
 
     conn = open_db(path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
     row = conn.execute("SELECT name_normalized FROM organizations WHERE id = 'org-1'").fetchone()
     assert row["name_normalized"] == "acme corp"
     indexes = {row[1] for row in conn.execute("PRAGMA index_list('changelog')").fetchall()}
@@ -170,3 +171,40 @@ def test_merge_recanonicalizes_symmetric_edges_so_reassert_updates_in_place() ->
     )
     rows = SqliteRelationshipStore(conn).list_relationships()
     assert len(rows) == 1 and updated.id == edge.id and rows[0].label == "close"
+
+
+def test_migration_005_indexes_the_replication_order_on_a_legacy_database(tmp_path: Path) -> None:
+    path = tmp_path / "pre_005.db"
+    legacy = sqlite3.connect(path)
+    # Migration 004 calls the deterministic function `open_db` registers before migrating.
+    legacy.create_function("people_normalize", 1, normalize_name, deterministic=True)
+    migrations = resources.files("people_context.adapters.sqlite.migrations")
+    for name in (
+        "001_initial.sql",
+        "002_sync_foundations.sql",
+        "003_relationship_vocabulary.sql",
+        "004_curation_indexes.sql",
+    ):
+        legacy.executescript(migrations.joinpath(name).read_text(encoding="utf-8"))
+    legacy.execute("PRAGMA user_version = 4")
+    legacy.commit()
+    legacy.close()
+
+    conn = open_db(path)
+
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    indexes = {row[1] for row in conn.execute("PRAGMA index_list('changelog')").fetchall()}
+    assert "idx_changelog_replication_order" in indexes
+    # The earlier indexes are additive, not replaced.
+    assert {"idx_changelog_entity", "changelog_origin_order"} <= indexes
+    plan = conn.execute(
+        """EXPLAIN QUERY PLAN
+           SELECT * FROM changelog
+           WHERE (hlc_physical_ms, hlc_logical, device_id, op_id) > (?, ?, ?, ?)
+           ORDER BY hlc_physical_ms ASC, hlc_logical ASC, device_id ASC, op_id ASC LIMIT ?""",
+        (0, 0, "", "", 10),
+    ).fetchall()
+    detail = " ".join(str(row["detail"]) for row in plan)
+    # The tail seeks to its cursor instead of scanning history and sorting it per poll.
+    assert "idx_changelog_replication_order" in detail
+    assert "TEMP B-TREE" not in detail

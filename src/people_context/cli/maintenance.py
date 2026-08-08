@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from people_context.adapters.model2vec_embeddings import (
@@ -16,6 +17,13 @@ from people_context.adapters.model2vec_embeddings import (
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.adapters.sqlite.semantic import create_sqlite_vector_index
 from people_context.app.semantic import ReindexSemantic
+from people_context.app.sync import WatchChangelogError
+from people_context.ports.changelog import ChangelogEntry
+
+WATCH_DISCLOSURE_WARNING = (
+    "Watch prints full replay payloads, which may contain sensitive personal data. "
+    "They go to this terminal only; redirecting them anywhere else is your own disclosure decision."
+)
 
 
 def cmd_sync_log(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
@@ -34,6 +42,39 @@ def cmd_sync_log(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             payload = json.dumps(entry.payload, ensure_ascii=False, sort_keys=True)
             print(f"  payload={payload}")
     return 0
+
+
+def cmd_watch(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Follow the local changelog, printing one JSON object per new entry."""
+    try:
+        stream = runtime.use_cases.watch_changelog.stream(
+            interval_seconds=args.interval,
+            from_start=args.from_start,
+        )
+    except WatchChangelogError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+
+    # The notice and the interrupt acknowledgement go to stderr so that stdout stays a
+    # clean stream of JSON lines even when it is redirected to a file or another program.
+    print(WATCH_DISCLOSURE_WARNING, file=sys.stderr)
+    try:
+        for entry in stream:
+            # Flushed per line: a tail is read as it happens, and a redirected stdout is
+            # block-buffered, which would otherwise hold entries back indefinitely.
+            print(_render_entry(entry), flush=True)
+    except KeyboardInterrupt:
+        print("Stopped.", file=sys.stderr)
+    except BrokenPipeError:
+        # A reader such as `head` closed the pipe. Point the file descriptor at the null
+        # device so the interpreter's final flush cannot raise again during shutdown.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+    return 0
+
+
+def _render_entry(entry: ChangelogEntry) -> str:
+    """Render one changelog entry as a canonical single-line JSON object."""
+    return json.dumps(entry.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def cmd_reindex(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

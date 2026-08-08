@@ -205,7 +205,7 @@ Check the matching box only in the PR that delivers it.
     exported reminders with omitted unsupported RRULE; deterministic/secure file tests.
   - **Out:** write-contract timezone enforcement, VEVENT, third-party push.
 
-- [ ] **M13.4 — Deterministic local changelog watch**
+- [x] **M13.4 — Deterministic local changelog watch**
   - **Scope:** Add ascending `list_entries_after`; JSONL polling CLI.
   - **Acceptance:** interval `0.1..3600`, bounded batch `1..1000`; default starts at current latest without replay;
     `--from-start` replays all; full cursor/multi-batch advancement; testable poll/sleep seam; local stdout only.

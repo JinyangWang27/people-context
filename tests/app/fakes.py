@@ -20,6 +20,7 @@ from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.shared import normalize_name
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
+from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
 from people_context.ports.insights import RecencySignal
 from people_context.ports.repository import SearchHit
@@ -353,3 +354,50 @@ class FakeBundleReader:
     def read_bundle(self) -> BundleSource:
         self.calls += 1
         return self.source
+
+
+class FakeChangelog:
+    """An in-memory Changelog holding entries in arbitrary insertion order.
+
+    Ordering is applied on read from the stored comparison keys, exactly as the SQLite
+    adapter does, so a use case cannot pass by accidentally depending on append order.
+    """
+
+    def __init__(self, entries: list[ChangelogEntry] | None = None) -> None:
+        self.entries: list[ChangelogEntry] = list(entries or [])
+        self.after_calls: list[tuple[ChangelogCursor | None, int]] = []
+
+    def append(self, entry: ChangelogEntry) -> None:
+        self.entries.append(entry)
+
+    def list_entries(self, limit: int | None = 100, entity_id: str | None = None) -> list[ChangelogEntry]:
+        selected = [entry for entry in self.entries if entity_id is None or entry.entity_id == entity_id]
+        selected.sort(key=ChangelogEntry.comparison_key, reverse=True)
+        return selected if limit is None else selected[:limit]
+
+    def list_entries_after(self, cursor: ChangelogCursor | None, limit: int = 100) -> list[ChangelogEntry]:
+        self.after_calls.append((cursor, limit))
+        selected = sorted(self.entries, key=ChangelogEntry.comparison_key)
+        if cursor is not None:
+            selected = [entry for entry in selected if entry.comparison_key() > cursor]
+        return selected[:limit]
+
+
+class FakeSleeper:
+    """A sleeper that records every pause and can stop an unbounded tail.
+
+    Raising after a fixed number of pauses is how a test ends a stream that would
+    otherwise poll forever, without a real delay or a subprocess to kill.
+    """
+
+    class Stopped(Exception):
+        """Raised in place of the pause that exceeds `stop_after`."""
+
+    def __init__(self, stop_after: int | None = None) -> None:
+        self.stop_after = stop_after
+        self.pauses: list[float] = []
+
+    def sleep(self, seconds: float) -> None:
+        if self.stop_after is not None and len(self.pauses) >= self.stop_after:
+            raise FakeSleeper.Stopped
+        self.pauses.append(seconds)
