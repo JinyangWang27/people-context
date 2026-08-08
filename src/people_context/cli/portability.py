@@ -1,4 +1,4 @@
-"""Database path, export, and sync-bundle CLI commands."""
+"""Database path, brief, export, and sync-bundle CLI commands."""
 
 from __future__ import annotations
 
@@ -10,7 +10,13 @@ from pathlib import Path
 
 from people_context.adapters.filesystem.private_file import atomic_write_private_text
 from people_context.adapters.runtime import ApplicationRuntime
-from people_context.app.exports import SYNC_BUNDLE_FILENAME, render_bundle_json
+from people_context.app.exports import (
+    SYNC_BUNDLE_FILENAME,
+    render_brief_json,
+    render_brief_markdown,
+    render_bundle_json,
+)
+from people_context.cli.people import resolve_person
 from people_context.config import describe_resolution, resolve_db_path
 from people_context.domain.sync_bundle import SyncBundleError
 from people_context.ports.vault import VaultSafetyError
@@ -28,6 +34,10 @@ _DATABASE_SIDECARS = ("-wal", "-shm", "-journal")
 REMINDER_CALENDAR_WARNING = (
     "This calendar file is plaintext personal data outside the server's disclosure controls. "
     "Keep it on encrypted storage and hand it to a calendar application only deliberately."
+)
+BRIEF_FILE_WARNING = (
+    "This brief is plaintext personal data outside the server's disclosure controls. "
+    "Keep it on encrypted storage and share it only deliberately."
 )
 
 
@@ -49,6 +59,45 @@ def cmd_export(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         atomic_write_private_text(args.output, text + "\n")
     else:
         print(text)
+    return 0
+
+
+def cmd_brief(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Compose one person's brief as Markdown or the versioned JSON document."""
+    person, exit_code = resolve_person(runtime, args.person)
+    if person is None:
+        return exit_code
+    document = runtime.use_cases.compose_person_brief.execute(
+        person.id,
+        include_sensitive=args.include_sensitive,
+    )
+    if document is None:
+        # Only reachable if the person is removed between resolution and composition.
+        print(f"No person found matching '{args.person}'.", file=sys.stderr)
+        return 1
+
+    text = render_brief_json(document) if args.json else render_brief_markdown(document)
+    if args.output is None:
+        # The rendered text already ends in a newline, so stdout and a written file agree byte for byte.
+        sys.stdout.write(text)
+        return 0
+
+    destination = Path(args.output).expanduser()
+    if _collides_with_database(destination, runtime.path):
+        print(
+            f"Refusing to write the brief to {destination}: "
+            f"it is the database this command is reading, or one of its sidecar files.",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        written = atomic_write_private_text(destination, text)
+    except OSError as exc:
+        print(f"Cannot write the brief to {destination}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+
+    print(f"Wrote the brief for {person.canonical_name} to {written}.")
+    print(BRIEF_FILE_WARNING)
     return 0
 
 

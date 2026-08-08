@@ -177,6 +177,27 @@ The maximal-disclosure `export_data` MCP tool is absent by default. An operator 
 with `PEOPLE_CONTEXT_MCP_ENABLE_EXPORT=1` before a client can discover it. This process-level boundary, not a
 model-supplied tool argument or advisory annotation, is the security control. Prefer the CLI for routine export.
 
+## Person brief and person index
+
+`pctx brief` and `pctx list --json` are human-operated, CLI-only read paths. They record nothing, mint no audit or
+changelog rows, and add no model-callable tool.
+
+A brief defaults to ordinary disclosure. `--include-sensitive` widens only the context-backed facts,
+interactions, and traits; communication guidance keeps its own `public`/`personal` contract in both modes, so the
+flag can never pull an elevated record into the guidance section. Both levels are stated in the document — in the
+Markdown header and in the JSON `disclosure` object — alongside a notice that the brief is outside the server's
+disclosure controls once rendered or written. Reading it back, redirecting stdout, or handing the file to another
+tool is the operator's own disclosure decision.
+
+The person index is identity only: stable id, canonical name, alias values, summary, `is_self`, and a `deleted`
+flag. It carries no facts, interactions, traits, or reminders at any sensitivity level, which is what lets an
+integration list people without reading their records.
+
+`pctx brief --output FILE` publishes through the same shared atomic private-file writer, so the destination is
+`0600`, an existing permissive file is replaced rather than left with its old mode, a destination symlink is
+replaced instead of followed, and a failed write preserves any previously valid file. The command refuses to
+publish over the database it is reading or any of that database's sidecars.
+
 ## Reminder calendar export
 
 `pctx reminders-ics --output FILE` is a human-operated, CLI-only export of active reminders as iCalendar

@@ -85,6 +85,51 @@ def test_list_shows_seeded_person_and_hides_deleted_unless_all(
     assert "Mad Hatter [deleted]" in out
 
 
+def test_list_json_emits_the_versioned_person_index(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    live = _seed(db_file, "Alice Wonderland", summary="A curious person from the story.")
+    gone = _seed(db_file, "Mad Hatter")
+    _soft_delete(db_file, gone.id)
+
+    assert cli.main(["--db", str(db_file), "list", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["format"] == "people-context-person-index"
+    assert payload["version"] == 1
+    assert payload["include_deleted"] is False
+    assert payload["people"] == [
+        {
+            "id": live.id,
+            "canonical_name": "Alice Wonderland",
+            "aliases": [],
+            "summary": "A curious person from the story.",
+            "is_self": False,
+            "deleted": False,
+        }
+    ]
+
+    assert cli.main(["--db", str(db_file), "list", "--all", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["include_deleted"] is True
+    # Lifecycle state is a field rather than a suffix on the display name, so an integration
+    # never has to parse "[deleted]" out of a person's name.
+    assert [(entry["canonical_name"], entry["deleted"]) for entry in payload["people"]] == [
+        ("Alice Wonderland", False),
+        ("Mad Hatter", True),
+    ]
+
+
+def test_list_json_on_an_empty_store_is_still_a_document(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+
+    assert cli.main(["--db", str(db_file), "list", "--json"]) == 0
+
+    assert json.loads(capsys.readouterr().out)["people"] == []
+
+
 # -- search -----------------------------------------------------------------
 
 

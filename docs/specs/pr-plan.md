@@ -213,7 +213,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M14 — Ecosystem interoperability
 
-- [ ] **M14.1 — Stable person brief and person-index JSON**
+- [x] **M14.1 — Stable person brief and person-index JSON**
   - **Scope:** Compose brief, Markdown/versioned JSON, `list --json`, private file output.
   - **Acceptance:** all reminder kinds; sensitive flag widens context only, guidance stays ordinary; disclosure
     labels; deterministic ordering and secure overwrite tests.

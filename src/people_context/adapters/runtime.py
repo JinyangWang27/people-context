@@ -52,7 +52,14 @@ from people_context.app.context import (
     GetPersonContext,
     SetCommunicationPhilosophy,
 )
-from people_context.app.exports import ExportData, ExportReminderCalendar, ExportSyncBundle, ExportVault
+from people_context.app.exports import (
+    ComposePersonBrief,
+    ExportData,
+    ExportReminderCalendar,
+    ExportSyncBundle,
+    ExportVault,
+    ListPersonIndex,
+)
 from people_context.app.imports import (
     CandidateStager,
     CommitImport,
@@ -108,6 +115,7 @@ class RuntimeUseCases:
     find_connection: FindConnection
     get_stale_relationships: GetStaleRelationships
     list_upcoming_dates: ListUpcomingDates
+    list_person_index: ListPersonIndex
     search_people: SearchPeople
     semantic_search: SemanticSearch
     remember_person: RememberPerson
@@ -130,6 +138,7 @@ class RuntimeUseCases:
     merge_people: MergePeople
     preview_forget: PreviewForget
     forget: Forget
+    compose_person_brief: ComposePersonBrief
     export_data: ExportData
     export_sync_bundle: ExportSyncBundle
     export_reminder_calendar: ExportReminderCalendar
@@ -234,14 +243,17 @@ def build_runtime(
     record_fact = RecordFact(repo, records, audit, runtime_clock)
     candidate_stager = CandidateStager(repo, import_staging, runtime_clock)
     list_reminders = ListReminders(records)
+    get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
+    get_communication_guidance = GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock)
 
     use_cases = RuntimeUseCases(
         resolve_person=ResolvePerson(repo, context_reader, runtime_clock),
-        get_person_context=GetPersonContext(repo, context_reader, runtime_clock),
+        get_person_context=get_person_context,
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
         list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
+        list_person_index=ListPersonIndex(repo, runtime_clock),
         search_people=SearchPeople(repo),
         semantic_search=SemanticSearch(
             SqliteSemanticMetadataReader(conn),
@@ -282,11 +294,17 @@ def build_runtime(
         set_reminder=SetReminder(repo, records, audit, runtime_clock),
         complete_reminder=CompleteReminder(records, records, audit, runtime_clock, people=repo),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences, audit, runtime_clock),
-        get_communication_guidance=GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock),
+        get_communication_guidance=get_communication_guidance,
         list_reminders=list_reminders,
         merge_people=MergePeople(repo, merge_store, runtime_clock, audit),
         preview_forget=PreviewForget(repo, forget_store),
         forget=Forget(repo, forget_store, runtime_clock, audit),
+        compose_person_brief=ComposePersonBrief(
+            get_person_context,
+            get_communication_guidance,
+            list_reminders,
+            runtime_clock,
+        ),
         export_data=ExportData(export_reader, runtime_clock),
         export_sync_bundle=ExportSyncBundle(bundle_reader, runtime_clock),
         export_reminder_calendar=ExportReminderCalendar(list_reminders),

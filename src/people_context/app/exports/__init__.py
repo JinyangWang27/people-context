@@ -1,6 +1,26 @@
-"""Portable JSON, sync-bundle, reminder-calendar, and vault export use cases."""
+"""Portable JSON, brief, person-index, sync-bundle, reminder-calendar, and vault export use cases."""
 
+from people_context.app.exports.brief import (
+    BRIEF_FORMAT,
+    BRIEF_VERSION,
+    DISCLOSURE_NOTICE,
+    BriefDisclosure,
+    BriefGuidance,
+    ComposePersonBrief,
+    DisclosureLevel,
+    PersonBriefDocument,
+    render_brief_json,
+    render_brief_markdown,
+)
 from people_context.app.exports.json import ExportData, ExportDocument
+from people_context.app.exports.person_index import (
+    PERSON_INDEX_FORMAT,
+    PERSON_INDEX_VERSION,
+    ListPersonIndex,
+    PersonIndexDocument,
+    PersonIndexEntry,
+    render_person_index_json,
+)
 from people_context.app.exports.reminders_ics import (
     SUPPORTED_RECURRENCES,
     ExportReminderCalendar,
@@ -14,14 +34,30 @@ from people_context.app.exports.sync_bundle import (
 from people_context.app.exports.vault import ExportVault, ExportVaultResult
 
 __all__ = [
+    "BRIEF_FORMAT",
+    "BRIEF_VERSION",
+    "DISCLOSURE_NOTICE",
+    "PERSON_INDEX_FORMAT",
+    "PERSON_INDEX_VERSION",
     "SUPPORTED_RECURRENCES",
     "SYNC_BUNDLE_FILENAME",
+    "BriefDisclosure",
+    "BriefGuidance",
+    "ComposePersonBrief",
+    "DisclosureLevel",
     "ExportData",
     "ExportDocument",
     "ExportReminderCalendar",
     "ExportSyncBundle",
     "ExportVault",
     "ExportVaultResult",
+    "ListPersonIndex",
+    "PersonBriefDocument",
+    "PersonIndexDocument",
+    "PersonIndexEntry",
     "ReminderCalendarResult",
+    "render_brief_json",
+    "render_brief_markdown",
     "render_bundle_json",
+    "render_person_index_json",
 ]
