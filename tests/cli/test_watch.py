@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from people_context.adapters.sqlite import SqliteChangelog, open_db
 from people_context.app.sync import WATCH_BATCH_SIZE
 from people_context.cli import main
 from people_context.ports.changelog import ChangelogEntry
+from people_context.ports.sleep import Sleeper, SystemSleeper
 
 _INSERTED_AT = datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 
@@ -216,6 +219,35 @@ def test_each_emitted_line_is_one_canonical_json_object(
     assert entry["payload"] == {"summary": "written by the tail test"}
     # Canonical: sorted keys, no interior padding, and one object per physical line.
     assert line == json.dumps(entry, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def test_a_closed_reader_ends_the_tail_cleanly_instead_of_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path, 3)
+    _install(monkeypatch, _StopSleeper())
+    # A pipe whose read end is already closed is exactly what `pctx watch | head` leaves
+    # behind once `head` has its lines: the first flushed write raises BrokenPipeError.
+    read_fd, write_fd = os.pipe()
+    os.close(read_fd)
+    writer = os.fdopen(write_fd, "w")
+    monkeypatch.setattr(sys, "stdout", writer)
+
+    code = main(["--db", str(db_path), "watch", "--from-start"])
+
+    assert code == 0
+    # The descriptor now points at the null device, so the interpreter's final flush of
+    # this file object cannot raise again during shutdown.
+    writer.write("survives the flush")
+    writer.flush()
+
+
+def test_the_system_sleeper_satisfies_the_port_without_delaying_a_zero_pause() -> None:
+    sleeper = SystemSleeper()
+
+    assert isinstance(sleeper, Sleeper)
+    assert sleeper.sleep(0) is None
 
 
 def test_watch_on_an_empty_changelog_emits_nothing_and_exits_cleanly(
