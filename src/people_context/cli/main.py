@@ -22,6 +22,7 @@ from people_context.cli.people import (
     cmd_show,
 )
 from people_context.cli.portability import (
+    cmd_brief,
     cmd_db_path,
     cmd_export,
     cmd_export_vault,
@@ -49,6 +50,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "stale": cmd_stale,
     "upcoming": cmd_upcoming,
     "show": cmd_show,
+    "brief": cmd_brief,
     "export": cmd_export,
     "export-vault": cmd_export_vault,
     "reminders-ics": cmd_reminders_ics,

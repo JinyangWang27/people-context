@@ -83,14 +83,21 @@ repurposed, and new fields are additive.
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |
+| Person brief | `people-context-brief` | `1` | `pctx brief --json` |
+| Person index | `people-context-person-index` | `1` | `pctx list --json` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |
 
-The two documents differ in how a field addition is classified, because only one of them is read back by this
+The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
 
-- **Portable dataset export** is producer-only: nothing in this repository consumes it, and external readers are
-  expected to ignore unknown fields. A new field is additive and does not advance `version`; a removal or a
-  repurposing does.
+- **Portable dataset export**, **person brief**, and **person index** are producer-only: nothing in this
+  repository consumes them, and external readers are expected to ignore unknown fields. A new field is additive
+  and does not advance `version`; a removal or a repurposing does.
+
+  The brief's disclosure labelling is part of its contract, not decoration: `disclosure.guidance` stays
+  `ordinary` in every mode, and `disclosure.context` is `sensitive` only when the operator passed
+  `--include-sensitive`. A later release does not start putting elevated records in a document whose labels say
+  ordinary.
 - **Bootstrap sync bundle** is read back by `pctx sync pull`, which validates the whole document — including every
   nested object — against an exact format and version with unknown fields forbidden. A reader from an older
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible

@@ -7,6 +7,7 @@ import sys
 
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.context import SetCommunicationPhilosophyInput
+from people_context.app.exports import render_person_index_json
 from people_context.app.people import AddAliasInput, EditPersonInput, PersonNameCollisionError
 from people_context.cli.rendering import print_context, print_table, truncate
 from people_context.domain.person import AliasKind, Person
@@ -16,7 +17,12 @@ _SUMMARY_WIDTH = 40
 
 
 def cmd_list(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
-    """List known people."""
+    """List known people as a table, or as the versioned person-index document."""
+    if args.json:
+        document = runtime.use_cases.list_person_index.execute(include_deleted=args.all, limit=args.limit)
+        # An empty store still yields a complete, parseable document rather than prose.
+        sys.stdout.write(render_person_index_json(document))
+        return 0
     people = runtime.repo.list_people(include_deleted=args.all, limit=args.limit)
     if not people:
         print("No people found.")

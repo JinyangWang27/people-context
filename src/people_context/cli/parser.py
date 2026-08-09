@@ -43,6 +43,25 @@ def build_parser() -> argparse.ArgumentParser:
     list_cmd = subparsers.add_parser("list", help="List known people.")
     list_cmd.add_argument("--all", action="store_true", help="Include soft-deleted people.")
     list_cmd.add_argument("--limit", type=int, default=None, help="Maximum number of people to list.")
+    list_cmd.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned person-index JSON document instead of the table.",
+    )
+
+    brief = subparsers.add_parser("brief", help="Compose one person's deterministic brief.")
+    brief.add_argument("person", help="A person id, or a name to resolve.")
+    brief.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="Widen the context records to sensitive and restricted ones; guidance stays ordinary.",
+    )
+    brief.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned brief JSON document instead of Markdown.",
+    )
+    brief.add_argument("--output", default=None, help="Write to this owner-only file instead of stdout.")
 
     search = subparsers.add_parser("search", help="Ranked search results for a name query.")
     search.add_argument("query")

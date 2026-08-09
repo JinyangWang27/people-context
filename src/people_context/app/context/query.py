@@ -19,7 +19,7 @@ from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
 from people_context.domain.person import Person
 from people_context.domain.reminder import Reminder, ReminderKind
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Sensitivity, as_utc
 from people_context.domain.trait import Trait
 from people_context.ports.clock import Clock
 from people_context.ports.context import PersonContextReader
@@ -121,14 +121,18 @@ class GetPersonContext:
     def _rank_disclosure_records(
         self, person_id: str, max_items: int, include_sensitive: bool
     ) -> tuple[list[Fact], list[Interaction]]:
+        # Ranking compares instants, so each stored timestamp is normalized to UTC first. The
+        # write contract still accepts naive values, and `timestamp()` reads one in the host
+        # timezone: without this the same database would rank records differently — and admit
+        # different ones at the shared budget's cutoff — depending on the machine's TZ.
         eligible: list[tuple[Literal["fact", "interaction"], Fact | Interaction, datetime, float]] = []
         eligible.extend(
-            ("fact", fact, fact.recorded_at, fact.confidence)
+            ("fact", fact, as_utc(fact.recorded_at), fact.confidence)
             for fact in self._context.list_facts(person_id)
             if _can_disclose(fact.sensitivity, include_sensitive)
         )
         eligible.extend(
-            ("interaction", interaction, interaction.occurred_at, 1.0)
+            ("interaction", interaction, as_utc(interaction.occurred_at), 1.0)
             for interaction in self._context.list_interactions(person_id)
             if _can_disclose(interaction.sensitivity, include_sensitive)
         )

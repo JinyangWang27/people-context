@@ -252,11 +252,14 @@ class FakeRecordStore:
             )
             and (status is None or reminder.status == status)
         ]
+        # SQLite stores `due_at` as ISO text and orders it as text, so the fake compares the
+        # same spelling. Comparing the values as datetimes instead would raise as soon as a
+        # store holds both a naive and an aware timestamp, which the write contract allows.
         return sorted(
             reminders,
             key=lambda reminder: (
                 reminder.due_at is None,
-                reminder.due_at or datetime.max.replace(tzinfo=UTC),
+                "" if reminder.due_at is None else reminder.due_at.isoformat(),
                 reminder.id,
             ),
         )

@@ -66,6 +66,19 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def as_utc(value: datetime) -> datetime:
+    """Return one comparable UTC instant for a stored timestamp.
+
+    Stored timestamps keep whatever offset the writer supplied, and the write contract still
+    accepts naive values. Comparing instants therefore converts an aware value and reads a
+    naive one as UTC. The host timezone is never consulted, which is exactly what
+    ``astimezone()`` or ``timestamp()`` on a naive value would silently do — and what would
+    otherwise make an ordering, and any budget that truncates an ordered list, depend on the
+    machine that happened to run the read.
+    """
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 def normalize_name(value: str) -> str:
     """Normalize a name for matching.
 

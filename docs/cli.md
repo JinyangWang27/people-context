@@ -20,11 +20,12 @@ what encryption does and does not protect.
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
 | `init` | Safely seed or add to the self identity, optionally review a vCard import, and set a philosophy. |
 | `demo [--reset]` | Seed the isolated packaged fictional demo; refuse replacement unless `--reset` is supplied. |
-| `list [--all] [--limit N]` | List people; `--all` includes soft-deleted rows. |
+| `list [--all] [--limit N] [--json]` | List people; `--all` includes soft-deleted rows, `--json` emits the person index. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
+| `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
@@ -42,8 +43,8 @@ what encryption does and does not protect.
 | `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
 | `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
 
-`show`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown references exit
-1; ambiguous names exit 2 and print candidates rather than guessing.
+`show`, `brief`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown
+references exit 1; ambiguous names exit 2 and print candidates rather than guessing.
 
 ## Onboarding
 
@@ -115,6 +116,61 @@ without printing the birth year. Ordinary birthday facts whose value is neither 
 impossible dates such as `1985-02-29` — are counted in a trailing skipped line rather than guessed at.
 `sensitive`/`restricted` facts are invisible here: they produce no row and are not counted, so the skipped
 count cannot reveal that an elevated birthday exists.
+
+## Person brief
+
+```bash
+uv run pctx brief "Alice Zhang"
+uv run pctx brief 01J... --json --output ~/alice.json
+uv run pctx brief "Alice Zhang" --include-sensitive
+```
+
+Composes one person's context, communication guidance, and reminders into a single document. It is a read path:
+it records nothing, mints no audit or changelog rows, and adds no MCP tool. Reminders come from the same
+`ListReminders` read the `reminders` workflow uses, which is why a brief shows `follow_up` and `occasion` rows
+that person context alone never returns.
+
+Disclosure is asymmetric and labelled rather than implied. `--include-sensitive` widens only the context-backed
+records — facts, interactions, and traits — because that is the one read that accepts the flag. Communication
+guidance keeps its own `public`/`personal` contract in both modes, so a brief taken with the flag still shows
+guidance built from ordinary records only. Both levels are printed in the Markdown header and carried in the JSON
+`disclosure` object, next to a notice saying the document is outside the server's disclosure controls entirely.
+
+Markdown is the default and goes to stdout. `--json` emits the versioned `people-context-brief` document instead;
+it is the stable machine form and is listed in
+[compatibility.md](compatibility.md#machine-readable-json). The Markdown layout is deterministic but not frozen —
+build integrations on the JSON.
+
+Ordering does not depend on the order rows come back from storage: relationships, affiliations, traits, and
+reminders each sort by a key ending in a record id, and facts and interactions keep the relevance ranking person
+context already imposes. Nor does it depend on the machine: wherever a stored timestamp is compared as an
+instant — the shared fact/interaction budget and the guidance friction-note limit both truncate an ordered list —
+a naive value is read as UTC rather than in the host timezone, matching `stale`. Dated reminders precede undated
+ones and are ordered by their stored timestamp spelling instead, because a naive and an aware value cannot be
+compared as instants at all.
+
+`--output` publishes through the same atomic private-file writer as `export` and `sync push`: the result is
+`0600`, an existing permissive destination is replaced rather than left with its old mode, a destination symlink
+is replaced instead of followed, and a failed write leaves any previous file untouched. The command refuses,
+without writing anything, when `--output` names the database it is reading or one of that database's `-wal`,
+`-shm`, or `-journal` sidecars.
+
+## Person index
+
+```bash
+uv run pctx list --json
+uv run pctx list --all --json
+```
+
+Prints the versioned `people-context-person-index` document instead of the table: one entry per person carrying
+the stable id, canonical name, alias values, summary, `is_self`, and an explicit `deleted` flag. It exists so an
+integration can address a person by id rather than by display name, and it carries no facts, interactions,
+traits, or reminders at any sensitivity level.
+
+Soft-deleted people are excluded unless `--all` is supplied, and then they are marked by the `deleted` field
+rather than by a suffix on the name. `--limit` bounds how many people are read, exactly as it does for the table;
+the entries that survive it are ordered by normalized name and then id, so the document does not depend on the
+database's own collation. An empty store still produces a complete, parseable document.
 
 ## Relationship vocabulary
 

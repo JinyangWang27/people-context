@@ -13,7 +13,7 @@ from people_context.app.context.models import (
 )
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.domain.reminder import Reminder, ReminderKind
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Sensitivity, as_utc
 from people_context.domain.trait import Trait, TraitCategory
 from people_context.ports.clock import Clock
 from people_context.ports.context import PersonContextReader
@@ -66,13 +66,16 @@ class GetCommunicationGuidance:
             return CommunicationGuidanceResult(found=False, person_id=person_id, situation=situation)
         as_of = self._clock.now().date()
         traits = self._group_traits(person_id)
+        # Each stored timestamp is normalized to UTC before it is compared as an instant,
+        # so neither this order nor the friction-note limit that truncates it depends on the
+        # host timezone a naive stored value would otherwise be read in.
         interactions = sorted(
             (
                 interaction
                 for interaction in self._context.list_interactions(person_id)
                 if _can_disclose(interaction.sensitivity)
             ),
-            key=lambda interaction: (-interaction.occurred_at.timestamp(), interaction.id),
+            key=lambda interaction: (-as_utc(interaction.occurred_at).timestamp(), interaction.id),
         )
         reminders = [
             reminder
