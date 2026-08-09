@@ -12,6 +12,7 @@ from people_context.adapters.filesystem.private_file import atomic_write_private
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.exports import (
     SYNC_BUNDLE_FILENAME,
+    VCardExportResult,
     render_brief_json,
     render_brief_markdown,
     render_bundle_json,
@@ -38,6 +39,10 @@ REMINDER_CALENDAR_WARNING = (
 BRIEF_FILE_WARNING = (
     "This brief is plaintext personal data outside the server's disclosure controls. "
     "Keep it on encrypted storage and share it only deliberately."
+)
+VCARD_WARNING = (
+    "These vCards are plaintext personal data outside the server's disclosure controls. "
+    "Keep them on encrypted storage and hand them to a contacts application only deliberately."
 )
 
 
@@ -99,6 +104,65 @@ def cmd_brief(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     print(f"Wrote the brief for {person.canonical_name} to {written}.")
     print(BRIEF_FILE_WARNING)
     return 0
+
+
+def cmd_export_vcard(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Export active people as vCards to stdout or one owner-only file."""
+    result = runtime.use_cases.export_vcard.execute(
+        version=args.version,
+        include_sensitive=args.include_sensitive,
+    )
+    if args.output is None:
+        # The document goes to stdout alone, so a redirected stream stays a valid vCard
+        # file; the counts and the disclosure notice go to stderr.
+        sys.stdout.write(result.document)
+        for line in [*_vcard_summary(result, None), VCARD_WARNING]:
+            print(line, file=sys.stderr)
+        return 0
+
+    destination = Path(args.output).expanduser()
+    if _collides_with_database(destination, runtime.path):
+        print(
+            f"Refusing to write the vCards to {destination}: "
+            f"it is the database this command is reading, or one of its sidecar files.",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        written = atomic_write_private_text(destination, result.document)
+    except OSError as exc:
+        print(f"Cannot write the vCards to {destination}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+
+    for line in _vcard_summary(result, written):
+        print(line)
+    print(VCARD_WARNING)
+    return 0
+
+
+def _vcard_summary(result: VCardExportResult, destination: Path | None) -> list[str]:
+    """Describe one export with counts only; no name or record value is reported."""
+    written = "" if destination is None else f" to {destination}"
+    lines = [f"Exported {result.exported} contact(s) as vCard {result.version}{written}."]
+    if result.omitted_affiliations:
+        lines.append(
+            f"Omitted {result.omitted_affiliations} additional active affiliation(s); "
+            f"a card carries one ORG/TITLE pair the importer reads back."
+        )
+    if result.omitted_birthdays:
+        lines.append(
+            f"Omitted {result.omitted_birthdays} additional full-date birthday(s); a card carries one BDAY."
+        )
+    if result.skipped_partial_birthdays:
+        lines.append(
+            f"Skipped {result.skipped_partial_birthdays} recurring --MM-DD birthday value(s), "
+            f"which have no portable vCard spelling."
+        )
+    if result.skipped_unparseable_birthdays:
+        lines.append(
+            f"Skipped {result.skipped_unparseable_birthdays} birthday value(s) that are not a full calendar date."
+        )
+    return lines
 
 
 def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

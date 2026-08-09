@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from people_context.app.exports import DEFAULT_VCARD_VERSION
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
@@ -21,6 +22,7 @@ from people_context.app.sync import (
     MIN_INTERVAL_SECONDS,
 )
 from people_context.domain.person import AliasKind
+from people_context.ports.vcard import SUPPORTED_VCARD_VERSIONS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -103,6 +105,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-sensitive",
         action="store_true",
         help="Include sensitive and restricted facts in files outside server disclosure controls.",
+    )
+
+    export_vcard = subparsers.add_parser(
+        "export-vcard",
+        help="Export active people as deterministic vCards the bundled importer reads back.",
+    )
+    export_vcard.add_argument("--output", default=None, help="Write to this owner-only file instead of stdout.")
+    export_vcard.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="Allow a sensitive or restricted birthday fact to supply BDAY.",
+    )
+    export_vcard.add_argument(
+        "--version",
+        choices=list(SUPPORTED_VCARD_VERSIONS),
+        default=DEFAULT_VCARD_VERSION,
+        help=f"vCard dialect to write (default {DEFAULT_VCARD_VERSION}).",
     )
 
     reminders_ics = subparsers.add_parser(

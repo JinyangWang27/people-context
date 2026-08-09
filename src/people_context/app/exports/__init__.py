@@ -1,4 +1,4 @@
-"""Portable JSON, brief, person-index, sync-bundle, reminder-calendar, and vault export use cases."""
+"""Portable JSON, brief, person-index, sync-bundle, reminder-calendar, vCard, and vault export use cases."""
 
 from people_context.app.exports.brief import (
     BRIEF_FORMAT,
@@ -32,10 +32,17 @@ from people_context.app.exports.sync_bundle import (
     render_bundle_json,
 )
 from people_context.app.exports.vault import ExportVault, ExportVaultResult
+from people_context.app.exports.vcard import (
+    DEFAULT_VCARD_VERSION,
+    ExportVCard,
+    VCardExportError,
+    VCardExportResult,
+)
 
 __all__ = [
     "BRIEF_FORMAT",
     "BRIEF_VERSION",
+    "DEFAULT_VCARD_VERSION",
     "DISCLOSURE_NOTICE",
     "PERSON_INDEX_FORMAT",
     "PERSON_INDEX_VERSION",
@@ -51,11 +58,14 @@ __all__ = [
     "ExportSyncBundle",
     "ExportVault",
     "ExportVaultResult",
+    "ExportVCard",
     "ListPersonIndex",
     "PersonBriefDocument",
     "PersonIndexDocument",
     "PersonIndexEntry",
     "ReminderCalendarResult",
+    "VCardExportError",
+    "VCardExportResult",
     "render_brief_json",
     "render_brief_markdown",
     "render_bundle_json",
