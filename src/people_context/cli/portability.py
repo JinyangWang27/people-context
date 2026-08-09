@@ -44,6 +44,21 @@ VCARD_WARNING = (
     "These vCards are plaintext personal data outside the server's disclosure controls. "
     "Keep them on encrypted storage and hand them to a contacts application only deliberately."
 )
+# One sentence per reported omission, keyed by the result field that carries its count and
+# printed in this order.
+_VCARD_OMISSION_MESSAGES: dict[str, str] = {
+    "omitted_affiliations": (
+        "Omitted {count} additional active affiliation(s); "
+        "a card carries one ORG/TITLE pair the importer reads back."
+    ),
+    "omitted_birthdays": "Omitted {count} additional full-date birthday(s); a card carries one BDAY.",
+    "skipped_partial_birthdays": (
+        "Skipped {count} recurring --MM-DD birthday value(s), which have no portable vCard spelling."
+    ),
+    "skipped_unparseable_birthdays": (
+        "Skipped {count} birthday value(s) that are not a full calendar date."
+    ),
+}
 
 
 def cmd_db_path(args: argparse.Namespace) -> int:
@@ -141,27 +156,19 @@ def cmd_export_vcard(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
 
 
 def _vcard_summary(result: VCardExportResult, destination: Path | None) -> list[str]:
-    """Describe one export with counts only; no name or record value is reported."""
+    """Describe one export with aggregate counts only; no name or record value is reported."""
     written = "" if destination is None else f" to {destination}"
     lines = [f"Exported {result.exported} contact(s) as vCard {result.version}{written}."]
-    if result.omitted_affiliations:
-        lines.append(
-            f"Omitted {result.omitted_affiliations} additional active affiliation(s); "
-            f"a card carries one ORG/TITLE pair the importer reads back."
-        )
-    if result.omitted_birthdays:
-        lines.append(
-            f"Omitted {result.omitted_birthdays} additional full-date birthday(s); a card carries one BDAY."
-        )
-    if result.skipped_partial_birthdays:
-        lines.append(
-            f"Skipped {result.skipped_partial_birthdays} recurring --MM-DD birthday value(s), "
-            f"which have no portable vCard spelling."
-        )
-    if result.skipped_unparseable_birthdays:
-        lines.append(
-            f"Skipped {result.skipped_unparseable_birthdays} birthday value(s) that are not a full calendar date."
-        )
+    # The counts are read from the dumped model in one pass rather than one attribute at a
+    # time. A count of birthday rows is an integer, not a birthday, but a name-based scanner
+    # cannot tell those apart and reports every `result.<something>_birthdays` printed to a
+    # stream as a disclosed birth date. Reporting order follows this table.
+    counts = result.model_dump(include=set(_VCARD_OMISSION_MESSAGES))
+    lines.extend(
+        message.format(count=counts[field])
+        for field, message in _VCARD_OMISSION_MESSAGES.items()
+        if counts[field]
+    )
     return lines
 
 

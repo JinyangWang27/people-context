@@ -199,6 +199,41 @@ def test_include_sensitive_widens_the_birthday_gate(
     assert "BDAY:1990-01-02" in widened
 
 
+def test_reports_every_omission_as_an_aggregate_count(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Each reported count names a reason and a number, never a person or a value."""
+    db_path = tmp_path / "people.db"
+    output = tmp_path / "people.vcf"
+    _seed(db_path)
+    conn = open_db(db_path)
+    try:
+        repository = SqlitePeopleRepository(conn)
+        alice = next(
+            person for person in repository.list_people() if person.canonical_name == "Alice Zhang"
+        )
+        record_fact = RecordFact(repository, SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock())
+        record_fact.execute(
+            RecordFactInput(person_id=alice.id, predicate="birthday", value="1985-04-13")
+        )
+        record_fact.execute(
+            RecordFactInput(person_id=alice.id, predicate="birthday", value="sometime in April")
+        )
+    finally:
+        conn.close()
+
+    assert main(["--db", str(db_path), "export-vcard", "--output", str(output)]) == 0
+
+    out = capsys.readouterr().out
+    assert "Omitted 1 additional active affiliation(s)" in out
+    assert "Omitted 1 additional full-date birthday(s); a card carries one BDAY." in out
+    assert "Skipped 1 recurring --MM-DD birthday value(s)" in out
+    assert "Skipped 1 birthday value(s) that are not a full calendar date." in out
+    assert "Alice" not in out.replace(str(output), "")
+    assert "1985-04-13" not in out
+
+
 def test_a_soft_deleted_person_is_not_exported(tmp_path: Path) -> None:
     db_path = tmp_path / "people.db"
     output = tmp_path / "people.vcf"
