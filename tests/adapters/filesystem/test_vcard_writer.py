@@ -18,7 +18,7 @@ from people_context.ports.vcard import (
 _MAX_LINE_OCTETS = 75
 
 
-def _projection(*contacts: VCardContact, version: str = VCARD_4_0) -> VCardProjection:
+def _projection(*contacts: VCardContact, version: str = VCARD_3_0) -> VCardProjection:
     return VCardProjection(version=version, contacts=contacts)
 
 
@@ -43,7 +43,8 @@ def _full_contact() -> VCardContact:
 
 
 def test_renders_canonical_4_0_bytes() -> None:
-    text = _render(_projection(_full_contact()))
+    """RFC 6350 section 4.3.1 builds a complete date from the ISO 8601 basic format."""
+    text = _render(_projection(_full_contact(), version=VCARD_4_0))
 
     assert text == (
         "BEGIN:VCARD\r\n"
@@ -54,12 +55,13 @@ def test_renders_canonical_4_0_bytes() -> None:
         "EMAIL:alice@example.com\r\n"
         "ORG:Acme\r\n"
         "TITLE:Engineer\r\n"
-        "BDAY:1985-04-12\r\n"
+        "BDAY:19850412\r\n"
         "END:VCARD\r\n"
     )
 
 
 def test_renders_canonical_3_0_bytes() -> None:
+    """RFC 2425 section 5.8.4 makes the hyphens optional, so the stored spelling stands."""
     text = _render(_projection(_full_contact(), version=VCARD_3_0))
 
     assert text == (
@@ -79,7 +81,7 @@ def test_renders_canonical_3_0_bytes() -> None:
 def test_omits_every_property_the_projection_left_empty() -> None:
     text = _render(_projection(VCardContact(person_id="01BOB", full_name="Bob")))
 
-    assert text == "BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Bob\r\nN:Bob;;;;\r\nEND:VCARD\r\n"
+    assert text == "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Bob\r\nN:Bob;;;;\r\nEND:VCARD\r\n"
 
 
 def test_an_empty_projection_renders_an_empty_document() -> None:
@@ -178,14 +180,24 @@ def test_folding_never_splits_a_multibyte_character() -> None:
     assert _reimport(text).candidates[0]["name"] == name
 
 
-def test_both_dialects_round_trip_identical_field_values() -> None:
+def test_both_dialects_round_trip_every_field_and_differ_only_in_the_date_spelling() -> None:
     contact = _full_contact()
 
     four = _reimport(_render(_projection(contact, version=VCARD_4_0))).candidates
     three = _reimport(_render(_projection(contact, version=VCARD_3_0))).candidates
 
-    assert four == three
+    assert four[:2] == three[:2]
+    # The default dialect reimports the stored birthday byte for byte; 4.0 reimports the
+    # basic calendar date its own grammar requires.
     assert three[2]["value"] == "1985-04-12"
+    assert four[2]["value"] == "19850412"
+
+
+def test_a_basic_date_keeps_every_component_padded() -> None:
+    contact = VCardContact(person_id="01", full_name="Ancient", birthday=date(85, 4, 2))
+
+    assert "BDAY:00850402\r\n" in _render(_projection(contact, version=VCARD_4_0))
+    assert "BDAY:0085-04-02\r\n" in _render(_projection(contact, version=VCARD_3_0))
 
 
 def test_every_rendered_card_is_accepted_by_the_importer() -> None:

@@ -12,7 +12,9 @@ grammar, but each is specified by its own RFC and the two are free to diverge.
 
 from __future__ import annotations
 
-from people_context.ports.vcard import VCardContact, VCardProjection
+from datetime import date
+
+from people_context.ports.vcard import VCARD_4_0, VCardContact, VCardProjection
 
 # RFC 6350 section 3.2 and RFC 2426 section 2.6: a content line is folded so no line exceeds
 # 75 octets, and a continuation begins with one white-space octet that is not part of the value.
@@ -59,15 +61,27 @@ def _render_card(contact: VCardContact, version: str) -> list[str]:
         lines.append(f"ORG:{_escape(contact.affiliation.organization)}")
         lines.append(f"TITLE:{_escape(contact.affiliation.role)}")
     if contact.birthday is not None:
-        # Both dialects receive the extended `YYYY-MM-DD` calendar date the store holds.
-        # RFC 6350 spells a complete date in the basic `YYYYMMDD` form, but the bundled
-        # importer keeps `BDAY` text verbatim, so writing the basic form would reimport a
-        # birthday whose value no longer matches the one that was exported. Keeping the
-        # stored spelling is what makes the round trip exact; a later importer-normalizing
-        # change can revisit the dialect difference on its own.
-        lines.append(f"BDAY:{contact.birthday.isoformat()}")
+        lines.append(f"BDAY:{_format_date(contact.birthday, version)}")
     lines.append("END:VCARD")
     return lines
+
+
+def _format_date(value: date, version: str) -> str:
+    """Format one complete calendar date in the spelling its dialect actually defines.
+
+    RFC 6350 section 4.3.1 builds a date from the ISO 8601 *basic* format, so a complete
+    vCard 4.0 date is `19850412` and the extended spelling is not in its grammar. vCard 3.0
+    takes its date value from RFC 2425 section 5.8.4, where the hyphens are optional, so the
+    extended `1985-04-12` this project stores is conformant there.
+
+    The difference is why 3.0 is the default dialect: only there is the standard spelling
+    also the stored one, which is what lets an exported birthday reimport byte for byte
+    through the unchanged importer. A 4.0 export is standards-first and reimports its
+    birthday in the basic spelling.
+    """
+    if version == VCARD_4_0:
+        return f"{value.year:04d}{value.month:02d}{value.day:02d}"
+    return value.isoformat()
 
 
 def _escape(value: str) -> str:

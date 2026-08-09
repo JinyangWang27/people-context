@@ -130,7 +130,7 @@ def cmd_export_vcard(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
     if args.output is None:
         # The document goes to stdout alone, so a redirected stream stays a valid vCard
         # file; the counts and the disclosure notice go to stderr.
-        sys.stdout.write(result.document)
+        _write_document(result.document)
         for line in [*_vcard_summary(result, None), VCARD_WARNING]:
             print(line, file=sys.stderr)
         return 0
@@ -153,6 +153,28 @@ def cmd_export_vcard(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
         print(line)
     print(VCARD_WARNING)
     return 0
+
+
+def _write_document(document: str) -> None:
+    """Write an already-lined document to stdout without newline translation.
+
+    The vCard format ends every content line with CRLF, and a text stream opened in the
+    platform default mode rewrites each `\\n` as the platform separator — on Windows that
+    turns the document's CRLF into `\\r\\r\\n`, which a parser reads as blank lines rather
+    than as the properties they separate. Writing the encoded bytes through the underlying
+    buffer keeps a redirected stream byte-identical to `--output`.
+
+    The text layer is flushed first so anything already written keeps its place, and a
+    stdout with no buffer (a captured or otherwise wrapped stream) falls back to the text
+    write it can accept.
+    """
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:
+        sys.stdout.write(document)
+        return
+    sys.stdout.flush()
+    buffer.write(document.encode("utf-8"))
+    buffer.flush()
 
 
 def _vcard_summary(result: VCardExportResult, destination: Path | None) -> list[str]:

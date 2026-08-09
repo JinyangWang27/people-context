@@ -10,10 +10,10 @@ round trip through the unchanged `VCardImportExtractor`, which is what bounds it
 
 - the importer consumes only the first `ORG`/`TITLE` pair, so exactly one affiliation is
   emitted and the remaining active ones are counted;
-- the importer stores `BDAY` text verbatim, so only full ISO `YYYY-MM-DD` values are
-  emitted. The project's recurring `--MM-DD` spelling is not what a conforming vCard 4
-  partial date looks like and has no vCard 3 form at all, so those values are counted
-  rather than written in a spelling no consumer agrees on;
+- only complete calendar dates are emitted, each in the spelling its dialect defines. The
+  project's recurring `--MM-DD` value is not what a conforming vCard 4 partial date looks
+  like and has no vCard 3 form at all, so those values are counted rather than written in a
+  spelling no consumer agrees on;
 - `N` carries the whole canonical name in the family-name component, because splitting a
   name on whitespace guesses a structure the store never recorded.
 """
@@ -37,16 +37,17 @@ from people_context.ports.clock import Clock
 from people_context.ports.export import ExportReader
 from people_context.ports.vcard import (
     SUPPORTED_VCARD_VERSIONS,
-    VCARD_4_0,
+    VCARD_3_0,
     VCardAffiliation,
     VCardContact,
     VCardProjection,
     VCardWriter,
 )
 
-# 4.0 is the current standard (RFC 6350) and the importer accepts it, so a fresh export
-# defaults to it; `--version 3.0` stays available for consumers that never adopted it.
-DEFAULT_VCARD_VERSION = VCARD_4_0
+# 3.0 is the default because it is the dialect whose standard date spelling is also the one
+# this project stores, so a default export reimports byte for byte through the unchanged
+# importer. `--version 4.0` writes RFC 6350 and its basic `YYYYMMDD` birthday instead.
+DEFAULT_VCARD_VERSION = VCARD_3_0
 
 # Only a complete, real calendar date is portable; `--MM-DD` is the project's own recurring
 # spelling and is counted separately rather than emitted.
@@ -128,7 +129,11 @@ class ExportVCard:
                 # would produce a card that cannot come back.
                 continue
             affiliation, omitted = _select_affiliation(affiliations.get(person.id, []), organizations, as_of)
-            birthday, counts = _select_birthday(facts.get(person.id, []), include_sensitive=include_sensitive)
+            birthday, counts = _select_birthday(
+                facts.get(person.id, []),
+                as_of,
+                include_sensitive=include_sensitive,
+            )
             omitted_affiliations += omitted
             omitted_birthdays += counts.omitted
             skipped_partial_birthdays += counts.partial
@@ -246,8 +251,18 @@ def _select_affiliation(
     return VCardAffiliation(organization=organization, role=role), len(usable) - 1
 
 
-def _select_birthday(facts: list[Fact], *, include_sensitive: bool) -> tuple[date | None, _BirthdayCounts]:
+def _select_birthday(
+    facts: list[Fact],
+    as_of: date,
+    *,
+    include_sensitive: bool,
+) -> tuple[date | None, _BirthdayCounts]:
     """Pick one full-date birthday and report what the remaining rows were.
+
+    A fact whose validity period does not contain `as_of` is not exported and is counted
+    nowhere, exactly as an expired affiliation is not an omission: a birthday that was
+    corrected by closing its period must not come back through the export, and could
+    otherwise even outrank its replacement when the closed row carries more confidence.
 
     Selection is by highest confidence, then newest `recorded_at`, then fact id. Timestamps
     are compared as UTC instants through `as_utc`, so a stored naive value never makes the
@@ -257,6 +272,8 @@ def _select_birthday(facts: list[Fact], *, include_sensitive: bool) -> tuple[dat
     candidates: list[tuple[float, float, str, date]] = []
     for fact in facts:
         if fact.predicate != BIRTHDAY_PREDICATE:
+            continue
+        if not fact.period.contains(as_of):
             continue
         if not include_sensitive and fact.sensitivity not in ORDINARY_SENSITIVITIES:
             continue

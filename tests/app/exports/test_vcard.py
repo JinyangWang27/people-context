@@ -58,13 +58,17 @@ def _snapshot(
 def _export(
     snapshot: ExportSnapshot,
     *,
-    version: str = VCARD_4_0,
+    version: str | None = None,
     include_sensitive: bool = False,
 ) -> tuple[VCardProjection, VCardExportResult]:
     """Run one export and return the projection the adapter received plus the result."""
     writer = _RecordingWriter()
     use_case = ExportVCard(FakeExportReader(snapshot), writer, FakeClock(_NOW))
-    result = use_case.execute(version=version, include_sensitive=include_sensitive)
+    result = (
+        use_case.execute(include_sensitive=include_sensitive)
+        if version is None
+        else use_case.execute(version=version, include_sensitive=include_sensitive)
+    )
     assert len(writer.projections) == 1
     return writer.projections[0], result
 
@@ -112,7 +116,7 @@ def test_projects_identity_affiliation_and_birthday() -> None:
 
     projection, result = _export(snapshot)
 
-    assert projection.version == VCARD_4_0
+    assert projection.version == VCARD_3_0
     contact = projection.contacts[0]
     assert contact.person_id == person.id
     assert contact.full_name == "Alice Zhang"
@@ -267,6 +271,63 @@ def test_counts_partial_and_unparseable_birthdays_separately() -> None:
     assert result.skipped_unparseable_birthdays == 3
 
 
+def test_a_birthday_outside_its_validity_period_is_neither_exported_nor_counted() -> None:
+    """A closed row must not come back, and it is no more an omission than an old job is."""
+    person = Person(canonical_name="Alice")
+    corrected = Fact(
+        person_id=person.id,
+        predicate="birthday",
+        value="1985-04-12",
+        period=ValidityPeriod(valid_to=date(2025, 1, 1)),
+        recorded_at=_NOW,
+        provenance=_PROVENANCE,
+    )
+    not_yet_active = Fact(
+        person_id=person.id,
+        predicate="birthday",
+        value="1985-04-13",
+        period=ValidityPeriod(valid_from=date(2027, 1, 1)),
+        recorded_at=_NOW,
+        provenance=_PROVENANCE,
+    )
+    unusable_but_closed = Fact(
+        person_id=person.id,
+        predicate="birthday",
+        value="sometime in April",
+        period=ValidityPeriod(valid_to=date(2025, 1, 1)),
+        recorded_at=_NOW,
+        provenance=_PROVENANCE,
+    )
+
+    projection, result = _export(
+        _snapshot(people=[person], facts=[corrected, not_yet_active, unusable_but_closed])
+    )
+
+    assert projection.contacts[0].birthday is None
+    assert result.omitted_birthdays == 0
+    assert result.skipped_unparseable_birthdays == 0
+
+
+def test_a_closed_birthday_never_outranks_its_active_replacement() -> None:
+    """Confidence orders the selection, so an expired row must be gone before it is ranked."""
+    person = Person(canonical_name="Alice")
+    closed = Fact(
+        person_id=person.id,
+        predicate="birthday",
+        value="1985-04-12",
+        period=ValidityPeriod(valid_to=date(2025, 1, 1)),
+        recorded_at=_NOW,
+        confidence=1.0,
+        provenance=_PROVENANCE,
+    )
+    replacement = _birthday(person, "1986-05-13", confidence=0.6)
+
+    projection, result = _export(_snapshot(people=[person], facts=[closed, replacement]))
+
+    assert projection.contacts[0].birthday == date(1986, 5, 13)
+    assert result.omitted_birthdays == 0
+
+
 def test_elevated_birthdays_are_invisible_by_default() -> None:
     person = Person(canonical_name="Alice")
     sensitive = _birthday(person, "1985-04-12", sensitivity=Sensitivity.SENSITIVE)
@@ -352,10 +413,10 @@ def test_repeated_exports_of_one_snapshot_are_identical() -> None:
 
 
 def test_selects_the_requested_dialect() -> None:
-    projection, result = _export(_snapshot(people=[Person(canonical_name="Alice")]), version=VCARD_3_0)
+    projection, result = _export(_snapshot(people=[Person(canonical_name="Alice")]), version=VCARD_4_0)
 
-    assert projection.version == VCARD_3_0
-    assert result.version == VCARD_3_0
+    assert projection.version == VCARD_4_0
+    assert result.version == VCARD_4_0
 
 
 def test_refuses_an_unsupported_dialect_before_reading() -> None:

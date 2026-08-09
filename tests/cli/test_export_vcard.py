@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import os
 import stat
+import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -100,16 +102,42 @@ def test_writes_canonical_vcards_to_stdout_by_default(
     assert main(["--db", str(db_path), "export-vcard"]) == 0
 
     captured = capsys.readouterr()
-    assert captured.out.startswith("BEGIN:VCARD\r\nVERSION:4.0\r\nFN:Alice Zhang\r\n")
+    assert captured.out.startswith("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Alice Zhang\r\n")
     assert captured.out.endswith("END:VCARD\r\n")
     assert captured.out.count("BEGIN:VCARD") == 2
     assert "BDAY:1985-04-12\r\n" in captured.out
     assert "dietary" not in captured.out
     # Counts and the notice stay off stdout so a redirected stream is a valid vCard file.
-    assert "Exported 2 contact(s) as vCard 4.0." in captured.err
+    assert "Exported 2 contact(s) as vCard 3.0." in captured.err
     assert "Omitted 1 additional active affiliation(s)" in captured.err
     assert "Skipped 1 recurring --MM-DD birthday value(s)" in captured.err
     assert "outside the server's disclosure controls" in captured.err
+
+
+def test_redirected_stdout_keeps_crlf_without_platform_translation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A text stream in the platform default mode would rewrite CRLF as `\\r\\r\\n`.
+
+    The stream below translates newlines exactly as a redirected Windows stdout does, so a
+    document written through the text layer would arrive doubled.
+    """
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    raw = io.BytesIO()
+    monkeypatch.setattr(
+        sys,
+        "stdout",
+        io.TextIOWrapper(raw, encoding="utf-8", newline="\r\n", write_through=True),
+    )
+
+    assert main(["--db", str(db_path), "export-vcard"]) == 0
+
+    sys.stdout.flush()
+    written = raw.getvalue()
+    assert b"\r\r\n" not in written
+    assert written.decode("utf-8").startswith("BEGIN:VCARD\r\nVERSION:3.0\r\n")
 
 
 def test_writes_an_owner_only_file_and_reports_counts_on_stdout(
@@ -126,7 +154,7 @@ def test_writes_an_owner_only_file_and_reports_counts_on_stdout(
     text = output.read_bytes().decode("utf-8")
     assert text.count("BEGIN:VCARD") == 2
     out = capsys.readouterr().out
-    assert f"Exported 2 contact(s) as vCard 4.0 to {output}." in out
+    assert f"Exported 2 contact(s) as vCard 3.0 to {output}." in out
     assert "outside the server's disclosure controls" in out
 
 
@@ -170,16 +198,31 @@ def test_repeated_export_of_unchanged_data_is_byte_identical(tmp_path: Path) -> 
     assert first.read_bytes() == second.read_bytes()
 
 
-def test_version_flag_selects_the_dialect(tmp_path: Path) -> None:
+def test_version_flag_selects_the_dialect_and_its_date_spelling(tmp_path: Path) -> None:
     db_path = tmp_path / "people.db"
     output = tmp_path / "people.vcf"
     _seed(db_path)
 
-    assert main(["--db", str(db_path), "export-vcard", "--version", "3.0", "--output", str(output)]) == 0
+    assert main(["--db", str(db_path), "export-vcard", "--version", "4.0", "--output", str(output)]) == 0
+
+    text = output.read_bytes().decode("utf-8")
+    assert "VERSION:4.0\r\n" in text
+    assert "VERSION:3.0" not in text
+    # RFC 6350 builds a complete date from the basic format, so 4.0 does not carry hyphens.
+    assert "BDAY:19850412\r\n" in text
+    assert _reimport(text)[2]["value"] == "19850412"
+
+
+def test_the_default_dialect_reimports_the_stored_birthday_unchanged(tmp_path: Path) -> None:
+    db_path = tmp_path / "people.db"
+    output = tmp_path / "people.vcf"
+    _seed(db_path)
+
+    assert main(["--db", str(db_path), "export-vcard", "--output", str(output)]) == 0
 
     text = output.read_bytes().decode("utf-8")
     assert "VERSION:3.0\r\n" in text
-    assert "VERSION:4.0" not in text
+    assert "BDAY:1985-04-12\r\n" in text
     assert _reimport(text)[2]["value"] == "1985-04-12"
 
 

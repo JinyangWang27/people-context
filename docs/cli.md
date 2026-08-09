@@ -286,13 +286,14 @@ exported Markdown is outside the server's disclosure controls. See [vault-export
 ```bash
 uv run pctx export-vcard
 uv run pctx export-vcard --output ~/people-context.vcf
-uv run pctx export-vcard --version 3.0 --output ~/people-context.vcf
+uv run pctx export-vcard --version 4.0 --output ~/people-context.vcf
 ```
 
 Writes one card per active person, in a fixed property order, with RFC-conformant escaping, 75-octet folding,
 and CRLF line endings, so re-exporting unchanged data on the same date produces byte-identical output. People
 are ordered by normalized canonical name and then by id. `--version` selects the dialect and accepts `3.0` or
-`4.0`; `4.0` is the default.
+`4.0`; `3.0` is the default, because it is the dialect whose standard date spelling is also the one this project
+stores (see the birthday note below).
 
 The mapping is deliberately non-heuristic, and everything it emits reads back through the bundled vCard importer
 unchanged:
@@ -306,19 +307,28 @@ unchanged:
   affiliation id, because the importer reads only the first pair back. Affiliations are evaluated as of today,
   so an expired one is not exported at all; additional *active* ones are counted as omitted.
 - One full-date `BDAY` is emitted, chosen by highest confidence, then newest `recorded_at`, then fact id.
+  Birthday facts are evaluated as of today too: a fact whose validity period has closed, or has not opened yet,
+  is neither exported nor counted, so a birthday corrected by closing its period cannot come back through the
+  export.
 
-Only complete `YYYY-MM-DD` birthdays are portable. The project's recurring `--MM-DD` values are counted as
-skipped rather than written, because that spelling is not what a conforming vCard 4 partial date looks like and
-has no vCard 3 form at all; a birthday value that is not a real calendar date is counted separately. The full
-date is written in the extended `YYYY-MM-DD` form in both dialects rather than vCard 4's basic `YYYYMMDD`
-calendar date: the importer keeps `BDAY` text verbatim, so the extended form is what makes a reimported birthday
-identical to the exported one.
+Only complete calendar dates are portable. The project's recurring `--MM-DD` values are counted as skipped
+rather than written, because that spelling is not what a conforming vCard 4 partial date looks like and has no
+vCard 3 form at all; a birthday value that is not a real calendar date is counted separately.
+
+Each dialect gets the date spelling its own standard defines. RFC 6350 builds a complete vCard 4.0 date from the
+ISO 8601 *basic* format, so `--version 4.0` writes `BDAY:19850412`. vCard 3.0 takes its date from RFC 2425,
+where the hyphens are optional, so the default writes `BDAY:1985-04-12` — the same text the store holds. That is
+why 3.0 is the default: the importer keeps `BDAY` text verbatim, so only there does an exported birthday come
+back byte for byte. Reimporting a 4.0 export stores the basic spelling instead, which the birthday reports do
+not read as a full date.
 
 Sensitive and restricted birthday facts are invisible without `--include-sensitive`. They supply no `BDAY` and
 contribute to no count, so the report never signals that an elevated record exists.
 
 Stdout is the default, and the document goes there alone: the counts and the disclosure notice are printed on
-stderr, so `pctx export-vcard > people.vcf` is a valid vCard file. With `--output` the file is published through
+stderr, so `pctx export-vcard > people.vcf` is a valid vCard file. The document is written as encoded bytes
+rather than through the text layer, so a redirected stream keeps the format's CRLF endings instead of having
+them rewritten to the platform separator. With `--output` the file is published through
 the same atomic private-file writer as `export`, `brief`, and `sync push` — the result is `0600`, an existing
 permissive destination is replaced rather than left with its old mode, and a failed write leaves any previous
 file untouched. As with the other file exports, the command refuses, without writing anything, when `--output`
