@@ -140,6 +140,21 @@ def test_redirected_stdout_keeps_crlf_without_platform_translation(
     assert written.decode("utf-8").startswith("BEGIN:VCARD\r\nVERSION:3.0\r\n")
 
 
+def test_a_stdout_without_a_byte_buffer_still_receives_the_document(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wrapped stdout that exposes no `buffer` falls back to the text write."""
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+    stream = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", stream)
+
+    assert main(["--db", str(db_path), "export-vcard"]) == 0
+
+    assert stream.getvalue().startswith("BEGIN:VCARD\r\nVERSION:3.0\r\n")
+
+
 def test_writes_an_owner_only_file_and_reports_counts_on_stdout(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
