@@ -267,6 +267,7 @@ uv run pctx relationship-types
 uv run pctx relationship-types add TYPE --category C [--inverse T | --symmetric]
 uv run pctx normalize-relationships [--apply]
 uv run pctx export-vault --output DIR [--include-sensitive]
+uv run pctx export-vcard [--output FILE] [--include-sensitive] [--version 3.0|4.0]
 uv run pctx edit PERSON [--name NAME] [--summary TEXT]
 uv run pctx add-alias PERSON VALUE [--kind KIND]
 uv run pctx set communication_philosophy VALUE

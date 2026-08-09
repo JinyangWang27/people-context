@@ -41,6 +41,7 @@ what encryption does and does not protect.
 | `relationship-types add ...` | Add portable custom vocabulary (add-only in v1). |
 | `normalize-relationships [--apply]` | Dry-run or apply audited canonical rewrites of legacy edges. |
 | `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
+| `export-vcard [--output FILE] [--include-sensitive] [--version V]` | Export active people as deterministic vCards. |
 | `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
 
 `show`, `brief`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown
@@ -279,6 +280,52 @@ The destination must be nonexistent, empty, or already contain `.people-context-
 directory is refused without changes. Re-export replaces only the marker plus `People/` and `Organizations/`;
 `.obsidian/` and every other user-created path are preserved. Use `--include-sensitive` only with explicit intent;
 exported Markdown is outside the server's disclosure controls. See [vault-export.md](vault-export.md).
+
+## vCard export
+
+```bash
+uv run pctx export-vcard
+uv run pctx export-vcard --output ~/people-context.vcf
+uv run pctx export-vcard --version 3.0 --output ~/people-context.vcf
+```
+
+Writes one card per active person, in a fixed property order, with RFC-conformant escaping, 75-octet folding,
+and CRLF line endings, so re-exporting unchanged data on the same date produces byte-identical output. People
+are ordered by normalized canonical name and then by id. `--version` selects the dialect and accepts `3.0` or
+`4.0`; `4.0` is the default.
+
+The mapping is deliberately non-heuristic, and everything it emits reads back through the bundled vCard importer
+unchanged:
+
+- `FN` is the canonical name, and `N` repeats that whole name in the family-name component
+  (`N:<canonical name>;;;;`). The store never recorded a given/family boundary, so splitting the name on
+  whitespace would invent one.
+- `NICKNAME` comes from nickname aliases and `EMAIL` from handle aliases that actually parse as mail addresses.
+  A handle that is not an address — `@alice`, say — is not exported as one.
+- One `ORG`/`TITLE` pair is emitted, chosen by normalized organization name, then normalized role, then
+  affiliation id, because the importer reads only the first pair back. Affiliations are evaluated as of today,
+  so an expired one is not exported at all; additional *active* ones are counted as omitted.
+- One full-date `BDAY` is emitted, chosen by highest confidence, then newest `recorded_at`, then fact id.
+
+Only complete `YYYY-MM-DD` birthdays are portable. The project's recurring `--MM-DD` values are counted as
+skipped rather than written, because that spelling is not what a conforming vCard 4 partial date looks like and
+has no vCard 3 form at all; a birthday value that is not a real calendar date is counted separately. The full
+date is written in the extended `YYYY-MM-DD` form in both dialects rather than vCard 4's basic `YYYYMMDD`
+calendar date: the importer keeps `BDAY` text verbatim, so the extended form is what makes a reimported birthday
+identical to the exported one.
+
+Sensitive and restricted birthday facts are invisible without `--include-sensitive`. They supply no `BDAY` and
+contribute to no count, so the report never signals that an elevated record exists.
+
+Stdout is the default, and the document goes there alone: the counts and the disclosure notice are printed on
+stderr, so `pctx export-vcard > people.vcf` is a valid vCard file. With `--output` the file is published through
+the same atomic private-file writer as `export`, `brief`, and `sync push` — the result is `0600`, an existing
+permissive destination is replaced rather than left with its old mode, and a failed write leaves any previous
+file untouched. As with the other file exports, the command refuses, without writing anything, when `--output`
+names the database it is reading or one of that database's `-wal`, `-shm`, or `-journal` sidecars.
+
+The file is plaintext personal data outside the server's disclosure controls; handing it to a contacts
+application is your own disclosure decision.
 
 ## Reminder calendar export
 

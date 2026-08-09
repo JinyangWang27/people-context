@@ -115,7 +115,10 @@ The following are deterministic but **not frozen**, including at `1.0`:
 
 - CLI tables, prose, prompts, and log lines;
 - the Obsidian vault export Markdown layout, file naming, and front-matter shape
-  ([vault-export.md](vault-export.md)).
+  ([vault-export.md](vault-export.md));
+- which fields `pctx export-vcard` selects, and the counts it prints. The dialects themselves are RFC 6350 and
+  RFC 2426, and the standing guarantee is narrower than a frozen layout: every property the export emits reads
+  back through the bundled vCard importer. A later release may map additional fields.
 
 Vault export re-runs are byte-deterministic over unchanged data, which makes diffs meaningful, but the layout may
 change in a minor release. Build integrations on the MCP tools or the versioned JSON documents above, not on

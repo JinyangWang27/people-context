@@ -198,6 +198,27 @@ integration list people without reading their records.
 replaced instead of followed, and a failed write preserves any previously valid file. The command refuses to
 publish over the database it is reading or any of that database's sidecars.
 
+## vCard export
+
+`pctx export-vcard` is a human-operated, CLI-only export of active people as vCards. It is a read path: it
+records nothing, mints no audit or changelog rows, and adds no model-callable tool. Soft-deleted people are
+excluded, and affiliations are evaluated as of the export date.
+
+It defaults to ordinary disclosure. Sensitive and restricted birthday facts are invisible without
+`--include-sensitive`: they supply no `BDAY` and contribute to none of the reported counts, so the counts never
+signal that an elevated record exists. The counts themselves are aggregate only — how many affiliations or
+birthdays were omitted or skipped, never which person or which value.
+
+Stdout is the default. The document goes to stdout alone and the counts and the disclosure notice go to stderr,
+so a redirected stream is a valid vCard file. `--output FILE` publishes through the same shared atomic
+private-file writer, so the destination is `0600`, an existing permissive file is replaced rather than left with
+its old mode, a destination symlink is replaced instead of followed, and a failed write preserves any previously
+valid file. The command refuses to publish over the database it is reading or any of that database's sidecars.
+
+The file carries names, aliases, mail addresses, one affiliation, and one birthday in plaintext, outside the
+server's disclosure controls. Handing it to a contacts application or an address-book sync service is the
+operator's own disclosure decision.
+
 ## Reminder calendar export
 
 `pctx reminders-ics --output FILE` is a human-operated, CLI-only export of active reminders as iCalendar
