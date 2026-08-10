@@ -431,6 +431,73 @@ def test_linkedin_import_stages_safe_rows_and_reports_invalid_neighbors(tmp_path
     assert note_sentinel not in str((imported, reviewed))
 
 
+def test_outlook_import_stages_contacts_without_notes_or_web_pages(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "outlook.db")
+    note_sentinel = "MCP-OUTLOOK-NOTE-MUST-NOT-LEAK-4b71"
+    url_sentinel = "MCP-OUTLOOK-URL-MUST-NOT-LEAK-2ce8"
+    content = "\n".join(
+        [
+            "First Name,Middle Name,Last Name,E-mail Address,Company,Job Title,Web Page,Birthday,Notes",
+            f"Alice,,Example,alice@example.com,Acme,Engineer,{url_sentinel},1985-01-23,{note_sentinel}",
+            f"Bad,,Email,not-an-address,Acme,Engineer,{url_sentinel},,{note_sentinel}",
+        ]
+    )
+
+    async def flow(client: Client) -> Any:
+        imported = await client.call_tool("import_content", {"source_type": "outlook", "content": content})
+        reviewed = await client.call_tool(
+            "review_import", {"batch_id": imported.structured_content["batch_id"]}
+        )
+        return imported.structured_content, reviewed.structured_content
+
+    imported, reviewed = _run(server, flow)
+
+    assert imported["candidate_count"] == 3
+    assert imported["skipped_cards"] == [{"index": 2, "reason": "invalid_email"}]
+    assert {row["source"] for row in reviewed["candidates"]} == {"import/outlook"}
+    assert note_sentinel not in str((imported, reviewed))
+    assert url_sentinel not in str((imported, reviewed))
+
+
+def test_whatsapp_import_commits_without_message_bodies_reaching_person_context(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "whatsapp.db")
+    body_sentinel = "MCP-WHATSAPP-BODY-MUST-NOT-LEAK-9d34"
+    content = "\n".join(
+        [
+            f"[13/02/2025, 10:12:45] Alice Example: {body_sentinel}",
+            f"a wrapped body line carrying {body_sentinel}",
+            f"[13/02/2025, 10:13:00] You: {body_sentinel}",
+            f"[14/02/2025, 09:00:00] Alice Example: {body_sentinel}",
+        ]
+    )
+
+    async def flow(client: Client) -> Any:
+        imported = await client.call_tool(
+            "import_content",
+            {"source_type": "whatsapp", "content": content, "self_sender": "You"},
+        )
+        batch_id = imported.structured_content["batch_id"]
+        reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
+        accepted_ids = [row["id"] for row in reviewed.structured_content["candidates"]]
+        await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": accepted_ids})
+        resolved = await client.call_tool("resolve_person", {"query": "Alice Example"})
+        person_id = resolved.structured_content["candidates"][0]["person_id"]
+        context = await client.call_tool("get_person_context", {"person_id": person_id})
+        return imported.structured_content, reviewed.structured_content, context.structured_content
+
+    imported, reviewed, context = _run(server, flow)
+
+    assert imported["candidate_count"] == 3
+    assert imported["skipped_cards"] == []
+    assert {row["source"] for row in reviewed["candidates"]} == {"import/whatsapp"}
+    assert context["identity"]["canonical_name"] == "Alice Example"
+    assert [interaction["summary"] for interaction in context["interactions"]] == [
+        "WhatsApp chat",
+        "WhatsApp chat",
+    ]
+    assert body_sentinel not in str((imported, reviewed, context))
+
+
 def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "agent-stage.db")
 

@@ -109,9 +109,83 @@ def test_routes_linkedin_content_to_linkedin_extractor() -> None:
     ]
 
 
+def test_routes_outlook_content_to_outlook_extractor() -> None:
+    content = "\n".join(
+        [
+            "First Name,Middle Name,Last Name,E-mail Address,Company,Job Title,Birthday",
+            "Alice,,Example,alice@example.com,,,",
+        ]
+    )
+
+    extracted = ImportExtractorRouter().extract("outlook", content=content, path=None, self_addresses=set())
+
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "Alice Example"
+    ]
+
+
+def test_routes_whatsapp_content_to_whatsapp_extractor() -> None:
+    content = "\n".join(
+        [
+            "[13/02/2025, 10:12:45] Alice Example: hello",
+            "[14/02/2025, 10:12:45] Alice Example: hello again",
+        ]
+    )
+
+    extracted = ImportExtractorRouter().extract("whatsapp", content=content, path=None, self_addresses=set())
+
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "Alice Example"
+    ]
+    interactions = [candidate for candidate in extracted.candidates if candidate["type"] == "interaction"]
+    assert [interaction["summary"] for interaction in interactions] == ["WhatsApp chat", "WhatsApp chat"]
+
+
+def test_router_forwards_self_names_and_sender_hint_to_the_selected_extractor() -> None:
+    content = "\n".join(
+        [
+            "[13/02/2025, 10:12:45] Sam Self: hello",
+            "[13/02/2025, 10:13:00] You: hello",
+            "[13/02/2025, 10:14:00] Alice Example: hello",
+        ]
+    )
+
+    extracted = ImportExtractorRouter().extract(
+        "whatsapp",
+        content=content,
+        path=None,
+        self_addresses=set(),
+        self_names={"sam self"},
+        self_sender="You",
+    )
+
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "Alice Example"
+    ]
+
+
+def test_existing_sources_accept_and_ignore_self_name_parameters() -> None:
+    content = "\n".join(["BEGIN:VCARD", "VERSION:4.0", "FN:Alice Example", "END:VCARD"])
+
+    extracted = ImportExtractorRouter().extract(
+        "vcard",
+        content=content,
+        path=None,
+        self_addresses=set(),
+        self_names={"alice example"},
+        self_sender="Alice Example",
+    )
+
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "Alice Example"
+    ]
+
+
 def test_unknown_source_type_reports_supported_values() -> None:
     with pytest.raises(ImportExtractionError) as error:
         ImportExtractorRouter().extract("unknown", content="value", path=None, self_addresses=set())
 
     assert error.value.code == "invalid_source_type"
-    assert str(error.value) == "source_type must be 'email', 'mbox', 'vcard', 'ics', or 'linkedin'"
+    assert str(error.value) == (
+        "source_type must be 'email', 'mbox', 'vcard', 'ics', 'linkedin', 'outlook', or 'whatsapp'"
+    )
