@@ -118,7 +118,10 @@ postal addresses, `Web Page`, `Notes`, and the many locale-specific extras — i
 profile URLs and free text cannot reach a staged candidate.
 
 - The person name is the non-empty `First Name`, `Middle Name`, and `Last Name` cells joined with single
-  spaces. A valid `E-mail Address` becomes a `handle` alias.
+  spaces. A valid `E-mail Address` becomes a `handle` alias. As for LinkedIn, an address is accepted only in
+  the supported lowercase ASCII form: case and compatibility forms are folded, but address characters are
+  preserved, so an internationalized address such as `josé@example.com` is reported as `invalid_email` rather
+  than silently rewritten into the distinct ASCII address `jose@example.com`.
 - `Company` plus `Job Title` produces an affiliation; either alone produces none.
 - Rows are independent and reported with stable one-based indexes: a row with no name is skipped as
   `missing_name`, and a row whose non-empty email does not parse is skipped as `invalid_email`. A row whose
@@ -139,9 +142,11 @@ candidate, a skip reason, a log record, or an error. The interaction summary is 
 `WhatsApp chat`.
 
 - A line is treated as the start of a message only when it carries a complete, well-formed timestamp prefix in
-  the bracketed form `[<date>, <time>] Sender: …` or the dash form `<date>, <time> - Sender: …`, with a
-  `HH:MM`/`HH:MM:SS` time and an optional `AM`/`PM` suffix. Every other line is a body continuation and is
-  dropped without further inspection. Directional-isolate marks and narrow spaces are normalized first.
+  the bracketed form `[<date>, <time>] Sender: …` or the dash form `<date>, <time> - Sender: …`. The clock must
+  be a real `HH:MM`/`HH:MM:SS` value — `0..23` hours, or `1..12` with an `AM`/`PM` suffix, and `0..59` minutes
+  and seconds — not merely time-shaped digits, so a body line quoting `[13/02/2025, 99:99] text:` stays a body
+  continuation instead of turning quoted content into a sender. Every other line is likewise a continuation and
+  is dropped without further inspection. Directional-isolate marks and narrow spaces are normalized first.
 - Accepted date forms are ISO `YYYY-MM-DD` and the numeric `D/M/YY`, `D/M/YYYY`, and `D.M.YYYY` locale forms.
   A two-digit year is read as `20YY`.
 - A WhatsApp export carries no UTC offset, so **only the calendar day is retained**, deterministically
@@ -154,9 +159,10 @@ candidate, a skip reason, a log record, or an error. The interaction summary is 
 - Skip entries use stable one-based indexes over *detected messages*: `invalid_timestamp` for an impossible
   calendar date, `ambiguous_date_order` as above, `no_sender` for a system notice or header without a sender
   separator, and `invalid_sender` for an implausibly long label. No reason ever carries text from the file.
-- External senders are deduplicated by normalized sender identity. A phone-number label additionally stages
-  its compact digits-only form as a `handle` alias, so `+1 555 123 4567` and `+15551234567` are one person;
-  a differing display label for the same identity becomes an `other` alias.
+- External senders are deduplicated by normalized sender identity: a display name keys on its normalized form
+  and a phone number keys on its digits alone, ignoring spacing, punctuation, and an optional leading `+`. A
+  phone-number label additionally stages its compact form as a `handle` alias, so `+1 555 123 4567`,
+  `+15551234567`, and `15551234567` are one person. A label that differs beyond that is a different identity.
 - Each calendar day with at least one external sender produces exactly one interaction candidate listing that
   day's external participants in first-appearance order.
 
@@ -170,7 +176,8 @@ rather than an interaction with an empty or unknown participant list.
 `ImportContent` derives the self labels from the stored self person's canonical name and every alias, and
 `import_content` accepts an optional `self_sender` hint for export labels that are not stored aliases — such
 as `You` or a bare phone number. The hint is matched by normalized name and, for phone-number labels, by
-compact digits, so a differently formatted number still matches. `ImportExtractor.extract` carries these as
+digits alone, so a differently formatted number — including a bare number matched against a `+`-prefixed
+export label — still matches. `ImportExtractor.extract` carries these as
 explicit optional `self_names` and `self_sender` keyword parameters; sources that identify people by address
 accept and ignore them, and no source takes untyped keyword arguments.
 

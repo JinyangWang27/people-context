@@ -119,6 +119,20 @@ def test_outlook_accepts_only_year_first_birthdays_and_keeps_the_contact() -> No
     ]
 
 
+def test_outlook_rejects_an_international_address_instead_of_folding_it_to_ascii() -> None:
+    content = _csv(
+        "Jose,,Accented,,josé@example.com,,,,,,note",
+        "Jose,,Ascii,,jose@example.com,,,,,,note",
+    )
+
+    extracted = OutlookImportExtractor().extract("outlook", content=content, path=None, self_addresses=set())
+
+    people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
+    assert [person["name"] for person in people] == ["Jose Ascii"]
+    assert people[0]["aliases"] == [{"value": "jose@example.com", "kind": "handle"}]
+    assert extracted.skipped_cards == [{"index": 1, "reason": "invalid_email"}]
+
+
 def test_outlook_coalesces_duplicate_emails_and_keeps_nameless_email_rows_distinct() -> None:
     content = _csv(
         "Alice,,Example,,alice@example.com,Acme,,Engineer,,1985-01-23,note",

@@ -251,6 +251,85 @@ def test_whatsapp_impossible_components_do_not_bias_the_file_wide_date_order() -
     ]
 
 
+def test_whatsapp_treats_an_out_of_range_clock_as_body_rather_than_a_message() -> None:
+    prefix_sentinel = "WHATSAPP-QUOTED-PREFIX-MUST-NOT-LEAK-2f80"
+    content = "\n".join(
+        [
+            "[13/02/2025, 10:12:45] Alice Example: quoting a pasted transcript below",
+            f"[13/02/2025, 99:99] {prefix_sentinel}: " + _BODY_SENTINEL,
+            f"[13/02/2025, 24:00] {prefix_sentinel}: " + _BODY_SENTINEL,
+            f"[13/02/2025, 10:60] {prefix_sentinel}: " + _BODY_SENTINEL,
+            f"[13/02/2025, 10:12:99] {prefix_sentinel}: " + _BODY_SENTINEL,
+            f"13/02/2025, 13:00 PM - {prefix_sentinel}: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
+    assert extracted.skipped_cards == []
+    assert prefix_sentinel not in repr(extracted)
+    assert _BODY_SENTINEL not in repr(extracted)
+
+
+def test_whatsapp_accepts_the_boundary_clock_values_of_both_conventions() -> None:
+    content = "\n".join(
+        [
+            "[13/02/2025, 00:00:00] Alice Example: " + _BODY_SENTINEL,
+            "[14/02/2025, 23:59:59] Alice Example: " + _BODY_SENTINEL,
+            "[15/02/2025, 12:00 AM] Alice Example: " + _BODY_SENTINEL,
+            "[16/02/2025, 12:59 pm] Alice Example: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert [interaction["date"] for interaction in _interactions(extracted)] == [
+        datetime(2025, 2, 13, tzinfo=UTC),
+        datetime(2025, 2, 14, tzinfo=UTC),
+        datetime(2025, 2, 15, tzinfo=UTC),
+        datetime(2025, 2, 16, tzinfo=UTC),
+    ]
+
+
+def test_whatsapp_matches_a_bare_self_phone_hint_against_a_plus_prefixed_label() -> None:
+    content = "\n".join(
+        [
+            "[13/02/2025, 10:12:45] +1 555 123 4567: " + _BODY_SENTINEL,
+            "[13/02/2025, 10:13:00] Alice Example: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content, self_sender="15551234567")
+
+    assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
+    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [
+        ["whatsapp-person-1"]
+    ]
+
+
+def test_whatsapp_coalesces_phone_labels_that_differ_only_by_a_leading_plus() -> None:
+    content = "\n".join(
+        [
+            "[13/02/2025, 10:12:45] +15551234567: " + _BODY_SENTINEL,
+            "[13/02/2025, 10:13:00] 15551234567: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert _people(extracted) == [
+        {
+            "type": "person",
+            "ref": "whatsapp-person-1",
+            "name": "+15551234567",
+            "aliases": [{"value": "+15551234567", "kind": AliasKind.HANDLE.value}],
+            "message_id": None,
+            "date": None,
+        }
+    ]
+
+
 def test_whatsapp_deduplicates_phone_senders_and_stages_a_compact_handle() -> None:
     content = "\n".join(
         [
@@ -267,10 +346,7 @@ def test_whatsapp_deduplicates_phone_senders_and_stages_a_compact_handle() -> No
             "type": "person",
             "ref": "whatsapp-person-1",
             "name": "+1 555 123 4567",
-            "aliases": [
-                {"value": "+15551234567", "kind": AliasKind.HANDLE.value},
-                {"value": "+1 (555) 123-4567", "kind": AliasKind.OTHER.value},
-            ],
+            "aliases": [{"value": "+15551234567", "kind": AliasKind.HANDLE.value}],
             "message_id": None,
             "date": None,
         }

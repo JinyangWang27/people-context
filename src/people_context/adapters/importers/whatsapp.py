@@ -8,7 +8,7 @@ a log record, or an error, and it is discarded with the rest of the parsed text.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -35,7 +35,9 @@ _BRACKET_RE = re.compile(r"^\[\s*(?P<date>[^,\]]+?)\s*,\s*(?P<time>[^\]]+?)\s*\]
 _DASH_RE = re.compile(r"^(?P<date>[^,]+?)\s*,\s*(?P<time>.+?)\s+-\s+(?P<rest>.*)$")
 _ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
 _NUMERIC_DATE_RE = re.compile(r"^(\d{1,2})[/.](\d{1,2})[/.](\d{2}|\d{4})$")
-_TIME_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?(?: ?[APap]\.?[Mm]\.?)?$")
+_TIME_RE = re.compile(
+    r"^(?P<hour>\d{1,2}):(?P<minute>\d{2})(?::(?P<second>\d{2}))?(?: ?(?P<meridiem>[APap])\.?[Mm]\.?)?$"
+)
 _SENDER_RE = re.compile(r"^(?P<sender>[^:]+?):(?:\s|$)")
 _PHONE_RE = re.compile(r"^\+?[0-9][0-9 ()./-]*$")
 
@@ -51,14 +53,17 @@ class _Message:
     reason: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class _PersonAccumulator:
-    """Batch-local participant deduplicated by normalized sender identity."""
+    """Batch-local participant deduplicated by normalized sender identity.
+
+    A label that differs from this one is a different identity by construction — a name keys on
+    its normalized form and a phone keys on its digits — so there is no alternate-label state.
+    """
 
     ref: str
     name: str
     handle: str | None
-    alternates: list[str] = field(default_factory=list)
 
 
 class WhatsAppImportExtractor:
@@ -114,8 +119,6 @@ class WhatsAppImportExtractor:
                 )
                 people.append(person)
                 people_by_identity[identity] = person
-            else:
-                _add_alternate_name(person, label)
             day_refs = refs_by_day.setdefault(message.occurred_on, [])
             if person.ref not in day_refs:
                 day_refs.append(person.ref)
@@ -157,14 +160,32 @@ def _detect_messages(text: str) -> list[_Message]:
             if match is None:
                 continue
             date_token = match.group("date").strip()
-            time_token = _strip_marks(match.group("time")).strip()
-            if not _TIME_RE.fullmatch(time_token):
+            if not _valid_clock(_strip_marks(match.group("time")).strip()):
                 continue
             if not (_ISO_DATE_RE.fullmatch(date_token) or _NUMERIC_DATE_RE.fullmatch(date_token)):
                 continue
             messages.append(_Message(index=len(messages) + 1, date_token=date_token, rest=match.group("rest")))
             break
     return messages
+
+
+def _valid_clock(token: str) -> bool:
+    """Return whether the token is a real clock time, not merely time-shaped digits.
+
+    Detection depends on this: a body line quoting something like ``[13/02/2025, 99:99] text:``
+    must stay a body continuation rather than become a message whose "sender" is quoted content.
+    """
+    match = _TIME_RE.fullmatch(token)
+    if match is None:
+        return False
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute"))
+    second = int(match.group("second") or 0)
+    if minute > 59 or second > 59:
+        return False
+    if match.group("meridiem") is not None:
+        return 1 <= hour <= 12
+    return hour <= 23
 
 
 def _resolve_dates(messages: list[_Message]) -> None:
@@ -252,36 +273,36 @@ def _self_identities(
 
 
 def _identity_key(label: str) -> str:
-    handle = _phone_handle(label)
-    return f"phone:{handle}" if handle is not None else f"name:{normalize_name(label)}"
+    """Return the comparison key for a sender label.
+
+    A phone identity is keyed on digits alone, so a label and a self hint that differ only in
+    spacing, punctuation, or a leading ``+`` resolve to the same person.
+    """
+    digits = _phone_digits(label)
+    return f"phone:{digits}" if digits is not None else f"name:{normalize_name(label)}"
 
 
-def _phone_handle(label: str) -> str | None:
-    """Return the compact form of a phone-number sender label, or ``None`` for a display name."""
+def _phone_digits(label: str) -> str | None:
+    """Return the digits of a phone-number sender label, or ``None`` for a display name."""
     candidate = "".join(" " if char in _NARROW_SPACES else char for char in label).strip()
     if not _PHONE_RE.fullmatch(candidate):
         return None
     digits = "".join(char for char in candidate if char.isdigit())
-    if len(digits) < _MIN_PHONE_DIGITS:
+    return digits if len(digits) >= _MIN_PHONE_DIGITS else None
+
+
+def _phone_handle(label: str) -> str | None:
+    """Return the compact staged form of a phone-number label, preserving its leading ``+``."""
+    digits = _phone_digits(label)
+    if digits is None:
         return None
-    return f"+{digits}" if candidate.startswith("+") else digits
-
-
-def _add_alternate_name(person: _PersonAccumulator, label: str) -> None:
-    """Record a differing display label for the same identity, never duplicating a staged value."""
-    normalized = normalize_name(label)
-    known = {normalize_name(person.name), *(normalize_name(value) for value in person.alternates)}
-    if person.handle is not None:
-        known.add(normalize_name(person.handle))
-    if normalized not in known:
-        person.alternates.append(label)
+    return f"+{digits}" if label.strip().startswith("+") else digits
 
 
 def _person_candidate(person: _PersonAccumulator) -> dict[str, object]:
     aliases: list[dict[str, str]] = []
     if person.handle is not None:
         aliases.append({"value": person.handle, "kind": AliasKind.HANDLE.value})
-    aliases.extend({"value": name, "kind": AliasKind.OTHER.value} for name in person.alternates)
     return {
         "type": "person",
         "ref": person.ref,

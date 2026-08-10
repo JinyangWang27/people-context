@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import re
-
-from people_context.domain.shared import normalize_name
+import unicodedata
 
 _EMAIL_RE = re.compile(
     r"^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
@@ -14,10 +13,17 @@ _EMAIL_RE = re.compile(
 
 
 def normalize_email(value: str) -> str | None:
-    """Return the normalized address, or ``None`` when the value is blank or not an address."""
+    """Return the lowercased ASCII address, or ``None`` when the value is not one.
+
+    Case and compatibility forms are folded, but the address characters themselves are preserved:
+    unlike name matching, an address must never have its combining marks stripped, because that
+    would silently rewrite an internationalized address such as ``josé@example.com`` into a
+    different, genuinely distinct ASCII address. Addresses outside the supported ASCII form are
+    reported as invalid rather than rewritten.
+    """
     if not value:
         return None
-    normalized = normalize_name(value)
+    normalized = unicodedata.normalize("NFKC", value).casefold().strip()
     return normalized if _EMAIL_RE.fullmatch(normalized) else None
 
 
