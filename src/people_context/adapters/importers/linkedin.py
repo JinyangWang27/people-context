@@ -81,7 +81,9 @@ class LinkedInImportExtractor:
         if headers is None or not _EXPECTED_HEADERS.issubset(headers):
             raise ImportExtractionError("invalid_headers", "linkedin CSV is missing required canonical headers")
 
-        normalized_self = {normalize_name(address) for address in self_addresses if address.strip()}
+        # Self handles are compared as addresses, not as names: name normalization strips combining
+        # marks, which would fold a self handle onto a genuinely distinct ASCII contact address.
+        normalized_self = {normalized for address in self_addresses if (normalized := normalize_email(address))}
         people: list[_PersonAccumulator] = []
         people_by_email: dict[str, _PersonAccumulator] = {}
         affiliations: list[dict[str, object]] = []

@@ -14,6 +14,7 @@ from people_context.adapters.importers.normalization import clean_text, normaliz
         ("ALICE@Example.COM", "alice@example.com"),
         ("  alice@example.com  ", "alice@example.com"),
         ("first.last+tag@sub.example.co.uk", "first.last+tag@sub.example.co.uk"),
+        ("a.b.c@example.com", "a.b.c@example.com"),
     ],
 )
 def test_normalize_email_folds_only_case_and_surrounding_space(value: str, expected: str) -> None:
@@ -28,6 +29,10 @@ def test_normalize_email_folds_only_case_and_surrounding_space(value: str, expec
         "alice@",
         "@example.com",
         "alice example@example.com",
+        # An unquoted local part is dot-atom: no leading, trailing, or consecutive dots.
+        ".alice@example.com",
+        "alice.@example.com",
+        "alice..smith@example.com",
         # An internationalized address must be rejected, never folded onto the distinct ASCII
         # address that stripping its combining marks would produce.
         "josé@example.com",

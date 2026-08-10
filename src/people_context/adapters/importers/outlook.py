@@ -68,11 +68,17 @@ class OutlookImportExtractor:
             )
         text = content.lstrip("\ufeff") if content is not None else Path(path or "").read_text(encoding="utf-8-sig")
         reader = csv.DictReader(io.StringIO(text), strict=True)
-        headers = reader.fieldnames
+        try:
+            # Reading the header row parses CSV too, so it belongs inside the error boundary.
+            headers = reader.fieldnames
+        except csv.Error as exc:
+            raise ImportExtractionError("invalid_csv", "outlook CSV is malformed") from exc
         if headers is None or not _EXPECTED_HEADERS.issubset(headers):
             raise ImportExtractionError("invalid_headers", "outlook CSV is missing required canonical headers")
 
-        normalized_self = {normalize_name(address) for address in self_addresses if address.strip()}
+        # Self handles are compared as addresses, not as names: name normalization strips combining
+        # marks, which would fold a self handle onto a genuinely distinct ASCII contact address.
+        normalized_self = {normalized for address in self_addresses if (normalized := normalize_email(address))}
         people: list[_PersonAccumulator] = []
         people_by_email: dict[str, _PersonAccumulator] = {}
         affiliations: list[dict[str, object]] = []

@@ -119,9 +119,12 @@ profile URLs and free text cannot reach a staged candidate.
 
 - The person name is the non-empty `First Name`, `Middle Name`, and `Last Name` cells joined with single
   spaces. A valid `E-mail Address` becomes a `handle` alias. As for LinkedIn, an address is accepted only in
-  the supported lowercase ASCII form: case and compatibility forms are folded, but address characters are
-  preserved, so an internationalized address such as `josé@example.com` is reported as `invalid_email` rather
-  than silently rewritten into the distinct ASCII address `jose@example.com`.
+  the supported lowercase ASCII form, with a dot-atom local part that has no leading, trailing, or consecutive
+  dots: case and compatibility forms are folded, but address characters are preserved, so an internationalized
+  address such as `josé@example.com` is reported as `invalid_email` rather than silently rewritten into the
+  distinct ASCII address `jose@example.com`. Stored self handles are compared the same way, so an accented self
+  handle never swallows a genuinely distinct ASCII contact. A structurally malformed CSV — an unterminated
+  quoted header, for example — fails with `invalid_csv`.
 - `Company` plus `Job Title` produces an affiliation; either alone produces none.
 - Rows are independent and reported with stable one-based indexes: a row with no name is skipped as
   `missing_name`, and a row whose non-empty email does not parse is skipped as `invalid_email`. A row whose
@@ -152,10 +155,11 @@ candidate, a skip reason, a log record, or an error. The interaction summary is 
 - A WhatsApp export carries no UTC offset, so **only the calendar day is retained**, deterministically
   represented as `00:00:00Z` for that day — the same treatment `.ics` gives an all-day `VALUE=DATE` event.
   The host's local timezone is never consulted.
-- Numeric day/month ordering is locale dependent and is inferred once for the whole file from components
-  greater than `12`, never guessed per line. If the file offers no such evidence, or offers contradictory
-  evidence, every numeric-dated message is skipped as `ambiguous_date_order`; ISO-dated messages are
-  unaffected.
+- Numeric day/month ordering is locale dependent and is inferred once for the whole file, never guessed per
+  line. Only a header that is a real calendar date in exactly one reading counts as evidence, so an impossible
+  header such as `31/02/2025` is reported as `invalid_timestamp` and contributes none. If the file offers no
+  evidence, or offers contradictory evidence, every numeric-dated message is skipped as `ambiguous_date_order`;
+  ISO-dated messages are unaffected.
 - Skip entries use stable one-based indexes over *detected messages*: `invalid_timestamp` for an impossible
   calendar date, `ambiguous_date_order` as above, `no_sender` for a system notice or header without a sender
   separator, and `invalid_sender` for an implausibly long label. No reason ever carries text from the file.

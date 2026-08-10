@@ -177,6 +177,35 @@ def test_outlook_omits_rows_matching_a_stored_self_handle() -> None:
     assert extracted.skipped_cards == []
 
 
+def test_outlook_self_filtering_does_not_fold_an_accented_handle_onto_an_ascii_contact() -> None:
+    content = _csv(
+        "Jose,,Ascii,,jose@example.com,,,,,,note",
+        "Alice,,Example,,alice@example.com,,,,,,note",
+    )
+
+    extracted = OutlookImportExtractor().extract(
+        "outlook",
+        content=content,
+        path=None,
+        self_addresses={"josé@example.com"},
+    )
+
+    people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
+    assert [person["name"] for person in people] == ["Jose Ascii", "Alice Example"]
+
+
+def test_outlook_reports_a_malformed_quoted_header_as_an_import_error() -> None:
+    with pytest.raises(ImportExtractionError) as error:
+        OutlookImportExtractor().extract(
+            "outlook",
+            content=f'"{_HEADERS}\nAlice,,Example,,alice@example.com,,,,,,note',
+            path=None,
+            self_addresses=set(),
+        )
+
+    assert error.value.code == "invalid_csv"
+
+
 def test_outlook_rejects_missing_canonical_headers_and_wrong_source() -> None:
     with pytest.raises(ImportExtractionError) as missing_headers:
         OutlookImportExtractor().extract(

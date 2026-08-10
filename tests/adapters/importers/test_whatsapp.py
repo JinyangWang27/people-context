@@ -208,6 +208,40 @@ def test_whatsapp_skips_numeric_dates_whose_component_order_is_unresolved() -> N
         assert _BODY_SENTINEL not in repr(extracted)
 
 
+def test_whatsapp_impossible_dates_do_not_supply_locale_order_evidence() -> None:
+    content = "\n".join(
+        [
+            "[31/02/2025, 10:00:00] Alice Example: " + _BODY_SENTINEL,
+            "[03/04/2025, 10:00:00] Bob Builder: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert _interactions(extracted) == []
+    assert extracted.skipped_cards == [
+        {"index": 1, "reason": "invalid_timestamp"},
+        {"index": 2, "reason": "ambiguous_date_order"},
+    ]
+
+
+def test_whatsapp_infers_the_order_from_dates_that_are_real_in_exactly_one_reading() -> None:
+    content = "\n".join(
+        [
+            "[29/02/2024, 10:00:00] Alice Example: " + _BODY_SENTINEL,
+            "[03/04/2024, 10:00:00] Bob Builder: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert [interaction["date"] for interaction in _interactions(extracted)] == [
+        datetime(2024, 2, 29, tzinfo=UTC),
+        datetime(2024, 4, 3, tzinfo=UTC),
+    ]
+    assert extracted.skipped_cards == []
+
+
 def test_whatsapp_reports_impossible_timestamps_and_unusable_sender_labels() -> None:
     content = "\n".join(
         [

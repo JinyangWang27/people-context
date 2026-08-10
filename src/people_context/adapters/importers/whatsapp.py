@@ -195,7 +195,7 @@ def _resolve_dates(messages: list[_Message]) -> None:
     day/month ordering is locale dependent and is inferred from the whole file rather than
     guessed per line; an export that cannot be resolved unambiguously is skipped.
     """
-    deferred: list[tuple[_Message, int, int, int]] = []
+    deferred: list[tuple[_Message, date | None, date | None]] = []
     day_first_evidence = False
     month_first_evidence = False
     for message in messages:
@@ -211,32 +211,26 @@ def _resolve_dates(messages: list[_Message]) -> None:
             message.reason = "invalid_timestamp"
             continue
         first, second, year_token = (int(part) for part in numeric.groups())
-        if not _plausible_components(first, second):
-            # An impossible component pair is rejected before it can bias the file-wide ordering.
+        year = year_token + 2000 if year_token < 100 else year_token
+        as_day_first = _calendar_date(year, second, first)
+        as_month_first = _calendar_date(year, first, second)
+        if as_day_first is None and as_month_first is None:
+            # Impossible in both orders, so it is neither a usable date nor usable evidence.
             message.reason = "invalid_timestamp"
             continue
-        day_first_evidence = day_first_evidence or first > 12
-        month_first_evidence = month_first_evidence or second > 12
-        deferred.append((message, first, second, year_token))
+        # Only a token that is a real date in exactly one order says anything about the locale.
+        day_first_evidence = day_first_evidence or as_month_first is None
+        month_first_evidence = month_first_evidence or as_day_first is None
+        deferred.append((message, as_day_first, as_month_first))
 
     day_first = day_first_evidence and not month_first_evidence
     month_first = month_first_evidence and not day_first_evidence
-    for message, first, second, year_token in deferred:
-        if not day_first and not month_first:
+    for message, as_day_first, as_month_first in deferred:
+        resolved = as_day_first if day_first else as_month_first if month_first else None
+        if resolved is None:
             message.reason = "ambiguous_date_order"
             continue
-        day, month = (first, second) if day_first else (second, first)
-        year = year_token + 2000 if year_token < 100 else year_token
-        message.occurred_on = _calendar_date(year, month, day)
-        if message.occurred_on is None:
-            message.reason = "invalid_timestamp"
-
-
-def _plausible_components(first: int, second: int) -> bool:
-    """Return whether the pair can still be a day and a month in either locale order."""
-    if not (1 <= first <= 31 and 1 <= second <= 31):
-        return False
-    return first <= 12 or second <= 12
+        message.occurred_on = resolved
 
 
 def _calendar_date(year: int, month: int, day: int) -> date | None:

@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 import unicodedata
 
+# An unquoted local part is dot-atom: non-empty atoms joined by single dots, so it can neither
+# start nor end with a dot nor carry consecutive dots.
 _EMAIL_RE = re.compile(
-    r"^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+    r"^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@"
     r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
     r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
 )
