@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from people_context.adapters.filesystem.vault_writer import FileSystemVaultWriter
+from people_context.adapters.filesystem.vcard_writer import CanonicalVCardWriter
 from people_context.adapters.importers.router import ImportExtractorRouter
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DIMENSION,
@@ -58,6 +59,7 @@ from people_context.app.exports import (
     ExportReminderCalendar,
     ExportSyncBundle,
     ExportVault,
+    ExportVCard,
     ListPersonIndex,
 )
 from people_context.app.imports import (
@@ -142,6 +144,7 @@ class RuntimeUseCases:
     export_data: ExportData
     export_sync_bundle: ExportSyncBundle
     export_reminder_calendar: ExportReminderCalendar
+    export_vcard: ExportVCard
     restore_sync_bundle: RestoreSyncBundle
     watch_changelog: WatchChangelog
     export_vault: ExportVault
@@ -308,6 +311,7 @@ def build_runtime(
         export_data=ExportData(export_reader, runtime_clock),
         export_sync_bundle=ExportSyncBundle(bundle_reader, runtime_clock),
         export_reminder_calendar=ExportReminderCalendar(list_reminders),
+        export_vcard=ExportVCard(export_reader, CanonicalVCardWriter(), runtime_clock),
         restore_sync_bundle=RestoreSyncBundle(bootstrap_restorer),
         watch_changelog=WatchChangelog(changelog, sleeper or SystemSleeper()),
         export_vault=ExportVault(vault_reader, FileSystemVaultWriter()),

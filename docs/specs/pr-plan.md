@@ -219,7 +219,7 @@ Check the matching box only in the PR that delivers it.
     labels; deterministic ordering and secure overwrite tests.
   - **Out:** new MCP tool/guidance change.
 
-- [ ] **M14.2 — Deterministic vCard writer**
+- [x] **M14.2 — Deterministic vCard writer**
   - **Scope:** Typed port/DTOs, app projection, writer, CLI/private file.
   - **Acceptance:** `FN` canonical; non-heuristic one-component `N`; active/sensitivity filtering; one affiliation;
     one full birthday; omitted-valid/skipped-partial/skipped-unparseable counts; 3.0/4.0 unchanged-importer roundtrip.

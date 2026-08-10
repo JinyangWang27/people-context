@@ -12,6 +12,7 @@ from people_context.adapters.filesystem.private_file import atomic_write_private
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.exports import (
     SYNC_BUNDLE_FILENAME,
+    VCardExportResult,
     render_brief_json,
     render_brief_markdown,
     render_bundle_json,
@@ -39,6 +40,25 @@ BRIEF_FILE_WARNING = (
     "This brief is plaintext personal data outside the server's disclosure controls. "
     "Keep it on encrypted storage and share it only deliberately."
 )
+VCARD_WARNING = (
+    "These vCards are plaintext personal data outside the server's disclosure controls. "
+    "Keep them on encrypted storage and hand them to a contacts application only deliberately."
+)
+# One sentence per reported omission, keyed by the result field that carries its count and
+# printed in this order.
+_VCARD_OMISSION_MESSAGES: dict[str, str] = {
+    "omitted_affiliations": (
+        "Omitted {count} additional active affiliation(s); "
+        "a card carries one ORG/TITLE pair the importer reads back."
+    ),
+    "omitted_birthdays": "Omitted {count} additional full-date birthday(s); a card carries one BDAY.",
+    "skipped_partial_birthdays": (
+        "Skipped {count} recurring --MM-DD birthday value(s), which have no portable vCard spelling."
+    ),
+    "skipped_unparseable_birthdays": (
+        "Skipped {count} birthday value(s) that are not a full calendar date."
+    ),
+}
 
 
 def cmd_db_path(args: argparse.Namespace) -> int:
@@ -99,6 +119,79 @@ def cmd_brief(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     print(f"Wrote the brief for {person.canonical_name} to {written}.")
     print(BRIEF_FILE_WARNING)
     return 0
+
+
+def cmd_export_vcard(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Export active people as vCards to stdout or one owner-only file."""
+    result = runtime.use_cases.export_vcard.execute(
+        version=args.version,
+        include_sensitive=args.include_sensitive,
+    )
+    if args.output is None:
+        # The document goes to stdout alone, so a redirected stream stays a valid vCard
+        # file; the counts and the disclosure notice go to stderr.
+        _write_document(result.document)
+        for line in [*_vcard_summary(result, None), VCARD_WARNING]:
+            print(line, file=sys.stderr)
+        return 0
+
+    destination = Path(args.output).expanduser()
+    if _collides_with_database(destination, runtime.path):
+        print(
+            f"Refusing to write the vCards to {destination}: "
+            f"it is the database this command is reading, or one of its sidecar files.",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        written = atomic_write_private_text(destination, result.document)
+    except OSError as exc:
+        print(f"Cannot write the vCards to {destination}: {exc.strerror or exc}", file=sys.stderr)
+        return 1
+
+    for line in _vcard_summary(result, written):
+        print(line)
+    print(VCARD_WARNING)
+    return 0
+
+
+def _write_document(document: str) -> None:
+    """Write an already-lined document to stdout without newline translation.
+
+    The vCard format ends every content line with CRLF, and a text stream opened in the
+    platform default mode rewrites each `\\n` as the platform separator — on Windows that
+    turns the document's CRLF into `\\r\\r\\n`, which a parser reads as blank lines rather
+    than as the properties they separate. Writing the encoded bytes through the underlying
+    buffer keeps a redirected stream byte-identical to `--output`.
+
+    The text layer is flushed first so anything already written keeps its place, and a
+    stdout with no buffer (a captured or otherwise wrapped stream) falls back to the text
+    write it can accept.
+    """
+    buffer = getattr(sys.stdout, "buffer", None)
+    if buffer is None:
+        sys.stdout.write(document)
+        return
+    sys.stdout.flush()
+    buffer.write(document.encode("utf-8"))
+    buffer.flush()
+
+
+def _vcard_summary(result: VCardExportResult, destination: Path | None) -> list[str]:
+    """Describe one export with aggregate counts only; no name or record value is reported."""
+    written = "" if destination is None else f" to {destination}"
+    lines = [f"Exported {result.exported} contact(s) as vCard {result.version}{written}."]
+    # The counts are read from the dumped model in one pass rather than one attribute at a
+    # time. A count of birthday rows is an integer, not a birthday, but a name-based scanner
+    # cannot tell those apart and reports every `result.<something>_birthdays` printed to a
+    # stream as a disclosed birth date. Reporting order follows this table.
+    counts = result.model_dump(include=set(_VCARD_OMISSION_MESSAGES))
+    lines.extend(
+        message.format(count=counts[field])
+        for field, message in _VCARD_OMISSION_MESSAGES.items()
+        if counts[field]
+    )
+    return lines
 
 
 def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

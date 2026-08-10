@@ -69,6 +69,10 @@ are independent: one malformed card never blocks valid neighbors, including in l
 - `NOTE`, `PHOTO`, `ADR`, `TEL`, and X-properties are discarded before decoding/staging. If every card is
   skipped, no batch is created and `no_candidates` carries `skipped_cards`.
 
+This extractor is also the contract the `pctx export-vcard` writer targets: every property that export emits is
+read back here unchanged, which is why the export maps one `ORG`/`TITLE` pair, one full-date `BDAY`, and no
+guessed `N` components. See [cli.md](cli.md#vcard-export).
+
 ## iCalendar (.ics) calendar attendees
 
 `source_type="ics"` accepts exactly one UTF-8 content string or path and processes each `VEVENT`

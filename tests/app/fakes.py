@@ -22,6 +22,7 @@ from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
+from people_context.ports.export import ExportSnapshot
 from people_context.ports.insights import RecencySignal
 from people_context.ports.repository import SearchHit
 from people_context.ports.semantic import (
@@ -357,6 +358,18 @@ class FakeBundleReader:
     def read_bundle(self) -> BundleSource:
         self.calls += 1
         return self.source
+
+
+class FakeExportReader:
+    """An export read port returning one fixed portable snapshot."""
+
+    def __init__(self, snapshot: ExportSnapshot) -> None:
+        self.snapshot = snapshot
+        self.calls = 0
+
+    def read_export(self) -> ExportSnapshot:
+        self.calls += 1
+        return self.snapshot
 
 
 class FakeChangelog:
