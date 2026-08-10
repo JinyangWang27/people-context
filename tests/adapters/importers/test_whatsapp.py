@@ -180,6 +180,24 @@ def test_whatsapp_supports_localized_dotted_and_spaced_meridiem_markers() -> Non
     assert _BODY_SENTINEL not in repr(extracted)
 
 
+def test_whatsapp_treats_a_mixed_separator_date_as_body_rather_than_a_message() -> None:
+    prefix_sentinel = "WHATSAPP-MIXED-SEPARATOR-PREFIX-MUST-NOT-LEAK-7a13"
+    content = "\n".join(
+        [
+            "[13/02/2025, 10:00:00] Alice Example: quoting a pasted transcript below",
+            f"[13/02.2025, 10:00:00] {prefix_sentinel}: " + _BODY_SENTINEL,
+            f"[13.02/2025, 10:00:00] {prefix_sentinel}: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
+    assert extracted.skipped_cards == []
+    assert prefix_sentinel not in repr(extracted)
+    assert _BODY_SENTINEL not in repr(extracted)
+
+
 def test_whatsapp_still_rejects_an_out_of_range_hour_with_a_localized_meridiem() -> None:
     content = "\n".join(
         [

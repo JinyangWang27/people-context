@@ -34,7 +34,11 @@ _NARROW_SPACES = "\u00a0\u202f"
 _BRACKET_RE = re.compile(r"^\[\s*(?P<date>[^,\]]+?)\s*,\s*(?P<time>[^\]]+?)\s*\]\s*(?P<rest>.*)$")
 _DASH_RE = re.compile(r"^(?P<date>[^,]+?)\s*,\s*(?P<time>.+?)\s+-\s+(?P<rest>.*)$")
 _ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
-_NUMERIC_DATE_RE = re.compile(r"^(\d{1,2})[/.](\d{1,2})[/.](\d{2}|\d{4})$")
+# Both separators must be the same character: a mixed token like `13/02.2025` is not one of the
+# accepted forms, and accepting it would let a body line masquerade as a message header.
+_NUMERIC_DATE_RE = re.compile(
+    r"^(?P<first>\d{1,2})(?P<separator>[/.])(?P<second>\d{1,2})(?P=separator)(?P<year>\d{2}|\d{4})$"
+)
 # Locales render the meridiem as `AM`, `a.m.`, or the Spanish `a. m.`; the internal space may be
 # a narrow or non-breaking one, which `_strip_marks` has already normalized by this point.
 _TIME_RE = re.compile(
@@ -212,7 +216,7 @@ def _resolve_dates(messages: list[_Message]) -> None:
         if numeric is None:  # pragma: no cover - detection accepts only the two forms above
             message.reason = "invalid_timestamp"
             continue
-        first, second, year_token = (int(part) for part in numeric.groups())
+        first, second, year_token = (int(numeric.group(name)) for name in ("first", "second", "year"))
         year = year_token + 2000 if year_token < 100 else year_token
         as_day_first = _calendar_date(year, second, first)
         as_month_first = _calendar_date(year, first, second)
