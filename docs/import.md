@@ -1,8 +1,9 @@
 # Import
 
 This document describes the extract-and-stage import pipeline for bringing external content — email/mbox,
-vCard, `.ics` calendar attendees, and agent-extracted notes candidates —
-into `people-context` without ever persisting raw source material. Import was delivered in **M3** (see
+vCard, `.ics` calendar attendees, LinkedIn and Outlook contact exports, WhatsApp chat exports, and
+agent-extracted notes candidates — into `people-context` without ever persisting raw source material.
+Import was delivered in **M3** (see
 [docs/roadmap.md](roadmap.md)); the `import_staging` table lives in the initial schema (see
 [docs/data-model.md](data-model.md#import_staging)).
 
@@ -16,8 +17,12 @@ Import is a four-step flow across four MCP tools (see [docs/mcp-interface.md](mc
                 import_content              review_import            commit_import
 ```
 
-1. **`import_content(source_type, content | path)`** — the source adapter parses email headers or vCards and
-   deterministically extracts narrow candidates. Candidates are written to
+1. **`import_content(source_type, content | path, self_sender)`** — the source adapter parses email headers,
+   contact cards, calendar attendees, contact-export rows, or chat-export headers and
+   deterministically extracts narrow candidates. Accepted `source_type` values are `email`, `mbox`, `vcard`,
+   `ics`, `linkedin`, `outlook`, and `whatsapp`; anything else fails with `invalid_source_type`. The optional
+   `self_sender` is an explicit chat-export label for the user (see
+   [Self participation](#self-participation)). Candidates are written to
    `import_staging` as `candidate_json`, grouped by `batch_id`. The raw source is parsed **in-memory only**
    and discarded once candidates are extracted — it is never written to any table. Its result includes
    `skipped_message_ids` for dateless messages with IDs, `skipped_without_id` for dateless messages without
@@ -104,6 +109,71 @@ time (`nonexistent_dtstart`), an impossible timestamp (`invalid_dtstart`), a mis
 skipped with that stable one-based reason. `DTEND`, duration, recurrence expansion, and cancelled status are
 out of scope.
 
+## Outlook contacts CSV
+
+`source_type="outlook"` accepts exactly one UTF-8 content string or path (a UTF-8 BOM is tolerated) and reads
+only the canonical contact columns `First Name`, `Middle Name`, `Last Name`, `E-mail Address`, `Company`,
+`Job Title`, and `Birthday`. All of those headers must be present; every other exported column — phone numbers,
+postal addresses, `Web Page`, `Notes`, and the many locale-specific extras — is tolerated and never read, so
+profile URLs and free text cannot reach a staged candidate.
+
+- The person name is the non-empty `First Name`, `Middle Name`, and `Last Name` cells joined with single
+  spaces. A valid `E-mail Address` becomes a `handle` alias.
+- `Company` plus `Job Title` produces an affiliation; either alone produces none.
+- Rows are independent and reported with stable one-based indexes: a row with no name is skipped as
+  `missing_name`, and a row whose non-empty email does not parse is skipped as `invalid_email`. A row whose
+  email matches a stored self handle is omitted silently, exactly as for the other contact sources.
+- Rows are coalesced only by normalized email; a second row for the same address contributes an `other` alias
+  when its name differs. Rows without an email stay distinct even when their names match.
+- Only unambiguous year-first `YYYY-MM-DD` and `YYYY/MM/DD` birthdays are accepted. A slash-separated
+  Outlook birthday such as `1/23/1985` is locale ordered and cannot be resolved to a day and month without
+  guessing, so it is not parsed. **Unlike the row-level reasons above, `invalid_birthday` reports a dropped
+  field, not a dropped row**: the contact is still staged, only without a birthday fact.
+
+## WhatsApp chat export
+
+`source_type="whatsapp"` accepts exactly one UTF-8 content string or path holding a plaintext chat export.
+Only the timestamp prefix and the sender label of each message are read. Everything after the sender
+separator is message body — text, attachment file names, and system notices — and is never copied into a
+candidate, a skip reason, a log record, or an error. The interaction summary is the fixed neutral string
+`WhatsApp chat`.
+
+- A line is treated as the start of a message only when it carries a complete, well-formed timestamp prefix in
+  the bracketed form `[<date>, <time>] Sender: …` or the dash form `<date>, <time> - Sender: …`, with a
+  `HH:MM`/`HH:MM:SS` time and an optional `AM`/`PM` suffix. Every other line is a body continuation and is
+  dropped without further inspection. Directional-isolate marks and narrow spaces are normalized first.
+- Accepted date forms are ISO `YYYY-MM-DD` and the numeric `D/M/YY`, `D/M/YYYY`, and `D.M.YYYY` locale forms.
+  A two-digit year is read as `20YY`.
+- A WhatsApp export carries no UTC offset, so **only the calendar day is retained**, deterministically
+  represented as `00:00:00Z` for that day — the same treatment `.ics` gives an all-day `VALUE=DATE` event.
+  The host's local timezone is never consulted.
+- Numeric day/month ordering is locale dependent and is inferred once for the whole file from components
+  greater than `12`, never guessed per line. If the file offers no such evidence, or offers contradictory
+  evidence, every numeric-dated message is skipped as `ambiguous_date_order`; ISO-dated messages are
+  unaffected.
+- Skip entries use stable one-based indexes over *detected messages*: `invalid_timestamp` for an impossible
+  calendar date, `ambiguous_date_order` as above, `no_sender` for a system notice or header without a sender
+  separator, and `invalid_sender` for an implausibly long label. No reason ever carries text from the file.
+- External senders are deduplicated by normalized sender identity. A phone-number label additionally stages
+  its compact digits-only form as a `handle` alias, so `+1 555 123 4567` and `+15551234567` are one person;
+  a differing display label for the same identity becomes an `other` alias.
+- Each calendar day with at least one external sender produces exactly one interaction candidate listing that
+  day's external participants in first-appearance order.
+
+### Self participation
+
+The candidate contract has no self-participation field, so WhatsApp self participation is implicit exactly as
+it is for email import: a message from the user produces no person candidate, and the user's label never
+appears in `participant_refs`. A day containing only the user's own messages produces no interaction candidate
+rather than an interaction with an empty or unknown participant list.
+
+`ImportContent` derives the self labels from the stored self person's canonical name and every alias, and
+`import_content` accepts an optional `self_sender` hint for export labels that are not stored aliases — such
+as `You` or a bare phone number. The hint is matched by normalized name and, for phone-number labels, by
+compact digits, so a differently formatted number still matches. `ImportExtractor.extract` carries these as
+explicit optional `self_names` and `self_sender` keyword parameters; sources that identify people by address
+accept and ignore them, and no source takes untyped keyword arguments.
+
 ## Agent candidate staging
 
 `stage_candidates` uses extra-forbidden Pydantic discriminated models for person, interaction, affiliation,
@@ -120,7 +190,8 @@ candidates plus a provenance reference are stored in `import_staging`, and only 
 reach the real tables:
 
 - A candidate `Interaction` gets a short prose summary, not the message body. For the email/mbox importer
-  this summary is the fixed neutral string `Email correspondence`; the `Subject` header is attacker-controlled
+  this summary is the fixed neutral string `Email correspondence`, and for WhatsApp it is `WhatsApp chat`;
+  the `Subject` header is attacker-controlled
   text that would otherwise be replayed into a future model's context, so it is deliberately not persisted (see
   [docs/privacy-and-safety.md](privacy-and-safety.md)). When a topical summary is wanted, an agent that has
   itself read the source can compose one and submit it through `stage_candidates`, taking responsibility for
@@ -153,6 +224,9 @@ LinkedIn Connections CSV imports arrived in **M9**. LinkedIn import requires the
 rows only by normalized email, stages affiliations only when company and position are both present, and accepts
 connected dates as `DD Mon YYYY` or `YYYY-MM-DD`. The export's notice preamble is discarded before the canonical
 header; profile URLs, notes, and other free text are never staged.
+
+Outlook contacts CSV and WhatsApp chat-export imports arrived in **M14**, bringing the accepted source values to
+seven: `email`, `mbox`, `vcard`, `ics`, `linkedin`, `outlook`, and `whatsapp`.
 
 Email extraction uses
 only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;

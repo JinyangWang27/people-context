@@ -76,7 +76,8 @@ details.
 - organizations and time-aware affiliations;
 - separate facts, observations, traits, and concise interaction summaries;
 - communication guidance grounded in traits, interaction friction, reminders, and user-authored philosophy;
-- reviewable email/mbox/vCard/agent-candidate imports without retaining raw source content;
+- reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate imports without retaining raw
+  source content;
 - optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval;
 - atomic audit plus replay changelog/HLC capture for every durable write;
 - merge, forget/redaction, unchanged JSON export, and safe Obsidian vault export;

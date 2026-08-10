@@ -83,7 +83,12 @@ raw source content.
 For email and mbox imports, Subject values are treated as attacker-controlled input and are not persisted or
 returned to the model. A fixed `Email correspondence` interaction summary is staged instead; message id,
 date, channel, and participants remain available as narrow provenance. For vCards, NOTE/PHOTO/ADR/TEL/X-fields
-are discarded before staging, and per-card skip reasons never echo raw values. `stage_candidates` accepts only
+are discarded before staging, and per-card skip reasons never echo raw values. For WhatsApp chat exports, only
+the timestamp prefix and the sender label of each message are read: everything after the sender separator —
+message text, attachment file names, and system notices — never reaches a candidate, a skip reason, a log
+record, or an error, and a fixed `WhatsApp chat` interaction summary is staged for each calendar day. For
+Outlook contacts CSV, only the canonical name, email, company, job title, and birthday columns are read, so
+`Notes`, `Web Page`, and every other exported column are never staged. `stage_candidates` accepts only
 narrow structured fields; agents must extract concise candidates from notes rather than submit or persist the
 notes themselves.
 
