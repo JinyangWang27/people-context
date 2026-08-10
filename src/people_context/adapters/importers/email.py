@@ -39,7 +39,10 @@ class EmailImportExtractor:
         content: str | None,
         path: str | None,
         self_addresses: set[str],
+        self_names: set[str] | None = None,
+        self_sender: str | None = None,
     ) -> ExtractedImport:
+        """Extract correspondents; ``self_names`` and ``self_sender`` are unused by this source."""
         messages = self._messages(source_type, content, path)
         people: dict[str, ImportPersonCandidate] = {}
         alternate_names: dict[str, list[str]] = {}

@@ -53,7 +53,12 @@ class StagedImportRow:
 
 @runtime_checkable
 class ImportExtractor(Protocol):
-    """Extract header-only email or mbox candidates."""
+    """Extract narrow candidates from one supported source without retaining raw content.
+
+    ``self_names`` and ``self_sender`` are explicit optional self-resolution inputs for sources
+    that identify participants by display label rather than by address. Extractors that cannot
+    use them accept and ignore them; no source takes untyped keyword arguments.
+    """
 
     def extract(
         self,
@@ -62,6 +67,8 @@ class ImportExtractor(Protocol):
         content: str | None,
         path: str | None,
         self_addresses: set[str],
+        self_names: set[str] | None = None,
+        self_sender: str | None = None,
     ) -> ExtractedImport: ...
 
 

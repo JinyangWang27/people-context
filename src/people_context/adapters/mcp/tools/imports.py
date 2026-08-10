@@ -26,10 +26,25 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register header-only extraction, review, and selective commit tools."""
 
     @mcp.tool(annotations=_WRITE)
-    async def import_content(source_type: str, content: str | None = None, path: str | None = None) -> dict[str, Any]:
-        """Extract and atomically stage email header candidates without bodies."""
+    async def import_content(
+        source_type: str,
+        content: str | None = None,
+        path: str | None = None,
+        self_sender: str | None = None,
+    ) -> dict[str, Any]:
+        """Extract and atomically stage header-only candidates from a supported source without bodies.
+
+        Accepted `source_type` values are `email`, `mbox`, `vcard`, `ics`, `linkedin`, `outlook`,
+        and `whatsapp`. `self_sender` is an optional chat-export label for the user, such as a
+        display name or a bare phone number, used to omit the user's own messages.
+        """
         try:
-            return deps.import_content.execute(source_type, content=content, path=path).model_dump(mode="json")
+            return deps.import_content.execute(
+                source_type,
+                content=content,
+                path=path,
+                self_sender=self_sender,
+            ).model_dump(mode="json")
         except (ImportPipelineError, ImportExtractionError) as exc:
             return _error(exc)
         except OSError as exc:
