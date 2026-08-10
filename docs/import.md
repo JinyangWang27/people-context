@@ -146,12 +146,13 @@ candidate, a skip reason, a log record, or an error. The interaction summary is 
 
 - A line is treated as the start of a message only when it carries a complete, well-formed timestamp prefix in
   the bracketed form `[<date>, <time>] Sender: …` or the dash form `<date>, <time> - Sender: …`. The clock must
-  be a real `HH:MM`/`HH:MM:SS` value — `0..23` hours, or `1..12` with an `AM`/`PM` suffix, and `0..59` minutes
+  be a real `HH:MM`/`HH:MM:SS` value — `0..23` hours, or `1..12` with a meridiem suffix, and `0..59` minutes
   and seconds — not merely time-shaped digits, so a body line quoting `[13/02/2025, 99:99] text:` stays a body
   continuation instead of turning quoted content into a sender. Every other line is likewise a continuation and
   is dropped without further inspection. Directional-isolate marks and narrow spaces are normalized first.
 - Accepted date forms are ISO `YYYY-MM-DD` and the numeric `D/M/YY`, `D/M/YYYY`, and `D.M.YYYY` locale forms.
-  A two-digit year is read as `20YY`.
+  A two-digit year is read as `20YY`. The meridiem is accepted as `AM`, `a.m.`, or the Spanish `a. m.`, whose
+  internal space may be a narrow or non-breaking one.
 - A WhatsApp export carries no UTC offset, so **only the calendar day is retained**, deterministically
   represented as `00:00:00Z` for that day — the same treatment `.ics` gives an all-day `VALUE=DATE` event.
   The host's local timezone is never consulted.

@@ -35,8 +35,10 @@ _BRACKET_RE = re.compile(r"^\[\s*(?P<date>[^,\]]+?)\s*,\s*(?P<time>[^\]]+?)\s*\]
 _DASH_RE = re.compile(r"^(?P<date>[^,]+?)\s*,\s*(?P<time>.+?)\s+-\s+(?P<rest>.*)$")
 _ISO_DATE_RE = re.compile(r"^(\d{4})-(\d{1,2})-(\d{1,2})$")
 _NUMERIC_DATE_RE = re.compile(r"^(\d{1,2})[/.](\d{1,2})[/.](\d{2}|\d{4})$")
+# Locales render the meridiem as `AM`, `a.m.`, or the Spanish `a. m.`; the internal space may be
+# a narrow or non-breaking one, which `_strip_marks` has already normalized by this point.
 _TIME_RE = re.compile(
-    r"^(?P<hour>\d{1,2}):(?P<minute>\d{2})(?::(?P<second>\d{2}))?(?: ?(?P<meridiem>[APap])\.?[Mm]\.?)?$"
+    r"^(?P<hour>\d{1,2}):(?P<minute>\d{2})(?::(?P<second>\d{2}))?(?: ?(?P<meridiem>[APap])\.? ?[Mm]\.?)?$"
 )
 _SENDER_RE = re.compile(r"^(?P<sender>[^:]+?):(?:\s|$)")
 _PHONE_RE = re.compile(r"^\+?[0-9][0-9 ()./-]*$")

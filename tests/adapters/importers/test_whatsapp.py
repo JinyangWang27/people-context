@@ -157,6 +157,43 @@ def test_whatsapp_supports_dash_form_twelve_hour_month_first_exports() -> None:
     assert _BODY_SENTINEL not in repr(extracted)
 
 
+def test_whatsapp_supports_localized_dotted_and_spaced_meridiem_markers() -> None:
+    content = "\n".join(
+        [
+            "[13/2/2025, 8:30:00 a. m.] Alice Example: " + _BODY_SENTINEL,
+            "[14/2/2025, 9:00:00 p.\u202fm.] Alice Example: " + _BODY_SENTINEL,
+            "15/2/2025, 8:30 p. m. - Bob Builder: " + _BODY_SENTINEL,
+            "[16/2/2025, 8:30:00 a.m.] Bob Builder: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert [person["name"] for person in _people(extracted)] == ["Alice Example", "Bob Builder"]
+    assert [interaction["date"] for interaction in _interactions(extracted)] == [
+        datetime(2025, 2, 13, tzinfo=UTC),
+        datetime(2025, 2, 14, tzinfo=UTC),
+        datetime(2025, 2, 15, tzinfo=UTC),
+        datetime(2025, 2, 16, tzinfo=UTC),
+    ]
+    assert extracted.skipped_cards == []
+    assert _BODY_SENTINEL not in repr(extracted)
+
+
+def test_whatsapp_still_rejects_an_out_of_range_hour_with_a_localized_meridiem() -> None:
+    content = "\n".join(
+        [
+            "[13/2/2025, 8:30:00 a. m.] Alice Example: " + _BODY_SENTINEL,
+            "[13/2/2025, 13:30:00 a. m.] QUOTED-PREFIX: " + _BODY_SENTINEL,
+        ]
+    )
+
+    extracted = _extract(content)
+
+    assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
+    assert "QUOTED-PREFIX" not in repr(extracted)
+
+
 def test_whatsapp_supports_dotted_day_first_and_iso_dated_exports() -> None:
     dotted = "\n".join(
         [

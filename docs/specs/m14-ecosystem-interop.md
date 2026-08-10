@@ -224,7 +224,8 @@ marks lifecycle state explicitly.
 2. Should a later importer-normalization PR support partial birthdays in vCard 4.0?
 3. Which explicitly detected WhatsApp locale formats ship first? **Resolved in M14.3:** the bracketed
    `[<date>, <time>]` and dash `<date>, <time> - ` message prefixes, with ISO `YYYY-MM-DD` plus the numeric
-   `D/M/YY`, `D/M/YYYY`, and `D.M.YYYY` forms and an optional `AM`/`PM` suffix. Numeric day/month ordering is
+   `D/M/YY`, `D/M/YYYY`, and `D.M.YYYY` forms and an optional meridiem suffix spelled `AM`, `a.m.`, or the
+   Spanish `a. m.`. Numeric day/month ordering is
    inferred once per file from components greater than `12`; a file with no such evidence, or with
    contradictory evidence, skips its numeric-dated messages as `ambiguous_date_order` instead of guessing.
 4. Should plugin refresh default to manual or on-open?
