@@ -85,14 +85,19 @@ repurposed, and new fields are additive.
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |
 | Person brief | `people-context-brief` | `1` | `pctx brief --json` |
 | Person index | `people-context-person-index` | `1` | `pctx list --json` |
+| Data-quality findings | `people-context-doctor` | `1` | `pctx doctor --json` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
 
-- **Portable dataset export**, **person brief**, and **person index** are producer-only: nothing in this
-  repository consumes them, and external readers are expected to ignore unknown fields. A new field is additive
-  and does not advance `version`; a removal or a repurposing does.
+- **Portable dataset export**, **person brief**, **person index**, and **data-quality findings** are
+  producer-only: nothing in this repository consumes them, and external readers are expected to ignore unknown
+  fields. A new field is additive and does not advance `version`; a removal or a repurposing does.
+
+  The doctor document's finding `code` values and the `surface` discriminator on a suggested action are part of
+  its contract: an existing code is not removed or given a new meaning, and a later release may add codes and
+  evidence collections additively. Consumers should ignore a `code` they do not recognize rather than fail.
 
   The brief's disclosure labelling is part of its contract, not decoration: `disclosure.guidance` stays
   `ordinary` in every mode, and `disclosure.context` is `sensitive` only when the operator passed

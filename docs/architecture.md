@@ -72,7 +72,8 @@ Use cases are organized by product capability: `people`, `context`, `records`, `
 models, staging, and orchestration responsibilities are split. Classes still remain focused and depend only
 on `domain` and narrow `ports`, never on a concrete adapter. The root `app` package is not a public barrel.
 Use cases contain the only place application-level policy (e.g. the ambiguity threshold in identity
-resolution, or the minimal-disclosure cap in context assembly) is allowed to live.
+resolution, the minimal-disclosure cap in context assembly, or the finding codes, precedence, and suggested
+actions in `records/doctor.py`) is allowed to live.
 
 ### `ports`
 
@@ -81,7 +82,8 @@ resolution, or the minimal-disclosure cap in context assembly) is allowed to liv
 (`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), `Changelog` (`ports/changelog.py`),
 `MergeStore` (`ports/merge.py`), `ForgetStore` and `ForgetPreviewStore` (`ports/forget.py`),
 `HybridLogicalClock` (`ports/hlc.py`), `BundleReader` (`ports/sync_bundle.py`),
-`RecencyReader` (`ports/insights.py`), `UnitOfWork` (`ports/unit_of_work.py`), `Clock` (`ports/clock.py`), and
+`RecencyReader` (`ports/insights.py`), `CurationReader` (`ports/curation.py`),
+`UnitOfWork` (`ports/unit_of_work.py`), `Clock` (`ports/clock.py`), and
 `Sleeper` (`ports/sleep.py`).
 Splitting concerns means read, merge, forget, audit, and sync use cases depend only on capabilities they consume.
 The application layer owns transaction orchestration through the UoW port; SQLite owns BEGIN/COMMIT/ROLLBACK.

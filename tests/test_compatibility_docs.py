@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 from people_context.app.exports.json import ExportDocument
+from people_context.app.records.doctor import DOCTOR_FORMAT, DOCTOR_VERSION
 from people_context.domain.sync_bundle import SYNC_BUNDLE_FORMAT, SYNC_BUNDLE_VERSION, StrictBundleModel
 
 ROOT = Path(__file__).parents[1]
@@ -69,6 +70,7 @@ def test_promise_documents_stable_json_identifiers_that_match_shipped_code() -> 
 
     assert f"| `{export_format}` | `{export_version}` |" in document
     assert f"| `{SYNC_BUNDLE_FORMAT}` | `{SYNC_BUNDLE_VERSION}` |" in document
+    assert f"| `{DOCTOR_FORMAT}` | `{DOCTOR_VERSION}` |" in document
 
 
 def test_bundle_versioning_statement_matches_the_strict_reader() -> None:

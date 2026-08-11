@@ -241,7 +241,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M15 — Data quality & credibility
 
-- [ ] **M15.1 — Deterministic doctor findings**
+- [x] **M15.1 — Deterministic doctor findings**
   - **Scope:** `CurationReader`, SQLite queries, app report, CLI; optional next-free index.
   - **Acceptance:** duplicate handle/alias, contradictory fact, soft-deleted references; handle precedence;
     `ValidityPeriod.overlaps` parity; report-only/exit zero. JSON actions are structured id-based argv or MCP tool

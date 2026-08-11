@@ -7,6 +7,7 @@ from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRest
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
+from people_context.adapters.sqlite.curation_reader import SqliteCurationReader
 from people_context.adapters.sqlite.db import EncryptedDatabaseError, open_db, open_encrypted_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
@@ -40,6 +41,7 @@ __all__ = [
     "SqliteBundleReader",
     "SqliteChangelog",
     "SqliteContextReader",
+    "SqliteCurationReader",
     "SqliteExportReader",
     "SqliteGraphReader",
     "SqliteHybridLogicalClock",

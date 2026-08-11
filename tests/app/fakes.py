@@ -22,6 +22,7 @@ from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
 from people_context.ports.context import AffiliationRecord, RelationshipRecord
+from people_context.ports.curation import DeletedPersonReference, FactAssertion, NameUsage
 from people_context.ports.export import ExportSnapshot
 from people_context.ports.insights import RecencySignal
 from people_context.ports.repository import SearchHit
@@ -189,6 +190,40 @@ class FakeRecencyReader:
         return [
             signal for signal in self.signals if category is None or category in signal.categories
         ]
+
+
+class FakeCurationReader:
+    """In-memory CurationReader returning pre-built candidate evidence."""
+
+    def __init__(
+        self,
+        *,
+        shared_handles: list[NameUsage] | None = None,
+        shared_names: list[NameUsage] | None = None,
+        conflicting_facts: list[FactAssertion] | None = None,
+        deleted_references: list[DeletedPersonReference] | None = None,
+    ) -> None:
+        self.shared_handles = shared_handles or []
+        self.shared_names = shared_names or []
+        self.conflicting_facts = conflicting_facts or []
+        self.deleted_references = deleted_references or []
+        self.calls: list[str] = []
+
+    def list_shared_handles(self) -> list[NameUsage]:
+        self.calls.append("list_shared_handles")
+        return list(self.shared_handles)
+
+    def list_shared_names(self) -> list[NameUsage]:
+        self.calls.append("list_shared_names")
+        return list(self.shared_names)
+
+    def list_conflicting_facts(self) -> list[FactAssertion]:
+        self.calls.append("list_conflicting_facts")
+        return list(self.conflicting_facts)
+
+    def list_deleted_person_references(self) -> list[DeletedPersonReference]:
+        self.calls.append("list_deleted_person_references")
+        return list(self.deleted_references)
 
 
 class FakeRecordStore:
