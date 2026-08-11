@@ -37,14 +37,27 @@ class ImportContent:
         self._extractor = extractor
         self._candidate_stager = candidate_stager or CandidateStager(people, staging, clock)
 
-    def execute(self, source_type: str, content: str | None = None, path: str | None = None) -> ImportBatchResult:
-        """Stage header-derived people followed by interaction candidates."""
+    def execute(
+        self,
+        source_type: str,
+        content: str | None = None,
+        path: str | None = None,
+        self_sender: str | None = None,
+    ) -> ImportBatchResult:
+        """Stage header-derived people followed by interaction candidates.
+
+        ``self_sender`` is an optional explicit label — such as ``You`` or a bare phone number —
+        for sources that identify the user by display label rather than by address.
+        """
         source = f"import/{source_type}"
+        self_addresses, self_names = self._self_identity()
         extracted = self._extractor.extract(
             source_type,
             content=content,
             path=path,
-            self_addresses=self._self_addresses(),
+            self_addresses=self_addresses,
+            self_names=self_names,
+            self_sender=self_sender,
         )
         if not extracted.people and not extracted.interactions and not extracted.candidates:
             raise ImportPipelineError(
@@ -86,11 +99,15 @@ class ImportContent:
             skipped_cards=extracted.skipped_cards,
         )
 
-    def _self_addresses(self) -> set[str]:
+    def _self_identity(self) -> tuple[set[str], set[str]]:
+        """Return the self person's handle aliases and normalized canonical name plus alias values."""
         person = self._people.get_self()
         if person is None:
-            return set()
-        return {alias.value for alias in person.aliases if alias.kind == AliasKind.HANDLE}
+            return set(), set()
+        addresses = {alias.value for alias in person.aliases if alias.kind == AliasKind.HANDLE}
+        values = {person.canonical_name, *(alias.value for alias in person.aliases)}
+        names = {normalized for value in values if (normalized := normalize_name(value))}
+        return addresses, names
 
 
 class ReviewImport:

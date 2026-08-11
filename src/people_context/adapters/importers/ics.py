@@ -52,7 +52,10 @@ class IcsImportExtractor:
         content: str | None,
         path: str | None,
         self_addresses: set[str],
+        self_names: set[str] | None = None,
+        self_sender: str | None = None,
     ) -> ExtractedImport:
+        """Extract attendees; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "ics":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'ics'")
         if (content is None) == (path is None):

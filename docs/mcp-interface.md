@@ -218,6 +218,11 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `set_communication_philosophy` | Store user-authored guidance; audit stores lengths, not text. |
 | `import_content` / `stage_candidates` / `review_import` / `commit_import` | Reviewable distilled imports without raw source retention. |
 
+`import_content(source_type, content, path, self_sender)` accepts `email`, `mbox`, `vcard`, `ics`, `linkedin`,
+`outlook`, and `whatsapp`. M14 added the last two source values plus the optional `self_sender` chat-export
+label for the user; both are additive and the response shape is unchanged. See
+[docs/import.md](import.md).
+
 `set_relationship` accepts free-form type input. M7 snake-case normalizes it, resolves synonyms, canonicalizes
 inverse direction, orders symmetric endpoints, and updates an existing active canonical edge instead of
 inserting a duplicate. Unknown types remain legal.

@@ -225,7 +225,7 @@ Check the matching box only in the PR that delivers it.
     one full birthday; omitted-valid/skipped-partial/skipped-unparseable counts; 3.0/4.0 unchanged-importer roundtrip.
   - **Out:** CardDAV, multi-value encoding, partial-birthday importer normalization.
 
-- [ ] **M14.3 — Outlook and WhatsApp extractors**
+- [x] **M14.3 — Outlook and WhatsApp extractors**
   - **Scope:** New extractors; widen Protocol/router/all implementations with `self_names`/`self_sender`.
   - **Acceptance:** preserve five sources; WhatsApp body absent from outputs/logs/errors; self omitted from people/refs;
     self-only day no interaction; seven-source matrix/E2E.

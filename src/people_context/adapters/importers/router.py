@@ -5,8 +5,10 @@ from __future__ import annotations
 from people_context.adapters.importers.email import EmailImportExtractor, ImportExtractionError
 from people_context.adapters.importers.ics import IcsImportExtractor
 from people_context.adapters.importers.linkedin import LinkedInImportExtractor
+from people_context.adapters.importers.outlook import OutlookImportExtractor
 from people_context.adapters.importers.vcard import VCardImportExtractor
-from people_context.ports.imports import ExtractedImport
+from people_context.adapters.importers.whatsapp import WhatsAppImportExtractor
+from people_context.ports.imports import ExtractedImport, ImportExtractor
 
 
 class ImportExtractorRouter:
@@ -17,6 +19,8 @@ class ImportExtractorRouter:
         self._vcard = VCardImportExtractor()
         self._ics = IcsImportExtractor()
         self._linkedin = LinkedInImportExtractor()
+        self._outlook = OutlookImportExtractor()
+        self._whatsapp = WhatsAppImportExtractor()
 
     def extract(
         self,
@@ -25,37 +29,33 @@ class ImportExtractorRouter:
         content: str | None,
         path: str | None,
         self_addresses: set[str],
+        self_names: set[str] | None = None,
+        self_sender: str | None = None,
     ) -> ExtractedImport:
         """Extract candidates with the extractor registered for ``source_type``."""
+        extractor: ImportExtractor
         if source_type in {"email", "mbox"}:
-            return self._email.extract(
-                source_type,
-                content=content,
-                path=path,
-                self_addresses=self_addresses,
+            extractor = self._email
+        elif source_type == "vcard":
+            extractor = self._vcard
+        elif source_type == "ics":
+            extractor = self._ics
+        elif source_type == "linkedin":
+            extractor = self._linkedin
+        elif source_type == "outlook":
+            extractor = self._outlook
+        elif source_type == "whatsapp":
+            extractor = self._whatsapp
+        else:
+            raise ImportExtractionError(
+                "invalid_source_type",
+                "source_type must be 'email', 'mbox', 'vcard', 'ics', 'linkedin', 'outlook', or 'whatsapp'",
             )
-        if source_type == "vcard":
-            return self._vcard.extract(
-                source_type,
-                content=content,
-                path=path,
-                self_addresses=self_addresses,
-            )
-        if source_type == "ics":
-            return self._ics.extract(
-                source_type,
-                content=content,
-                path=path,
-                self_addresses=self_addresses,
-            )
-        if source_type == "linkedin":
-            return self._linkedin.extract(
-                source_type,
-                content=content,
-                path=path,
-                self_addresses=self_addresses,
-            )
-        raise ImportExtractionError(
-            "invalid_source_type",
-            "source_type must be 'email', 'mbox', 'vcard', 'ics', or 'linkedin'",
+        return extractor.extract(
+            source_type,
+            content=content,
+            path=path,
+            self_addresses=self_addresses,
+            self_names=self_names,
+            self_sender=self_sender,
         )

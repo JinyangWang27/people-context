@@ -32,7 +32,10 @@ class VCardImportExtractor:
         content: str | None,
         path: str | None,
         self_addresses: set[str],
+        self_names: set[str] | None = None,
+        self_sender: str | None = None,
     ) -> ExtractedImport:
+        """Extract cards; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "vcard":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'vcard'")
         if (content is None) == (path is None):

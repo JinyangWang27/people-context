@@ -1,4 +1,4 @@
-"""LinkedIn Connections CSV extraction into narrow staged candidates."""
+"""Outlook contacts CSV extraction into narrow staged candidates."""
 
 from __future__ import annotations
 
@@ -15,38 +15,29 @@ from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
 
+# The canonical Outlook contacts export columns this extractor consumes. Additional exported
+# columns (phones, addresses, notes, web pages, and the many locale-specific extras) are
+# tolerated and never read, so free text and profile URLs cannot reach a staged candidate.
 _EXPECTED_HEADERS = frozenset(
     {
         "First Name",
+        "Middle Name",
         "Last Name",
-        "URL",
-        "Email Address",
+        "E-mail Address",
         "Company",
-        "Position",
-        "Connected On",
+        "Job Title",
+        "Birthday",
     }
 )
-_ENGLISH_MONTHS = {
-    "Jan": 1,
-    "Feb": 2,
-    "Mar": 3,
-    "Apr": 4,
-    "May": 5,
-    "Jun": 6,
-    "Jul": 7,
-    "Aug": 8,
-    "Sep": 9,
-    "Oct": 10,
-    "Nov": 11,
-    "Dec": 12,
-}
-_ENGLISH_DATE_RE = re.compile(r"^(\d{2}) ([A-Z][a-z]{2}) (\d{4})$")
-_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_NAME_COLUMNS = ("First Name", "Middle Name", "Last Name")
+# Only year-first birthdays are accepted: a slash-separated Outlook birthday is locale ordered
+# and cannot be resolved to a day and month without guessing.
+_YEAR_FIRST_DATE_RE = re.compile(r"^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$")
 
 
 @dataclass
 class _PersonAccumulator:
-    """One batch-local person, optionally coalesced by normalized email."""
+    """One batch-local person, coalesced by normalized email."""
 
     ref: str
     name: str
@@ -54,8 +45,8 @@ class _PersonAccumulator:
     alternate_names: list[str] = field(default_factory=list)
 
 
-class LinkedInImportExtractor:
-    """Parse canonical LinkedIn Connections CSV rows without retaining profile or free text."""
+class OutlookImportExtractor:
+    """Parse Outlook contacts CSV rows into identity, affiliation, and birthday candidates."""
 
     def extract(
         self,
@@ -67,19 +58,23 @@ class LinkedInImportExtractor:
         self_names: set[str] | None = None,
         self_sender: str | None = None,
     ) -> ExtractedImport:
-        """Extract connection rows; ``self_names`` and ``self_sender`` are unused by this source."""
-        if source_type != "linkedin":
-            raise ImportExtractionError("invalid_source_type", "source_type must be 'linkedin'")
+        """Extract contact rows; ``self_names`` and ``self_sender`` are unused by this source."""
+        if source_type != "outlook":
+            raise ImportExtractionError("invalid_source_type", "source_type must be 'outlook'")
         if (content is None) == (path is None):
             raise ImportExtractionError(
                 "invalid_source",
-                "linkedin import requires exactly one of content or path",
+                "outlook import requires exactly one of content or path",
             )
         text = content.lstrip("\ufeff") if content is not None else Path(path or "").read_text(encoding="utf-8-sig")
-        reader = csv.DictReader(io.StringIO(_csv_from_canonical_header(text)), strict=True)
-        headers = reader.fieldnames
+        reader = csv.DictReader(io.StringIO(text), strict=True)
+        try:
+            # Reading the header row parses CSV too, so it belongs inside the error boundary.
+            headers = reader.fieldnames
+        except csv.Error as exc:
+            raise ImportExtractionError("invalid_csv", "outlook CSV is malformed") from exc
         if headers is None or not _EXPECTED_HEADERS.issubset(headers):
-            raise ImportExtractionError("invalid_headers", "linkedin CSV is missing required canonical headers")
+            raise ImportExtractionError("invalid_headers", "outlook CSV is missing required canonical headers")
 
         # Self handles are compared as addresses, not as names: name normalization strips combining
         # marks, which would fold a self handle onto a genuinely distinct ASCII contact address.
@@ -98,22 +93,18 @@ class LinkedInImportExtractor:
                 if not name:
                     skipped.append({"index": row_index, "reason": "missing_name"})
                     continue
-                raw_email = clean_text(row.get("Email Address"))
+                raw_email = clean_text(row.get("E-mail Address"))
                 email = normalize_email(raw_email)
                 if raw_email and email is None:
                     skipped.append({"index": row_index, "reason": "invalid_email"})
                     continue
-                if email in normalized_self:
-                    continue
-                connected_on, invalid_date = _parse_connected_on(clean_text(row.get("Connected On")))
-                if invalid_date:
-                    skipped.append({"index": row_index, "reason": "invalid_connected_on"})
+                if email is not None and email in normalized_self:
                     continue
 
                 person = people_by_email.get(email) if email is not None else None
                 if person is None:
                     person = _PersonAccumulator(
-                        ref=f"linkedin-person-{len(people) + 1}",
+                        ref=f"outlook-person-{len(people) + 1}",
                         name=name,
                         email=email,
                     )
@@ -124,9 +115,9 @@ class LinkedInImportExtractor:
                     _add_alternate_name(person, name)
 
                 company = clean_text(row.get("Company"))
-                position = clean_text(row.get("Position"))
-                if company and position:
-                    key = (person.ref, normalize_name(company), normalize_name(position))
+                job_title = clean_text(row.get("Job Title"))
+                if company and job_title:
+                    key = (person.ref, normalize_name(company), normalize_name(job_title))
                     if key not in seen_affiliations:
                         seen_affiliations.add(key)
                         affiliations.append(
@@ -134,23 +125,29 @@ class LinkedInImportExtractor:
                                 "type": "affiliation",
                                 "person_ref": person.ref,
                                 "org": company,
-                                "role": position,
+                                "role": job_title,
                             }
                         )
-                if connected_on is not None:
-                    key = (person.ref, connected_on.isoformat())
+
+                raw_birthday = clean_text(row.get("Birthday"))
+                birthday = _parse_birthday(raw_birthday)
+                if raw_birthday and birthday is None:
+                    # The row's identity is still trustworthy, so only the birthday is dropped.
+                    skipped.append({"index": row_index, "reason": "invalid_birthday"})
+                elif birthday is not None:
+                    key = (person.ref, birthday.isoformat())
                     if key not in seen_facts:
                         seen_facts.add(key)
                         facts.append(
                             {
                                 "type": "fact",
                                 "person_ref": person.ref,
-                                "predicate": "linkedin_connected_on",
-                                "value": connected_on.isoformat(),
+                                "predicate": "birthday",
+                                "value": birthday.isoformat(),
                             }
                         )
         except csv.Error as exc:
-            raise ImportExtractionError("invalid_csv", "linkedin CSV is malformed") from exc
+            raise ImportExtractionError("invalid_csv", "outlook CSV is malformed") from exc
 
         candidates = [_person_candidate(person) for person in people]
         return ExtractedImport(
@@ -161,38 +158,19 @@ class LinkedInImportExtractor:
         )
 
 
-def _csv_from_canonical_header(text: str) -> str:
-    lines = text.splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        try:
-            columns = next(csv.reader([line], strict=True))
-        except csv.Error:
-            continue
-        if _EXPECTED_HEADERS.issubset(columns):
-            return "".join(lines[index:])
-    raise ImportExtractionError("invalid_headers", "linkedin CSV is missing required canonical headers")
-
-
 def _combined_name(row: dict[str | None, str | list[str] | None]) -> str:
-    return " ".join(value for value in (clean_text(row.get("First Name")), clean_text(row.get("Last Name"))) if value)
+    return " ".join(value for value in (clean_text(row.get(column)) for column in _NAME_COLUMNS) if value)
 
 
-def _parse_connected_on(value: str) -> tuple[date | None, bool]:
-    if not value:
-        return None, False
+def _parse_birthday(value: str) -> date | None:
+    match = _YEAR_FIRST_DATE_RE.fullmatch(value)
+    if match is None:
+        return None
+    year, month, day = (int(part) for part in match.groups())
     try:
-        if _ISO_DATE_RE.fullmatch(value):
-            return date.fromisoformat(value), False
-        match = _ENGLISH_DATE_RE.fullmatch(value)
-        if match is None:
-            return None, True
-        day, month_name, year = match.groups()
-        month = _ENGLISH_MONTHS.get(month_name)
-        if month is None:
-            return None, True
-        return date(int(year), month, int(day)), False
+        return date(year, month, day)
     except ValueError:
-        return None, True
+        return None
 
 
 def _add_alternate_name(person: _PersonAccumulator, name: str) -> None:
