@@ -53,6 +53,18 @@ If Obsidian was not started with that variable, the plugin reports the CLI's own
 stops. It does not fall back to opening the database unencrypted. Launch Obsidian from a shell
 that exports the key, or set it in the desktop session your launcher uses.
 
+## What "read-only" means here
+
+The plugin never writes a record: no write path, nothing recorded, no audit or changelog rows.
+
+It is not a read-only file operation, though. The panes run the ordinary `pctx` read commands,
+and those open the database through the shared runtime, which creates it when absent and
+applies pending forward-only migrations first. That is how every people-context command
+behaves; the plugin is simply the first place it can happen without you typing one, because
+**Refresh** defaults to `on-open`. So a mistyped database path creates an empty database there,
+and opening a pane after an upgrade migrates the file — which an older release may then be
+unable to open. Set **Refresh** to `manual` if you would rather choose the moment.
+
 ## Privacy
 
 The database stays local and the plugin only ever reads it, but what a pane renders is still

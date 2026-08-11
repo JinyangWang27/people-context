@@ -5,7 +5,7 @@ import {
   type PeopleContextSettings,
   briefArguments,
   globalArguments,
-  isSafePersonId,
+  isUsablePersonId,
   listArguments,
   normalizeSettings,
 } from "./settings.js";
@@ -69,17 +69,34 @@ describe("argument arrays", () => {
     expect(args).not.toContain("--include-sensitive");
   });
 
-  it("addresses a brief by stable id", () => {
+  it("addresses a brief by stable id, after an option separator", () => {
     expect(briefArguments(settings(), "01KZQXWK571FJAF03F6H63A85Z")).toEqual([
       "brief",
-      "01KZQXWK571FJAF03F6H63A85Z",
       "--json",
+      "--",
+      "01KZQXWK571FJAF03F6H63A85Z",
     ]);
+  });
+
+  it("puts every option before the separator so the id is always positional", () => {
+    const args = briefArguments(
+      settings({ databasePath: "/tmp/x.db", encryptedDatabase: true }),
+      "-rf",
+    );
+
+    expect(args).toEqual(["--db", "/tmp/x.db", "--encrypted", "brief", "--json", "--", "-rf"]);
+    expect(args.indexOf("--")).toBe(args.length - 2);
   });
 });
 
-describe("person id validation", () => {
-  const hostile = [
+describe("person id handling", () => {
+  // The identifier contract admits any non-blank string, and a database restored from a sync
+  // bundle can carry one. Narrowing that grammar here would reject a whole valid index, so
+  // these are all accepted as data and made safe by the `--` separator instead.
+  const opaque = [
+    "01KZQXWK571FJAF03F6H63A85Z",
+    "person:alice",
+    "urn:uuid:8f14e45f-ea0f-4a1b-9f2c-1d4f0a2b3c4d",
     "Bobby; rm -rf ~",
     "$(whoami)",
     "`id`",
@@ -94,22 +111,37 @@ describe("person id validation", () => {
     "--include-sensitive",
     "-rf",
     "../../etc/passwd",
-    "",
-    "x".repeat(65),
+    "x".repeat(200),
+    "陳大文",
   ];
 
-  it.each(hostile)("rejects %j as a person id", (value) => {
-    expect(isSafePersonId(value)).toBe(false);
-    expect(() => briefArguments(settings(), value)).toThrowError(/unrecognized person id/);
+  it.each(opaque)("accepts %j as an opaque id and keeps it positional", (value) => {
+    expect(isUsablePersonId(value)).toBe(true);
+
+    const args = briefArguments(settings(), value);
+
+    expect(args).toEqual(["brief", "--json", "--", value]);
+    // Whatever the id looks like, it is the last element and follows the separator, so the
+    // CLI parser reads it as the person and never as an option.
+    expect(args.at(-1)).toBe(value);
+    expect(args.at(-2)).toBe("--");
+  });
+
+  const unusable = ["", "   ", "\u0000", "a\u0000b"];
+
+  it.each(unusable)("rejects %j, which cannot be an argument at all", (value) => {
+    expect(isUsablePersonId(value)).toBe(false);
+    expect(() => briefArguments(settings(), value)).toThrowError(/unusable person id/);
+  });
+
+  it("rejects a non-string id", () => {
+    expect(isUsablePersonId(undefined)).toBe(false);
+    expect(isUsablePersonId(42)).toBe(false);
   });
 
   it("does not echo the rejected value back into the message", () => {
-    expect(() => briefArguments(settings(), "$(whoami)")).toThrowError(
-      "Refusing to run a command for an unrecognized person id.",
+    expect(() => briefArguments(settings(), "  ")).toThrowError(
+      "Refusing to run a command for an unusable person id.",
     );
-  });
-
-  it("accepts the ids the CLI actually emits", () => {
-    expect(isSafePersonId("01KZQXWK571FJAF03F6H63A85Z")).toBe(true);
   });
 });

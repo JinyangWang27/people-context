@@ -58,6 +58,7 @@
   font-size: var(--font-ui-smaller);
 }
 
+.people-context-warning:empty,
 .people-context-failure:empty {
   display: none;
 }

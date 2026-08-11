@@ -4,7 +4,7 @@
  * Rendering is split from the Obsidian layer so the interesting decisions — what is shown,
  * what is filtered, which id a click carries — are plain data that tests can assert on
  * without a running app. Every string here is display data: nothing in this module ever
- * becomes a command argument except an id that already passed `isSafePersonId`.
+ * becomes a command argument except a person id, which travels after a `--` separator.
  */
 
 import type {
@@ -13,6 +13,10 @@ import type {
   PersonIndexDocument,
   PersonIndexEntry,
 } from "./documents.js";
+
+const NEWER_DOCUMENT_WARNING =
+  "This people-context release emits a newer document version than the plugin was built " +
+  "against. Known fields are shown; anything added since is not.";
 
 export interface IndexRow {
   /** The stable id, and the only value that may be passed back to the CLI. */
@@ -71,6 +75,16 @@ export class IndexPaneModel {
     return this.failure;
   }
 
+  /**
+   * The compatibility warning for a newer index document, or `null`.
+   *
+   * The index carries the same additive-version promise as the brief, so it reports a newer
+   * document the same way instead of leaving the pane silently partial.
+   */
+  compatibilityWarning(): string | null {
+    return this.document?.newerThanSupported === true ? NEWER_DOCUMENT_WARNING : null;
+  }
+
   status(): string {
     if (this.reading) {
       return "Reading…";
@@ -100,10 +114,6 @@ export interface BriefView {
   /** Set when the CLI document is newer than the version this plugin understands. */
   compatibilityWarning: string | null;
 }
-
-const NEWER_DOCUMENT_WARNING =
-  "This people-context release emits a newer document version than the plugin was built " +
-  "against. Known fields are shown; anything added since is not.";
 
 /** Build the filtered, ordered rows for the index pane. */
 export function buildIndexRows(document: PersonIndexDocument, query = ""): IndexRow[] {

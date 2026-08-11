@@ -97,23 +97,34 @@ export function listArguments(settings: PeopleContextSettings): string[] {
  * `pctx brief` also accepts a name, and the plugin never uses that form: a display name is
  * untrusted contact data, and resolving it could silently address a different person.
  * `--include-sensitive` is never passed, so a synced vault only ever sees ordinary disclosure.
+ *
+ * The id goes last, after a bare `--`. That separator is what makes an opaque id safe: the
+ * project's identifier contract admits any non-blank string, so an id may legitimately begin
+ * with `-`, and without the separator the CLI's own parser would read it as an option rather
+ * than as the person to brief. Every real option is therefore emitted before the `--`.
  */
 export function briefArguments(settings: PeopleContextSettings, personId: string): string[] {
-  assertSafePersonId(personId);
-  return commandArguments(settings, ["brief", personId, "--json"]);
+  assertUsablePersonId(personId);
+  return commandArguments(settings, ["brief", "--json", "--", personId]);
 }
 
-/** Person ids are opaque, but they are still checked before becoming a command argument. */
-const PERSON_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
-
-export function isSafePersonId(value: unknown): value is string {
-  return typeof value === "string" && PERSON_ID_PATTERN.test(value);
+/**
+ * Whether an id can be used at all.
+ *
+ * Deliberately not a grammar. Ids are opaque: a database restored from a sync bundle may
+ * carry any non-blank identifier, and a plugin that insisted on ULID-shaped ids would reject
+ * the whole index of a perfectly valid store. Safety comes from argument separation, not from
+ * narrowing the data contract. The only rejections are values that cannot be an argument at
+ * all — a blank id, and one containing a NUL byte, which `spawn` refuses outright.
+ */
+export function isUsablePersonId(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "" && !value.includes("\0");
 }
 
-export function assertSafePersonId(value: string): void {
-  if (!isSafePersonId(value)) {
+export function assertUsablePersonId(value: string): void {
+  if (!isUsablePersonId(value)) {
     // The rejected value is not echoed: it reached us from the database and may be
     // personal data. The caller only needs to know the id was unusable.
-    throw new Error("Refusing to run a command for an unrecognized person id.");
+    throw new Error("Refusing to run a command for an unusable person id.");
   }
 }

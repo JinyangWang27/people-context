@@ -61,6 +61,30 @@ ordinary-disclosure records for people who have not been soft-deleted.
 `refresh` defaults to `on-open`: a pane that opens empty and needs a second action reads as
 broken, and one read is cheap. Nothing polls on a timer.
 
+## What "read-only" means here, precisely
+
+The plugin performs no durable record mutation: it has no write path, records nothing, and
+mints no audit or changelog rows. It is a viewer.
+
+It is not, however, a read-only *file* operation, and the distinction matters. The panes run
+the ordinary `pctx` read commands, and every CLI and MCP entry point in this project resolves
+its database through the shared runtime, which opens the file — **creating it, and its parent
+directories, when it is absent, and applying any pending forward-only migrations before the
+read runs**. That is project-wide behaviour rather than something the plugin introduces, but
+the plugin is the first surface where it can happen without the user typing a command: with
+the default `on-open` refresh, merely opening the People pane is enough.
+
+Two consequences worth knowing:
+
+- a mistyped database path creates a new, empty database at that path rather than reporting
+  that nothing is there;
+- opening a pane after upgrading people-context migrates the database, and migrations are
+  forward-only, so an older release may no longer be able to open it afterwards.
+
+Set **Refresh** to `manual` if you would rather decide when that happens. A genuinely
+non-creating, non-migrating CLI read mode would remove the ambiguity entirely; that is a
+change to the command-line interface itself and is tracked separately from this plugin.
+
 ## Process-execution safety
 
 Every value the plugin displays is untrusted personal data, so the bridge is built so that
@@ -76,9 +100,15 @@ displayed data can never become executed data:
 - `windowsHide: true`;
 - no logging of JSON payloads or of `PEOPLE_CONTEXT_DB_KEY`.
 
-Person ids are validated before they can become an argument, and a name that looks like an
-option or a shell fragment stays inert display text. The panes are painted with text nodes,
+Person ids are passed after a bare `--`, so an id is always read as the person and never as an
+option. Ids are deliberately *not* pattern-checked: the project's identifier contract admits
+any non-blank string, and a database restored from a sync bundle may legitimately carry one, so
+safety comes from argument separation rather than from narrowing the data contract. Names and
+other display data never become arguments at all, and the panes are painted with text nodes,
 never with `innerHTML`.
+
+Both panes report a document version newer than the plugin understands rather than failing or
+silently showing a partial view.
 
 ## Encrypted databases
 

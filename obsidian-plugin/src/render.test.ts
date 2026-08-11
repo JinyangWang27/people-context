@@ -186,6 +186,27 @@ describe("IndexPaneModel", () => {
     expect(model.status()).toBe("Select Refresh to read the people-context database.");
   });
 
+  it("reports a newer index document, exactly as the brief pane does", () => {
+    const model = new IndexPaneModel();
+    expect(model.compatibilityWarning()).toBeNull();
+
+    model.setDocument({ ...index([entry()]), newerThanSupported: true });
+    expect(model.compatibilityWarning()).toContain("newer document version");
+    // The rows still render: a newer document is reported, never refused.
+    expect(model.rows()).toHaveLength(1);
+
+    model.setDocument(index([entry()]));
+    expect(model.compatibilityWarning()).toBeNull();
+  });
+
+  it("drops the warning when a read fails", () => {
+    const model = new IndexPaneModel();
+    model.setDocument({ ...index([entry()]), newerThanSupported: true });
+    model.setFailure(new Error("pctx not found"));
+
+    expect(model.compatibilityWarning()).toBeNull();
+  });
+
   it("reports an empty store distinctly from an empty filter result", () => {
     const model = new IndexPaneModel();
     model.setDocument(index([]));

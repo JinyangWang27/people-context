@@ -118,10 +118,22 @@ describe("parsePersonIndex", () => {
     expect(error?.message).not.toContain("Amina");
   });
 
-  it("rejects an entry whose id could not be used as an argument", () => {
-    expect(() =>
-      parsePersonIndex(indexText({ people: [{ ...INDEX.people[0], id: "--include-sensitive" }] })),
-    ).toThrowError(DocumentFormatError);
+  it("keeps an opaque id from a restored database, whatever it looks like", () => {
+    // The sync-bundle identifier contract admits any non-blank string, so a restored store
+    // can carry ids like these. Rejecting them would fail the entire index of a valid store.
+    for (const id of ["person:alice", "--include-sensitive", "-rf", "urn:uuid:8f14e45f"]) {
+      const document = parsePersonIndex(indexText({ people: [{ ...INDEX.people[0], id }] }));
+
+      expect(document.people[0]?.id).toBe(id);
+    }
+  });
+
+  it("rejects an entry whose id could not be an argument at all", () => {
+    for (const id of ["", "   ", null, 7]) {
+      expect(() =>
+        parsePersonIndex(indexText({ people: [{ ...INDEX.people[0], id }] })),
+      ).toThrowError(DocumentFormatError);
+    }
   });
 
   it("rejects an entry with no usable name", () => {
@@ -198,9 +210,12 @@ describe("parseBrief", () => {
     expect(document.disclosure.context).toBe("ordinary");
   });
 
-  it("rejects a brief whose person id could not be used as an argument", () => {
-    expect(() =>
-      parseBrief(briefText({ person: { ...BRIEF.person, id: "a; rm -rf ~" } })),
-    ).toThrowError(DocumentFormatError);
+  it("keeps an opaque person id and rejects only an unusable one", () => {
+    expect(parseBrief(briefText({ person: { ...BRIEF.person, id: "person:alice" } })).person.id).toBe(
+      "person:alice",
+    );
+    expect(() => parseBrief(briefText({ person: { ...BRIEF.person, id: "  " } }))).toThrowError(
+      DocumentFormatError,
+    );
   });
 });

@@ -88,18 +88,25 @@ describe("reading a brief", () => {
     await client(briefSpawner).getBrief(personId);
 
     const args = briefSpawner.only().args;
-    expect(args).toEqual(["brief", "01KZQXWK571FJAF03F6H63A85Z", "--json"]);
+    expect(args).toEqual(["brief", "--json", "--", "01KZQXWK571FJAF03F6H63A85Z"]);
     // The display name reached the plugin as data and never became an argument.
     expect(args.join(" ")).not.toContain("Bobby");
     expect(args.join(" ")).not.toContain("$(whoami)");
   });
 
-  it("refuses a person id that is not argument-safe, without spawning", async () => {
+  it("passes an option-shaped id positionally rather than rejecting the person", async () => {
+    const spawner = succeedingSpawner(BRIEF_JSON);
+
+    await client(spawner).getBrief("--include-sensitive");
+
+    // The separator is what keeps this inert: the CLI reads it as the person, not as a flag.
+    expect(spawner.only().args).toEqual(["brief", "--json", "--", "--include-sensitive"]);
+  });
+
+  it("refuses a blank person id without spawning", async () => {
     const spawner = recordingSpawner();
 
-    await expect(client(spawner).getBrief("--include-sensitive")).rejects.toThrowError(
-      /unrecognized person id/,
-    );
+    await expect(client(spawner).getBrief("   ")).rejects.toThrowError(/unusable person id/);
     expect(spawner.calls).toHaveLength(0);
   });
 

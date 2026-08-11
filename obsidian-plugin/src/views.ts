@@ -15,7 +15,7 @@ import { PeopleContextCliError } from "./bridge.js";
 import type { PeopleContextClient } from "./client.js";
 import { DocumentFormatError } from "./documents.js";
 import { type BriefView, IndexPaneModel, buildBriefView } from "./render.js";
-import { isSafePersonId } from "./settings.js";
+import { isUsablePersonId } from "./settings.js";
 
 export const PEOPLE_INDEX_VIEW = "people-context-index";
 export const PERSON_BRIEF_VIEW = "people-context-brief";
@@ -82,6 +82,7 @@ export class PeopleIndexView extends PeopleContextView {
   private listEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
   private errorEl: HTMLElement | null = null;
+  private warningEl: HTMLElement | null = null;
 
   getViewType(): string {
     return PEOPLE_INDEX_VIEW;
@@ -147,6 +148,7 @@ export class PeopleIndexView extends PeopleContextView {
       void this.refresh();
     });
 
+    this.warningEl = container.createDiv({ cls: "people-context-warning" });
     this.statusEl = container.createDiv({ cls: "people-context-status" });
     // A dedicated, always-emptied element, so failures replace each other instead of
     // accumulating and cannot outlive the read that fixed them.
@@ -157,6 +159,7 @@ export class PeopleIndexView extends PeopleContextView {
   /** Repaint every part of the pane from the model. */
   private paint(): void {
     this.statusEl?.setText(this.model.status());
+    this.warningEl?.setText(this.model.compatibilityWarning() ?? "");
 
     const errorEl = this.errorEl;
     if (errorEl !== null) {
@@ -215,7 +218,7 @@ export class PersonBriefView extends PeopleContextView {
 
   /** Point the pane at one person and read their brief. */
   async showPerson(personId: string): Promise<void> {
-    if (!isSafePersonId(personId)) {
+    if (!isUsablePersonId(personId)) {
       this.personId = null;
       const container = this.containerEl.children[1] as HTMLElement;
       container.empty();

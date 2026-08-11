@@ -8,10 +8,11 @@
  * checked before use rather than assumed.
  *
  * Nothing here trusts the payload. Every string is read as display data; only the person id
- * is ever allowed to become a command argument, and only after passing `isSafePersonId`.
+ * is ever allowed to become a command argument, and even then it travels after a `--`
+ * separator rather than being trusted to look harmless.
  */
 
-import { isSafePersonId } from "./settings.js";
+import { isUsablePersonId } from "./settings.js";
 
 export const PERSON_INDEX_FORMAT = "people-context-person-index";
 export const PERSON_INDEX_VERSION = 1;
@@ -187,7 +188,7 @@ function parseEnvelope(text: string, expectedFormat: string): Envelope {
 function parseIndexEntry(raw: unknown, path: string): PersonIndexEntry {
   const entry = readObject(raw);
   const id = entry.id;
-  if (!isSafePersonId(id)) {
+  if (!isUsablePersonId(id)) {
     throw new DocumentFormatError(`The people-context document has an unusable id at ${path}.`);
   }
   const canonicalName = readOptionalString(entry.canonical_name);
