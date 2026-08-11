@@ -14,7 +14,7 @@ import { ItemView, type WorkspaceLeaf } from "obsidian";
 import { PeopleContextCliError } from "./bridge.js";
 import type { PeopleContextClient } from "./client.js";
 import { DocumentFormatError } from "./documents.js";
-import { type BriefView, type IndexRow, buildBriefView, buildIndexRows } from "./render.js";
+import { type BriefView, IndexPaneModel, buildBriefView } from "./render.js";
 import { isSafePersonId } from "./settings.js";
 
 export const PEOPLE_INDEX_VIEW = "people-context-index";
@@ -78,10 +78,10 @@ abstract class PeopleContextView extends ItemView {
 
 /** The browsable person index. */
 export class PeopleIndexView extends PeopleContextView {
-  private query = "";
-  private rows: IndexRow[] = [];
+  private readonly model = new IndexPaneModel();
   private listEl: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
+  private errorEl: HTMLElement | null = null;
 
   getViewType(): string {
     return PEOPLE_INDEX_VIEW;
@@ -100,32 +100,29 @@ export class PeopleIndexView extends PeopleContextView {
     if (this.host.refreshOnOpen()) {
       await this.refresh();
     } else {
-      this.setStatus("Select Refresh to read the people-context database.");
+      this.paint();
     }
   }
 
-  /** Re-read the index and repaint the list. */
+  /** Re-read the index and repaint the pane. */
   async refresh(): Promise<void> {
-    this.setStatus("Reading…");
+    this.model.beginRead();
+    this.paint();
     try {
       const document = await this.runRead((signal) => this.host.client.listPeople(signal));
       if (document === null) {
         return;
       }
-      this.rows = buildIndexRows(document, this.query);
-      this.paintRows();
-      this.setStatus(
-        document.people.length === 0
-          ? "No people recorded yet."
-          : `${this.rows.length} of ${document.people.length} shown.`,
-      );
+      this.model.setDocument(document);
     } catch (error) {
-      this.rows = [];
-      this.listEl?.empty();
-      this.setStatus("");
-      const container = this.containerEl.children[1] as HTMLElement;
-      this.renderError(container, error);
+      if (isCancellation(error)) {
+        // A superseded or closed read is not a failure of the pane, and its rejection can
+        // land after the read that replaced it. Painting it would show a stale "cancelled".
+        return;
+      }
+      this.model.setFailure(error);
     }
+    this.paint();
   }
 
   private paintShell(): void {
@@ -139,8 +136,10 @@ export class PeopleIndexView extends PeopleContextView {
       attr: { type: "search", placeholder: "Filter people", "aria-label": "Filter people" },
     });
     search.addEventListener("input", () => {
-      this.query = search.value;
-      this.paintRows();
+      this.model.setQuery(search.value);
+      // Filtering is a pure re-derivation from the document already in hand; it never
+      // re-runs the CLI.
+      this.paint();
     });
 
     const refresh = container.createEl("button", { text: "Refresh" });
@@ -149,16 +148,31 @@ export class PeopleIndexView extends PeopleContextView {
     });
 
     this.statusEl = container.createDiv({ cls: "people-context-status" });
+    // A dedicated, always-emptied element, so failures replace each other instead of
+    // accumulating and cannot outlive the read that fixed them.
+    this.errorEl = container.createDiv({ cls: "people-context-failure" });
     this.listEl = container.createDiv({ cls: "people-context-list" });
   }
 
-  private paintRows(): void {
+  /** Repaint every part of the pane from the model. */
+  private paint(): void {
+    this.statusEl?.setText(this.model.status());
+
+    const errorEl = this.errorEl;
+    if (errorEl !== null) {
+      errorEl.empty();
+      const failure = this.model.error();
+      if (failure !== null) {
+        this.renderError(errorEl, failure);
+      }
+    }
+
     const list = this.listEl;
     if (list === null) {
       return;
     }
     list.empty();
-    for (const row of this.rows) {
+    for (const row of this.model.rows()) {
       const item = list.createDiv({ cls: "people-context-row" });
       const button = item.createEl("button", { cls: "people-context-person" });
       // The label is display data; the click carries the stable id instead.
@@ -173,10 +187,6 @@ export class PeopleIndexView extends PeopleContextView {
         void this.host.showPerson(row.id);
       });
     }
-  }
-
-  private setStatus(text: string): void {
-    this.statusEl?.setText(text);
   }
 }
 
@@ -237,6 +247,11 @@ export class PersonBriefView extends PeopleContextView {
       container.empty();
       this.paintBrief(container, view);
     } catch (error) {
+      if (isCancellation(error)) {
+        // Superseded by a newer selection, or the pane closed. The read that replaced this
+        // one owns the pane now.
+        return;
+      }
       container.empty();
       this.renderError(container, error);
     }
@@ -271,6 +286,11 @@ export class PersonBriefView extends PeopleContextView {
       }
     }
   }
+}
+
+/** Whether a rejection is a cancellation rather than something the user should see. */
+function isCancellation(error: unknown): boolean {
+  return error instanceof PeopleContextCliError && error.kind === "aborted";
 }
 
 /** The user-facing message for a failure, never including a returned payload. */

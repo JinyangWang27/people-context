@@ -20,6 +20,10 @@ on:
 
 permissions: read-all
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: Build and verify the distribution tree
@@ -36,20 +40,27 @@ jobs:
           node-version: "22"
           package-manager-cache: false
 
-      - name: Require the tag to match the manifest version
-        if: github.event_name == 'push'
+      # This gate runs for every event, dispatches included. A manual dispatch is a retry of
+      # an existing plugin tag, never a way to publish whatever a branch currently holds: the
+      # mirror job replaces the distribution repository's tree and cuts a release from it.
+      - name: Require a plugin tag matching the manifest version
         env:
-          RELEASE_REF: ${{ github.ref_name }}
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_NAME: ${{ github.ref_name }}
         working-directory: ./obsidian-plugin
         run: |
+          if [[ "$RELEASE_REF" != refs/tags/obsidian-plugin-v* ]]; then
+            echo "::error::Run this workflow from an obsidian-plugin-v* tag, not $RELEASE_REF."
+            exit 1
+          fi
           manifest_version="$(node -p "require('./manifest.json').version")"
           package_version="$(node -p "require('./package.json').version")"
           if [ "$manifest_version" != "$package_version" ]; then
             echo "::error::manifest.json ($manifest_version) and package.json ($package_version) disagree."
             exit 1
           fi
-          if [ "$RELEASE_REF" != "obsidian-plugin-v${manifest_version}" ]; then
-            echo "::error::Tag $RELEASE_REF does not match manifest version $manifest_version."
+          if [ "$RELEASE_NAME" != "obsidian-plugin-v${manifest_version}" ]; then
+            echo "::error::Tag $RELEASE_NAME does not match manifest version $manifest_version."
             exit 1
           fi
 

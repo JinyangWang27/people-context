@@ -22,6 +22,70 @@ export interface IndexRow {
   isSelf: boolean;
 }
 
+/**
+ * The index pane's whole state, with nothing derived cached.
+ *
+ * Rows are recomputed from the current document and query every time they are asked for,
+ * rather than being stored alongside them. That is deliberate: a stored row list is a second
+ * copy of derived state, and a filter that repaints the old copy silently stops filtering.
+ * The same reasoning applies to the failure slot — it is cleared by the two transitions that
+ * make it stale, so a fixed configuration cannot leave an old error on screen next to a
+ * freshly loaded list.
+ */
+export class IndexPaneModel {
+  private document: PersonIndexDocument | null = null;
+  private query = "";
+  private failure: unknown = null;
+  private reading = false;
+
+  /** Set the filter text. The next `rows()` call reflects it; no read is needed. */
+  setQuery(query: string): void {
+    this.query = query;
+  }
+
+  /** A read has started: the previous failure no longer describes the pane. */
+  beginRead(): void {
+    this.reading = true;
+    this.failure = null;
+  }
+
+  setDocument(document: PersonIndexDocument): void {
+    this.reading = false;
+    this.failure = null;
+    this.document = document;
+  }
+
+  setFailure(error: unknown): void {
+    this.reading = false;
+    this.failure = error;
+    this.document = null;
+  }
+
+  /** The rows to paint, always derived fresh from the current document and query. */
+  rows(): IndexRow[] {
+    return this.document === null ? [] : buildIndexRows(this.document, this.query);
+  }
+
+  /** The failure to paint, or `null` when the pane is not in a failed state. */
+  error(): unknown {
+    return this.failure;
+  }
+
+  status(): string {
+    if (this.reading) {
+      return "Reading…";
+    }
+    if (this.failure !== null) {
+      return "";
+    }
+    if (this.document === null) {
+      return "Select Refresh to read the people-context database.";
+    }
+    const total = this.document.people.length;
+    return total === 0 ? "No people recorded yet." : `${this.rows().length} of ${total} shown.`;
+  }
+}
+
 export interface BriefSection {
   title: string;
   items: string[];

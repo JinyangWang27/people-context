@@ -24,8 +24,10 @@ like a command or an option can only ever be text on screen.
 
 ## Requirements
 
-- people-context installed, so that `pctx` runs — `uvx --from people-context pctx --help` or a
-  full path to the executable;
+- a persistently installed `pctx` executable. `uv tool install people-context` puts one on
+  `PATH`; `uvx --from people-context pctx` only *runs* the command in a throwaway environment
+  and leaves nothing for the plugin to spawn. Any absolute path works too — set it as the
+  executable in the plugin settings;
 - Obsidian on the desktop. The plugin is marked `isDesktopOnly` because it starts a local
   process, which Obsidian mobile cannot do.
 

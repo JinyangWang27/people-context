@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { BriefDocument, PersonIndexDocument, PersonIndexEntry } from "./documents.js";
-import { buildBriefView, buildIndexRows } from "./render.js";
+import { IndexPaneModel, buildBriefView, buildIndexRows } from "./render.js";
 
 function entry(overrides: Partial<PersonIndexEntry> = {}): PersonIndexEntry {
   return {
@@ -100,6 +100,100 @@ describe("buildIndexRows", () => {
 
     expect(rows[0]?.title).toBe(hostile);
     expect(rows[0]?.id).toBe("01KZQXWK571FJAF03F6H63A85Z");
+  });
+});
+
+describe("IndexPaneModel", () => {
+  const document = () =>
+    index([
+      entry(),
+      entry({
+        id: "01KZQXWK58QY1T6M8CETCXZVM0",
+        canonicalName: "Daniel Okafor",
+        aliases: ["dokafor@example.test"],
+        summary: "Engineering manager.",
+      }),
+    ]);
+
+  it("filters on a query change alone, with no new read", () => {
+    const model = new IndexPaneModel();
+    model.setDocument(document());
+
+    expect(model.rows()).toHaveLength(2);
+
+    model.setQuery("daniel");
+
+    // Regression: the rows are derived on demand, so typing filters without another CLI call.
+    expect(model.rows().map((row) => row.title)).toEqual(["Daniel Okafor"]);
+    expect(model.status()).toBe("1 of 2 shown.");
+  });
+
+  it("restores every row when the query is cleared", () => {
+    const model = new IndexPaneModel();
+    model.setDocument(document());
+    model.setQuery("daniel");
+    model.setQuery("");
+
+    expect(model.rows()).toHaveLength(2);
+    expect(model.status()).toBe("2 of 2 shown.");
+  });
+
+  it("keeps the query across a refresh", () => {
+    const model = new IndexPaneModel();
+    model.setQuery("daniel");
+    model.beginRead();
+    model.setDocument(document());
+
+    expect(model.rows().map((row) => row.title)).toEqual(["Daniel Okafor"]);
+  });
+
+  it("drops a previous failure as soon as a read starts", () => {
+    const model = new IndexPaneModel();
+    model.setFailure(new Error("pctx not found"));
+    model.beginRead();
+
+    expect(model.error()).toBeNull();
+    expect(model.status()).toBe("Reading…");
+  });
+
+  it("drops a previous failure when a read succeeds", () => {
+    const model = new IndexPaneModel();
+    model.setFailure(new Error("pctx not found"));
+    model.setDocument(document());
+
+    // Regression: a fixed configuration must not leave the old error beside the new list.
+    expect(model.error()).toBeNull();
+    expect(model.rows()).toHaveLength(2);
+    expect(model.status()).toBe("2 of 2 shown.");
+  });
+
+  it("replaces a failure rather than accumulating failures", () => {
+    const model = new IndexPaneModel();
+    const second = new Error("database is locked");
+    model.setFailure(new Error("pctx not found"));
+    model.setFailure(second);
+
+    expect(model.error()).toBe(second);
+    expect(model.rows()).toEqual([]);
+    expect(model.status()).toBe("");
+  });
+
+  it("describes the states a pane can be in before anything is loaded", () => {
+    const model = new IndexPaneModel();
+
+    expect(model.rows()).toEqual([]);
+    expect(model.error()).toBeNull();
+    expect(model.status()).toBe("Select Refresh to read the people-context database.");
+  });
+
+  it("reports an empty store distinctly from an empty filter result", () => {
+    const model = new IndexPaneModel();
+    model.setDocument(index([]));
+    expect(model.status()).toBe("No people recorded yet.");
+
+    model.setDocument(document());
+    model.setQuery("nobody matches this");
+    expect(model.status()).toBe("0 of 2 shown.");
   });
 });
 

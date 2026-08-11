@@ -132,12 +132,21 @@ export function scrubSecrets(text: string, env: NodeJS.ProcessEnv): string {
   return text.split(key).join("[redacted]");
 }
 
-function byteLength(chunk: Buffer | string): number {
-  return typeof chunk === "string" ? Buffer.byteLength(chunk, "utf8") : chunk.length;
+function asBuffer(chunk: Buffer | string): Buffer {
+  return typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk;
 }
 
-function asText(chunks: readonly (Buffer | string)[]): string {
-  return chunks.map((chunk) => (typeof chunk === "string" ? chunk : chunk.toString("utf8"))).join("");
+/**
+ * Join the captured chunks and decode once, at the end.
+ *
+ * Decoding chunk by chunk would corrupt any multibyte character the pipe happened to split:
+ * each half would decode to a replacement character before the pieces were joined. The CLI
+ * renders its JSON with `ensure_ascii=False`, so non-ASCII names, aliases, and summaries
+ * travel as real UTF-8 bytes and are exactly what such a split would damage. Concatenating
+ * first makes the chunk boundaries invisible.
+ */
+function asText(chunks: readonly Buffer[]): string {
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
@@ -159,8 +168,9 @@ export function runCli(options: CliRunOptions): Promise<string> {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let abortListener: (() => void) | undefined;
-    const stdout: (Buffer | string)[] = [];
-    const stderr: (Buffer | string)[] = [];
+    // Captured as buffers, decoded only once both streams are complete.
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
     let stdoutBytes = 0;
     let stderrBytes = 0;
 
@@ -225,7 +235,8 @@ export function runCli(options: CliRunOptions): Promise<string> {
 
     child.stdout?.on("data", (chunk) => {
       if (settled) return;
-      stdoutBytes += byteLength(chunk);
+      const buffer = asBuffer(chunk);
+      stdoutBytes += buffer.length;
       if (stdoutBytes > options.maxOutputBytes) {
         // The partial payload is dropped rather than kept: it is personal data that no
         // longer parses, and holding it only risks it reaching a message or a log.
@@ -233,18 +244,19 @@ export function runCli(options: CliRunOptions): Promise<string> {
         overflow("stdout");
         return;
       }
-      stdout.push(chunk);
+      stdout.push(buffer);
     });
 
     child.stderr?.on("data", (chunk) => {
       if (settled) return;
-      stderrBytes += byteLength(chunk);
+      const buffer = asBuffer(chunk);
+      stderrBytes += buffer.length;
       if (stderrBytes > options.maxOutputBytes) {
         stderr.length = 0;
         overflow("stderr");
         return;
       }
-      stderr.push(chunk);
+      stderr.push(buffer);
     });
 
     child.on("error", (error) => {

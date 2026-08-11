@@ -8,8 +8,10 @@ not add an MCP tool, and has no write path of any kind.
 ## Requirements
 
 - Obsidian 1.5.0 or newer, on the desktop
-- A working `pctx` executable, from an installed `people-context` package or a repository
-  checkout
+- A persistently installed `pctx` executable, for example from `uv tool install people-context`
+  or a repository checkout's virtual environment. `uvx --from people-context pctx` is not
+  enough on its own: it runs the command in a throwaway environment and leaves no executable
+  for the plugin to spawn. An absolute path configured as the executable setting works too
 - Node.js 20.19+ to build the plugin from source
 
 The plugin manifest sets `isDesktopOnly: true`: it starts a local process, which Obsidian

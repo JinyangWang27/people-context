@@ -141,6 +141,20 @@ class TestObsidianPluginReadContract:
         for field in ("executablePath", "databasePath", "encryptedDatabase", "refreshPolicy"):
             assert field in settings
 
+    def test_release_requires_a_plugin_tag_for_every_event(self) -> None:
+        workflow = (REPOSITORY_ROOT / ".github/workflows/obsidian-plugin-release.yml").read_text(
+            encoding="utf-8"
+        )
+
+        # The mirror job replaces the distribution repository's tree and cuts a release from
+        # it, so a branch dispatch must not be able to publish untagged code. The tag gate is
+        # therefore unconditional rather than limited to `push`.
+        assert "refs/tags/obsidian-plugin-v*" in workflow
+        assert "if: github.event_name == 'push'" not in workflow
+        gate = workflow.index("Require a plugin tag matching the manifest version")
+        install = workflow.index("Install dependencies from the committed lockfile")
+        assert gate < install, "the tag gate must run before anything is built"
+
     def test_subprocess_execution_is_shell_free(self) -> None:
         bridge = _source("src/bridge.ts")
 

@@ -104,6 +104,56 @@ describe("argument handling against a real process", () => {
   });
 });
 
+describe("output decoding", () => {
+  it("decodes a multibyte character split across two stdout chunks", async () => {
+    // Node hands over whatever the pipe delivered, which can cut a UTF-8 sequence in half.
+    // Decoding each chunk on its own would turn both halves into replacement characters.
+    const payload = Buffer.from('{"name":"Zoë Ødegård 陳大文 🙂"}', "utf8");
+    const split = payload.indexOf(Buffer.from("ë", "utf8")) + 1;
+    const spawner = recordingSpawner((child) => {
+      child.stdout.emit(payload.subarray(0, split));
+      child.stdout.emit(payload.subarray(split));
+      child.emitClose(0);
+    });
+
+    const stdout = await runCli({
+      executable: "pctx",
+      args: [],
+      env: {},
+      timeoutMs: 1_000,
+      maxOutputBytes: 1_000,
+      spawn: spawner.spawn,
+    });
+
+    expect(stdout).toBe('{"name":"Zoë Ødegård 陳大文 🙂"}');
+    expect(stdout).not.toContain("\uFFFD");
+  });
+
+  it("bounds output by bytes, not by decoded characters", async () => {
+    // A cap measured in characters would let a multibyte payload exceed the byte budget.
+    const spawner = recordingSpawner((child) => {
+      child.stdout.emit(Buffer.from("陳".repeat(10), "utf8"));
+    });
+
+    const error = await runCli({
+      executable: "pctx",
+      args: [],
+      env: {},
+      timeoutMs: 1_000,
+      maxOutputBytes: 20,
+      spawn: spawner.spawn,
+    }).catch((caught: unknown) => caught);
+
+    expect((error as PeopleContextCliError).kind).toBe("oversized-output");
+  });
+
+  it("preserves non-ASCII output through a real process", async () => {
+    const stdout = await realRun([fixture("echo-argv.mjs"), "Zoë Ødegård 陳大文 🙂"]);
+
+    expect(JSON.parse(stdout)).toEqual(["Zoë Ødegård 陳大文 🙂"]);
+  });
+});
+
 describe("failure handling", () => {
   it("reports a missing executable as executable-not-found", async () => {
     const error = await realRun([], {
