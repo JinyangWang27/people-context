@@ -26,6 +26,7 @@ what encryption does and does not protect.
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
+| `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
@@ -172,6 +173,50 @@ Soft-deleted people are excluded unless `--all` is supplied, and then they are m
 rather than by a suffix on the name. `--limit` bounds how many people are read, exactly as it does for the table;
 the entries that survive it are ordered by normalized name and then id, so the document does not depend on the
 database's own collation. An empty store still produces a complete, parseable document.
+
+## Data-quality findings
+
+```bash
+uv run pctx doctor
+uv run pctx doctor --only duplicate_handle,duplicate_alias
+uv run pctx doctor --json > findings.json
+```
+
+Reports stored data-quality problems and repairs nothing. Findings are a report, not a failure: the command
+exits `0` whether or not it found anything, and non-zero is reserved for an error such as an unknown code, which
+exits `2` before printing a partial report.
+
+| Code | What it means |
+|---|---|
+| `duplicate_handle` | Two active people share one normalized handle alias. |
+| `duplicate_alias` | Two active people share other normalized name material — a canonical name or a non-handle alias. |
+| `contradictory_fact` | One person holds two facts with the same predicate, different values, and overlapping validity periods. |
+| `dangling_reference` | Relationships, affiliations, or interactions still point at a soft-deleted person. |
+
+Handle collisions take precedence: a pair reported as `duplicate_handle` is not reported again as
+`duplicate_alias`, and that suppression applies even when `--only duplicate_alias` hides the handle finding
+itself. A third person who shares only the name is still reported. Values are compared using the same
+normalization the identity index is built on, so a collision the doctor reports is one resolution would also see;
+fact values are compared exactly as stored, with no case or whitespace folding invented here. Overlap uses the
+domain `ValidityPeriod` semantics, so periods that merely touch on one day do overlap and a missing bound is
+unbounded on that side.
+
+Every finding carries stable ids and a **structured** suggested action — an argv list, or an MCP tool name with
+an id-only argument mapping — never an interpolated shell string and never a display name. The human report
+renders a copyable form of each action; `--json` preserves the structure. Nothing is executed for you, and
+`pctx doctor` itself writes no rows, audit entries, or changelog entries. A `dangling_reference` suggests the
+operator-gated `forget` tool rather than a command, because `pctx show` and `pctx delete` resolve active people
+only.
+
+`--only CODE[,CODE...]` filters to the listed codes after validating them. `--json` prints the versioned
+`people-context-doctor` document as the whole of stdout and sends the disclosure notice to stderr, so a
+redirected report stays byte-identical to the document. Re-running over unchanged data produces identical
+findings.
+
+The report deliberately juxtaposes stored personal values, including `sensitive` and `restricted` fact values,
+because a contradiction you cannot see is one you cannot judge. It carries no interaction summaries,
+relationship labels, or affiliation roles. Like every other file this CLI writes, the output is outside the
+server's disclosure controls — inspect it before sharing it.
 
 ## Relationship vocabulary
 

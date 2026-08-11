@@ -271,6 +271,24 @@ only. Redirecting that stream to a file, a pipeline, or another program is the o
 decision, and the command says so on stderr before the first entry so that stdout stays a clean stream of JSON
 lines.
 
+## Data-quality findings
+
+`pctx doctor` is a human-operated, CLI-only report with no MCP tool behind it. It is a read path: it records
+nothing, mints no audit or changelog rows, repairs nothing, and makes no network call. Finding something is not
+a failure, so the command exits `0` either way.
+
+The report deliberately juxtaposes stored personal values, and it does not filter facts by sensitivity: a
+contradiction between two `restricted` values is still a contradiction, and hiding it would leave the operator
+unable to judge their own data. It carries no interaction summaries, relationship labels, or affiliation roles —
+a dangling reference is reported as an entity type and id only. Like every other file this CLI writes, the
+output sits outside the server's disclosure controls, and the command says so before the human report and on
+stderr in `--json` mode.
+
+Suggested repairs are data, not commands. Each one is a structured argv list or an MCP tool name with an
+id-only argument mapping, so no display name is ever interpolated into something executable — which matters
+precisely because several findings exist to report that two people share a display name. Nothing is executed for
+the operator, and a soft-deleted person's repair is the operator-gated `forget` tool rather than a CLI command.
+
 ## Bootstrap sync bundle
 
 `pctx sync push` writes one complete point-in-time bootstrap bundle: the portable dataset, both relationship
