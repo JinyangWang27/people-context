@@ -220,7 +220,13 @@ class TestObsidianPluginReadContract:
         # Releasing is not just cancelling: a pane that survives the unload must refuse to
         # read again rather than reach for the torn-down instance's client and settings.
         assert "this.isReleased" in views
-        assert "paintReleased(" in views
+        assert "paintReleased()" in views
+
+        # Releasing repaints immediately. Every control on screen carries a listener closed
+        # over the instance being torn down, so the controls are removed rather than guarded
+        # one by one — a per-control guard is the kind that gets missed on the next control.
+        release = views[views.index("releaseFromPlugin(): void") : views.index("cancelReads()")]
+        assert "this.paintReleased()" in release
 
         # And a released pane must not be reused as-is by the next load, or the user would be
         # left with an inert pane to close by hand. The plugin checks ownership before reusing

@@ -71,6 +71,11 @@ abstract class PeopleContextView extends ItemView {
     this.released = true;
     this.inFlight?.abort();
     this.inFlight = null;
+    // Repaint now rather than waiting for something to ask. Every control already on screen
+    // — a row, a Refresh button — carries a listener closed over the instance being torn
+    // down, so a guard on each one would be a guard per control and easy to miss on the next.
+    // Emptying the container removes the controls and their listeners together.
+    this.paintReleased();
   }
 
   /** Abandon whatever this pane is reading, without releasing it. */
@@ -94,8 +99,9 @@ abstract class PeopleContextView extends ItemView {
     return !this.released;
   }
 
-  /** Paint the one thing a released pane can honestly say. */
-  protected paintReleased(container: HTMLElement): void {
+  /** Paint the one thing a released pane can honestly say, replacing whatever was there. */
+  protected paintReleased(): void {
+    const container = this.containerEl.children[1] as HTMLElement;
     container.empty();
     container.createEl("p", {
       text:
@@ -150,7 +156,7 @@ export class PeopleIndexView extends PeopleContextView {
   /** Re-read the index and repaint the pane. */
   async refresh(): Promise<void> {
     if (this.isReleased) {
-      this.paintReleased(this.containerEl.children[1] as HTMLElement);
+      this.paintReleased();
       return;
     }
     this.model.beginRead();
@@ -319,11 +325,11 @@ export class PersonBriefView extends PeopleContextView {
 
   /** Re-read the current person, if there is one. */
   async refresh(): Promise<void> {
-    const container = this.containerEl.children[1] as HTMLElement;
     if (this.isReleased) {
-      this.paintReleased(container);
+      this.paintReleased();
       return;
     }
+    const container = this.containerEl.children[1] as HTMLElement;
     const personId = this.personId;
     if (personId === null) {
       this.paintEmpty();
