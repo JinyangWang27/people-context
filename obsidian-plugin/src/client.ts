@@ -35,6 +35,14 @@ export const MISSING_KEY_HINT =
   "or set it in the desktop session your launcher uses, then reload the plugin. " +
   "The plugin never stores or prompts for the key, and never opens the database unencrypted instead.";
 
+/** Raised when a brief came back describing someone other than the person that was asked for. */
+export class PersonIdentityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PersonIdentityError";
+  }
+}
+
 export interface PeopleContextClientOptions {
   /** Read the live settings; the client is constructed once and settings change under it. */
   readonly settings: () => PeopleContextSettings;
@@ -59,10 +67,28 @@ export class PeopleContextClient {
     return parsePersonIndex(await this.run(listArguments(settings), settings, signal));
   }
 
-  /** Read one person's brief, addressed by the stable id from the index. */
+  /**
+   * Read one person's brief, addressed by the stable id from the index.
+   *
+   * The returned document is checked against the id that was asked for. `pctx brief` takes an
+   * id *or* a name: it looks the reference up as an id first and, failing that, resolves it as
+   * a name. So a row that went stale — its person deleted or merged away between the index read
+   * and the click — can come back as a *different*, still-active person whose name happens to
+   * match the old identifier. Identifiers are opaque and may legitimately be name-shaped, so
+   * that is a reachable path, and silently rendering the wrong person's records under the
+   * requested person's heading is the one failure this pane must never have.
+   */
   async getBrief(personId: string, signal?: AbortSignal): Promise<BriefDocument> {
     const settings = this.options.settings();
-    return parseBrief(await this.run(briefArguments(settings, personId), settings, signal));
+    const document = parseBrief(await this.run(briefArguments(settings, personId), settings, signal));
+    if (document.person.id !== personId) {
+      // Neither id is echoed: both are database values, and the user only needs to know the
+      // row is stale rather than which record answered.
+      throw new PersonIdentityError(
+        "That person is no longer available under the id the list returned. Refresh the people list.",
+      );
+    }
+    return document;
   }
 
   private async run(

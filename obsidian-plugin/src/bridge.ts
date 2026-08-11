@@ -93,30 +93,80 @@ export const DEFAULT_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 /** How much stderr text is quoted back in a failure message. */
 const STDERR_EXCERPT_LIMIT = 2_000;
 
+/** The platform-dependent pieces of termination, injected so both branches are testable. */
+export interface TerminationHooks {
+  readonly platform: NodeJS.Platform;
+  /** `process.kill`, so a test can observe the target and signal without a real process. */
+  readonly kill: (pid: number, signal: NodeJS.Signals) => void;
+  /** Used on Windows to run the tree-aware killer. */
+  readonly spawn: Spawner;
+}
+
 /**
- * Terminate the child and, on POSIX, the whole process group it leads.
+ * Build a terminator that kills the child *and* everything it started.
  *
- * The bridge spawns detached on POSIX precisely so this can send one signal to the group:
- * `pctx` is a console script that may itself have started a helper, and killing only the
- * direct child would leave that helper holding the database. Windows has no process groups
- * to signal, so the direct child is killed there.
+ * A tree kill rather than a single signal is the requirement, because `pctx` is a console-script
+ * launcher: on every platform the thing that actually holds the database may be a Python child
+ * of the process this module spawned. Killing only the direct child would report a stopped run
+ * while leaving that child alive.
+ *
+ * The two platforms need different mechanisms. POSIX has process groups, and the bridge spawns
+ * detached precisely so one signal can reach the whole group. Windows has no process groups to
+ * signal, so the tree is torn down with `taskkill /T /F`, which is spawned the same way as every
+ * other command here — argument array, no shell.
  */
-export function terminateProcessTree(child: ChildProcessLike): void {
-  const pid = child.pid;
-  if (typeof pid === "number" && pid > 0 && process.platform !== "win32") {
-    try {
-      process.kill(-pid, "SIGKILL");
+export function terminateWith(hooks: TerminationHooks): ProcessTerminator {
+  return (child: ChildProcessLike): void => {
+    const pid = child.pid;
+    const directKill = (): void => {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // The process already exited. Nothing to terminate.
+      }
+    };
+
+    if (typeof pid !== "number" || pid <= 0) {
+      directKill();
       return;
+    }
+
+    if (hooks.platform === "win32") {
+      try {
+        hooks.spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+          cwd: undefined,
+          env: {},
+          shell: false,
+          windowsHide: true,
+          detached: false,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        return;
+      } catch {
+        // taskkill is missing or could not start; the direct kill is the remaining option.
+        directKill();
+        return;
+      }
+    }
+
+    try {
+      // Negative pid addresses the process group the detached child leads.
+      hooks.kill(-pid, "SIGKILL");
     } catch {
       // The group is already gone, or was never created; fall through to the direct kill.
+      directKill();
     }
-  }
-  try {
-    child.kill("SIGKILL");
-  } catch {
-    // The process already exited. Nothing to terminate.
-  }
+  };
 }
+
+/** The terminator used in production, bound to the real platform. */
+export const terminateProcessTree: ProcessTerminator = terminateWith({
+  platform: process.platform,
+  kill: (pid, signal) => {
+    process.kill(pid, signal);
+  },
+  spawn: nodeSpawn as unknown as Spawner,
+});
 
 /**
  * Remove an inherited database key from text that is about to be shown or thrown.

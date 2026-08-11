@@ -45,6 +45,17 @@ invocation is assembled as an argument array, so there is no place to inject an 
 
 ### Encrypted databases
 
+Encryption is an opt-in extra of the Python package, so install `pctx` with it — a plain
+`uv tool install people-context` produces an executable that fails as soon as `--encrypted` is
+passed, however valid the key:
+
+```bash
+uv tool install 'people-context[encrypted]'
+```
+
+That extra ships prebuilt wheels only for glibc Linux on x86_64; other platforms need a locally
+built `sqlcipher3` in the same environment.
+
 With **Encrypted database** on, the plugin adds `--encrypted` and the CLI reads the key from
 the `PEOPLE_CONTEXT_DB_KEY` environment variable that the Obsidian process already carries.
 The plugin never stores, prompts for, or logs the key.

@@ -112,6 +112,19 @@ silently showing a partial view.
 
 ## Encrypted databases
 
+Encryption is an opt-in extra, not part of the base package, so the executable the plugin
+spawns must have been installed with it. `uv tool install people-context` alone produces a
+`pctx` that fails immediately when `--encrypted` is passed, however valid the key:
+
+```bash
+uv tool install 'people-context[encrypted]'
+```
+
+The `encrypted` extra pulls `sqlcipher3-binary`, which publishes wheels only for glibc Linux on
+x86_64. Every other platform — macOS, Windows, non-x86_64, and musl-based Linux such as Alpine —
+needs a locally built `sqlcipher3` in the same environment instead. See
+[privacy-and-safety.md](privacy-and-safety.md#optional-at-rest-encryption).
+
 With the encrypted setting on, the plugin adds `--encrypted` and the CLI reads the key from the
 `PEOPLE_CONTEXT_DB_KEY` environment variable the Obsidian process already carries. The plugin
 never stores, prompts for, or logs the key; there is no settings field for it.

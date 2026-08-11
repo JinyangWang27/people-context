@@ -164,8 +164,22 @@ jobs:
           fi
           # Obsidian resolves a community plugin by a release tag equal to the manifest
           # version, with no prefix, so the mirror tag is the bare version and not RELEASE_REF.
-          gh release create "${version}" \
+          #
+          # Creating and uploading are separate steps because this workflow is retryable from
+          # an existing tag: a run that pushed the commit and created the release but failed
+          # while uploading assets must be able to finish, and an unconditional `create` would
+          # fail on the release it made itself.
+          if gh release view "${version}" --repo "${MIRROR_REPO}" >/dev/null 2>&1; then
+            echo "::notice::Release ${version} already exists on ${MIRROR_REPO}; refreshing its assets."
+          else
+            gh release create "${version}" \
+              --repo "${MIRROR_REPO}" \
+              --title "${version}" \
+              --notes "Mirrored from ${GITHUB_REPOSITORY}@${GITHUB_SHA} (${RELEASE_REF})."
+          fi
+          # `--clobber` replaces an asset left over from a partially completed upload, so the
+          # release always ends up carrying exactly this run's verified artifacts.
+          gh release upload "${version}" \
             --repo "${MIRROR_REPO}" \
-            --title "${version}" \
-            --notes "Mirrored from ${GITHUB_REPOSITORY}@${GITHUB_SHA} (${RELEASE_REF})." \
+            --clobber \
             main.js manifest.json styles.css

@@ -3,11 +3,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  type ChildProcessLike,
   DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS,
   PeopleContextCliError,
   runCli,
   scrubSecrets,
+  terminateWith,
 } from "./bridge.js";
 import { recordingSpawner } from "./testing/fake-process.js";
 
@@ -274,6 +276,98 @@ describe("failure handling", () => {
     spawner.only().child.emitClose(0);
 
     expect((error as PeopleContextCliError).kind).toBe("timeout");
+  });
+});
+
+describe("process-tree termination", () => {
+  function child(pid: number | undefined): ChildProcessLike & { kills: unknown[] } {
+    const kills: unknown[] = [];
+    return {
+      pid,
+      stdout: null,
+      stderr: null,
+      on: () => undefined,
+      kill: (signal?: NodeJS.Signals | number) => {
+        kills.push(signal);
+        return true;
+      },
+      kills,
+    };
+  }
+
+  it("signals the whole process group on POSIX", () => {
+    const killed: [number, string][] = [];
+    const spawner = recordingSpawner();
+
+    terminateWith({
+      platform: "linux",
+      kill: (pid, signal) => killed.push([pid, signal]),
+      spawn: spawner.spawn,
+    })(child(4242));
+
+    // Negative pid is the group the detached child leads, not just the child.
+    expect(killed).toEqual([[-4242, "SIGKILL"]]);
+    expect(spawner.calls).toHaveLength(0);
+  });
+
+  it("tears down the tree with taskkill on Windows", () => {
+    const spawner = recordingSpawner();
+    const target = child(4242);
+
+    terminateWith({
+      platform: "win32",
+      kill: () => {
+        throw new Error("process groups do not exist on Windows");
+      },
+      spawn: spawner.spawn,
+    })(target);
+
+    // `/t` is what reaches the Python child a console-script launcher started; without it the
+    // launcher dies and the process holding the database survives.
+    const call = spawner.only();
+    expect(call.command).toBe("taskkill");
+    expect(call.args).toEqual(["/pid", "4242", "/t", "/f"]);
+    expect(call.options.shell).toBe(false);
+    expect(call.options.windowsHide).toBe(true);
+    expect(target.kills).toEqual([]);
+  });
+
+  it("falls back to the direct child when taskkill cannot start", () => {
+    const target = child(4242);
+
+    terminateWith({
+      platform: "win32",
+      kill: () => undefined,
+      spawn: () => {
+        throw new Error("taskkill not found");
+      },
+    })(target);
+
+    expect(target.kills).toEqual(["SIGKILL"]);
+  });
+
+  it("falls back to the direct child when the group is already gone", () => {
+    const target = child(4242);
+
+    terminateWith({
+      platform: "darwin",
+      kill: () => {
+        throw new Error("ESRCH");
+      },
+      spawn: recordingSpawner().spawn,
+    })(target);
+
+    expect(target.kills).toEqual(["SIGKILL"]);
+  });
+
+  it("kills the child directly when there is no pid to address a tree with", () => {
+    const spawner = recordingSpawner();
+    const target = child(undefined);
+
+    terminateWith({ platform: "linux", kill: () => undefined, spawn: spawner.spawn })(target);
+
+    expect(target.kills).toEqual(["SIGKILL"]);
+    expect(spawner.calls).toHaveLength(0);
   });
 });
 

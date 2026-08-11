@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,11 @@ def _read_json(relative_path: str) -> dict[str, Any]:
 
 def _source(relative_path: str) -> str:
     return (PLUGIN_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _pyproject() -> dict[str, Any]:
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as stream:
+        return tomllib.load(stream)
 
 
 class TestObsidianPluginPackaging:
@@ -155,6 +161,46 @@ class TestObsidianPluginReadContract:
         install = workflow.index("Install dependencies from the committed lockfile")
         assert gate < install, "the tag gate must run before anything is built"
 
+    def test_mirror_release_is_retryable(self) -> None:
+        workflow = (REPOSITORY_ROOT / ".github/workflows/obsidian-plugin-release.yml").read_text(
+            encoding="utf-8"
+        )
+
+        # The workflow is dispatchable from an existing tag, so a retry after a partially
+        # completed mirror must finish rather than fail on the release it created itself.
+        assert "gh release view" in workflow
+        assert "gh release upload" in workflow
+        assert "--clobber" in workflow
+
+    def test_encrypted_prerequisite_names_the_extra_that_actually_ships_sqlcipher(self) -> None:
+        project = _pyproject()["project"]
+        extras = project["optional-dependencies"]
+
+        # The guides tell users to install with this extra; if it were renamed or its contents
+        # moved into the base dependencies, that instruction would silently become wrong.
+        assert "encrypted" in extras
+        assert any(requirement.startswith("sqlcipher3-binary") for requirement in extras["encrypted"])
+        assert not any(
+            requirement.startswith("sqlcipher3") for requirement in project["dependencies"]
+        ), "SQLCipher is opt-in; the encrypted docs exist because it is not a base dependency"
+
+        for guide in ("docs/obsidian-plugin.md", "obsidian-plugin/README.md"):
+            text = (REPOSITORY_ROOT / guide).read_text(encoding="utf-8")
+            assert "people-context[encrypted]" in text
+
+    def test_brief_resolves_a_missing_id_by_name_which_is_why_the_plugin_checks_identity(
+        self,
+    ) -> None:
+        people = (REPOSITORY_ROOT / "src/people_context/cli/people.py").read_text(encoding="utf-8")
+        client = _source("src/client.ts")
+
+        # `resolve_person` tries the reference as an id and then falls back to name resolution,
+        # so a stale row can answer with a different, still-active person. The plugin therefore
+        # verifies the returned document describes the person it asked for.
+        assert "result = runtime.use_cases.resolve_person.execute(reference)" in people
+        assert "document.person.id !== personId" in client
+        assert "PersonIdentityError" in client
+
     def test_subprocess_execution_is_shell_free(self) -> None:
         bridge = _source("src/bridge.ts")
 
@@ -162,6 +208,16 @@ class TestObsidianPluginReadContract:
         assert "windowsHide: true" in bridge
         assert "exec(" not in bridge, "only spawn with an argument array is permitted"
         assert "shell: true" not in bridge
+
+    def test_termination_is_tree_aware_on_both_platform_families(self) -> None:
+        bridge = _source("src/bridge.ts")
+
+        # `pctx` is a console-script launcher, so the process holding the database may be a
+        # child of the process the plugin spawned. A single signal to the direct child would
+        # report a stopped run while leaving that child alive.
+        assert "taskkill" in bridge, "Windows has no process groups; the tree needs taskkill"
+        assert '"/t"' in bridge, "taskkill without /t kills only the launcher"
+        assert "-pid" in bridge or "hooks.kill(-pid" in bridge
 
 
 def _rendered_missing_key_message() -> str:

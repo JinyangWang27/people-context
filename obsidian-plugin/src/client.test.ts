@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { PeopleContextCliError } from "./bridge.js";
-import { MISSING_KEY_MESSAGE, PeopleContextClient } from "./client.js";
+import { MISSING_KEY_MESSAGE, PeopleContextClient, PersonIdentityError } from "./client.js";
 import { DEFAULT_SETTINGS, type PeopleContextSettings } from "./settings.js";
 import { recordingSpawner, succeedingSpawner } from "./testing/fake-process.js";
 
@@ -22,20 +22,19 @@ const INDEX_JSON = JSON.stringify({
   ],
 });
 
-const BRIEF_JSON = JSON.stringify({
-  format: "people-context-brief",
-  version: 1,
-  generated_at: "2026-08-11T08:09:18.333078Z",
-  disclosure: { include_sensitive: false, context: "ordinary", guidance: "ordinary", notice: "" },
-  person: {
-    id: "01KZQXWK571FJAF03F6H63A85Z",
-    canonical_name: "Bobby; rm -rf ~ $(whoami)",
-    aliases: [],
-    summary: null,
-    is_self: false,
-  },
-  guidance: {},
-});
+/** A brief document describing whichever person the CLI actually answered with. */
+function briefJson(id: string, name = "Bobby; rm -rf ~ $(whoami)"): string {
+  return JSON.stringify({
+    format: "people-context-brief",
+    version: 1,
+    generated_at: "2026-08-11T08:09:18.333078Z",
+    disclosure: { include_sensitive: false, context: "ordinary", guidance: "ordinary", notice: "" },
+    person: { id, canonical_name: name, aliases: [], summary: null, is_self: false },
+    guidance: {},
+  });
+}
+
+const BRIEF_JSON = briefJson("01KZQXWK571FJAF03F6H63A85Z");
 
 function client(
   spawn: ReturnType<typeof recordingSpawner>,
@@ -95,12 +94,46 @@ describe("reading a brief", () => {
   });
 
   it("passes an option-shaped id positionally rather than rejecting the person", async () => {
-    const spawner = succeedingSpawner(BRIEF_JSON);
+    const spawner = succeedingSpawner(briefJson("--include-sensitive"));
 
     await client(spawner).getBrief("--include-sensitive");
 
     // The separator is what keeps this inert: the CLI reads it as the person, not as a flag.
     expect(spawner.only().args).toEqual(["brief", "--json", "--", "--include-sensitive"]);
+  });
+
+  it("refuses a brief that describes a different person than the one asked for", async () => {
+    // `pctx brief` falls back to name resolution when the reference is not an existing id, so
+    // a row that went stale can come back as a different, still-active person. Rendering that
+    // under the requested person's heading would show the wrong person's records.
+    const spawner = succeedingSpawner(briefJson("01KZQZ2TKNNC7DDT6KWVRDHNN0", "Someone Else"));
+
+    const error = await client(spawner)
+      .getBrief("Dash Leading")
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(PersonIdentityError);
+    expect((error as Error).message).toContain("Refresh the people list");
+  });
+
+  it("does not echo either identifier when it refuses a mismatch", async () => {
+    const spawner = succeedingSpawner(briefJson("01KZQZ2TKNNC7DDT6KWVRDHNN0", "Someone Else"));
+
+    const error = await client(spawner)
+      .getBrief("Dash Leading")
+      .catch((caught: unknown) => caught);
+
+    // Both ids are database values; the message names neither.
+    expect((error as Error).message).not.toContain("Dash Leading");
+    expect((error as Error).message).not.toContain("01KZQZ2TKNNC7DDT6KWVRDHNN0");
+  });
+
+  it("accepts a brief whose person id matches exactly", async () => {
+    const spawner = succeedingSpawner(briefJson("person:alice", "Alice Restored"));
+
+    const document = await client(spawner).getBrief("person:alice");
+
+    expect(document.person.canonicalName).toBe("Alice Restored");
   });
 
   it("refuses a blank person id without spawning", async () => {
