@@ -219,6 +219,12 @@ class TestObsidianPluginReadContract:
         assert '"/t"' in bridge, "taskkill without /t kills only the launcher"
         assert "-pid" in bridge or "hooks.kill(-pid" in bridge
 
+        # A taskkill that cannot launch is reported as an asynchronous `error` event, not
+        # thrown. Without a listener that event is an uncaught exception in the host process,
+        # and the original tree keeps running with no fallback.
+        assert 'killer.on("error"' in bridge
+        assert 'killer.on("close"' in bridge
+
 
 def _rendered_missing_key_message() -> str:
     """Return the client's quoted copy of the CLI refusal, with its string concatenation joined."""

@@ -132,8 +132,9 @@ export function terminateWith(hooks: TerminationHooks): ProcessTerminator {
     }
 
     if (hooks.platform === "win32") {
+      let killer: ChildProcessLike;
       try {
-        hooks.spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
+        killer = hooks.spawn("taskkill", ["/pid", String(pid), "/t", "/f"], {
           cwd: undefined,
           env: {},
           shell: false,
@@ -141,12 +142,33 @@ export function terminateWith(hooks: TerminationHooks): ProcessTerminator {
           detached: false,
           stdio: ["ignore", "pipe", "pipe"],
         });
-        return;
       } catch {
-        // taskkill is missing or could not start; the direct kill is the remaining option.
+        // `spawn` only throws synchronously for a malformed invocation.
         directKill();
         return;
       }
+
+      let fellBack = false;
+      const fallBack = (): void => {
+        if (fellBack) {
+          return;
+        }
+        fellBack = true;
+        directKill();
+      };
+
+      // Both listeners are required, not defensive extras. A `taskkill` that cannot be
+      // launched — missing, or blocked by endpoint policy — is reported asynchronously as an
+      // `error` event rather than thrown, and an `error` event with no listener on a child
+      // process becomes an uncaught exception inside Obsidian. A non-zero exit means the tree
+      // is still standing. Either way the direct child is the remaining option.
+      killer.on("error", fallBack);
+      killer.on("close", (code) => {
+        if (code !== 0) {
+          fallBack();
+        }
+      });
+      return;
     }
 
     try {

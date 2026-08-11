@@ -332,7 +332,7 @@ describe("process-tree termination", () => {
     expect(target.kills).toEqual([]);
   });
 
-  it("falls back to the direct child when taskkill cannot start", () => {
+  it("falls back to the direct child when spawning taskkill throws synchronously", () => {
     const target = child(4242);
 
     terminateWith({
@@ -342,6 +342,55 @@ describe("process-tree termination", () => {
         throw new Error("taskkill not found");
       },
     })(target);
+
+    expect(target.kills).toEqual(["SIGKILL"]);
+  });
+
+  it("falls back when taskkill fails to launch asynchronously", () => {
+    // This is the real production shape: `spawn` returns a child and reports ENOENT — or an
+    // endpoint policy blocking taskkill — as an `error` event afterwards. A synchronous
+    // try/catch never sees it, and an unlistened `error` would crash the host.
+    const spawner = recordingSpawner();
+    const target = child(4242);
+
+    terminateWith({ platform: "win32", kill: () => undefined, spawn: spawner.spawn })(target);
+    expect(target.kills).toEqual([]);
+
+    spawner.only().child.emitError(Object.assign(new Error("spawn taskkill ENOENT"), {
+      code: "ENOENT",
+    }));
+
+    expect(target.kills).toEqual(["SIGKILL"]);
+  });
+
+  it("falls back when taskkill exits unsuccessfully", () => {
+    const spawner = recordingSpawner();
+    const target = child(4242);
+
+    terminateWith({ platform: "win32", kill: () => undefined, spawn: spawner.spawn })(target);
+    // 1 is what taskkill returns for access denied; the tree is still standing.
+    spawner.only().child.emitClose(1);
+
+    expect(target.kills).toEqual(["SIGKILL"]);
+  });
+
+  it("does not touch the child when taskkill succeeds", () => {
+    const spawner = recordingSpawner();
+    const target = child(4242);
+
+    terminateWith({ platform: "win32", kill: () => undefined, spawn: spawner.spawn })(target);
+    spawner.only().child.emitClose(0);
+
+    expect(target.kills).toEqual([]);
+  });
+
+  it("falls back exactly once when taskkill both errors and exits", () => {
+    const spawner = recordingSpawner();
+    const target = child(4242);
+
+    terminateWith({ platform: "win32", kill: () => undefined, spawn: spawner.spawn })(target);
+    spawner.only().child.emitError(new Error("boom"));
+    spawner.only().child.emitClose(1);
 
     expect(target.kills).toEqual(["SIGKILL"]);
   });
