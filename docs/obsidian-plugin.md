@@ -61,6 +61,11 @@ ordinary-disclosure records for people who have not been soft-deleted.
 `refresh` defaults to `on-open`: a pane that opens empty and needs a second action reads as
 broken, and one read is cheap. Nothing polls on a timer.
 
+Under `manual`, nothing reads until you ask — including a brief tab restored from a previous
+session. Such a tab keeps the person it was showing and says so, and *Refresh people-context
+panes* reads it. That is what makes `manual` a genuine control over when the database is
+opened, as the next section describes.
+
 ## What "read-only" means here, precisely
 
 The plugin performs no durable record mutation: it has no write path, records nothing, and

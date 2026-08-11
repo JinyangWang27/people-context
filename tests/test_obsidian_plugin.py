@@ -217,6 +217,16 @@ class TestObsidianPluginReadContract:
         assert "cancelReads()" in main
         assert "detachLeavesOfType" not in main
 
+    def test_restoring_a_pane_respects_the_manual_refresh_policy(self) -> None:
+        views = _source("src/views.ts")
+        restore = views[views.index("override async setState(") : views.index("private paintEmpty")]
+
+        # Restoring a workspace must not start `pctx` by itself. The manual policy is exactly
+        # what a user selects to control when the database is opened, created, or migrated,
+        # and a restored brief tab reading on startup would defeat it.
+        assert "this.host.refreshOnOpen()" in restore
+        assert "paintDeferred()" in restore
+
     def test_settings_writes_are_serialized(self) -> None:
         main = _source("src/main.ts")
 

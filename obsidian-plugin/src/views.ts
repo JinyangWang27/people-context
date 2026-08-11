@@ -219,6 +219,8 @@ export class PersonBriefView extends PeopleContextView {
   override async onOpen(): Promise<void> {
     if (this.personId === null) {
       this.paintEmpty();
+    } else if (!this.host.refreshOnOpen()) {
+      this.paintDeferred();
     }
   }
 
@@ -237,10 +239,18 @@ export class PersonBriefView extends PeopleContextView {
   override async setState(state: unknown, result: ViewStateResult): Promise<void> {
     await super.setState(state, result);
     const restored = readPersonId(state);
-    if (restored !== null && restored !== this.personId) {
-      this.personId = restored;
-      await this.refresh();
+    if (restored === null || restored === this.personId) {
+      return;
     }
+    this.personId = restored;
+    if (this.host.refreshOnOpen()) {
+      await this.refresh();
+      return;
+    }
+    // Under the manual policy the restored id is kept but nothing is read. Restoring a
+    // workspace must not start `pctx` on its own: that policy is exactly what a user picks to
+    // stay in control of when the database is opened, created, or migrated.
+    this.paintDeferred();
   }
 
   /** Point the pane at one person and read their brief. */
@@ -295,6 +305,23 @@ export class PersonBriefView extends PeopleContextView {
     container.empty();
     container.addClass("people-context-brief");
     container.createEl("p", { text: "Select a person in the People pane." });
+  }
+
+  /**
+   * Show that a person is restored but not yet read.
+   *
+   * The person is deliberately not named: their name is only known by reading, which is the
+   * thing this state exists to avoid doing.
+   */
+  private paintDeferred(): void {
+    const container = this.containerEl.children[1] as HTMLElement;
+    container.empty();
+    container.addClass("people-context-brief");
+    container.createEl("p", {
+      text:
+        "This pane is set to a person, and refresh is set to manual. " +
+        'Run "Refresh people-context panes" to read their brief.',
+    });
   }
 
   private paintBrief(container: HTMLElement, view: BriefView): void {

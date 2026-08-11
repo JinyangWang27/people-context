@@ -43,6 +43,9 @@ like a command or an option can only ever be text on screen.
 Each setting is a typed field. There is deliberately no free-form arguments box: every
 invocation is assembled as an argument array, so there is no place to inject an extra flag.
 
+With **Refresh** set to `manual`, nothing runs until you ask — including a brief tab restored
+from a previous session, which keeps its person but waits for *Refresh people-context panes*.
+
 ### Encrypted databases
 
 Encryption is an opt-in extra of the Python package, so install `pctx` with it — a plain
