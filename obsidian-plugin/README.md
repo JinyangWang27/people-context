@@ -83,6 +83,10 @@ personal data. Obsidian may synchronize whatever is cached or written into your 
 anything that leaves this machine has left the local-first perimeter people-context maintains.
 Treat a synchronized vault as a copy of the records it displays.
 
+The brief pane also records which person it is showing in Obsidian's workspace layout, so a
+restored tab reopens on that person. Only the opaque id is stored — no name and no records —
+but it lives in the vault like the rest of the layout.
+
 ## Development
 
 Development happens in the [people-context monorepo](https://github.com/JinyangWang27/people-context)

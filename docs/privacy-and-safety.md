@@ -217,6 +217,9 @@ painted as text nodes, so a name containing markup or shell metacharacters stays
 opened with the `PEOPLE_CONTEXT_DB_KEY` value the Obsidian process already carries; the plugin never stores,
 prompts for, or logs the key, and reports the CLI's own refusal rather than falling back to plaintext.
 
+The brief pane stores the opaque id of the person it is showing in the host's workspace layout, so a restored
+tab reopens on that person; no name and no records are persisted, but that id lives in the vault.
+
 What the plugin renders is still personal data, and it renders it inside a vault. **Anything cached or written
 into a synchronized vault has left this project's local-first perimeter** and is governed by that sync provider,
 exactly as an exported brief or vault Markdown is. See [obsidian-plugin.md](obsidian-plugin.md).

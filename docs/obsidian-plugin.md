@@ -142,6 +142,12 @@ written into a synchronized vault has left the local-first perimeter this projec
 and is governed by that sync provider rather than by people-context's disclosure controls. See
 [privacy-and-safety.md](privacy-and-safety.md).
 
+The brief pane records which person it is showing in the host's workspace layout, so a restored
+tab reopens on that person instead of empty. Only the opaque id is stored — no name, and none of
+their records — but it lands in the vault alongside the rest of the layout, and therefore inside
+the same synchronization boundary described above.
+
+
 ## Development and validation
 
 ```bash

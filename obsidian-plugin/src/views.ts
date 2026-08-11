@@ -9,7 +9,7 @@
  * the pane cancels whatever is running, so a slow CLI cannot paint a stale or closed view.
  */
 
-import { ItemView, type WorkspaceLeaf } from "obsidian";
+import { ItemView, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 
 import { PeopleContextCliError } from "./bridge.js";
 import type { PeopleContextClient } from "./client.js";
@@ -57,13 +57,19 @@ abstract class PeopleContextView extends ItemView {
     }
   }
 
-  protected cancelInFlight(): void {
+  /**
+   * Abandon whatever this pane is reading.
+   *
+   * Public because the plugin calls it while unloading: a pane can outlive the plugin that
+   * registered it, and a read left running would hold a `pctx` process until its own timeout.
+   */
+  cancelReads(): void {
     this.inFlight?.abort();
     this.inFlight = null;
   }
 
   override async onClose(): Promise<void> {
-    this.cancelInFlight();
+    this.cancelReads();
   }
 
   /** Paint a failure without ever showing a raw payload. */
@@ -216,6 +222,27 @@ export class PersonBriefView extends PeopleContextView {
     }
   }
 
+  /**
+   * Persist which person this pane is showing, so a restored tab is not empty.
+   *
+   * Only the opaque id is stored, and it is stored where the host keeps workspace layout —
+   * inside the vault. That is a pointer to a person rather than any of their records, but it
+   * is still vault content, which the plugin's privacy notes account for.
+   */
+  override getState(): Record<string, unknown> {
+    const state = super.getState();
+    return this.personId === null ? state : { ...state, personId: this.personId };
+  }
+
+  override async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    await super.setState(state, result);
+    const restored = readPersonId(state);
+    if (restored !== null && restored !== this.personId) {
+      this.personId = restored;
+      await this.refresh();
+    }
+  }
+
   /** Point the pane at one person and read their brief. */
   async showPerson(personId: string): Promise<void> {
     if (!isUsablePersonId(personId)) {
@@ -226,6 +253,9 @@ export class PersonBriefView extends PeopleContextView {
       return;
     }
     this.personId = personId;
+    // Record the choice in the workspace layout, so reopening Obsidian restores this person
+    // rather than an empty pane.
+    this.app.workspace.requestSaveLayout();
     await this.refresh();
   }
 
@@ -289,6 +319,15 @@ export class PersonBriefView extends PeopleContextView {
       }
     }
   }
+}
+
+/** Read a usable person id out of restored workspace state, or `null`. */
+function readPersonId(state: unknown): string | null {
+  if (typeof state !== "object" || state === null) {
+    return null;
+  }
+  const candidate = (state as { personId?: unknown }).personId;
+  return isUsablePersonId(candidate) ? candidate : null;
 }
 
 /** Whether a rejection is a cancellation rather than something the user should see. */

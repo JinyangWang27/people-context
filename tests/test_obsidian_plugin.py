@@ -201,6 +201,30 @@ class TestObsidianPluginReadContract:
         assert "document.person.id !== personId" in client
         assert "PersonIdentityError" in client
 
+    def test_panes_survive_a_restart_and_release_their_reads_on_unload(self) -> None:
+        views = _source("src/views.ts")
+        main = _source("src/main.ts")
+
+        # A restored brief tab must recover the person it was showing rather than reopening
+        # empty, so the pane serializes the opaque id through the host's workspace state.
+        assert "override getState()" in views
+        assert "override async setState(" in views
+        assert "personId" in views
+
+        # A pane can outlive the plugin that registered it, so its reads are cancelled
+        # explicitly; the pane itself is left attached rather than removed from the layout.
+        assert "cancelReads()" in views
+        assert "cancelReads()" in main
+        assert "detachLeavesOfType" not in main
+
+    def test_settings_writes_are_serialized(self) -> None:
+        main = _source("src/main.ts")
+
+        # The host fires `onChange` per keystroke without awaiting, so concurrent saves could
+        # otherwise land out of order and leave the file behind the in-memory settings.
+        assert "SerialQueue" in main
+        assert "this.saves.run(" in main
+
     def test_subprocess_execution_is_shell_free(self) -> None:
         bridge = _source("src/bridge.ts")
 

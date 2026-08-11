@@ -9,6 +9,7 @@
 import { Plugin, type WorkspaceLeaf } from "obsidian";
 
 import { PeopleContextClient } from "./client.js";
+import { SerialQueue } from "./serial.js";
 import { DEFAULT_SETTINGS, type PeopleContextSettings, normalizeSettings } from "./settings.js";
 import { PeopleContextSettingTab } from "./settings-tab.js";
 import {
@@ -22,6 +23,8 @@ import {
 export default class PeopleContextPlugin extends Plugin implements ViewHost {
   override settings: PeopleContextSettings = { ...DEFAULT_SETTINGS };
   client!: PeopleContextClient;
+  /** Serializes persistence so overlapping keystroke-driven saves cannot land out of order. */
+  private readonly saves = new SerialQueue();
 
   override async onload(): Promise<void> {
     this.settings = normalizeSettings(await this.loadData());
@@ -59,13 +62,32 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
   }
 
   override onunload(): void {
-    // Obsidian detaches the registered views; the panes cancel their own in-flight reads.
+    // Cancel every in-flight read. A registered pane can outlive the plugin that created it,
+    // and its `onClose` does not run while it survives, so a read started just before unload
+    // would otherwise hold a `pctx` process until its own timeout expires.
+    //
+    // The panes themselves are deliberately left attached. Detaching them would remove them
+    // from the user's workspace on every plugin update or reload, and that is a change to
+    // their layout rather than cleanup.
+    for (const view of this.liveViews()) {
+      view.cancelReads();
+    }
   }
 
-  /** Persist a settings change, normalizing whatever the tab produced. */
+  /**
+   * Persist a settings change, normalizing whatever the tab produced.
+   *
+   * The host fires a text field's `onChange` per keystroke without awaiting the previous call,
+   * so several of these can be in flight at once. Writes are queued rather than issued
+   * concurrently: otherwise an earlier one could finish last and leave the file holding a value
+   * the user has already typed past.
+   */
   async updateSettings(change: Partial<PeopleContextSettings>): Promise<void> {
     this.settings = normalizeSettings({ ...this.settings, ...change });
-    await this.saveData(this.settings);
+    const snapshot = this.settings;
+    await this.saves.run(async () => {
+      await this.saveData(snapshot);
+    });
   }
 
   refreshOnOpen(): boolean {
@@ -95,16 +117,23 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
 
   /** Re-read every open pane. */
   async refreshAll(): Promise<void> {
+    for (const view of this.liveViews()) {
+      await view.refresh();
+    }
+  }
+
+  /** Every pane of this plugin's own view types that currently exists. */
+  private liveViews(): (PeopleIndexView | PersonBriefView)[] {
     const leaves = [
       ...this.app.workspace.getLeavesOfType(PEOPLE_INDEX_VIEW),
       ...this.app.workspace.getLeavesOfType(PERSON_BRIEF_VIEW),
     ];
-    for (const leaf of leaves) {
-      const view = leaf.view;
-      if (view instanceof PeopleIndexView || view instanceof PersonBriefView) {
-        await view.refresh();
-      }
-    }
+    return leaves
+      .map((leaf) => leaf.view)
+      .filter(
+        (view): view is PeopleIndexView | PersonBriefView =>
+          view instanceof PeopleIndexView || view instanceof PersonBriefView,
+      );
   }
 
   private async revealLeaf(viewType: string): Promise<WorkspaceLeaf | null> {
