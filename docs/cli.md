@@ -208,6 +208,12 @@ renders a copyable form of each action; `--json` preserves the structure. Nothin
 operator-gated `forget` tool rather than a command, because `pctx show` and `pctx delete` resolve active people
 only.
 
+An MCP action carries a `requires` list naming arguments the report cannot fill in, rendered as
+`(you supply: ...)` in the human report. It is empty for `merge_people` and `forget`, whose mappings are complete
+as written. It is `["fields"]` for `correct_record`, because that tool refuses an empty `fields` payload and
+deciding which of two contradictory values should survive is adjudication — the doctor points at the record to
+correct and leaves the choice to you.
+
 `--only CODE[,CODE...]` filters to the listed codes after validating them. `--json` prints the versioned
 `people-context-doctor` document as the whole of stdout and sends the disclosure notice to stderr, so a
 redirected report stays byte-identical to the document. Re-running over unchanged data produces identical
@@ -216,7 +222,9 @@ findings.
 The report deliberately juxtaposes stored personal values, including `sensitive` and `restricted` fact values,
 because a contradiction you cannot see is one you cannot judge. It carries no interaction summaries,
 relationship labels, or affiliation roles. Like every other file this CLI writes, the output is outside the
-server's disclosure controls — inspect it before sharing it.
+server's disclosure controls, and the disclosure notice is printed *before* the findings — a warning that
+arrives after the values are already on screen cannot inform the decision it exists to inform. A clean report
+prints no notice, because it exposes nothing.
 
 ## Relationship vocabulary
 

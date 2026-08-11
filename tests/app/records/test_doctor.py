@@ -242,6 +242,26 @@ def test_a_contradiction_reports_both_facts_and_suggests_correcting_the_later_on
     assert _only_mcp_action(finding).arguments == {"entity_type": "fact", "entity_id": "01F2"}
 
 
+def test_a_correction_suggestion_declares_the_payload_the_operator_must_supply() -> None:
+    """`correct_record` rejects empty `fields`, and choosing the surviving value is not ours."""
+    report = _report(conflicting_facts=[_fact("01F1", "Berlin"), _fact("01F2", "Paris")])
+
+    assert _only_mcp_action(report.findings[0]).requires == ["fields"]
+
+
+def test_a_complete_suggestion_declares_nothing_for_the_operator_to_supply() -> None:
+    report = _report(
+        shared_handles=[_handle(ALICE), _handle(ALEX)],
+        deleted_references=[
+            DeletedPersonReference(person=ALICE, entity_type=RELATIONSHIP_REFERENCE, entity_id="01R"),
+        ],
+    )
+
+    merge, forget = (_only_mcp_action(finding) for finding in report.findings)
+    assert (merge.tool, merge.requires) == ("merge_people", [])
+    assert (forget.tool, forget.requires) == ("forget", [])
+
+
 def test_dangling_references_group_under_one_finding_per_soft_deleted_person() -> None:
     report = _report(
         deleted_references=[
@@ -357,7 +377,11 @@ def test_the_json_document_keeps_its_declared_versioned_shape() -> None:
     assert surfaces == {"cli", "mcp"}
     for finding in document["findings"]:
         for action in finding["actions"]:
-            expected = {"surface", "argv"} if action["surface"] == "cli" else {"surface", "tool", "arguments"}
+            expected = (
+                {"surface", "argv"}
+                if action["surface"] == "cli"
+                else {"surface", "tool", "arguments", "requires"}
+            )
             assert set(action) == expected
 
 
