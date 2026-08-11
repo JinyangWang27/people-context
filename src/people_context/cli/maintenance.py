@@ -107,13 +107,16 @@ def cmd_doctor(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         return 0
 
     if not report.findings:
+        # Nothing was found, so no stored personal value is about to be printed.
         print("No findings.")
         return 0
-    print(f"{len(report.findings)} finding(s).")
+    # The notice precedes the evidence: a warning that arrives after the values are already on
+    # screen cannot inform the decision it exists to inform.
+    print(DOCTOR_DISCLOSURE_WARNING)
+    print(f"\n{len(report.findings)} finding(s).")
     for finding in report.findings:
         print()
         _print_finding(finding)
-    print(f"\n{DOCTOR_DISCLOSURE_WARNING}")
     # Findings are a report, not a failure: the exit status says the report completed.
     return 0
 
@@ -147,7 +150,11 @@ def _render_action(action: CliAction | McpAction) -> str:
     if isinstance(action, CliAction):
         return f"cli  {shlex.join(action.argv)}"
     arguments = json.dumps(action.arguments, ensure_ascii=False)
-    return f"mcp  {action.tool} {arguments}"
+    rendered = f"mcp  {action.tool} {arguments}"
+    if not action.requires:
+        return rendered
+    # Say plainly that this one is a starting point rather than a call ready to run.
+    return f"{rendered}  (you supply: {', '.join(action.requires)})"
 
 
 def cmd_reindex(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

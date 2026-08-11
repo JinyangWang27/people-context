@@ -104,11 +104,19 @@ class CliAction(BaseModel):
 
 
 class McpAction(BaseModel):
-    """A suggested MCP call as a tool name and an id-only argument mapping."""
+    """A suggested MCP call as a tool name and an id-only argument mapping.
+
+    `requires` names arguments the report deliberately cannot fill in. Choosing which of two
+    contradictory values is the right one is adjudication, and the doctor does not adjudicate,
+    so a correction suggestion points at the record and stops there. Naming the gap keeps that
+    honest: an empty `requires` means the mapping is complete as written, and a non-empty one
+    means the operator supplies the rest before the call will execute.
+    """
 
     surface: Literal["mcp"] = "mcp"
     tool: str
     arguments: dict[str, str]
+    requires: list[str] = Field(default_factory=list)
 
 
 SuggestedAction = CliAction | McpAction
@@ -313,6 +321,9 @@ def _fact_finding(predicate: str, first: FactAssertion, second: FactAssertion) -
             McpAction(
                 tool="correct_record",
                 arguments={"entity_type": "fact", "entity_id": second.fact_id},
+                # `correct_record` rejects an empty `fields` mapping, and only the operator
+                # knows which value should win, so the payload is theirs to supply.
+                requires=["fields"],
             ),
         ],
     )

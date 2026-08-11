@@ -281,13 +281,18 @@ The report deliberately juxtaposes stored personal values, and it does not filte
 contradiction between two `restricted` values is still a contradiction, and hiding it would leave the operator
 unable to judge their own data. It carries no interaction summaries, relationship labels, or affiliation roles —
 a dangling reference is reported as an entity type and id only. Like every other file this CLI writes, the
-output sits outside the server's disclosure controls, and the command says so before the human report and on
-stderr in `--json` mode.
+output sits outside the server's disclosure controls, and the command says so before printing any evidence — on
+stdout ahead of the human report, and on stderr in `--json` mode. A report with no findings prints no notice,
+because it exposes nothing.
 
 Suggested repairs are data, not commands. Each one is a structured argv list or an MCP tool name with an
 id-only argument mapping, so no display name is ever interpolated into something executable — which matters
 precisely because several findings exist to report that two people share a display name. Nothing is executed for
 the operator, and a soft-deleted person's repair is the operator-gated `forget` tool rather than a CLI command.
+
+The doctor also refuses to adjudicate. It never picks which of two contradictory values should survive, so a
+correction suggestion identifies the record and declares the payload it deliberately left empty
+(`requires: ["fields"]`) rather than inventing a value the operator never asserted.
 
 ## Bootstrap sync bundle
 

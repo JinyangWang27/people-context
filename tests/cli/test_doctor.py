@@ -111,6 +111,55 @@ def test_doctor_reports_every_finding_class_and_still_exits_zero(
     assert "[dangling_reference]" in out
 
 
+def test_the_disclosure_notice_precedes_the_evidence_it_warns_about(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A warning printed after the values are already on screen cannot inform the decision."""
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+
+    cli.main(["--db", str(db_file), "doctor"])
+
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == (
+        "This report juxtaposes stored personal values, including elevated ones, and is outside "
+        "the server's disclosure controls. Inspect it before sharing it anywhere."
+    )
+    assert out.index("Inspect it before sharing") < out.index("[duplicate_handle]")
+    assert out.index("Inspect it before sharing") < out.index("Berlin")
+
+
+def test_a_clean_store_prints_no_disclosure_notice(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With no findings there is no stored personal value on screen to warn about."""
+    db_file = tmp_path / "people.db"
+    conn = open_db(db_file)
+    SqlitePeopleRepository(conn).save_person(Person(canonical_name="Me", is_self=True))
+    conn.close()
+
+    cli.main(["--db", str(db_file), "doctor"])
+
+    assert "Inspect it before sharing" not in capsys.readouterr().out
+
+
+def test_an_incomplete_suggestion_says_what_the_operator_must_supply(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+
+    cli.main(["--db", str(db_file), "doctor", "--only", "contradictory_fact"])
+
+    out = capsys.readouterr().out
+    assert "mcp  correct_record" in out
+    assert "(you supply: fields)" in out
+    # A complete suggestion is not annotated, so the two are distinguishable at a glance.
+    capsys.readouterr()
+    cli.main(["--db", str(db_file), "doctor", "--only", "duplicate_handle"])
+    assert "you supply" not in capsys.readouterr().out
+
+
 def test_doctor_reports_nothing_on_a_clean_store(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     conn = open_db(db_file)
