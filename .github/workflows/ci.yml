@@ -41,7 +41,7 @@ jobs:
         run: |
           uv lock --check
           uv build
-          uvx --from twine==6.2.0 twine check dist/*
+          uvx --from twine==7.0.0 twine check dist/*
 
       - name: Run tests with coverage
         run: uv run --locked --with pytest-cov==7.1.0 pytest --cov=people_context --cov-report=xml -q

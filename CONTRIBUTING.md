@@ -38,7 +38,7 @@ uv lock --check
 uv run --locked ruff check .
 uv run --locked --with pytest-cov==7.1.0 pytest --cov=people_context -q
 uv build
-uvx --from twine==6.2.0 twine check dist/*
+uvx --from twine==7.0.0 twine check dist/*
 ```
 
 ## Validate OpenClaw changes
