@@ -1,0 +1,83 @@
+name: Validate Obsidian plugin
+
+# The Obsidian plugin is a read-only front end for the `pctx` command-line interface. This
+# workflow proves three things about it on every change: the TypeScript sources type-check and
+# their tests pass, the distributable tree builds from the committed lockfile alone, and two
+# clean-install builds of the same commit produce byte-identical artifacts. Nothing generated
+# here is committed, so a stale checked-in bundle cannot drift from the sources.
+
+on:
+  pull_request:
+    paths:
+      - "obsidian-plugin/**"
+      - "docs/obsidian-plugin.md"
+      - "tests/test_obsidian_plugin.py"
+      - ".github/workflows/obsidian-plugin-validate.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "obsidian-plugin/**"
+      - "docs/obsidian-plugin.md"
+      - "tests/test_obsidian_plugin.py"
+      - ".github/workflows/obsidian-plugin-validate.yml"
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  validate:
+    name: Type-check, test, and build reproducibly
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./obsidian-plugin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          package-manager-cache: false
+
+      # `npm ci` installs exactly the committed lockfile and fails when the lockfile and
+      # package.json disagree. `npm install` is never used in CI: it would silently rewrite
+      # the lockfile and make the build depend on whatever the registry served today.
+      - name: Install dependencies from the committed lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run plugin tests
+        run: npm test
+
+      - name: Build the distributable tree
+        run: |
+          npm run build
+          (cd build && sha256sum main.js manifest.json styles.css) > "${RUNNER_TEMP}/first.sha256"
+          cat "${RUNNER_TEMP}/first.sha256"
+
+      - name: Rebuild from a second clean lockfile installation
+        run: |
+          rm -rf node_modules build
+          npm ci --no-audit --no-fund
+          npm run build
+          (cd build && sha256sum main.js manifest.json styles.css) > "${RUNNER_TEMP}/second.sha256"
+
+      - name: Require byte-identical release artifacts
+        run: diff -u "${RUNNER_TEMP}/first.sha256" "${RUNNER_TEMP}/second.sha256"
+
+      - name: Fail if installing or building modified tracked files
+        working-directory: .
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::Installing or building the Obsidian plugin modified tracked files."
+            git --no-pager status --porcelain
+            git --no-pager diff
+            exit 1
+          fi

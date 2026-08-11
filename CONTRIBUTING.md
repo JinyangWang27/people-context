@@ -38,7 +38,7 @@ uv lock --check
 uv run --locked ruff check .
 uv run --locked --with pytest-cov==7.1.0 pytest --cov=people_context -q
 uv build
-uvx --from twine==6.2.0 twine check dist/*
+uvx --from twine==7.0.0 twine check dist/*
 ```
 
 ## Validate OpenClaw changes
@@ -53,6 +53,19 @@ npm test
 npm run plugin:check
 npm run plugin:validate
 git diff --exit-code -- dist
+```
+
+## Validate Obsidian plugin changes
+
+The Obsidian package commits no build output; continuous integration rebuilds it twice from clean lockfile
+installations and requires identical checksums. Reproduce it locally with:
+
+```bash
+cd obsidian-plugin
+npm ci --no-audit --no-fund
+npm run typecheck
+npm test
+npm run build
 ```
 
 ## Submit a pull request

@@ -1,0 +1,39 @@
+{
+  "name": "obsidian-plugin-people-context",
+  "version": "0.1.0",
+  "description": "Read-only Obsidian panes for a local-first people-context database, rendered from the pctx CLI.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JinyangWang27/people-context.git",
+    "directory": "obsidian-plugin"
+  },
+  "homepage": "https://github.com/JinyangWang27/people-context#readme",
+  "bugs": {
+    "url": "https://github.com/JinyangWang27/people-context/issues"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "people-context",
+    "local-first"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config ./vitest.config.ts",
+    "build": "node esbuild.config.mjs",
+    "release:check": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "26.2.0",
+    "esbuild": "0.28.2",
+    "obsidian": "1.13.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
