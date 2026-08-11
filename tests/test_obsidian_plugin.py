@@ -222,6 +222,14 @@ class TestObsidianPluginReadContract:
         assert "this.isReleased" in views
         assert "paintReleased(" in views
 
+        # And a released pane must not be reused as-is by the next load, or the user would be
+        # left with an inert pane to close by hand. The plugin checks ownership before reusing
+        # a leaf and rebuilds one left behind, carrying its serialized state over.
+        assert "isUsable()" in views
+        assert "this.owns(" in main
+        assert "setViewState({ type: \"empty\" })" in main
+        assert "leaf.getViewState()" in main
+
     def test_the_brief_tab_label_cannot_go_stale(self) -> None:
         views = _source("src/views.ts")
         brief = views[views.index("class PersonBriefView") :]

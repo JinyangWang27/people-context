@@ -84,11 +84,23 @@ abstract class PeopleContextView extends ItemView {
     return this.released;
   }
 
+  /**
+   * Whether this pane can still be driven.
+   *
+   * The plugin asks before reusing a leaf: a pane left behind by a previous load answers
+   * `false` and is rebuilt through the newly registered factory rather than handed back inert.
+   */
+  isUsable(): boolean {
+    return !this.released;
+  }
+
   /** Paint the one thing a released pane can honestly say. */
   protected paintReleased(container: HTMLElement): void {
     container.empty();
     container.createEl("p", {
-      text: "The people-context plugin was unloaded. Close and reopen this pane to use it again.",
+      text:
+        "This pane belongs to a previous load of the people-context plugin. " +
+        "Open it again from the ribbon or the command palette to reconnect it.",
     });
   }
 

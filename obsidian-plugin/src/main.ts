@@ -6,7 +6,7 @@
  * nothing here can change what people-context stores.
  */
 
-import { Plugin, type WorkspaceLeaf } from "obsidian";
+import { Plugin, type View, type WorkspaceLeaf } from "obsidian";
 
 import { PeopleContextClient } from "./client.js";
 import { SerialQueue } from "./serial.js";
@@ -123,6 +123,33 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
     }
   }
 
+  /**
+   * Whether a pane belongs to this plugin instance and can still be driven.
+   *
+   * A pane can outlive the plugin that made it. Such a pane fails this check either because it
+   * was released when its plugin unloaded, or because a reload re-evaluated the bundle and its
+   * class is no longer the class this instance tests against.
+   */
+  private owns(view: View): boolean {
+    return (
+      (view instanceof PeopleIndexView || view instanceof PersonBriefView) && view.isUsable()
+    );
+  }
+
+  /**
+   * Rebuild a leaf left behind by a previous load, keeping what it was showing.
+   *
+   * Setting the type away and back is what forces the workspace to construct the view through
+   * the factory this instance registered; re-applying the same type alone can reuse the view
+   * object that is the problem. The serialized state is carried across, so a brief pane comes
+   * back on the same person.
+   */
+  private async rebuild(leaf: WorkspaceLeaf, viewType: string): Promise<void> {
+    const carried = leaf.getViewState();
+    await leaf.setViewState({ type: "empty" });
+    await leaf.setViewState({ ...carried, type: viewType, active: true });
+  }
+
   /** Every pane of this plugin's own view types that currently exists. */
   private liveViews(): (PeopleIndexView | PersonBriefView)[] {
     const leaves = [
@@ -141,6 +168,9 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
     const existing = this.app.workspace.getLeavesOfType(viewType);
     const first = existing[0];
     if (first !== undefined) {
+      if (!this.owns(first.view)) {
+        await this.rebuild(first, viewType);
+      }
       return first;
     }
     // The index lives in the sidebar; a brief is a document and belongs in the main area.
