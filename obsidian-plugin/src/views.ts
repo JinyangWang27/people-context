@@ -32,6 +32,7 @@ export interface ViewHost {
 abstract class PeopleContextView extends ItemView {
   protected readonly host: ViewHost;
   private inFlight: AbortController | null = null;
+  private released = false;
 
   constructor(leaf: WorkspaceLeaf, host: ViewHost) {
     super(leaf);
@@ -58,14 +59,37 @@ abstract class PeopleContextView extends ItemView {
   }
 
   /**
-   * Abandon whatever this pane is reading.
+   * Cut this pane loose from the plugin that created it.
    *
-   * Public because the plugin calls it while unloading: a pane can outlive the plugin that
-   * registered it, and a read left running would hold a `pctx` process until its own timeout.
+   * Called while the plugin unloads. A pane can outlive its plugin, and everything it would
+   * use to read — the client, the settings behind it — belongs to the instance being torn
+   * down. So the pane stops reading now and refuses to start again: a later read would use a
+   * stale client and the settings of a plugin that no longer exists, which is worse than
+   * showing nothing. A reload registers the view type again and builds a live pane.
    */
+  releaseFromPlugin(): void {
+    this.released = true;
+    this.inFlight?.abort();
+    this.inFlight = null;
+  }
+
+  /** Abandon whatever this pane is reading, without releasing it. */
   cancelReads(): void {
     this.inFlight?.abort();
     this.inFlight = null;
+  }
+
+  /** True once the owning plugin has unloaded; the pane must not read again. */
+  protected get isReleased(): boolean {
+    return this.released;
+  }
+
+  /** Paint the one thing a released pane can honestly say. */
+  protected paintReleased(container: HTMLElement): void {
+    container.empty();
+    container.createEl("p", {
+      text: "The people-context plugin was unloaded. Close and reopen this pane to use it again.",
+    });
   }
 
   override async onClose(): Promise<void> {
@@ -113,6 +137,10 @@ export class PeopleIndexView extends PeopleContextView {
 
   /** Re-read the index and repaint the pane. */
   async refresh(): Promise<void> {
+    if (this.isReleased) {
+      this.paintReleased(this.containerEl.children[1] as HTMLElement);
+      return;
+    }
     this.model.beginRead();
     this.paint();
     try {
@@ -202,14 +230,22 @@ export class PeopleIndexView extends PeopleContextView {
 /** One person's read-only brief. */
 export class PersonBriefView extends PeopleContextView {
   private personId: string | null = null;
-  private title = "Person";
 
   getViewType(): string {
     return PERSON_BRIEF_VIEW;
   }
 
+  /**
+   * A fixed label, deliberately not the selected person's name.
+   *
+   * The name is only known once the brief has been read, and this version of the workspace API
+   * exposes no supported way to make an existing leaf re-read its display text afterwards. A
+   * name assigned after the header was drawn would simply sit there stale — showing the
+   * previous person while the pane shows the current one — which is worse than a generic label.
+   * There is one brief pane and it is reused, so the person is identified in the pane itself.
+   */
   getDisplayText(): string {
-    return this.title;
+    return "Person brief";
   }
 
   override getIcon(): string {
@@ -271,8 +307,12 @@ export class PersonBriefView extends PeopleContextView {
 
   /** Re-read the current person, if there is one. */
   async refresh(): Promise<void> {
-    const personId = this.personId;
     const container = this.containerEl.children[1] as HTMLElement;
+    if (this.isReleased) {
+      this.paintReleased(container);
+      return;
+    }
+    const personId = this.personId;
     if (personId === null) {
       this.paintEmpty();
       return;
@@ -286,7 +326,6 @@ export class PersonBriefView extends PeopleContextView {
         return;
       }
       const view = buildBriefView(document);
-      this.title = view.title;
       container.empty();
       this.paintBrief(container, view);
     } catch (error) {

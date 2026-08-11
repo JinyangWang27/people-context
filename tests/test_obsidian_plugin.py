@@ -213,9 +213,25 @@ class TestObsidianPluginReadContract:
 
         # A pane can outlive the plugin that registered it, so its reads are cancelled
         # explicitly; the pane itself is left attached rather than removed from the layout.
-        assert "cancelReads()" in views
-        assert "cancelReads()" in main
+        assert "releaseFromPlugin()" in views
+        assert "releaseFromPlugin()" in main
         assert "detachLeavesOfType" not in main
+
+        # Releasing is not just cancelling: a pane that survives the unload must refuse to
+        # read again rather than reach for the torn-down instance's client and settings.
+        assert "this.isReleased" in views
+        assert "paintReleased(" in views
+
+    def test_the_brief_tab_label_cannot_go_stale(self) -> None:
+        views = _source("src/views.ts")
+        brief = views[views.index("class PersonBriefView") :]
+
+        # The selected person's name is only known after the read, and this workspace API
+        # exposes no supported way to make an existing leaf re-read its display text. A label
+        # assigned afterwards would sit there naming the previous person, so the tab carries a
+        # fixed name and the pane itself identifies the person.
+        assert 'return "Person brief";' in brief
+        assert "this.title" not in brief
 
     def test_restoring_a_pane_respects_the_manual_refresh_policy(self) -> None:
         views = _source("src/views.ts")

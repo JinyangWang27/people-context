@@ -62,15 +62,16 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
   }
 
   override onunload(): void {
-    // Cancel every in-flight read. A registered pane can outlive the plugin that created it,
-    // and its `onClose` does not run while it survives, so a read started just before unload
-    // would otherwise hold a `pctx` process until its own timeout expires.
+    // Release every pane. A registered pane can outlive the plugin that created it, and its
+    // `onClose` does not run while it survives, so this both stops a read that would otherwise
+    // hold a `pctx` process until its own timeout, and stops the pane starting another one
+    // later with this instance's client and settings after the instance is gone.
     //
     // The panes themselves are deliberately left attached. Detaching them would remove them
     // from the user's workspace on every plugin update or reload, and that is a change to
     // their layout rather than cleanup.
     for (const view of this.liveViews()) {
-      view.cancelReads();
+      view.releaseFromPlugin();
     }
   }
 
