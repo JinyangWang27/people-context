@@ -70,7 +70,7 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
     // The panes themselves are deliberately left attached. Detaching them would remove them
     // from the user's workspace on every plugin update or reload, and that is a change to
     // their layout rather than cleanup.
-    for (const view of this.liveViews()) {
+    for (const view of this.ownedViews()) {
       view.releaseFromPlugin();
     }
   }
@@ -116,9 +116,9 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
     this.app.workspace.revealLeaf(leaf);
   }
 
-  /** Re-read every open pane. */
+  /** Re-read every open pane, reconnecting any left behind by a previous load first. */
   async refreshAll(): Promise<void> {
-    for (const view of this.liveViews()) {
+    for (const view of await this.reconnectedViews()) {
       await view.refresh();
     }
   }
@@ -130,10 +130,17 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
    * was released when its plugin unloaded, or because a reload re-evaluated the bundle and its
    * class is no longer the class this instance tests against.
    */
-  private owns(view: View): boolean {
+  private owns(view: View): view is PeopleIndexView | PersonBriefView {
     return (
       (view instanceof PeopleIndexView || view instanceof PersonBriefView) && view.isUsable()
     );
+  }
+
+  /** Rebuild one leaf if this instance cannot drive its view. */
+  private async reconnect(leaf: WorkspaceLeaf, viewType: string): Promise<void> {
+    if (!this.owns(leaf.view)) {
+      await this.rebuild(leaf, viewType);
+    }
   }
 
   /**
@@ -150,8 +157,36 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
     await leaf.setViewState({ ...carried, type: viewType, active: true });
   }
 
-  /** Every pane of this plugin's own view types that currently exists. */
-  private liveViews(): (PeopleIndexView | PersonBriefView)[] {
+  /**
+   * Every pane this instance can drive, reconnecting the ones it cannot.
+   *
+   * Every path that drives panes goes through here rather than reading the workspace directly.
+   * A pane left behind by a previous load has to be repaired before it can be used, and doing
+   * that in only some of those paths is what left the refresh command unable to reconnect
+   * panes that the ribbon could.
+   */
+  private async reconnectedViews(): Promise<(PeopleIndexView | PersonBriefView)[]> {
+    const views: (PeopleIndexView | PersonBriefView)[] = [];
+    for (const viewType of [PEOPLE_INDEX_VIEW, PERSON_BRIEF_VIEW]) {
+      for (const leaf of this.app.workspace.getLeavesOfType(viewType)) {
+        await this.reconnect(leaf, viewType);
+        // Re-read the view: a rebuilt leaf carries a different instance than the one checked.
+        const view = leaf.view;
+        if (this.owns(view)) {
+          views.push(view);
+        }
+      }
+    }
+    return views;
+  }
+
+  /**
+   * Panes belonging to this instance's classes, without rebuilding anything.
+   *
+   * Used while unloading, where the point is to release what this instance made rather than
+   * to repair anything — and where rebuilding a pane would be actively wrong.
+   */
+  private ownedViews(): (PeopleIndexView | PersonBriefView)[] {
     const leaves = [
       ...this.app.workspace.getLeavesOfType(PEOPLE_INDEX_VIEW),
       ...this.app.workspace.getLeavesOfType(PERSON_BRIEF_VIEW),
@@ -168,9 +203,7 @@ export default class PeopleContextPlugin extends Plugin implements ViewHost {
     const existing = this.app.workspace.getLeavesOfType(viewType);
     const first = existing[0];
     if (first !== undefined) {
-      if (!this.owns(first.view)) {
-        await this.rebuild(first, viewType);
-      }
+      await this.reconnect(first, viewType);
       return first;
     }
     // The index lives in the sidebar; a brief is a document and belongs in the main area.

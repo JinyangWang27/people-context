@@ -230,6 +230,13 @@ class TestObsidianPluginReadContract:
         assert "setViewState({ type: \"empty\" })" in main
         assert "leaf.getViewState()" in main
 
+        # Every path that drives panes has to repair a left-behind one, not just the path that
+        # opens them: repairing in one place left the refresh command unable to reconnect what
+        # the ribbon could.
+        refresh_all = main[main.index("async refreshAll(") : main.index("private owns(")]
+        assert "await this.reconnectedViews()" in refresh_all
+        assert "this.liveViews()" not in main
+
     def test_the_brief_tab_label_cannot_go_stale(self) -> None:
         views = _source("src/views.ts")
         brief = views[views.index("class PersonBriefView") :]
