@@ -241,6 +241,20 @@ def test_facts_of_a_soft_deleted_person_are_not_candidate_conflicts() -> None:
     assert fixture.reader.list_conflicting_facts() == []
 
 
+def test_an_unparseable_stored_validity_bound_is_read_as_unbounded_rather_than_raising() -> None:
+    """A drifted store is what the doctor exists to survive, so it must not fail reading one."""
+    fixture = _Fixture()
+    alice = fixture.person("Alice Zhang")
+    berlin = fixture.fact(alice, "city", "Berlin", valid_from=date(2020, 1, 1))
+    fixture.fact(alice, "city", "Paris")
+    fixture.conn.execute("UPDATE facts SET valid_from = 'not-a-date' WHERE id = ?", (berlin,))
+
+    assertions = {assertion.fact_id: assertion for assertion in fixture.reader.list_conflicting_facts()}
+
+    assert assertions[berlin].valid_from is None
+    assert assertions[berlin].valid_to is None
+
+
 def test_every_reference_table_reports_rows_left_pointing_at_a_soft_deleted_person() -> None:
     fixture = _Fixture()
     me = fixture.person("Me", is_self=True)
