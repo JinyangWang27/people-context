@@ -188,6 +188,21 @@ desktop hosts (such as Claude Desktop) with one click; the host's `uv` runtime i
 Cursor, Windsurf, and VS Code use the canonical `uvx --from people-context people-context` invocation with
 per-editor config files. See [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
 
+## Obsidian
+
+A desktop-only, read-only Obsidian plugin lives under [`obsidian-plugin/`](obsidian-plugin/). It renders a
+browsable person index and per-person briefs from `pctx list --json` and `pctx brief <person-id> --json` — it never
+opens SQLite, never writes, and never requests sensitive disclosure. Build and install it with:
+
+```bash
+cd obsidian-plugin && npm ci --no-audit --no-fund && npm run build
+```
+
+then copy `build/main.js`, `build/manifest.json`, and `build/styles.css` into
+`<vault>/.obsidian/plugins/people-context/`. Rendering into a synchronized vault takes that content outside this
+project's local-first perimeter. See [docs/obsidian-plugin.md](docs/obsidian-plugin.md) for settings, encrypted-database
+behavior, process-execution safety, and release mirroring.
+
 ## Docker (optional)
 
 An optional non-root container image runs the same stdio MCP server. It is a convenience distribution, not the
@@ -317,6 +332,7 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
 | [docs/codex-plugin.md](docs/codex-plugin.md) | Codex install, runtime, privacy, validation, and publishing |
 | [docs/openclaw-plugin.md](docs/openclaw-plugin.md) | OpenClaw install, runtime, privacy, validation, and ClawHub publishing |
+| [docs/obsidian-plugin.md](docs/obsidian-plugin.md) | Obsidian read-only panes, subprocess safety, encryption, and mirrored releases |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
 | [docs/roadmap.md](docs/roadmap.md) | Delivered milestones and planned work |
 | [docs/specs](docs/specs/) | One implementation spec per planned milestone |

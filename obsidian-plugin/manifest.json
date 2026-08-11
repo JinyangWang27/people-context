@@ -1,0 +1,10 @@
+{
+  "id": "people-context",
+  "name": "People Context",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Read-only panes for a local-first people-context database, rendered from the pctx command-line interface.",
+  "author": "people-context",
+  "authorUrl": "https://github.com/JinyangWang27/people-context",
+  "isDesktopOnly": true
+}

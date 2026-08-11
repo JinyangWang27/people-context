@@ -1,0 +1,69 @@
+/* People Context for Obsidian — read-only pane styling. */
+
+.people-context-index .people-context-search {
+  width: 100%;
+  margin-bottom: var(--size-4-2);
+}
+
+.people-context-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: var(--size-4-2);
+}
+
+.people-context-row {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: var(--size-4-1) 0;
+}
+
+.people-context-person {
+  background: none;
+  border: none;
+  box-shadow: none;
+  cursor: pointer;
+  display: flex;
+  gap: var(--size-4-2);
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.people-context-name {
+  font-weight: var(--font-semibold);
+}
+
+.people-context-badge {
+  background-color: var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 0 var(--size-2-2);
+}
+
+.people-context-subtitle,
+.people-context-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.people-context-brief .people-context-header {
+  list-style: none;
+  padding-left: 0;
+}
+
+.people-context-notice,
+.people-context-warning,
+.people-context-privacy-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.people-context-error {
+  border-left: 3px solid var(--text-error);
+  padding-left: var(--size-4-2);
+}
+
+.people-context-hint {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}

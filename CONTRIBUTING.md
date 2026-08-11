@@ -55,6 +55,19 @@ npm run plugin:validate
 git diff --exit-code -- dist
 ```
 
+## Validate Obsidian plugin changes
+
+The Obsidian package commits no build output; continuous integration rebuilds it twice from clean lockfile
+installations and requires identical checksums. Reproduce it locally with:
+
+```bash
+cd obsidian-plugin
+npm ci --no-audit --no-fund
+npm run typecheck
+npm test
+npm run build
+```
+
 ## Submit a pull request
 
 Open a pull request that explains the behavior and privacy impact, links relevant issues, and lists the commands

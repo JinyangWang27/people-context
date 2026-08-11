@@ -203,6 +203,24 @@ integration list people without reading their records.
 replaced instead of followed, and a failed write preserves any previously valid file. The command refuses to
 publish over the database it is reading or any of that database's sidecars.
 
+## Obsidian plugin
+
+The Obsidian plugin under `obsidian-plugin/` is a read-only consumer of the two documents above. It calls
+`pctx list --json` and `pctx brief <person-id> --json`, never opens the SQLite database, and has no write path.
+It never passes `--include-sensitive` or `--all`, so it sees ordinary-disclosure records for people who have not
+been soft-deleted. A brief is always addressed by the stable id the index returned, never by a display name.
+
+Contact data is treated as untrusted command input: the plugin spawns the configured executable with a separate
+argument array and `shell: false`, never builds a command string, offers no free-form arguments setting, bounds
+every run with a timeout and output caps, and validates a person id before it can become an argument. Panes are
+painted as text nodes, so a name containing markup or shell metacharacters stays inert. An encrypted database is
+opened with the `PEOPLE_CONTEXT_DB_KEY` value the Obsidian process already carries; the plugin never stores,
+prompts for, or logs the key, and reports the CLI's own refusal rather than falling back to plaintext.
+
+What the plugin renders is still personal data, and it renders it inside a vault. **Anything cached or written
+into a synchronized vault has left this project's local-first perimeter** and is governed by that sync provider,
+exactly as an exported brief or vault Markdown is. See [obsidian-plugin.md](obsidian-plugin.md).
+
 ## vCard export
 
 `pctx export-vcard` is a human-operated, CLI-only export of active people as vCards. It is a read path: it

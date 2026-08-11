@@ -228,4 +228,6 @@ marks lifecycle state explicitly.
    Spanish `a. m.`. Numeric day/month ordering is
    inferred once per file from components greater than `12`; a file with no such evidence, or with
    contradictory evidence, skips its numeric-dated messages as `ambiguous_date_order` instead of guessing.
-4. Should plugin refresh default to manual or on-open?
+4. Should plugin refresh default to manual or on-open? **Resolved in M14.4:** on-open. A pane that opens empty
+   and needs a second action reads as broken, and one bounded read is cheap. `manual` remains a typed setting, and
+   nothing polls on a timer in either mode.

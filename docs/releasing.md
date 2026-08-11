@@ -144,5 +144,20 @@ also available for a deliberate retry from an existing release tag. Manual retri
 already exist so a failed downstream MCPB build or attachment can complete; release-triggered publication still
 fails loudly on duplicate filenames.
 
+## Release the Obsidian plugin
+
+The Obsidian plugin under `obsidian-plugin/` keeps its own version domain and is not moved by Release Please. To
+release it, bump `manifest.json`, `package.json`, and `package-lock.json` together, merge, then push a tag of the
+form `obsidian-plugin-v<version>`.
+
+`.github/workflows/obsidian-plugin-release.yml` then verifies that the tag matches the manifest version,
+type-checks and tests the package, builds it twice from two clean lockfile installations, requires byte-identical
+artifact checksums, and uploads the mirror tree as a build artifact.
+
+Mirroring that tree to a community-distribution repository is configuration-gated and is an outstanding
+user-operated step: set the `OBSIDIAN_PLUGIN_MIRROR_REPO` repository variable and the
+`OBSIDIAN_PLUGIN_MIRROR_TOKEN` secret first. Until both exist, the workflow stops after publishing the verified
+artifact and prints a notice. See [obsidian-plugin.md](obsidian-plugin.md).
+
 PyPI release filenames and versions are immutable. If an upload partially succeeds, publish a new version rather
 than attempting to overwrite existing files.

@@ -28,6 +28,19 @@ updates:
           - "*"
 
   - package-ecosystem: "npm"
+    directory: "/obsidian-plugin"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:20"
+      timezone: "Asia/Dubai"
+    open-pull-requests-limit: 5
+    groups:
+      obsidian-plugin-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
     directory: "/.github/tooling/claude-code"
     schedule:
       interval: "weekly"

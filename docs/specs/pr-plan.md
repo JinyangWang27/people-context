@@ -231,7 +231,7 @@ Check the matching box only in the PR that delivers it.
     self-only day no interaction; seven-source matrix/E2E.
   - **Out:** Signal and candidate-schema self field.
 
-- [ ] **M14.4 — Safe read-only Obsidian plugin and mirror**
+- [x] **M14.4 — Safe read-only Obsidian plugin and mirror**
   - **Scope:** Package/lockfile, CLI bridge, panes, tests, deterministic distribution workflow.
   - **Execution:** stable ids; `spawn`/`execFile`, arg arrays, `shell:false`; no command/freeform args; timeout,
     cancellation, output bounds, metacharacter tests.
