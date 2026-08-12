@@ -110,6 +110,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Report only these finding codes ({', '.join(FINDING_CODES)}).",
     )
 
+    stats = subparsers.add_parser("stats", help="Report aggregate-only counts and storage for this database.")
+    stats.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned stats JSON document instead of the human report.",
+    )
+    stats.add_argument(
+        "--include-path",
+        action="store_true",
+        help="Include the resolved database path, which is redacted by default.",
+    )
+
     export = subparsers.add_parser("export", help="JSON dump of all people.")
     export.add_argument("--output", default=None, help="Write to this file instead of stdout.")
 

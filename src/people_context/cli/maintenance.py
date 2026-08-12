@@ -17,6 +17,7 @@ from people_context.adapters.model2vec_embeddings import (
 )
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.adapters.sqlite.semantic import create_sqlite_vector_index
+from people_context.app.context import CountEntry, StatsReport, render_stats_json
 from people_context.app.records import (
     CliAction,
     DoctorError,
@@ -26,7 +27,9 @@ from people_context.app.records import (
 )
 from people_context.app.semantic import ReindexSemantic
 from people_context.app.sync import WatchChangelogError
+from people_context.config import EXPORT_ENV, SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 from people_context.ports.changelog import ChangelogEntry
+from people_context.ports.stats import STORAGE_FILE
 
 WATCH_DISCLOSURE_WARNING = (
     "Watch prints full replay payloads, which may contain sensitive personal data. "
@@ -36,6 +39,11 @@ WATCH_DISCLOSURE_WARNING = (
 DOCTOR_DISCLOSURE_WARNING = (
     "This report juxtaposes stored personal values, including elevated ones, and is outside the "
     "server's disclosure controls. Inspect it before sharing it anywhere."
+)
+
+STATS_DISCLOSURE_WARNING = (
+    "This report carries counts only, never stored personal values, but how much you record "
+    "about whom is itself revealing. Inspect it before sharing it anywhere."
 )
 
 
@@ -155,6 +163,82 @@ def _render_action(action: CliAction | McpAction) -> str:
         return rendered
     # Say plainly that this one is a starting point rather than a call ready to run.
     return f"{rendered}  (you supply: {', '.join(action.requires)})"
+
+
+def cmd_stats(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Report aggregate-only counts and storage for the resolved database."""
+    # The gate booleans describe *this* process's environment and are read here, at the
+    # process boundary. Nothing downstream contacts, starts, or probes an MCP server to find
+    # out what a server elsewhere would expose.
+    report = runtime.use_cases.report_store_stats.execute(
+        sensitive_context_enabled=process_elevation_enabled(SENSITIVE_CONTEXT_ENV),
+        export_enabled=process_elevation_enabled(EXPORT_ENV),
+        database_path=str(runtime.path),
+        include_path=args.include_path,
+    )
+
+    if args.json:
+        # The document is the whole of stdout, so the notice goes to stderr and a redirected
+        # report stays byte-identical to the rendered document.
+        print(STATS_DISCLOSURE_WARNING, file=sys.stderr)
+        print(render_stats_json(report), end="")
+        return 0
+
+    print(STATS_DISCLOSURE_WARNING)
+    _print_stats(report)
+    return 0
+
+
+def _print_stats(report: StatsReport) -> None:
+    """Render the aggregate report as sectioned human text."""
+    print()
+    if report.database_path is not None:
+        print(f"Database: {report.database_path}")
+    print(f"Storage:  {_render_storage(report)}")
+    print(
+        f"People:   {report.people.active} active, "
+        f"{report.people.soft_deleted} soft-deleted, {report.people.self_records} self"
+    )
+    for title, entries in (
+        ("Tables", report.tables),
+        ("Alias kinds", report.alias_kinds),
+        ("Facts by sensitivity", report.fact_sensitivity),
+        ("Observations by sensitivity", report.observation_sensitivity),
+        ("Relationships by category", report.relationship_categories),
+        ("Audit operations", report.audit_operations),
+        ("Changelog entries by device", report.changelog_devices),
+    ):
+        print(f"\n{title}")
+        _print_entries(entries)
+    print("\nElevated MCP capabilities in this environment")
+    print(f"  {'sensitive context':<26}  {_render_gate(report.environment.sensitive_context)}")
+    print(f"  {'export':<26}  {_render_gate(report.environment.export)}")
+
+
+def _print_entries(entries: list[CountEntry]) -> None:
+    """Print one distribution, saying so explicitly when it holds nothing."""
+    if not entries:
+        print("  (none)")
+        return
+    width = max(len(entry.key) for entry in entries)
+    for entry in entries:
+        print(f"  {entry.key:<{width}}  {entry.count}")
+
+
+def _render_storage(report: StatsReport) -> str:
+    """Describe the footprint, or say why there is no measurable one."""
+    storage = report.storage
+    if storage.storage_kind != STORAGE_FILE or storage.database_bytes is None:
+        # Never a zero here: an unmeasurable database is not an empty one.
+        return f"{storage.storage_kind} (no measurable file)"
+    return (
+        f"{storage.database_bytes} bytes "
+        f"(main {storage.main_bytes}, wal {storage.wal_bytes}, shm {storage.shm_bytes})"
+    )
+
+
+def _render_gate(enabled: bool) -> str:
+    return "enabled" if enabled else "disabled"
 
 
 def cmd_reindex(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

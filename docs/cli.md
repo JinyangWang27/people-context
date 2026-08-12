@@ -27,6 +27,7 @@ what encryption does and does not protect.
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
+| `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the database path is redacted by default. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
@@ -225,6 +226,49 @@ relationship labels, or affiliation roles. Like every other file this CLI writes
 server's disclosure controls, and the disclosure notice is printed *before* the findings — a warning that
 arrives after the values are already on screen cannot inform the decision it exists to inform. A clean report
 prints no notice, because it exposes nothing.
+
+## Aggregate inventory
+
+```bash
+uv run pctx stats
+uv run pctx stats --include-path
+uv run pctx stats --json > inventory.json
+```
+
+Reports how much is in this database without reporting what is in it. Every figure is a count, a byte total, or
+a bucket name the schema itself defines — an alias kind, a sensitivity level, a relationship category, an audit
+operation, or an opaque device id. No canonical name, fact value, observation, interaction summary, or device
+display name crosses the read port, so there is nothing in the report to redact after the fact.
+
+The sections are people by lifecycle state, row counts for every documented table, the alias-kind,
+fact-sensitivity, observation-sensitivity, relationship-category, audit-operation and per-device changelog
+distributions, storage bytes, and the elevation gates in force. People are split into active, soft-deleted, and
+self because a soft-deleted person still occupies a `persons` row, so a single table total would misstate how
+many people the store knows about. Every documented table is listed even when it holds nothing: a table missing
+from the list would be indistinguishable from a table with no rows. Distributions are ordered largest bucket
+first and then by key, so the same data always renders in the same order, and an empty one says `(none)` rather
+than vanishing. A relationship whose stored type has no vocabulary row is counted under `uncategorized` — the
+drift `pctx normalize-relationships` exists to resolve — rather than being dropped from the total.
+
+Storage is the main database file plus its `-wal` and `-shm` companions, reported both as components and as
+their sum. WAL mode keeps recently written pages outside the main file, so the main file alone can understate
+the real footprint by an arbitrary amount. A companion that has been checkpointed away contributes zero bytes.
+An in-memory database, or a path that cannot be measured, reports an explicit `storage_kind` of `memory` or
+`unavailable` with `database_bytes: null`, because an unmeasurable database is not an empty one.
+
+`Elevated MCP capabilities in this environment` reports whether `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` and
+`PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` are set in the environment of *this* CLI process, using exactly the same
+truthiness rule the MCP server applies. It is not a statement about a running server: a server started from a
+different environment has different gates. Nothing here starts, contacts, or probes a server, and `pctx stats`
+makes no network call.
+
+The resolved database path is a real disclosure — it usually carries an account name and says where the file
+lives — so it is omitted unless you pass `--include-path`. `--json` prints the versioned `people-context-stats`
+document as the whole of stdout and sends the disclosure notice to stderr. The report reads only; it writes no
+rows, audit entries, or changelog entries, and exits `0`.
+
+Counts are not personal values, but how much you record about whom is itself revealing — inspect the output
+before sharing it.
 
 ## Relationship vocabulary
 

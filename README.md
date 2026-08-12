@@ -279,6 +279,7 @@ uv run pctx show <person>
 uv run pctx stale [--category C] [--threshold-days N] [--limit N]
 uv run pctx upcoming [--window-days N] [--person PERSON]
 uv run pctx doctor [--json] [--only CODE[,CODE...]]
+uv run pctx stats [--json] [--include-path]
 uv run pctx export [--output FILE]
 uv run pctx relationship-types
 uv run pctx relationship-types add TYPE --category C [--inverse T | --symmetric]
