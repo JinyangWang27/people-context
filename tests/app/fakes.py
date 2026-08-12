@@ -31,6 +31,7 @@ from people_context.ports.semantic import (
     SemanticIndexMetadata,
     VectorSearchHit,
 )
+from people_context.ports.stats import StoreInventory
 from people_context.ports.sync_bundle import BundleSource
 
 
@@ -224,6 +225,18 @@ class FakeCurationReader:
     def list_deleted_person_references(self) -> list[DeletedPersonReference]:
         self.calls.append("list_deleted_person_references")
         return list(self.deleted_references)
+
+
+class FakeStatsReader:
+    """In-memory StatsReader returning one pre-built aggregate inventory."""
+
+    def __init__(self, inventory: StoreInventory | None = None) -> None:
+        self.inventory = inventory or StoreInventory()
+        self.calls = 0
+
+    def read_inventory(self) -> StoreInventory:
+        self.calls += 1
+        return self.inventory
 
 
 class FakeRecordStore:

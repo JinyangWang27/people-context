@@ -294,6 +294,31 @@ The doctor also refuses to adjudicate. It never picks which of two contradictory
 correction suggestion identifies the record and declares the payload it deliberately left empty
 (`requires: ["fields"]`) rather than inventing a value the operator never asserted.
 
+## Aggregate inventory
+
+`pctx stats` is a human-operated, CLI-only report with no MCP tool behind it. Like the doctor it is a pure read
+path: it records nothing, mints no audit or changelog rows, and makes no network call.
+
+Its privacy property is structural rather than a filter applied at the end. The read port is defined so that
+only counts, byte totals, and closed-vocabulary bucket names can cross it: no canonical name, alias value, fact
+value, observation, interaction summary, or device display name is ever selected. Changelog entries are grouped
+by the device's opaque id and the `devices` table is deliberately not joined, because its `display_name` is a
+machine hostname — the one piece of identifying text in the sync tables.
+
+The resolved database path is not an aggregate. It usually carries the operator's account name and it says where
+the file lives, so the application redacts it and includes it only when the operator passes `--include-path`.
+The adapter measures the file but never returns the path, so a caller cannot obtain it by accident.
+
+Elevation gate status is read from the environment of the CLI process itself, using the same rule the MCP server
+applies, and is reported as a fact about *this* environment. Neither the use case nor the adapter starts,
+contacts, or probes an MCP server to find out what a server elsewhere would expose, and no gate state is ever
+taken from an argument a model could supply.
+
+Aggregate metadata is still information: how many people you track, how much you record about them, how much of
+it is `restricted`, and how many devices have written here are all revealing even without a single name. The
+command says so before the report and on stderr in `--json` mode, and, like every other file this CLI writes,
+the output sits outside the server's disclosure controls.
+
 ## Bootstrap sync bundle
 
 `pctx sync push` writes one complete point-in-time bootstrap bundle: the portable dataset, both relationship

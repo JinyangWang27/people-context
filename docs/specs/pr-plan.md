@@ -248,7 +248,7 @@ Check the matching box only in the PR that delivers it.
     arguments, never shell names; versioned stable JSON.
   - **Out:** interactive repair/MCP findings tool.
 
-- [ ] **M15.2 — Aggregate-only stats report**
+- [x] **M15.2 — Aggregate-only stats report**
   - **Scope:** `StatsReader`, aggregate adapter, app redaction, CLI.
   - **Acceptance:** no record text/device names/paths from adapter; explicit gate booleans/path; redacted default;
     versioned JSON; no server/network probe; main+WAL+SHM bytes; in-memory/unavailable explicit null state.

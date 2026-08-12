@@ -48,10 +48,12 @@ from people_context.adapters.sqlite.semantic import (
     SqliteSemanticMetadataReader,
     open_sqlite_vector_index,
 )
+from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 from people_context.app.context import (
     GetCommunicationGuidance,
     GetPersonContext,
+    ReportStoreStats,
     SetCommunicationPhilosophy,
 )
 from people_context.app.exports import (
@@ -119,6 +121,7 @@ class RuntimeUseCases:
     find_connection: FindConnection
     get_stale_relationships: GetStaleRelationships
     report_doctor_findings: ReportDoctorFindings
+    report_store_stats: ReportStoreStats
     list_upcoming_dates: ListUpcomingDates
     list_person_index: ListPersonIndex
     search_people: SearchPeople
@@ -170,6 +173,7 @@ class ApplicationRuntime:
     graph_reader: SqliteGraphReader
     recency_reader: SqliteRecencyReader
     curation_reader: SqliteCurationReader
+    stats_reader: SqliteStatsReader
     records: SqliteRecordStore | IndexingRecordStore
     relationship_store: SqliteRelationshipStore
     relationship_vocabulary: SqliteRelationshipVocabularyStore
@@ -232,6 +236,7 @@ def build_runtime(
     graph_reader = SqliteGraphReader(conn, runtime_clock)
     recency_reader = SqliteRecencyReader(conn)
     curation_reader = SqliteCurationReader(conn)
+    stats_reader = SqliteStatsReader(conn, path)
     relationship_store = SqliteRelationshipStore(conn)
     relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
     organizations = SqliteOrganizationStore(conn)
@@ -261,6 +266,7 @@ def build_runtime(
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
         report_doctor_findings=ReportDoctorFindings(curation_reader, runtime_clock),
+        report_store_stats=ReportStoreStats(stats_reader, runtime_clock),
         list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
         list_person_index=ListPersonIndex(repo, runtime_clock),
         search_people=SearchPeople(repo),
@@ -349,6 +355,7 @@ def build_runtime(
         graph_reader=graph_reader,
         recency_reader=recency_reader,
         curation_reader=curation_reader,
+        stats_reader=stats_reader,
         records=records,
         relationship_store=relationship_store,
         relationship_vocabulary=relationship_vocabulary,
