@@ -10,8 +10,13 @@ That guarantee holds for the grouping keys too, and two of them need help to kee
 relationship category and a restored audit operation are strings this project did not choose:
 the first is typed by the operator, the second comes from whatever installation produced the
 bundle. Both are folded into the sentinels below before they cross, so a bucket name is always
-either schema vocabulary or a sentinel — never authored text. Device ids stay verbatim by
-design: an opaque primary key is what makes per-device counts meaningful, and it names nobody.
+either schema vocabulary or a sentinel — never authored text.
+
+Device ids are the third such key and the one that cannot simply be collapsed, because telling
+devices apart is the whole point of counting per device. A locally minted id is opaque and
+names nobody, so it crosses as itself; one that is not shaped like a generated id — which
+restore permits, since a bundle carries whatever its origin wrote — keeps a bucket of its own
+under a positional pseudonym instead.
 """
 
 from __future__ import annotations
@@ -65,6 +70,13 @@ SEEDED_RELATIONSHIP_CATEGORIES: frozenset[str] = frozenset(
 #: origin's audit rows verbatim, and their `op` is only as constrained as that origin was, so
 #: an unrecognized operation is counted rather than named.
 OTHER_AUDIT_OPERATION = "other"
+
+#: Prefix for a device whose id is not shaped like one this project generates. Restore accepts
+#: any non-blank device id, so a bundle can carry a hostname or a personal label where an
+#: opaque key belongs. Such a device keeps its own bucket — per-device counts are the point of
+#: the distribution — but under a positional pseudonym rather than the string someone chose.
+#: Pseudonyms are assigned in sorted id order, so the same store always numbers them the same.
+UNRECOGNIZED_DEVICE_PREFIX = "unrecognized-device-"
 
 #: `storage_kind` values. `file` means the byte totals were measured; the other two are
 #: explicit "there is nothing to measure" states so a reader never mistakes an unmeasurable

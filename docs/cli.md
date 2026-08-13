@@ -241,13 +241,17 @@ category, a known audit operation — or a documented sentinel. No canonical nam
 interaction summary, or device display name crosses the read port, so there is nothing in the report to redact
 after the fact.
 
-Two bucket kinds are not vocabulary this project chooses, and both are folded before they are reported. A
-relationship category you invented with `relationship-types add --category` is free text, so its relationships
-are counted under `custom` rather than under the words you typed. An audit operation restored from a bundle
-comes from whichever installation wrote it, so anything outside this release's known operations is counted under
-`other`. Both preserve the distribution's total; neither names what the operator or the origin wrote. Device ids
-are the exception that stays verbatim, because an opaque primary key is what makes per-device counts meaningful
-and it names nobody.
+Three bucket kinds are not vocabulary this project chooses, and none is reported verbatim. A relationship
+category you invented with `relationship-types add --category` is free text, so its relationships are counted
+under `custom` rather than under the words you typed. An audit operation restored from a bundle comes from
+whichever installation wrote it, so anything outside this release's known operations is counted under `other`.
+Both preserve the distribution's total without naming what the operator or the origin wrote.
+
+Device ids are the third, and they are pseudonymized rather than collapsed, because telling devices apart is
+what the per-device distribution is for. An id this installation generated is opaque and names nobody, so it is
+reported as itself. An id that is not shaped like a generated one — which `sync pull` permits, since a bundle
+carries whatever its origin wrote, hostname included — keeps its own bucket under `unrecognized-device-N`.
+The numbering follows sorted id order, so the same store reports the same pseudonyms on every run.
 
 The sections are people by lifecycle state, row counts for every documented table, the alias-kind,
 fact-sensitivity, observation-sensitivity, relationship-category, audit-operation and per-device changelog
@@ -266,6 +270,8 @@ each other even when the MCP server is writing to the same database while the re
 Storage is the main database file plus its `-wal` and `-shm` companions, reported both as components and as
 their sum. WAL mode keeps recently written pages outside the main file, so the main file alone can understate
 the real footprint by an arbitrary amount. A companion that has been checkpointed away contributes zero bytes.
+The path is resolved before the companions are located: SQLite derives their names from the file it actually
+opened, so when `--db` names a symlink they live beside the target rather than beside the link.
 An in-memory database, or a path that cannot be measured, reports an explicit `storage_kind` of `memory` or
 `unavailable` with `database_bytes: null`, because an unmeasurable database is not an empty one.
 
