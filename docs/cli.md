@@ -248,10 +248,11 @@ whichever installation wrote it, so anything outside this release's known operat
 Both preserve the distribution's total without naming what the operator or the origin wrote.
 
 Device ids are the third, and they are pseudonymized rather than collapsed, because telling devices apart is
-what the per-device distribution is for. An id this installation generated is opaque and names nobody, so it is
-reported as itself. An id that is not shaped like a generated one — which `sync pull` permits, since a bundle
-carries whatever its origin wrote, hostname included — keeps its own bucket under `unrecognized-device-N`.
-The numbering follows sorted id order, so the same store reports the same pseudonyms on every run.
+what the per-device distribution is for. Only this installation's own device id is reported as itself: it was
+minted here, so it is opaque and names nobody. Every imported device — `sync pull` writes them all retired, and
+a bundle carries whatever its origin wrote, hostname included — keeps its own bucket under `imported-device-N`,
+numbered in sorted id order so the same store reports the same pseudonyms on every run. The test is where the
+id came from, not what it looks like: a well-formed identifier can still spell something its author chose.
 
 The sections are people by lifecycle state, row counts for every documented table, the alias-kind,
 fact-sensitivity, observation-sensitivity, relationship-category, audit-operation and per-device changelog

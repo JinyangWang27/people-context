@@ -33,19 +33,19 @@ from people_context.app.relationships import (
     SetRelationshipInput,
 )
 from people_context.domain.person import Alias, AliasKind, Person
-from people_context.domain.shared import Sensitivity, is_generated_id
+from people_context.domain.shared import Sensitivity
 from people_context.ports.audit_log import KNOWN_AUDIT_OPERATIONS
 from people_context.ports.clock import SystemClock
 from people_context.ports.stats import (
     CUSTOM_RELATIONSHIP_CATEGORY,
     DOCUMENTED_TABLES,
+    IMPORTED_DEVICE_PREFIX,
     OTHER_AUDIT_OPERATION,
     SEEDED_RELATIONSHIP_CATEGORIES,
     STORAGE_FILE,
     STORAGE_MEMORY,
     STORAGE_UNAVAILABLE,
     UNCATEGORIZED_RELATIONSHIP,
-    UNRECOGNIZED_DEVICE_PREFIX,
     StatsReader,
 )
 
@@ -104,6 +104,26 @@ class _Fixture:
                 occurred_at=datetime.now(UTC),
             )
         )
+
+    def local_device_id(self) -> str:
+        row = self.conn.execute("SELECT id FROM devices WHERE retired_at IS NULL").fetchone()
+        return str(row["id"])
+
+    def imported_device(self, device_id: str, *, entries: int) -> None:
+        """Insert one device the way restore does: carried verbatim and forced retired."""
+        self.conn.execute(
+            "INSERT INTO devices (id, display_name, public_key, created_at, retired_at,"
+            " hlc_physical_ms, hlc_logical) VALUES (?, NULL, NULL, ?, ?, 0, 0)",
+            (device_id, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        for entry in range(entries):
+            self.conn.execute(
+                "INSERT INTO changelog (op_id, device_id, hlc_physical_ms, hlc_logical,"
+                " transaction_id, entity_type, entity_id, op_kind, payload_json,"
+                " changed_fields_json, actor_json, schema_version, inserted_at)"
+                " VALUES (?, ?, 1, 0, 't', 'person', 'p', 'create', '{}', '[]', '{}', 1, ?)",
+                (f"op-{device_id}-{entry}", device_id, "2026-01-01T00:00:00+00:00"),
+            )
 
     def close(self) -> None:
         self.conn.close()
@@ -364,61 +384,52 @@ def test_changelog_entries_are_keyed_by_opaque_device_id_never_a_display_name() 
         fixture.close()
 
 
-def test_a_device_id_that_is_not_opaque_is_counted_under_a_pseudonym() -> None:
+def test_an_imported_device_id_is_counted_under_a_pseudonym() -> None:
     """Restore accepts any non-blank device id, so a bundle can carry a label where a key belongs."""
     fixture = _Fixture()
     try:
         ada = fixture.person("Ada")
         fixture.fact(ada, "city", "London", Sensitivity.PERSONAL)
-        # Exactly what `sync pull` would persist from a bundle whose origin wrote a hostname.
-        fixture.conn.execute(
-            "INSERT INTO devices (id, display_name, public_key, created_at, retired_at,"
-            " hlc_physical_ms, hlc_logical) VALUES (?, NULL, NULL, ?, ?, 0, 0)",
-            ("adas-macbook", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
-        )
-        fixture.conn.execute(
-            "INSERT INTO changelog (op_id, device_id, hlc_physical_ms, hlc_logical, transaction_id,"
-            " entity_type, entity_id, op_kind, payload_json, changed_fields_json, actor_json,"
-            " schema_version, inserted_at)"
-            " VALUES ('op-1', 'adas-macbook', 1, 0, 't-1', 'person', ?, 'create', '{}', '[]', '{}', 1, ?)",
-            (ada.id, "2026-01-01T00:00:00+00:00"),
-        )
+        fixture.imported_device("adas-macbook", entries=1)
 
         devices = fixture.reader.read_inventory().changelog_devices
 
         assert "adas-macbook" not in devices
-        assert devices[f"{UNRECOGNIZED_DEVICE_PREFIX}1"] == 1
-        # The local device keeps its own bucket: a generated id is opaque and names nobody.
-        assert any(is_generated_id(key) for key in devices)
+        assert devices[f"{IMPORTED_DEVICE_PREFIX}1"] == 1
+        # The local device keeps its own bucket: this installation minted that id.
+        assert fixture.local_device_id() in devices
     finally:
         fixture.close()
 
 
-def test_each_unrecognized_device_keeps_its_own_bucket_and_stable_pseudonym() -> None:
+def test_a_well_formed_imported_id_is_pseudonymized_too() -> None:
+    """Shape is not provenance: a valid ULID can still spell something its author chose."""
+    fixture = _Fixture()
+    try:
+        # Crockford base32 throughout, so this parses as a ULID and is still authored text.
+        fixture.imported_device("01ADA000000000000000000000", entries=1)
+
+        devices = fixture.reader.read_inventory().changelog_devices
+
+        assert "01ADA000000000000000000000" not in devices
+        assert devices[f"{IMPORTED_DEVICE_PREFIX}1"] == 1
+    finally:
+        fixture.close()
+
+
+def test_each_imported_device_keeps_its_own_bucket_and_stable_pseudonym() -> None:
     """Collapsing them would answer a different question than the distribution exists to answer."""
     fixture = _Fixture()
     try:
-        for index, device_id in enumerate(("zeta-workstation", "alpha-laptop"), start=1):
-            fixture.conn.execute(
-                "INSERT INTO devices (id, display_name, public_key, created_at, retired_at,"
-                " hlc_physical_ms, hlc_logical) VALUES (?, NULL, NULL, ?, ?, 0, 0)",
-                (device_id, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
-            )
-            for entry in range(index):
-                fixture.conn.execute(
-                    "INSERT INTO changelog (op_id, device_id, hlc_physical_ms, hlc_logical,"
-                    " transaction_id, entity_type, entity_id, op_kind, payload_json,"
-                    " changed_fields_json, actor_json, schema_version, inserted_at)"
-                    " VALUES (?, ?, 1, 0, 't', 'person', 'p', 'create', '{}', '[]', '{}', 1, ?)",
-                    (f"op-{device_id}-{entry}", device_id, "2026-01-01T00:00:00+00:00"),
-                )
+        fixture.imported_device("zeta-workstation", entries=1)
+        fixture.imported_device("alpha-laptop", entries=2)
 
         devices = fixture.reader.read_inventory().changelog_devices
 
         # Numbered in sorted id order, not insertion order, so the same store reports the same
         # names every run: alpha-laptop is pseudonym 1 and wrote 2 entries.
-        assert devices[f"{UNRECOGNIZED_DEVICE_PREFIX}1"] == 2  # alpha-laptop
-        assert devices[f"{UNRECOGNIZED_DEVICE_PREFIX}2"] == 1  # zeta-workstation
+        assert devices[f"{IMPORTED_DEVICE_PREFIX}1"] == 2  # alpha-laptop
+        assert devices[f"{IMPORTED_DEVICE_PREFIX}2"] == 1  # zeta-workstation
         assert devices == fixture.reader.read_inventory().changelog_devices
     finally:
         fixture.close()
