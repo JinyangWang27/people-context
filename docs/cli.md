@@ -27,7 +27,7 @@ what encryption does and does not protect.
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
-| `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the database path is redacted by default. |
+| `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the database path is redacted by default and an absent one is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
@@ -286,6 +286,13 @@ The resolved database path is a real disclosure — it usually carries an accoun
 lives — so it is omitted unless you pass `--include-path`. `--json` prints the versioned `people-context-stats`
 document as the whole of stdout and sends the disclosure notice to stderr. The report reads only; it writes no
 rows, audit entries, or changelog entries, and exits `0`.
+
+Reading only is why `stats` is the one command that refuses a `--db` path with no database, exiting `1` instead.
+Every other command opens a store that is not there yet, and answering `No people found` from a database it just
+created is still a true answer. A measurement is not: creating the file registers this installation's device row
+and lays down a journal, so a mistyped path would be reported back as a device and a few hundred kilobytes that
+the report itself had just brought into existence. An existing store is opened exactly as every other command
+opens it. Run `uv run pctx init` to create one deliberately.
 
 Counts are not personal values, but how much you record about whom is itself revealing — inspect the output
 before sharing it.

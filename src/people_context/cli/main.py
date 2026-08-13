@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import EncryptedDatabaseError
@@ -32,7 +33,7 @@ from people_context.cli.portability import (
     cmd_sync_push,
 )
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
-from people_context.config import MissingDatabaseKeyError
+from people_context.config import MissingDatabaseKeyError, resolve_db_path
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
 
@@ -71,6 +72,28 @@ _COMMANDS: dict[str, CommandHandler] = {
 }
 
 
+def _absent_stats_target(db: str | Path | None) -> Path | None:
+    """Return the resolved path when `stats` would otherwise measure a store it just created.
+
+    Every other command tolerates the runtime's create-if-absent bootstrap, because opening a
+    fresh store and answering "No people found" is a true answer. `stats` cannot, because its
+    entire output *is* a measurement of the store: `open_db` creates the file, applies the
+    migrations, switches the journal mode, and registers this installation's device row, and
+    the report then counts exactly those bytes and that row. A mistyped `--db` answers with a
+    device and a few hundred kilobytes the report itself brought into existence, from a
+    command documented as writing nothing.
+
+    Only absence is refused, and only here at the process boundary. Against a store that
+    already exists the shared runtime stays as it is, because migration and device
+    registration are both no-ops there; `:memory:` has no file to find and has its own
+    explicit storage state in the report.
+    """
+    path = resolve_db_path(db)
+    if str(path) == ":memory:":
+        return None
+    return None if path.exists() else path
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse CLI arguments, dispatch one command, and return its exit code."""
     parser = build_parser()
@@ -80,6 +103,14 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_db_path(args)
     if args.command == "demo":
         return cmd_demo(args)
+    if args.command == "stats":
+        absent = _absent_stats_target(args.db)
+        if absent is not None:
+            # The path is named because a mistyped one is the case this catches, and
+            # `pctx db-path` already prints the resolved path on request. The report redacts
+            # it because the report is a document written to be shared; a refusal is not.
+            print(f"Error: no database at {absent}. Run `uv run pctx init` first.", file=sys.stderr)
+            return 1
 
     try:
         runtime = build_runtime(

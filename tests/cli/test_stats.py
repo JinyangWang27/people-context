@@ -230,6 +230,41 @@ def test_the_report_writes_nothing_to_the_store(tmp_path: Path) -> None:
     assert after == before
 
 
+def test_an_absent_database_is_refused_rather_than_created_and_measured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The mistyped `--db`: the runtime's create-if-absent bootstrap would answer with a
+    # database, a device row, and a WAL that this very command had just brought into being.
+    missing = tmp_path / "typo" / "people.db"
+
+    code = cli.main(["--db", str(missing), "stats"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert not missing.exists()
+    assert not missing.parent.exists()
+    assert captured.out == ""
+    assert "no database" in captured.err
+    assert str(missing) in captured.err
+
+
+def test_an_existing_store_is_still_reported_without_gaining_a_device_row(tmp_path: Path) -> None:
+    # The refusal is about absence only: a store that already exists must still be measured,
+    # and measuring it must not register a second installation identity.
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+    conn = open_db(db_file)
+    before = conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
+    conn.close()
+
+    assert cli.main(["--db", str(db_file), "stats"]) == 0
+
+    conn = open_db(db_file)
+    after = conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0]
+    conn.close()
+    assert after == before
+
+
 def test_repeated_runs_produce_an_identical_document_apart_from_its_timestamp(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
