@@ -298,9 +298,11 @@ correction suggestion identifies the record and declares the payload it delibera
 
 `pctx stats` is a human-operated, CLI-only report with no MCP tool behind it. Like the doctor it is a pure read
 path: it records nothing, mints no audit or changelog rows, and makes no network call. It is also the one
-command that refuses a `--db` path holding no database, because the shared bootstrap that would create one is
-itself a write, and a report that measured the store it had just created would be reporting its own footprint
-back to the operator.
+command that refuses a `--db` target it would have to write to in order to read it — an absent database, an
+unreadable one, or one whose schema predates this release. The shared bootstrap that creates a missing store or
+migrates an older one is itself a write, and a report that measured a store it had just created or upgraded
+would be reporting its own footprint back to the operator. Whether opening would write is decided over a
+read-only connection that creates and migrates nothing, so a refused target is left byte-for-byte as it was.
 
 Its privacy property is structural rather than a filter applied at the end. The read port is defined so that
 only counts, byte totals, and bucket names can cross it: no canonical name, alias value, fact value,
