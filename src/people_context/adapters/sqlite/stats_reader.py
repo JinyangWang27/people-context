@@ -22,6 +22,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+from people_context.domain.shared import is_generated_id
 from people_context.ports.audit_log import KNOWN_AUDIT_OPERATIONS
 from people_context.ports.stats import (
     CUSTOM_RELATIONSHIP_CATEGORY,
@@ -32,6 +33,7 @@ from people_context.ports.stats import (
     STORAGE_MEMORY,
     STORAGE_UNAVAILABLE,
     UNCATEGORIZED_RELATIONSHIP,
+    UNRECOGNIZED_DEVICE_PREFIX,
     StorageFootprint,
     StoreInventory,
 )
@@ -68,9 +70,9 @@ GROUP BY rt.category
 
 _AUDIT_OPERATIONS_SQL = "SELECT op AS bucket, COUNT(*) AS total FROM audit_log GROUP BY op"
 
-# Grouped by the device's opaque id. The `devices` table is deliberately not joined: its
+# Grouped by the device's id. The `devices` table is deliberately not joined: its
 # `display_name` is a hostname, which is the one piece of identifying text in the sync
-# tables.
+# tables. The id itself is pseudonymized below unless it is shaped like a generated one.
 _CHANGELOG_DEVICES_SQL = "SELECT device_id AS bucket, COUNT(*) AS total FROM changelog GROUP BY device_id"
 
 
@@ -106,7 +108,7 @@ class SqliteStatsReader:
                     _RELATIONSHIP_CATEGORIES_SQL, bucket=_relationship_category
                 ),
                 audit_operations=self._buckets(_AUDIT_OPERATIONS_SQL, bucket=_audit_operation),
-                changelog_devices=self._buckets(_CHANGELOG_DEVICES_SQL),
+                changelog_devices=_pseudonymize_devices(self._buckets(_CHANGELOG_DEVICES_SQL)),
                 storage=self._storage(),
             )
 
@@ -144,10 +146,18 @@ class SqliteStatsReader:
         return dict(folded)
 
     def _storage(self) -> StorageFootprint:
-        """Measure the main database file plus any WAL companions beside it."""
+        """Measure the main database file plus any WAL companions beside it.
+
+        The path is resolved first. SQLite derives the `-wal` and `-shm` names from the file it
+        actually opened, so when `--db` names a symlink the companions are created beside the
+        *target*. Probing beside the link would find nothing and quietly report zero for both,
+        which is worse than an error: `stat()` follows the link, so the main file still
+        measures and the total looks entirely plausible while omitting a live WAL that can be
+        larger than the database.
+        """
         if str(self._path) == ":memory:":
             return StorageFootprint(STORAGE_MEMORY)
-        main = Path(self._path).expanduser()
+        main = Path(self._path).expanduser().resolve()
         try:
             main_bytes = main.stat().st_size
         except OSError:
@@ -180,6 +190,21 @@ def _audit_operation(operation: str | None) -> str:
         # `operation` is a member of the known set, so it is not None.
         return str(operation)
     return OTHER_AUDIT_OPERATION
+
+
+def _pseudonymize_devices(counts: dict[str, int]) -> dict[str, int]:
+    """Keep one bucket per device, naming only the ids that are opaque by construction.
+
+    Unlike the other folds this one is one-to-one: collapsing every unrecognized device into a
+    single bucket would answer "how many entries came from elsewhere" when the distribution
+    exists to answer "how many devices, and how much from each". Pseudonyms are numbered in
+    sorted id order so the same store reports the same names on every run.
+    """
+    pseudonyms = {
+        device_id: f"{UNRECOGNIZED_DEVICE_PREFIX}{position}"
+        for position, device_id in enumerate(sorted(key for key in counts if not is_generated_id(key)), start=1)
+    }
+    return {pseudonyms.get(device_id, device_id): total for device_id, total in counts.items()}
 
 
 def _optional_size(path: Path) -> int:

@@ -307,11 +307,18 @@ hostname — the one piece of identifying text in the sync tables.
 
 That guarantee has to cover the grouping keys themselves, and not every key is vocabulary this project chooses.
 Alias kinds and sensitivity levels are closed enumerations on every write path, including bundle restore, so
-they are safe as written. Two are not: a relationship category is free text the operator typed at
-`relationship-types add --category`, and a restored audit operation is whatever the origin installation wrote.
-Both are folded into non-identifying sentinels — `custom` and `other` — before they cross the port, so those
-relationships and audit rows are still counted but the authored wording is never reported. Device ids stay
-verbatim by design: an opaque primary key is what makes per-device counts meaningful, and it names nobody.
+they are safe as written. Three are not. A relationship category is free text the operator typed at
+`relationship-types add --category`, and a restored audit operation is whatever the origin installation wrote;
+both are folded into non-identifying sentinels — `custom` and `other` — before they cross the port, so those
+rows are still counted but the authored wording is never reported.
+
+Device ids are the third, and they are handled differently because collapsing them would destroy the
+distribution rather than protect it: per-device counts exist precisely to tell devices apart. An id this
+installation generated is opaque by construction and names nobody, so it is reported as itself. `sync pull`
+accepts any non-blank device id, though, so a bundle can carry a hostname or a personal label where an opaque
+key belongs — those keep a bucket of their own under a positional pseudonym instead. Tightening bundle
+validation would be the other route, but it would reject bundles that restore today and would bind future id
+formats, so the report pseudonymizes at its own boundary rather than narrowing an established contract.
 
 The report is also a single consistent snapshot, not a series of independent reads. Every count is taken inside
 one transaction, so a writer committing mid-report — the MCP server running beside the CLI is a supported

@@ -103,9 +103,10 @@ project:
   The stats document's aggregate-only guarantee is part of its contract: a later release may add sections,
   documented tables, and distribution buckets, but no addition turns a count into a stored personal value.
   Distribution `key` values are schema vocabulary — an alias kind, a sensitivity level, a seeded relationship
-  category, a known audit operation — a documented sentinel such as `uncategorized`, `custom`, or `other`, or an
-  opaque device id. Operator-authored and restored strings are folded into those sentinels rather than reported
-  verbatim, and a reader should tolerate a key it does not recognize. A `storage_kind` other than `file` always
+  category, a known audit operation — a documented sentinel such as `uncategorized`, `custom`, `other`, or
+  `unrecognized-device-N`, or a device id this installation generated. Operator-authored and restored strings
+  are folded or pseudonymized rather than reported verbatim, and a reader should tolerate a key it does not
+  recognize. A `storage_kind` other than `file` always
   carries `null` byte counts rather than zeros, so a reader must not treat a missing measurement as an empty
   database.
 

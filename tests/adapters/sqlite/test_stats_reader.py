@@ -33,7 +33,7 @@ from people_context.app.relationships import (
     SetRelationshipInput,
 )
 from people_context.domain.person import Alias, AliasKind, Person
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Sensitivity, is_generated_id
 from people_context.ports.audit_log import KNOWN_AUDIT_OPERATIONS
 from people_context.ports.clock import SystemClock
 from people_context.ports.stats import (
@@ -45,6 +45,7 @@ from people_context.ports.stats import (
     STORAGE_MEMORY,
     STORAGE_UNAVAILABLE,
     UNCATEGORIZED_RELATIONSHIP,
+    UNRECOGNIZED_DEVICE_PREFIX,
     StatsReader,
 )
 
@@ -363,6 +364,66 @@ def test_changelog_entries_are_keyed_by_opaque_device_id_never_a_display_name() 
         fixture.close()
 
 
+def test_a_device_id_that_is_not_opaque_is_counted_under_a_pseudonym() -> None:
+    """Restore accepts any non-blank device id, so a bundle can carry a label where a key belongs."""
+    fixture = _Fixture()
+    try:
+        ada = fixture.person("Ada")
+        fixture.fact(ada, "city", "London", Sensitivity.PERSONAL)
+        # Exactly what `sync pull` would persist from a bundle whose origin wrote a hostname.
+        fixture.conn.execute(
+            "INSERT INTO devices (id, display_name, public_key, created_at, retired_at,"
+            " hlc_physical_ms, hlc_logical) VALUES (?, NULL, NULL, ?, ?, 0, 0)",
+            ("adas-macbook", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+        )
+        fixture.conn.execute(
+            "INSERT INTO changelog (op_id, device_id, hlc_physical_ms, hlc_logical, transaction_id,"
+            " entity_type, entity_id, op_kind, payload_json, changed_fields_json, actor_json,"
+            " schema_version, inserted_at)"
+            " VALUES ('op-1', 'adas-macbook', 1, 0, 't-1', 'person', ?, 'create', '{}', '[]', '{}', 1, ?)",
+            (ada.id, "2026-01-01T00:00:00+00:00"),
+        )
+
+        devices = fixture.reader.read_inventory().changelog_devices
+
+        assert "adas-macbook" not in devices
+        assert devices[f"{UNRECOGNIZED_DEVICE_PREFIX}1"] == 1
+        # The local device keeps its own bucket: a generated id is opaque and names nobody.
+        assert any(is_generated_id(key) for key in devices)
+    finally:
+        fixture.close()
+
+
+def test_each_unrecognized_device_keeps_its_own_bucket_and_stable_pseudonym() -> None:
+    """Collapsing them would answer a different question than the distribution exists to answer."""
+    fixture = _Fixture()
+    try:
+        for index, device_id in enumerate(("zeta-workstation", "alpha-laptop"), start=1):
+            fixture.conn.execute(
+                "INSERT INTO devices (id, display_name, public_key, created_at, retired_at,"
+                " hlc_physical_ms, hlc_logical) VALUES (?, NULL, NULL, ?, ?, 0, 0)",
+                (device_id, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+            )
+            for entry in range(index):
+                fixture.conn.execute(
+                    "INSERT INTO changelog (op_id, device_id, hlc_physical_ms, hlc_logical,"
+                    " transaction_id, entity_type, entity_id, op_kind, payload_json,"
+                    " changed_fields_json, actor_json, schema_version, inserted_at)"
+                    " VALUES (?, ?, 1, 0, 't', 'person', 'p', 'create', '{}', '[]', '{}', 1, ?)",
+                    (f"op-{device_id}-{entry}", device_id, "2026-01-01T00:00:00+00:00"),
+                )
+
+        devices = fixture.reader.read_inventory().changelog_devices
+
+        # Numbered in sorted id order, not insertion order, so the same store reports the same
+        # names every run: alpha-laptop is pseudonym 1 and wrote 2 entries.
+        assert devices[f"{UNRECOGNIZED_DEVICE_PREFIX}1"] == 2  # alpha-laptop
+        assert devices[f"{UNRECOGNIZED_DEVICE_PREFIX}2"] == 1  # zeta-workstation
+        assert devices == fixture.reader.read_inventory().changelog_devices
+    finally:
+        fixture.close()
+
+
 def test_the_inventory_carries_no_stored_record_text() -> None:
     fixture = _Fixture()
     try:
@@ -401,6 +462,35 @@ def test_storage_sums_the_main_file_and_its_wal_companions(tmp_path: Path) -> No
         }
         assert storage.wal_bytes == measured["-wal"]
         assert storage.shm_bytes == measured["-shm"]
+    finally:
+        fixture.close()
+
+
+def test_a_symlinked_database_measures_the_companions_beside_the_target(tmp_path: Path) -> None:
+    """SQLite creates `-wal`/`-shm` beside the file it opened, not beside the symlink."""
+    target_dir = tmp_path / "target"
+    link_dir = tmp_path / "link"
+    target_dir.mkdir()
+    link_dir.mkdir()
+    real = target_dir / "people.db"
+    open_db(real).close()
+    link = link_dir / "people.db"
+    link.symlink_to(real)
+
+    fixture = _Fixture(link)
+    try:
+        for index in range(300):
+            fixture.person(f"Person {index}")
+
+        storage = fixture.reader.read_inventory().storage
+
+        wal = target_dir / "people.db-wal"
+        assert wal.exists() and wal.stat().st_size > 0
+        assert not (link_dir / "people.db-wal").exists()
+        # Probing beside the link would report zero here and still produce a plausible total.
+        assert storage.wal_bytes == wal.stat().st_size
+        assert storage.shm_bytes == (target_dir / "people.db-shm").stat().st_size
+        assert storage.database_bytes == storage.main_bytes + storage.wal_bytes + storage.shm_bytes
     finally:
         fixture.close()
 
