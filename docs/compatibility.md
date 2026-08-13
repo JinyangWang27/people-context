@@ -102,10 +102,12 @@ project:
 
   The stats document's aggregate-only guarantee is part of its contract: a later release may add sections,
   documented tables, and distribution buckets, but no addition turns a count into a stored personal value.
-  Distribution `key` values are schema vocabulary — an alias kind, a sensitivity level, a relationship category,
-  an audit operation, or an opaque device id — and a reader should tolerate a key it does not recognize. A
-  `storage_kind` other than `file` always carries `null` byte counts rather than zeros, so a reader must not
-  treat a missing measurement as an empty database.
+  Distribution `key` values are schema vocabulary — an alias kind, a sensitivity level, a seeded relationship
+  category, a known audit operation — a documented sentinel such as `uncategorized`, `custom`, or `other`, or an
+  opaque device id. Operator-authored and restored strings are folded into those sentinels rather than reported
+  verbatim, and a reader should tolerate a key it does not recognize. A `storage_kind` other than `file` always
+  carries `null` byte counts rather than zeros, so a reader must not treat a missing measurement as an empty
+  database.
 
   The brief's disclosure labelling is part of its contract, not decoration: `disclosure.guidance` stays
   `ordinary` in every mode, and `disclosure.context` is `sensitive` only when the operator passed

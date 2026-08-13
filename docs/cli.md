@@ -236,9 +236,18 @@ uv run pctx stats --json > inventory.json
 ```
 
 Reports how much is in this database without reporting what is in it. Every figure is a count, a byte total, or
-a bucket name the schema itself defines — an alias kind, a sensitivity level, a relationship category, an audit
-operation, or an opaque device id. No canonical name, fact value, observation, interaction summary, or device
-display name crosses the read port, so there is nothing in the report to redact after the fact.
+a bucket name that is either schema vocabulary — an alias kind, a sensitivity level, a seeded relationship
+category, a known audit operation — or a documented sentinel. No canonical name, fact value, observation,
+interaction summary, or device display name crosses the read port, so there is nothing in the report to redact
+after the fact.
+
+Two bucket kinds are not vocabulary this project chooses, and both are folded before they are reported. A
+relationship category you invented with `relationship-types add --category` is free text, so its relationships
+are counted under `custom` rather than under the words you typed. An audit operation restored from a bundle
+comes from whichever installation wrote it, so anything outside this release's known operations is counted under
+`other`. Both preserve the distribution's total; neither names what the operator or the origin wrote. Device ids
+are the exception that stays verbatim, because an opaque primary key is what makes per-device counts meaningful
+and it names nobody.
 
 The sections are people by lifecycle state, row counts for every documented table, the alias-kind,
 fact-sensitivity, observation-sensitivity, relationship-category, audit-operation and per-device changelog
@@ -247,8 +256,12 @@ self because a soft-deleted person still occupies a `persons` row, so a single t
 many people the store knows about. Every documented table is listed even when it holds nothing: a table missing
 from the list would be indistinguishable from a table with no rows. Distributions are ordered largest bucket
 first and then by key, so the same data always renders in the same order, and an empty one says `(none)` rather
-than vanishing. A relationship whose stored type has no vocabulary row is counted under `uncategorized` — the
-drift `pctx normalize-relationships` exists to resolve — rather than being dropped from the total.
+than vanishing. A relationship whose stored type has no vocabulary row at all is counted under `uncategorized` —
+the drift `pctx normalize-relationships` exists to resolve — which stays distinct from `custom`, where the type
+has a category that simply is not one this release seeds.
+
+Every count comes from one committed snapshot, read in a single transaction, so the figures cannot contradict
+each other even when the MCP server is writing to the same database while the report runs.
 
 Storage is the main database file plus its `-wal` and `-shm` companions, reported both as components and as
 their sum. WAL mode keeps recently written pages outside the main file, so the main file alone can understate

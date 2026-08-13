@@ -300,10 +300,22 @@ correction suggestion identifies the record and declares the payload it delibera
 path: it records nothing, mints no audit or changelog rows, and makes no network call.
 
 Its privacy property is structural rather than a filter applied at the end. The read port is defined so that
-only counts, byte totals, and closed-vocabulary bucket names can cross it: no canonical name, alias value, fact
-value, observation, interaction summary, or device display name is ever selected. Changelog entries are grouped
-by the device's opaque id and the `devices` table is deliberately not joined, because its `display_name` is a
-machine hostname — the one piece of identifying text in the sync tables.
+only counts, byte totals, and bucket names can cross it: no canonical name, alias value, fact value,
+observation, interaction summary, or device display name is ever selected. Changelog entries are grouped by the
+device's opaque id and the `devices` table is deliberately not joined, because its `display_name` is a machine
+hostname — the one piece of identifying text in the sync tables.
+
+That guarantee has to cover the grouping keys themselves, and not every key is vocabulary this project chooses.
+Alias kinds and sensitivity levels are closed enumerations on every write path, including bundle restore, so
+they are safe as written. Two are not: a relationship category is free text the operator typed at
+`relationship-types add --category`, and a restored audit operation is whatever the origin installation wrote.
+Both are folded into non-identifying sentinels — `custom` and `other` — before they cross the port, so those
+relationships and audit rows are still counted but the authored wording is never reported. Device ids stay
+verbatim by design: an opaque primary key is what makes per-device counts meaningful, and it names nobody.
+
+The report is also a single consistent snapshot, not a series of independent reads. Every count is taken inside
+one transaction, so a writer committing mid-report — the MCP server running beside the CLI is a supported
+arrangement — cannot produce figures that contradict each other.
 
 The resolved database path is not an aggregate. It usually carries the operator's account name and it says where
 the file lives, so the application redacts it and includes it only when the operator passes `--include-path`.

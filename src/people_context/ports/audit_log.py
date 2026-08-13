@@ -16,13 +16,20 @@ from pydantic import BaseModel, Field
 
 from people_context.domain.shared import new_id
 
+#: Operations this release's write use cases record. `op` stays a plain `str` because a
+#: restored bundle carries whatever its origin wrote, including an operation a later release
+#: introduced; this set is what a reader can rely on recognizing, not a validation rule.
+KNOWN_AUDIT_OPERATIONS: frozenset[str] = frozenset(
+    {"correct", "create", "delete", "forget", "merge", "update"}
+)
+
 
 class AuditEntry(BaseModel):
     """A single append-only audit record."""
 
     id: str = Field(default_factory=new_id)
     ts: datetime
-    op: str  # "create" | "update" | "merge" | "forget" | ...
+    op: str  # one of KNOWN_AUDIT_OPERATIONS when written here; free-form when restored
     entity_type: str  # "person" | "fact" | ...
     entity_id: str
     payload: dict[str, Any] = Field(default_factory=dict)

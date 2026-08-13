@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from people_context.adapters.sqlite import (
     SqliteRelationshipStore,
     SqliteRelationshipVocabularyStore,
     SqliteStatsReader,
+    SqliteUnitOfWork,
     open_db,
 )
 from people_context.adapters.sqlite.stats_reader import _COMPANION_SUFFIXES
@@ -24,12 +26,21 @@ from people_context.app.records import (
     RecordObservation,
     RecordObservationInput,
 )
-from people_context.app.relationships import SetRelationship, SetRelationshipInput
+from people_context.app.relationships import (
+    AddRelationshipType,
+    AddRelationshipTypeInput,
+    SetRelationship,
+    SetRelationshipInput,
+)
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import Sensitivity
+from people_context.ports.audit_log import KNOWN_AUDIT_OPERATIONS
 from people_context.ports.clock import SystemClock
 from people_context.ports.stats import (
+    CUSTOM_RELATIONSHIP_CATEGORY,
     DOCUMENTED_TABLES,
+    OTHER_AUDIT_OPERATION,
+    SEEDED_RELATIONSHIP_CATEGORIES,
     STORAGE_FILE,
     STORAGE_MEMORY,
     STORAGE_UNAVAILABLE,
@@ -187,6 +198,118 @@ def test_a_relationship_whose_type_has_no_vocabulary_row_is_grouped_not_dropped(
         fixture.close()
 
 
+def test_an_operator_authored_category_is_counted_but_never_named() -> None:
+    """`relationship-types add --category` takes free text, which must not become a bucket key."""
+    fixture = _Fixture()
+    try:
+        me = fixture.person("Me", is_self=True)
+        AddRelationshipType(
+            SqliteRelationshipVocabularyStore(fixture.conn),
+            SqliteRelationshipVocabularyStore(fixture.conn),
+            fixture.audit,
+            fixture.clock,
+        ).execute(
+            AddRelationshipTypeInput(
+                type="confided_in",
+                category="Ada's private support network",
+                symmetric=True,
+            )
+        )
+        fixture.relationship(me, fixture.person("Ada"), "confided_in")
+        fixture.relationship(me, fixture.person("Grace"), "friend of")
+
+        inventory = fixture.reader.read_inventory()
+
+        assert inventory.relationship_categories == {"social": 1, CUSTOM_RELATIONSHIP_CATEGORY: 1}
+        assert not any("ada" in key.casefold() for key in inventory.relationship_categories)
+        assert sum(inventory.relationship_categories.values()) == inventory.table_rows["relationships"]
+    finally:
+        fixture.close()
+
+
+def test_custom_categories_collapse_into_one_bucket_without_losing_the_total() -> None:
+    fixture = _Fixture()
+    try:
+        me = fixture.person("Me", is_self=True)
+        vocabulary = SqliteRelationshipVocabularyStore(fixture.conn)
+        adder = AddRelationshipType(vocabulary, vocabulary, fixture.audit, fixture.clock)
+        for index, category in enumerate(("first private label", "second private label")):
+            adder.execute(AddRelationshipTypeInput(type=f"custom_{index}", category=category, symmetric=True))
+            fixture.relationship(me, fixture.person(f"Person {index}"), f"custom_{index}")
+
+        inventory = fixture.reader.read_inventory()
+
+        assert inventory.relationship_categories == {CUSTOM_RELATIONSHIP_CATEGORY: 2}
+    finally:
+        fixture.close()
+
+
+def test_a_missing_vocabulary_row_stays_distinguishable_from_a_custom_category() -> None:
+    fixture = _Fixture()
+    try:
+        me = fixture.person("Me", is_self=True)
+        vocabulary = SqliteRelationshipVocabularyStore(fixture.conn)
+        AddRelationshipType(vocabulary, vocabulary, fixture.audit, fixture.clock).execute(
+            AddRelationshipTypeInput(type="confided_in", category="a private label", symmetric=True)
+        )
+        fixture.relationship(me, fixture.person("Ada"), "confided_in")
+        fixture.relationship(me, fixture.person("Grace"), "friend of")
+        # Drift a second relationship's type out of the vocabulary entirely.
+        fixture.conn.execute(
+            "UPDATE relationships SET type = 'invented_type' WHERE type = 'friend_of'",
+        )
+
+        inventory = fixture.reader.read_inventory()
+
+        assert inventory.relationship_categories == {
+            CUSTOM_RELATIONSHIP_CATEGORY: 1,
+            UNCATEGORIZED_RELATIONSHIP: 1,
+        }
+    finally:
+        fixture.close()
+
+
+def test_an_unrecognized_audit_operation_is_counted_without_being_named() -> None:
+    """Restore carries an origin's audit rows verbatim, so `op` is not this release's to trust."""
+    fixture = _Fixture()
+    try:
+        ada = fixture.person("Ada")
+        fixture.fact(ada, "city", "London", Sensitivity.PERSONAL)
+        fixture.conn.execute(
+            "INSERT INTO audit_log (id, ts, op, entity_type, entity_id, payload_json, source)"
+            " VALUES ('audit-1', '2026-01-01T00:00:00+00:00', ?, 'person', ?, '{}', 'restore')",
+            ("blackmailed Ada about her diagnosis", ada.id),
+        )
+
+        inventory = fixture.reader.read_inventory()
+
+        assert inventory.audit_operations[OTHER_AUDIT_OPERATION] == 1
+        assert not any("ada" in key.casefold() for key in inventory.audit_operations)
+        assert sum(inventory.audit_operations.values()) == inventory.table_rows["audit_log"]
+    finally:
+        fixture.close()
+
+
+def test_the_operations_this_release_writes_are_all_recognized() -> None:
+    """A new op that nobody adds to the known set would silently fold into `other`."""
+    fixture = _Fixture()
+    try:
+        me = fixture.person("Me", is_self=True)
+        ada = fixture.person("Ada")
+        fixture.fact(ada, "city", "London", Sensitivity.PERSONAL)
+        fixture.observation(ada, "prefers email", Sensitivity.PERSONAL)
+        fixture.relationship(me, ada, "friend of")
+        fixture.interaction("lunch", [me, ada])
+
+        operations = fixture.reader.read_inventory().audit_operations
+
+        assert operations
+        assert OTHER_AUDIT_OPERATION not in operations
+        assert set(operations) <= KNOWN_AUDIT_OPERATIONS
+    finally:
+        fixture.close()
+
+
 def test_relationship_categories_come_from_the_vocabulary() -> None:
     fixture = _Fixture()
     try:
@@ -197,6 +320,8 @@ def test_relationship_categories_come_from_the_vocabulary() -> None:
         inventory = fixture.reader.read_inventory()
 
         assert inventory.relationship_categories == {"social": 1, "professional": 1}
+        # A seeded category is named as itself, so the sentinel is reserved for authored ones.
+        assert {"social", "professional"} <= SEEDED_RELATIONSHIP_CATEGORIES
     finally:
         fixture.close()
 
@@ -358,6 +483,61 @@ def test_repeated_reads_over_unchanged_data_are_identical() -> None:
         fixture.fact(me, "city", "London", Sensitivity.PERSONAL)
 
         assert fixture.reader.read_inventory() == fixture.reader.read_inventory()
+    finally:
+        fixture.close()
+
+
+def test_every_count_describes_the_same_snapshot_despite_a_concurrent_writer(tmp_path: Path) -> None:
+    """Read in autocommit these counts tear: a commit between two of them contradicts the report."""
+    db_file = tmp_path / "people.db"
+    fixture = _Fixture(db_file)
+    for index in range(50):
+        fixture.person(f"Person {index}")
+
+    stop = threading.Event()
+    failures: list[BaseException] = []
+
+    def churn() -> None:
+        # A separate connection, because the MCP server writing beside this CLI is supported.
+        writer = open_db(db_file)
+        try:
+            repo = SqlitePeopleRepository(writer)
+            index = 1000
+            while not stop.is_set():
+                repo.save_person(Person(canonical_name=f"Concurrent {index}"))
+                index += 1
+        except BaseException as exc:  # noqa: BLE001 - surfaced to the test thread below
+            failures.append(exc)
+        finally:
+            writer.close()
+
+    thread = threading.Thread(target=churn)
+    thread.start()
+    try:
+        for _ in range(200):
+            inventory = fixture.reader.read_inventory()
+            assert (
+                inventory.active_people + inventory.soft_deleted_people
+                == inventory.table_rows["persons"]
+            )
+            assert sum(inventory.alias_kinds.values()) == inventory.table_rows["aliases"]
+    finally:
+        stop.set()
+        thread.join()
+        fixture.close()
+    assert not failures
+
+
+def test_reading_joins_an_outer_transaction_instead_of_fighting_it() -> None:
+    fixture = _Fixture()
+    try:
+        fixture.person("Ada")
+        with SqliteUnitOfWork(fixture.conn):
+            inventory = fixture.reader.read_inventory()
+            # The caller's transaction is still the live one; the reader did not commit it.
+            assert fixture.conn.in_transaction
+
+        assert inventory.active_people == 1
     finally:
         fixture.close()
 
