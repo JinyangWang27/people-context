@@ -18,7 +18,7 @@ from people_context.adapters.sqlite import (
 )
 from people_context.adapters.sqlite.db import latest_schema_version
 from people_context.app.records import RecordFact, RecordFactInput
-from people_context.config import EXPORT_ENV, SENSITIVE_CONTEXT_ENV
+from people_context.config import DB_KEY_ENV, EXPORT_ENV, SENSITIVE_CONTEXT_ENV
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import Sensitivity, normalize_name
 from people_context.ports.clock import SystemClock
@@ -354,3 +354,34 @@ def test_an_up_to_date_database_is_measured_normally(
 
     assert code == 0
     assert "People:   2 active" in capsys.readouterr().out
+
+
+def test_encrypted_stats_without_a_key_refuses_before_touching_the_database(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guard needs the key to inspect an encrypted store, and refuses rather than guess."""
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+    monkeypatch.delenv(DB_KEY_ENV, raising=False)
+
+    code = cli.main(["--db", str(db_file), "--encrypted", "stats"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert DB_KEY_ENV in captured.err
+    # The refusal explains itself with the variable name only, never key material.
+    assert "plaintext is never used as a fallback" in captured.err
+
+
+def test_encrypted_stats_with_a_blank_key_is_refused_too(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+    monkeypatch.setenv(DB_KEY_ENV, "   ")
+
+    code = cli.main(["--db", str(db_file), "--encrypted", "stats"])
+
+    assert code == 2
+    assert capsys.readouterr().out == ""
