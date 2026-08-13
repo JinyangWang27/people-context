@@ -2,13 +2,40 @@
 
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import sqlite3
 from importlib import resources
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from people_context.adapters.sqlite import open_db
-from people_context.adapters.sqlite.db import latest_schema_version, stored_schema_version
+from people_context.adapters.sqlite.db import (
+    SQLCIPHER_MODULE,
+    latest_schema_version,
+    open_encrypted_db,
+    stored_schema_version,
+)
 from people_context.domain.shared import normalize_name
+
+KEY = "correct horse battery staple"
+#: A fragment of the key that must never open the database or reach a message.
+KEY_SENTINEL = "battery staple"
+
+requires_sqlcipher = pytest.mark.skipif(
+    importlib.util.find_spec("sqlcipher3") is None,
+    reason="the optional `encrypted` extra is not installed on this platform",
+)
+
+
+def _keyed_connection(path: Path) -> Any:
+    """Open an encrypted database directly, without the migrating opener."""
+    dbapi = importlib.import_module(SQLCIPHER_MODULE)
+    conn = dbapi.connect(str(path))
+    conn.execute(f"PRAGMA key = '{KEY}'")
+    return conn
 
 _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
@@ -91,3 +118,47 @@ def test_the_shipped_version_matches_the_highest_migration_file() -> None:
     ]
 
     assert latest_schema_version() == max(numbers)
+
+
+@requires_sqlcipher
+def test_an_encrypted_database_answers_with_its_key(tmp_path: Path) -> None:
+    """The guard must cover `--encrypted` too, or it is a hole for exactly those stores."""
+    db_file = tmp_path / "people.db"
+    open_encrypted_db(db_file, KEY).close()
+
+    assert stored_schema_version(db_file, KEY) == latest_schema_version()
+
+
+@requires_sqlcipher
+def test_an_encrypted_database_is_unanswerable_with_the_wrong_key(tmp_path: Path) -> None:
+    db_file = tmp_path / "people.db"
+    open_encrypted_db(db_file, KEY).close()
+
+    assert stored_schema_version(db_file, "not the key") is None
+
+
+@requires_sqlcipher
+def test_a_legacy_encrypted_database_reports_its_older_version(tmp_path: Path) -> None:
+    db_file = tmp_path / "people.db"
+    open_encrypted_db(db_file, KEY).close()
+    conn = _keyed_connection(db_file)
+    try:
+        conn.execute(f"PRAGMA user_version = {latest_schema_version() - 1}")
+        conn.commit()
+    finally:
+        conn.close()
+
+    stored = stored_schema_version(db_file, KEY)
+
+    assert stored == latest_schema_version() - 1
+    assert stored is not None and stored < latest_schema_version()
+
+
+@requires_sqlcipher
+def test_probing_an_encrypted_database_leaves_the_key_out_of_every_message(tmp_path: Path) -> None:
+    """A wrong key returns the same `None` as any other unreadable file, carrying no detail."""
+    db_file = tmp_path / "people.db"
+    open_encrypted_db(db_file, KEY).close()
+
+    assert stored_schema_version(db_file, KEY_SENTINEL) is None
+    assert stored_schema_version(tmp_path / "absent.db", KEY) is None
