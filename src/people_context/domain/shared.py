@@ -61,22 +61,6 @@ def new_id() -> str:
     return str(ULID())
 
 
-def is_generated_id(value: str) -> bool:
-    """Return whether `value` has the opaque shape :func:`new_id` produces.
-
-    Identifiers reaching this store are not all minted here: a restored bundle carries the
-    ids its origin wrote, and those are only as constrained as that origin was. This answers
-    "could this string have come from `new_id`", which is what a caller needs before treating
-    an id as opaque rather than as text someone chose. It lives beside the generator so the
-    two definitions of the format cannot drift apart.
-    """
-    try:
-        ULID.from_str(value)
-    except (ValueError, TypeError):
-        return False
-    return True
-
-
 def utc_now() -> datetime:
     """Return the current time as a timezone-aware UTC datetime."""
     return datetime.now(UTC)

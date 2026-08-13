@@ -13,10 +13,11 @@ bundle. Both are folded into the sentinels below before they cross, so a bucket 
 either schema vocabulary or a sentinel — never authored text.
 
 Device ids are the third such key and the one that cannot simply be collapsed, because telling
-devices apart is the whole point of counting per device. A locally minted id is opaque and
-names nobody, so it crosses as itself; one that is not shaped like a generated id — which
-restore permits, since a bundle carries whatever its origin wrote — keeps a bucket of its own
-under a positional pseudonym instead.
+devices apart is the whole point of counting per device. Only this installation's own device
+id is known to be opaque — it was minted here — so that one crosses as itself and every
+imported device gets a positional pseudonym. The test is provenance, not shape: a bundle can
+carry any non-blank string, and a syntactically valid identifier can still spell something
+its author chose.
 """
 
 from __future__ import annotations
@@ -71,12 +72,13 @@ SEEDED_RELATIONSHIP_CATEGORIES: frozenset[str] = frozenset(
 #: an unrecognized operation is counted rather than named.
 OTHER_AUDIT_OPERATION = "other"
 
-#: Prefix for a device whose id is not shaped like one this project generates. Restore accepts
-#: any non-blank device id, so a bundle can carry a hostname or a personal label where an
-#: opaque key belongs. Such a device keeps its own bucket — per-device counts are the point of
-#: the distribution — but under a positional pseudonym rather than the string someone chose.
-#: Pseudonyms are assigned in sorted id order, so the same store always numbers them the same.
-UNRECOGNIZED_DEVICE_PREFIX = "unrecognized-device-"
+#: Prefix for a device this installation did not mint. Restore accepts any non-blank device id
+#: and writes every imported device retired, so the retirement flag — not the id's shape — is
+#: what says where an id came from. A syntactically valid identifier can still be a string
+#: someone chose, so provenance is the only sound test. An imported device keeps its own
+#: bucket, since per-device counts are the point of the distribution, but under a positional
+#: pseudonym assigned in sorted id order so the same store always numbers them the same.
+IMPORTED_DEVICE_PREFIX = "imported-device-"
 
 #: `storage_kind` values. `file` means the byte totals were measured; the other two are
 #: explicit "there is nothing to measure" states so a reader never mistakes an unmeasurable

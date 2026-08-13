@@ -313,10 +313,15 @@ both are folded into non-identifying sentinels — `custom` and `other` — befo
 rows are still counted but the authored wording is never reported.
 
 Device ids are the third, and they are handled differently because collapsing them would destroy the
-distribution rather than protect it: per-device counts exist precisely to tell devices apart. An id this
-installation generated is opaque by construction and names nobody, so it is reported as itself. `sync pull`
-accepts any non-blank device id, though, so a bundle can carry a hostname or a personal label where an opaque
-key belongs — those keep a bucket of their own under a positional pseudonym instead. Tightening bundle
+distribution rather than protect it: per-device counts exist precisely to tell devices apart. Only this
+installation's own device id is reported as itself, because it is the only one known to be opaque — the local
+device row is minted here. `sync pull` accepts any non-blank device id, so every imported device is
+pseudonymized instead, keeping its own bucket under a positional name.
+
+The test is provenance rather than shape, and that distinction matters: a bundle can carry a syntactically
+valid identifier that still spells something its author chose, so recognizing the id format would prove
+nothing. Restore forces `retired_at` on every imported device and never retires or overwrites the destination's
+own row, so the retirement flag is a sound signal for "this installation minted it". Tightening bundle
 validation would be the other route, but it would reject bundles that restore today and would bind future id
 formats, so the report pseudonymizes at its own boundary rather than narrowing an established contract.
 

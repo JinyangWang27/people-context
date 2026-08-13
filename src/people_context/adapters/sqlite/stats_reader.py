@@ -22,18 +22,17 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
-from people_context.domain.shared import is_generated_id
 from people_context.ports.audit_log import KNOWN_AUDIT_OPERATIONS
 from people_context.ports.stats import (
     CUSTOM_RELATIONSHIP_CATEGORY,
     DOCUMENTED_TABLES,
+    IMPORTED_DEVICE_PREFIX,
     OTHER_AUDIT_OPERATION,
     SEEDED_RELATIONSHIP_CATEGORIES,
     STORAGE_FILE,
     STORAGE_MEMORY,
     STORAGE_UNAVAILABLE,
     UNCATEGORIZED_RELATIONSHIP,
-    UNRECOGNIZED_DEVICE_PREFIX,
     StorageFootprint,
     StoreInventory,
 )
@@ -70,10 +69,14 @@ GROUP BY rt.category
 
 _AUDIT_OPERATIONS_SQL = "SELECT op AS bucket, COUNT(*) AS total FROM audit_log GROUP BY op"
 
-# Grouped by the device's id. The `devices` table is deliberately not joined: its
-# `display_name` is a hostname, which is the one piece of identifying text in the sync
-# tables. The id itself is pseudonymized below unless it is shaped like a generated one.
+# Grouped by the device's id. The `devices` table is deliberately not joined for counting: its
+# `display_name` is a hostname, which is the one piece of identifying text in the sync tables.
 _CHANGELOG_DEVICES_SQL = "SELECT device_id AS bucket, COUNT(*) AS total FROM changelog GROUP BY device_id"
+
+# This installation's own identity. Restore writes every imported device retired and never
+# retires or overwrites the destination's own row, so a non-retired device is one minted here
+# by `_ensure_local_device` — the only provenance signal the schema actually offers.
+_LOCAL_DEVICES_SQL = "SELECT id FROM devices WHERE retired_at IS NULL"
 
 
 class SqliteStatsReader:
@@ -108,7 +111,7 @@ class SqliteStatsReader:
                     _RELATIONSHIP_CATEGORIES_SQL, bucket=_relationship_category
                 ),
                 audit_operations=self._buckets(_AUDIT_OPERATIONS_SQL, bucket=_audit_operation),
-                changelog_devices=_pseudonymize_devices(self._buckets(_CHANGELOG_DEVICES_SQL)),
+                changelog_devices=self._devices(),
                 storage=self._storage(),
             )
 
@@ -144,6 +147,25 @@ class SqliteStatsReader:
         for key, total in rows:
             folded[bucket(key)] += total
         return dict(folded)
+
+    def _devices(self) -> dict[str, int]:
+        """Count changelog entries per device, naming only this installation's own id.
+
+        Unlike the other folds this one is one-to-one: collapsing imported devices into a
+        single bucket would answer "how many entries came from elsewhere" when the
+        distribution exists to answer "how many devices, and how much from each". Only the
+        local id is known to be opaque, because this installation minted it; an imported id is
+        whatever its origin wrote, and being a well-formed identifier does not make it any
+        less something someone chose. Pseudonyms are numbered in sorted id order, so the same
+        store reports the same names on every run.
+        """
+        counts = self._buckets(_CHANGELOG_DEVICES_SQL)
+        local = {row["id"] for row in self._conn.execute(_LOCAL_DEVICES_SQL).fetchall()}
+        pseudonyms = {
+            device_id: f"{IMPORTED_DEVICE_PREFIX}{position}"
+            for position, device_id in enumerate(sorted(key for key in counts if key not in local), start=1)
+        }
+        return {pseudonyms.get(device_id, device_id): total for device_id, total in counts.items()}
 
     def _storage(self) -> StorageFootprint:
         """Measure the main database file plus any WAL companions beside it.
@@ -190,21 +212,6 @@ def _audit_operation(operation: str | None) -> str:
         # `operation` is a member of the known set, so it is not None.
         return str(operation)
     return OTHER_AUDIT_OPERATION
-
-
-def _pseudonymize_devices(counts: dict[str, int]) -> dict[str, int]:
-    """Keep one bucket per device, naming only the ids that are opaque by construction.
-
-    Unlike the other folds this one is one-to-one: collapsing every unrecognized device into a
-    single bucket would answer "how many entries came from elsewhere" when the distribution
-    exists to answer "how many devices, and how much from each". Pseudonyms are numbered in
-    sorted id order so the same store reports the same names on every run.
-    """
-    pseudonyms = {
-        device_id: f"{UNRECOGNIZED_DEVICE_PREFIX}{position}"
-        for position, device_id in enumerate(sorted(key for key in counts if not is_generated_id(key)), start=1)
-    }
-    return {pseudonyms.get(device_id, device_id): total for device_id, total in counts.items()}
 
 
 def _optional_size(path: Path) -> int:
