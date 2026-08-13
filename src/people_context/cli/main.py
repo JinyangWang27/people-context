@@ -10,8 +10,8 @@ from pathlib import Path
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
+    inspect_schema,
     latest_schema_version,
-    stored_schema_version,
 )
 from people_context.cli.insights import cmd_stale, cmd_upcoming
 from people_context.cli.maintenance import cmd_doctor, cmd_reindex, cmd_stats, cmd_sync_log, cmd_watch
@@ -97,11 +97,16 @@ def _unreadable_stats_target(args: argparse.Namespace) -> tuple[Path, str] | Non
     if not path.exists():
         return path, "no database at"
     key = resolve_db_key() if args.encrypted else None
-    stored = stored_schema_version(path, key)
+    stored = inspect_schema(path, key)
     if stored is None:
         return path, "cannot read a database at"
-    if stored < latest_schema_version():
+    if stored.version < latest_schema_version():
         return path, "a database that needs a schema upgrade at"
+    if not stored.is_people_context:
+        # An unrelated SQLite file can carry any `user_version`, including a current-looking
+        # one. Opening it would rewrite its journal mode and then fail on a table it never had,
+        # so it is refused here — someone else's database is the last thing to write to.
+        return path, "not a people-context database at"
     return None
 
 

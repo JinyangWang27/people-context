@@ -385,3 +385,49 @@ def test_encrypted_stats_with_a_blank_key_is_refused_too(
 
     assert code == 2
     assert capsys.readouterr().out == ""
+
+
+def test_an_unrelated_database_is_refused_rather_than_opened_and_rewritten(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`user_version` is any application's to set, so it cannot admit a file on its own."""
+    other = tmp_path / "other.db"
+    conn = sqlite3.connect(other)
+    try:
+        conn.execute("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT)")
+        conn.execute("INSERT INTO notes (body) VALUES ('someone elses data')")
+        conn.execute(f"PRAGMA user_version = {latest_schema_version() + 4}")
+        conn.commit()
+    finally:
+        conn.close()
+
+    code = cli.main(["--db", str(other), "stats"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert "not a people-context database" in captured.err
+    # A refusal, not a traceback: opening it rewrote the journal and then failed on `devices`.
+    assert "Traceback" not in captured.err
+    conn = sqlite3.connect(other)
+    try:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert conn.execute("SELECT body FROM notes").fetchone()[0] == "someone elses data"
+    finally:
+        conn.close()
+    assert not (tmp_path / "other.db-wal").exists()
+
+
+def test_a_database_whose_name_contains_uri_syntax_is_measured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`?` is ordinary in a POSIX filename; the guard must not read it as URI syntax."""
+    weird = tmp_path / "people?context.db"
+    _seed(weird)
+
+    code = cli.main(["--db", str(weird), "stats"])
+
+    assert code == 0
+    assert "People:   2 active" in capsys.readouterr().out
+    # The interpolated URI silently opened a sibling named `people` instead.
+    assert not (tmp_path / "people").exists()
