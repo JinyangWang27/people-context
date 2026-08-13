@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from importlib import resources
 from pathlib import Path
 
 import pytest
@@ -14,12 +16,15 @@ from people_context.adapters.sqlite import (
     SqliteRecordStore,
     open_db,
 )
+from people_context.adapters.sqlite.db import latest_schema_version
 from people_context.app.records import RecordFact, RecordFactInput
 from people_context.config import EXPORT_ENV, SENSITIVE_CONTEXT_ENV
 from people_context.domain.person import Alias, AliasKind, Person
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Sensitivity, normalize_name
 from people_context.ports.clock import SystemClock
 from people_context.ports.stats import DOCUMENTED_TABLES, STORAGE_FILE
+
+_MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
 
 def _seed(db_path: Path) -> Person:
@@ -280,3 +285,72 @@ def test_repeated_runs_produce_an_identical_document_apart_from_its_timestamp(
     # Storage bytes are the one figure a concurrent WAL checkpoint can legitimately move.
     del first["storage"], second["storage"]
     assert first == second
+
+
+def _legacy_database(path: Path, *, through: int) -> None:
+    """Write a database the way a release shipping only the first `through` migrations would."""
+    conn = sqlite3.connect(path)
+    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
+    try:
+        for name in sorted(entry.name for entry in resources.files(_MIGRATIONS).iterdir()):
+            if not name.endswith(".sql") or int(name.split("_", 1)[0]) > through:
+                continue
+            conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
+        conn.execute(f"PRAGMA user_version = {through}")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_legacy_database_is_refused_rather_than_migrated_and_measured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Existing is not the same as up to date: opening an older store applies migrations."""
+    db_file = tmp_path / "people.db"
+    _legacy_database(db_file, through=latest_schema_version() - 1)
+
+    code = cli.main(["--db", str(db_file), "stats"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert "schema upgrade" in captured.err
+    conn = sqlite3.connect(db_file)
+    try:
+        # A schema upgrade, a journal rewrite, and a device row the report would then count.
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == latest_schema_version() - 1
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        assert conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
+    finally:
+        conn.close()
+    assert not (tmp_path / "people.db-wal").exists()
+
+
+def test_a_target_that_is_not_a_database_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    not_a_database = tmp_path / "people.db"
+    not_a_database.write_text("this is not a SQLite database", encoding="utf-8")
+
+    code = cli.main(["--db", str(not_a_database), "stats"])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert "cannot read a database" in captured.err
+    # The refusal names the path but never echoes a driver error.
+    assert "sqlite3" not in captured.err.casefold()
+    assert not_a_database.read_text(encoding="utf-8") == "this is not a SQLite database"
+
+
+def test_an_up_to_date_database_is_measured_normally(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The guard refuses only what opening would change; an ordinary store is unaffected."""
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+
+    code = cli.main(["--db", str(db_file), "stats"])
+
+    assert code == 0
+    assert "People:   2 active" in capsys.readouterr().out

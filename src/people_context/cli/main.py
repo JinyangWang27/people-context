@@ -8,7 +8,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
-from people_context.adapters.sqlite.db import EncryptedDatabaseError
+from people_context.adapters.sqlite.db import (
+    EncryptedDatabaseError,
+    latest_schema_version,
+    stored_schema_version,
+)
 from people_context.cli.insights import cmd_stale, cmd_upcoming
 from people_context.cli.maintenance import cmd_doctor, cmd_reindex, cmd_stats, cmd_sync_log, cmd_watch
 from people_context.cli.onboarding import cmd_demo, cmd_init
@@ -33,7 +37,7 @@ from people_context.cli.portability import (
     cmd_sync_push,
 )
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
-from people_context.config import MissingDatabaseKeyError, resolve_db_path
+from people_context.config import MissingDatabaseKeyError, resolve_db_key, resolve_db_path
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
 
@@ -72,26 +76,33 @@ _COMMANDS: dict[str, CommandHandler] = {
 }
 
 
-def _absent_stats_target(db: str | Path | None) -> Path | None:
-    """Return the resolved path when `stats` would otherwise measure a store it just created.
+def _unreadable_stats_target(args: argparse.Namespace) -> tuple[Path, str] | None:
+    """Return the path and reason when opening for `stats` would change the database.
 
-    Every other command tolerates the runtime's create-if-absent bootstrap, because opening a
-    fresh store and answering "No people found" is a true answer. `stats` cannot, because its
-    entire output *is* a measurement of the store: `open_db` creates the file, applies the
-    migrations, switches the journal mode, and registers this installation's device row, and
-    the report then counts exactly those bytes and that row. A mistyped `--db` answers with a
-    device and a few hundred kilobytes the report itself brought into existence, from a
-    command documented as writing nothing.
+    Every other command tolerates the runtime's bootstrap, because opening a store and then
+    answering "No people found" is a true answer either way. `stats` cannot, because its entire
+    output *is* a measurement of the store, so anything the bootstrap does becomes reported
+    data. `open_db` creates the file, applies pending migrations, switches the journal mode,
+    and registers this installation's device row — against a store written by an older release
+    that is a schema upgrade, a journal rewrite, and a device the report then counts.
 
-    Only absence is refused, and only here at the process boundary. Against a store that
-    already exists the shared runtime stays as it is, because migration and device
-    registration are both no-ops there; `:memory:` has no file to find and has its own
-    explicit storage state in the report.
+    So the question asked here is not "does the file exist" but "would opening it write". It is
+    answered over a read-only connection that creates and migrates nothing, and only `stats`
+    asks it: every other command keeps the shared runtime exactly as it is. `:memory:` has no
+    file to inspect and carries its own explicit storage state in the report.
     """
-    path = resolve_db_path(db)
+    path = resolve_db_path(args.db)
     if str(path) == ":memory:":
         return None
-    return None if path.exists() else path
+    if not path.exists():
+        return path, "no database at"
+    key = resolve_db_key() if args.encrypted else None
+    stored = stored_schema_version(path, key)
+    if stored is None:
+        return path, "cannot read a database at"
+    if stored < latest_schema_version():
+        return path, "a database that needs a schema upgrade at"
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -104,12 +115,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "demo":
         return cmd_demo(args)
     if args.command == "stats":
-        absent = _absent_stats_target(args.db)
-        if absent is not None:
+        try:
+            refusal = _unreadable_stats_target(args)
+        except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
+        if refusal is not None:
+            path, reason = refusal
             # The path is named because a mistyped one is the case this catches, and
             # `pctx db-path` already prints the resolved path on request. The report redacts
             # it because the report is a document written to be shared; a refusal is not.
-            print(f"Error: no database at {absent}. Run `uv run pctx init` first.", file=sys.stderr)
+            print(
+                f"Error: {reason} {path}. Run `uv run pctx init`, or any other command once "
+                "against an existing database, before measuring it.",
+                file=sys.stderr,
+            )
             return 1
 
     try:

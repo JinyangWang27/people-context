@@ -159,6 +159,48 @@ def _discover_migrations() -> list[tuple[int, str]]:
     return migrations
 
 
+def latest_schema_version() -> int:
+    """Return the highest migration version this release ships."""
+    migrations = _discover_migrations()
+    return migrations[-1][0] if migrations else 0
+
+
+def stored_schema_version(path: str | Path, key: str | None = None) -> int | None:
+    """Return an existing database's `user_version` without creating or migrating anything.
+
+    Both openers bring a database up to date as a side effect of opening it, which is right for
+    every command that goes on to use the store. A caller that must know whether opening would
+    *change* something has no way to ask them, so this asks SQLite directly over a read-only
+    connection: no file is created, no migration runs, no journal mode is switched, and no
+    device row is registered.
+
+    Returns `None` when there is no readable database to answer for — an absent or unreadable
+    file, something that is not a SQLite database, or an encrypted one the key does not open.
+    Those are reported the same way by design: the caller learns only that it cannot proceed,
+    which is all it needs, and no driver error text reaches a message.
+    """
+    if str(path) == ":memory:":
+        return None
+    # Deliberately not `_resolve_target`: that creates parent directories, which is exactly the
+    # kind of side effect a caller reaches for this function to avoid.
+    target = Path(path).expanduser()
+    connect = sqlite3.connect
+    if key is not None:
+        connect = _load_sqlcipher().connect
+    try:
+        conn = connect(f"file:{target}?mode=ro", uri=True)
+    except Exception:  # noqa: BLE001 - absence and permission both mean "cannot answer"
+        return None
+    try:
+        if key is not None:
+            conn.execute(f"PRAGMA key = {_quote_key(key)}")
+        return int(conn.execute("PRAGMA user_version").fetchone()[0])
+    except Exception:  # noqa: BLE001 - not a database, or the key does not open it
+        return None
+    finally:
+        conn.close()
+
+
 def _run_migrations(conn: sqlite3.Connection) -> None:
     current = conn.execute("PRAGMA user_version").fetchone()[0]
     for version, sql in _discover_migrations():
