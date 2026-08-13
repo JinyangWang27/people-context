@@ -295,9 +295,13 @@ registers this installation's device row — so a mistyped path was reported bac
 kilobytes the report itself had just brought into existence, and a database written by an older release was
 silently upgraded and then measured in its upgraded state.
 
-Three targets are therefore refused: one with no database, one holding something that is not a readable
-database, and one whose schema predates this release. The check runs over a read-only connection that creates
-and migrates nothing, so a refused database is left exactly as it was — not even a parent directory is created.
+Four targets are therefore refused: one with no database, one holding something that is not a readable
+database, one whose schema predates this release, and one that is a valid SQLite database belonging to some
+other application — `user_version` is any program's to set, so a current-looking number cannot admit a file on
+its own, and opening someone else's database would rewrite its journal mode before failing on a table it never
+had. The check runs over a read-only connection that creates and migrates nothing, so a refused database is
+left exactly as it was — not even a parent directory is created, and a path containing `?` or `#` names the
+file it means rather than being read as URI syntax.
 An up-to-date store is opened exactly as every other command opens it, where migration and device registration
 really are no-ops. Run `uv run pctx init` to create a database deliberately, or run any other command once
 against an older one to bring it up to date, and then measure it.
