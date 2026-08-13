@@ -5,12 +5,21 @@ canonical name, a fact value, an interaction summary, a device display name, or 
 path, so no amount of misuse downstream can turn a stats report into a disclosure of stored
 personal data. Ordering, redaction, and presentation are application policy, which is why the
 distributions cross as plain mappings rather than as already-sorted rows.
+
+That guarantee holds for the grouping keys too, and two of them need help to keep it. A
+relationship category and a restored audit operation are strings this project did not choose:
+the first is typed by the operator, the second comes from whatever installation produced the
+bundle. Both are folded into the sentinels below before they cross, so a bucket name is always
+either schema vocabulary or a sentinel — never authored text. Device ids stay verbatim by
+design: an opaque primary key is what makes per-device counts meaningful, and it names nobody.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
+
+from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
 
 #: Tables whose row counts the report documents, in the order the report lists them.
 #: Adding a table here is an additive change to the stats document; removing one is not.
@@ -39,6 +48,23 @@ DOCUMENTED_TABLES: tuple[str, ...] = (
 #: Bucket used for a stored relationship whose type has no vocabulary row, matching the
 #: sentinel the recency reader already groups uncategorized relationships under.
 UNCATEGORIZED_RELATIONSHIP = "uncategorized"
+
+#: Bucket used for a relationship whose category is not one this release seeds. A category is
+#: free text the operator typed at `pctx relationship-types add --category`, so emitting it
+#: verbatim would put an authored string — potentially a personal one — into a report whose
+#: whole promise is that it carries none. Counting those relationships under one sentinel keeps
+#: the distribution's total honest without disclosing what the operator called them.
+CUSTOM_RELATIONSHIP_CATEGORY = "custom"
+
+#: Categories this release seeds, derived from the vocabulary itself so the two cannot drift.
+SEEDED_RELATIONSHIP_CATEGORIES: frozenset[str] = frozenset(
+    row.category for row in SEEDED_RELATIONSHIP_TYPES.values()
+)
+
+#: Bucket used for an audit operation outside `KNOWN_AUDIT_OPERATIONS`. Restore carries an
+#: origin's audit rows verbatim, and their `op` is only as constrained as that origin was, so
+#: an unrecognized operation is counted rather than named.
+OTHER_AUDIT_OPERATION = "other"
 
 #: `storage_kind` values. `file` means the byte totals were measured; the other two are
 #: explicit "there is nothing to measure" states so a reader never mistakes an unmeasurable
