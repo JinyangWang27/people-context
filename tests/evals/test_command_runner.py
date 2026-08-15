@@ -41,6 +41,13 @@ _NOISY_AGENT = """
 print("x" * 5000)
 """
 
+_RUNAWAY_AGENT = """
+import sys
+while True:
+    sys.stdout.write("x" * 4096)
+    sys.stdout.flush()
+"""
+
 
 def _agent(tmp_path: Path, source: str, name: str = "agent.py") -> Path:
     script = tmp_path / name
@@ -148,7 +155,7 @@ def test_a_typo_in_a_placeholder_is_refused_at_construction(tmp_path: Path) -> N
     """Passed through literally, a typo would produce a confident but meaningless number."""
     config = _config(
         _agent(tmp_path, _ECHO_AGENT),
-        argv=[sys.executable, str(tmp_path / "agent.py"), "{promt}"],
+        argv=[sys.executable, str(tmp_path / "agent.py"), "{system_prompt}", "{prompt}", "{promt}"],
     )
 
     with pytest.raises(EvalHarnessError, match="is not a whole placeholder"):
@@ -158,7 +165,7 @@ def test_a_typo_in_a_placeholder_is_refused_at_construction(tmp_path: Path) -> N
 def test_an_embedded_placeholder_is_refused(tmp_path: Path) -> None:
     config = _config(
         _agent(tmp_path, _ECHO_AGENT),
-        argv=[sys.executable, str(tmp_path / "agent.py"), "--prompt={prompt}"],
+        argv=[sys.executable, str(tmp_path / "agent.py"), "{system_prompt}", "{prompt}", "--prompt={prompt}"],
     )
 
     with pytest.raises(EvalHarnessError, match="is not a whole placeholder"):
@@ -168,7 +175,7 @@ def test_an_embedded_placeholder_is_refused(tmp_path: Path) -> None:
 def test_the_mcp_placeholder_is_not_accepted_in_the_base_vector(tmp_path: Path) -> None:
     config = _config(
         _agent(tmp_path, _ECHO_AGENT),
-        argv=[sys.executable, str(tmp_path / "agent.py"), "{mcp_config}"],
+        argv=[sys.executable, str(tmp_path / "agent.py"), "{system_prompt}", "{prompt}", "{mcp_config}"],
     )
 
     with pytest.raises(EvalHarnessError, match="is not a whole placeholder"):
@@ -198,19 +205,33 @@ def test_a_hanging_agent_is_timed_out(tmp_path: Path) -> None:
 
 
 def test_a_missing_executable_names_the_command(tmp_path: Path) -> None:
-    runner = CommandAgentRunner(_config(_agent(tmp_path, _ECHO_AGENT), argv=["definitely-not-installed-agent"]))
+    runner = CommandAgentRunner(
+        _config(
+            _agent(tmp_path, _ECHO_AGENT),
+            argv=["definitely-not-installed-agent", "{system_prompt}", "{prompt}"],
+        )
+    )
 
     with pytest.raises(EvalHarnessError, match="cannot start agent command"):
         runner.run(_request(tmp_path, "without_mcp"))
 
 
-def test_output_is_capped_and_reported_as_truncated(tmp_path: Path) -> None:
+def test_output_beyond_the_cap_is_refused_rather_than_scored_truncated(tmp_path: Path) -> None:
+    """A cut answer is not an answer: the missing part may be the part that matched."""
     runner = CommandAgentRunner(_config(_agent(tmp_path, _NOISY_AGENT), max_output_bytes=1024))
 
-    response = runner.run(_request(tmp_path, "without_mcp"))
+    with pytest.raises(EvalHarnessError, match="exceeded the 1024 byte output cap"):
+        runner.run(_request(tmp_path, "without_mcp"))
 
-    assert response.truncated is True
-    assert len(response.answer) == 1024
+
+def test_a_runaway_agent_is_killed_before_it_fills_the_disk(tmp_path: Path) -> None:
+    """Regression: the cap was applied only after exit, so an output loop was unbounded."""
+    runner = CommandAgentRunner(
+        _config(_agent(tmp_path, _RUNAWAY_AGENT), max_output_bytes=1024, timeout_seconds=30)
+    )
+
+    with pytest.raises(EvalHarnessError, match="exceeded the 1024 byte output cap"):
+        runner.run(_request(tmp_path, "without_mcp"))
 
 
 def test_the_agent_runs_in_the_run_directory_not_the_checkout(tmp_path: Path) -> None:
@@ -219,9 +240,27 @@ def test_the_agent_runs_in_the_run_directory_not_the_checkout(tmp_path: Path) ->
     workdir = tmp_path / "work"
     workdir.mkdir()
     runner = CommandAgentRunner(
-        _config(script, argv=[sys.executable, str(script)]),
+        _config(script, argv=[sys.executable, str(script), "{system_prompt}", "{prompt}"]),
     )
 
     response = runner.run(_request(workdir, "without_mcp"))
 
     assert Path(response.answer).resolve() == workdir.resolve()
+
+
+def test_a_vector_without_the_prompt_placeholder_is_refused(tmp_path: Path) -> None:
+    """Regression: stdin is DEVNULL, so a vector missing {prompt} asks the agent nothing."""
+    with pytest.raises(ValueError, match=r"argv must pass \{prompt\}"):
+        _config(_agent(tmp_path, _ECHO_AGENT), argv=[sys.executable, "{system_prompt}"])
+
+
+def test_a_vector_without_the_system_prompt_placeholder_is_refused(tmp_path: Path) -> None:
+    """The report records the system prompt as used; a vector dropping it would lie."""
+    with pytest.raises(ValueError, match=r"argv must pass \{system_prompt\}"):
+        _config(_agent(tmp_path, _ECHO_AGENT), argv=[sys.executable, "{prompt}"])
+
+
+def test_mcp_arguments_without_the_config_placeholder_are_refused(tmp_path: Path) -> None:
+    """Regression: a with_mcp run could proceed without ever receiving the server."""
+    with pytest.raises(ValueError, match=r"mcp_argv must pass \{mcp_config\}"):
+        _config(_agent(tmp_path, _ECHO_AGENT), mcp_argv=["--allowedTools", "mcp__people-context"])

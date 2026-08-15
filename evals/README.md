@@ -46,7 +46,8 @@ Run artifacts land under `<workdir>/artifacts/`; the agent process gets its own 
 - The agent command is an argument vector with `shell=False` and whole-argument placeholders, so a prompt can
   never become an extra flag.
 - The agent runs in a fresh empty directory outside the artifacts tree, so the `without_mcp` control cannot read
-  `world.db` off disk instead of going through the server.
+  `world.db` off disk instead of going through the server, and each `with_mcp` invocation gets its own copy of the
+  store so a write tool cannot change what later tasks are scored against.
 - The evaluated server is pinned to this checkout rather than resolved from PyPI by name, so a dated result names
   the code it measured.
 - Every person, organisation, and event in the fixture is invented, and every address uses the reserved `.test`

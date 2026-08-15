@@ -8,8 +8,9 @@ the harness starts a process:
 - ``shell=False``, so no argument is ever interpreted by a shell;
 - the child environment is an allowlist, so an API key is forwarded only when the
   suite names the variable and never appears in a config file or the report;
-- output is written to a temporary file and read back under a byte cap, so a
-  runaway agent cannot exhaust harness memory.
+- output is captured to a temporary file whose size is checked while the child
+  runs, so an agent that will not stop producing is killed rather than allowed to
+  fill the disk, and nothing unbounded is ever read into memory.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import os
 import re
 import subprocess
 import tempfile
+import time
 from typing import IO
 
 from evals.harness.errors import EvalHarnessError
@@ -31,6 +33,9 @@ _MCP_PLACEHOLDERS = frozenset({"{mcp_config}"})
 #: Bytes of child stderr kept for a failure message. Enough to identify the
 #: failure, small enough that a report or log stays readable.
 _STDERR_EXCERPT_BYTES = 2048
+
+#: How often the captured size and the deadline are checked while the child runs.
+_POLL_SECONDS = 0.1
 
 _BRACED = re.compile(r"[{}]")
 
@@ -50,9 +55,10 @@ class CommandAgentRunner:
         """Invoke the configured agent and return its final answer."""
         argv = self._argv(request)
         env = _child_environment(self._config.env_passthrough)
+        limit = self._config.max_output_bytes
         with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
             try:
-                completed = subprocess.run(
+                process = subprocess.Popen(
                     argv,
                     shell=False,
                     cwd=str(request.working_directory),
@@ -60,29 +66,65 @@ class CommandAgentRunner:
                     stdin=subprocess.DEVNULL,
                     stdout=out,
                     stderr=err,
-                    timeout=self._config.timeout_seconds,
-                    check=False,
+                    close_fds=True,
                 )
-            except subprocess.TimeoutExpired as exc:
-                raise EvalHarnessError(
-                    f"agent command timed out after {self._config.timeout_seconds}s "
-                    f"on task {request.task_id} ({request.condition})"
-                ) from exc
             except OSError as exc:
                 raise EvalHarnessError(f"cannot start agent command {argv[0]!r}: {exc}") from exc
-            stdout, truncated = _read_capped(out, self._config.max_output_bytes)
-            if completed.returncode != 0:
-                stderr, _ = _read_capped(err, _STDERR_EXCERPT_BYTES)
+            returncode = self._supervise(process, out, err, request)
+            if _captured_bytes(out) > limit:
+                # A process that overproduced faster than the poll interval reaches
+                # here; the rule is the same either way, so the two paths agree.
                 raise EvalHarnessError(
-                    f"agent command failed with exit code {completed.returncode} "
-                    f"on task {request.task_id} ({request.condition}): {stderr.strip()}"
+                    f"agent command exceeded the {limit} byte output cap "
+                    f"on task {request.task_id} ({request.condition})"
+                )
+            stdout = _read_exactly(out, limit)
+            if returncode != 0:
+                excerpt = _read_exactly(err, _STDERR_EXCERPT_BYTES).strip()
+                raise EvalHarnessError(
+                    f"agent command failed with exit code {returncode} "
+                    f"on task {request.task_id} ({request.condition}): {excerpt}"
                 )
         answer = stdout.strip()
         if not answer:
             raise EvalHarnessError(
                 f"agent command produced no answer on task {request.task_id} ({request.condition})"
             )
-        return AgentResponse(answer=answer, model_id=self.model_id, truncated=truncated)
+        return AgentResponse(answer=answer, model_id=self.model_id)
+
+    def _supervise(
+        self,
+        process: subprocess.Popen[bytes],
+        out: IO[bytes],
+        err: IO[bytes],
+        request: AgentRequest,
+    ) -> int:
+        """Wait for the child, enforcing the deadline and the output cap as it runs.
+
+        Checking the captured size only after exit would bound memory but not disk: an
+        agent stuck in an output loop could fill the temporary filesystem before the
+        timeout fired. Exceeding the cap is a refusal rather than a truncation, because
+        an answer the harness had to cut is not an answer worth scoring.
+        """
+        deadline = time.monotonic() + self._config.timeout_seconds
+        limit = self._config.max_output_bytes
+        while True:
+            try:
+                return process.wait(timeout=_POLL_SECONDS)
+            except subprocess.TimeoutExpired:
+                pass
+            if _captured_bytes(out) > limit or _captured_bytes(err) > limit:
+                _terminate(process)
+                raise EvalHarnessError(
+                    f"agent command exceeded the {limit} byte output cap "
+                    f"on task {request.task_id} ({request.condition})"
+                )
+            if time.monotonic() >= deadline:
+                _terminate(process)
+                raise EvalHarnessError(
+                    f"agent command timed out after {self._config.timeout_seconds}s "
+                    f"on task {request.task_id} ({request.condition})"
+                )
 
     def _argv(self, request: AgentRequest) -> list[str]:
         """Build the vector for one request, substituting whole arguments only."""
@@ -130,9 +172,22 @@ def _child_environment(passthrough: tuple[str, ...]) -> dict[str, str]:
     return {name: os.environ[name] for name in passthrough if name in os.environ}
 
 
-def _read_capped(stream: IO[bytes], limit: int) -> tuple[str, bool]:
-    """Read at most ``limit`` bytes from a captured stream, reporting truncation."""
+def _captured_bytes(stream: IO[bytes]) -> int:
+    """Return how much the child has written so far, without reading it."""
+    return os.fstat(stream.fileno()).st_size
+
+
+def _read_exactly(stream: IO[bytes], limit: int) -> str:
+    """Read at most ``limit`` bytes from a captured stream."""
     stream.seek(0)
-    payload = stream.read(limit + 1)
-    truncated = len(payload) > limit
-    return payload[:limit].decode("utf-8", errors="replace"), truncated
+    return stream.read(limit).decode("utf-8", errors="replace")
+
+
+def _terminate(process: subprocess.Popen[bytes]) -> None:
+    """Stop a child that broke its contract, escalating if it ignores the signal."""
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()

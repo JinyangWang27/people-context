@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T21:06:29Z",
+  "generated_at": "2026-08-15T21:19:58Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -74,7 +74,6 @@
       "earned": 5,
       "possible": 7,
       "percent": 71.4,
-      "truncated": false,
       "criteria": [
         {
           "id": "states-organisation",
@@ -146,7 +145,6 @@
       "earned": 1,
       "possible": 7,
       "percent": 14.3,
-      "truncated": false,
       "criteria": [
         {
           "id": "states-organisation",
@@ -218,7 +216,6 @@
       "earned": 8,
       "possible": 8,
       "percent": 100.0,
-      "truncated": false,
       "criteria": [
         {
           "id": "addresses-the-right-person",
@@ -291,7 +288,6 @@
       "earned": 3,
       "possible": 8,
       "percent": 37.5,
-      "truncated": false,
       "criteria": [
         {
           "id": "addresses-the-right-person",
@@ -364,7 +360,6 @@
       "earned": 5,
       "possible": 5,
       "percent": 100.0,
-      "truncated": false,
       "criteria": [
         {
           "id": "names-the-right-priya",
@@ -412,7 +407,6 @@
       "earned": 1,
       "possible": 5,
       "percent": 20.0,
-      "truncated": false,
       "criteria": [
         {
           "id": "names-the-right-priya",
@@ -460,7 +454,6 @@
       "earned": 6,
       "possible": 6,
       "percent": 100.0,
-      "truncated": false,
       "criteria": [
         {
           "id": "names-the-intermediaries",
@@ -519,7 +512,6 @@
       "earned": 2,
       "possible": 6,
       "percent": 33.3,
-      "truncated": false,
       "criteria": [
         {
           "id": "names-the-intermediaries",
@@ -578,7 +570,6 @@
       "earned": 6,
       "possible": 6,
       "percent": 100.0,
-      "truncated": false,
       "criteria": [
         {
           "id": "names-the-most-overdue-contact",
@@ -626,7 +617,6 @@
       "earned": 1,
       "possible": 6,
       "percent": 16.7,
-      "truncated": false,
       "criteria": [
         {
           "id": "names-the-most-overdue-contact",

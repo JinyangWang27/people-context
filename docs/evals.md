@@ -106,9 +106,15 @@ The evaluated server is pinned to this checkout — `uv run --project {project_r
 dated result impossible to reproduce; the report records the configured vector so a reader knows which code was
 measured.
 
-The agent process runs in a fresh empty directory that is never under `--workdir`, so a command-backed agent
-cannot read `world.db` straight off disk during the `without_mcp` control. A control run that could read the
-fixture directly would not be a control run.
+Each invocation is isolated twice over. The agent process runs in a fresh empty directory that is never under
+`--workdir`, so a command-backed agent cannot read `world.db` straight off disk during the `without_mcp` control,
+and cannot leave session state where the control run that follows would find it. Under `with_mcp` it also gets its
+own byte-identical copy of the fictional store: the server exposes write and destructive tools, and a mutation
+made while answering one task must not change what later tasks are scored against. The pristine store is never
+handed to an agent.
+
+If the agent command exceeds its output cap or its deadline, the run is refused rather than scored on truncated
+output — an answer the harness had to cut is not an answer worth publishing.
 
 The API key is read only from the process environment, and only because the suite names `ANTHROPIC_API_KEY` in
 `env_passthrough`. It is never accepted as a flag, never read from a file, and never written into a report. The

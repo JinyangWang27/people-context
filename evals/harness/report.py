@@ -71,7 +71,6 @@ def build_report(
                 "earned": outcome.score.earned,
                 "possible": outcome.score.possible,
                 "percent": outcome.score.percent,
-                "truncated": outcome.truncated,
                 "criteria": [
                     {
                         "id": criterion.id,

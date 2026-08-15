@@ -174,6 +174,23 @@ class CommandRunnerConfig(_StrictModel):
             raise ValueError("mcp_argv and mcp_server_argv must be configured together")
         return self
 
+    @model_validator(mode="after")
+    def _required_placeholders_are_present(self) -> CommandRunnerConfig:
+        """Refuse a vector that could not deliver what the report says it delivered.
+
+        Without ``{prompt}`` the child is handed no task at all, since its stdin is
+        ``DEVNULL``; without ``{system_prompt}`` the run is not the one the report
+        records; and a ``with_mcp`` vector missing ``{mcp_config}`` would run without
+        the server while still being labelled as having had it. Each would produce a
+        confidently mislabelled score rather than a failure.
+        """
+        for placeholder in ("{prompt}", "{system_prompt}"):
+            if placeholder not in self.argv:
+                raise ValueError(f"argv must pass {placeholder} as a whole argument")
+        if self.mcp_argv and "{mcp_config}" not in self.mcp_argv:
+            raise ValueError("mcp_argv must pass {mcp_config} as a whole argument")
+        return self
+
 
 RunnerConfig = Annotated[StubRunnerConfig | CommandRunnerConfig, Field(discriminator="kind")]
 

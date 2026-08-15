@@ -13,7 +13,12 @@ from evals.harness import HARNESS_VERSION, REPORT_FORMAT, REPORT_VERSION
 from evals.harness.__main__ import main
 from evals.harness.errors import EvalHarnessError
 from evals.harness.ports import AgentRequest, AgentResponse
-from evals.harness.runner import ARTIFACTS_DIRNAME, WORLD_DB_FILENAME, resolve_server_argv
+from evals.harness.runner import (
+    ARTIFACTS_DIRNAME,
+    WORLD_DB_FILENAME,
+    prepare_workspace,
+    resolve_server_argv,
+)
 from evals.harness.runners.stub import StubAgentRunner
 from evals.harness.suite import CommandRunnerConfig, load_suite
 from evals.harness.world import build_world_database, load_world, refuse_real_database
@@ -358,3 +363,70 @@ def test_the_evaluated_server_is_pinned_to_this_checkout() -> None:
 def test_an_unknown_server_placeholder_is_refused() -> None:
     with pytest.raises(EvalHarnessError, match="is not a whole placeholder"):
         resolve_server_argv(("uv", "run", "--project", "{checkout}"))
+
+
+def test_each_with_mcp_invocation_gets_its_own_copy_of_the_store(tmp_path: Path) -> None:
+    """Regression: a shared store let a write tool in one task change every later one."""
+    world = load_world(WORLD_PATH)
+    workspace = prepare_workspace(world, tmp_path / "work", ("people-context-mcp",))
+
+    first = workspace.configuration_for("identity-disambiguation", "with_mcp")
+    second = workspace.configuration_for("relationship-path", "with_mcp")
+
+    assert first is not None and second is not None
+    assert first != second
+    first_db = json.loads(first.read_text(encoding="utf-8"))["mcpServers"]["people-context"]["args"][-1]
+    second_db = json.loads(second.read_text(encoding="utf-8"))["mcpServers"]["people-context"]["args"][-1]
+    assert first_db != second_db
+    assert Path(first_db).read_bytes() == Path(second_db).read_bytes() == workspace.pristine.read_bytes()
+    assert Path(first_db) != workspace.pristine, "the pristine store must never be handed out"
+
+
+def test_a_mutation_during_one_task_cannot_reach_the_next(tmp_path: Path) -> None:
+    """The evaluated server exposes write and destructive tools; this bounds their blast radius."""
+    world = load_world(WORLD_PATH)
+    workspace = prepare_workspace(world, tmp_path / "work", ("people-context-mcp",))
+
+    first = workspace.configuration_for("identity-disambiguation", "with_mcp")
+    assert first is not None
+    mutated = Path(json.loads(first.read_text(encoding="utf-8"))["mcpServers"]["people-context"]["args"][-1])
+    mutated.write_bytes(b"the agent scribbled here")
+
+    second = workspace.configuration_for("relationship-path", "with_mcp")
+    assert second is not None
+    fresh = Path(json.loads(second.read_text(encoding="utf-8"))["mcpServers"]["people-context"]["args"][-1])
+    assert fresh.read_bytes() == workspace.pristine.read_bytes()
+
+
+def test_the_control_condition_is_given_no_configuration(tmp_path: Path) -> None:
+    world = load_world(WORLD_PATH)
+    workspace = prepare_workspace(world, tmp_path / "work", ("people-context-mcp",))
+
+    assert workspace.configuration_for("identity-disambiguation", "without_mcp") is None
+
+
+def test_an_unwritable_report_destination_still_surfaces_the_completed_run(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Regression: a paid model run could finish and then vanish in a traceback."""
+    exit_code = main(
+        [
+            "--suite",
+            str(SUITE_PATH),
+            "--runner",
+            "stub",
+            "--workdir",
+            str(tmp_path / "work"),
+            "--out",
+            str(tmp_path / "missing" / "report.json"),
+        ],
+        clock=_FixedClock(),
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "Cannot write the report to" in captured.err
+    recovered = json.loads(captured.out[captured.out.index("{") :])
+    assert recovered["totals"], "the completed report must be recoverable from stdout"
+    assert "| with_mcp | 5 |" in captured.out, "the summary must be printed before the write is attempted"

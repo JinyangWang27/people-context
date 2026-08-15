@@ -35,7 +35,6 @@ class AgentResponse:
 
     answer: str
     model_id: str
-    truncated: bool = False
 
 
 @runtime_checkable

@@ -81,13 +81,13 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
     conditions = tuple(args.condition) if args.condition else CONDITIONS
 
     with _workspace(args.workdir) as workdir, _agent_root() as agent_root:
-        _, mcp_config_path = prepare_workspace(world, workdir, server_argv)
+        workspace = prepare_workspace(world, workdir, server_argv)
         outcomes = run_suite(
             loaded,
             tasks,
             runner,
             agent_root=agent_root,
-            mcp_config_path=mcp_config_path,
+            workspace=workspace,
             conditions=conditions,
         )
 
@@ -102,11 +102,20 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
         mcp_server_argv=server_argv,
     )
     document = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+    # The summary goes out before the write is attempted. Publication is the last step
+    # of a run that may have cost real model invocations, and a missing or unwritable
+    # destination must not be the reason those results are never seen.
+    print(render_summary(report), end="")
     if args.out:
         destination = _report_destination(args.out)
-        written = atomic_write_private_text(destination, document)
+        try:
+            written = atomic_write_private_text(destination, document)
+        except OSError as exc:
+            print(f"Cannot write the report to {destination}: {exc.strerror or exc}", file=sys.stderr)
+            print("Recovering the completed report on stdout instead:", file=sys.stderr)
+            print(document, end="")
+            return 1
         print(f"Report written: {written}")
-    print(render_summary(report), end="")
     return 0
 
 
