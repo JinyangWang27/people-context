@@ -260,7 +260,7 @@ Check the matching box only in the PR that delivers it.
     and non-CJK bidirectional fixtures.
   - **Out:** fuzzy cross-script/ranking change.
 
-- [ ] **M15.4 — Reproducible eval harness and use-case gallery**
+- [x] **M15.4 — Reproducible eval harness and use-case gallery**
   - **Scope:** Fictional fixtures, fixed tasks/rubrics, with/without MCP runs, dated docs, recipes.
   - **Acceptance:** prompts/model ids/harness version; environment-only keys; no real DB; network-free stub dry run;
     production package excludes eval assets.
