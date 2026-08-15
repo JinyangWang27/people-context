@@ -175,6 +175,36 @@ they contribute neither entries nor skip counts, so the count itself cannot sign
 exists. Missing and soft-deleted people are skipped deterministically, which also removes any reminder pointing
 at them.
 
+## M15 resolution-detail contract
+
+### `resolve_person`
+
+Each candidate carries one additive field alongside the unchanged `match_reason`:
+
+```json
+{
+  "query": "王小明",
+  "candidates": [{
+    "person_id": "A",
+    "canonical_name": "Wang Xiaoming",
+    "score": 1.0,
+    "match_reason": "exact",
+    "match_detail": "alias:native_script",
+    "aliases": ["王小明"],
+    "summary": null
+  }],
+  "ambiguous": false
+}
+```
+
+`match_detail` is `"canonical_name"` when the query normalizes to the person's canonical name, `"alias:<kind>"`
+when it normalizes only to an alias, and `null` for search-stage, fuzzy-stage, and `search_people` candidates.
+When several stored values normalize to the query, the canonical name wins; otherwise the matching alias with
+the lowest `(kind, id)` pair supplies the detail. The field is descriptive rather than a closed enum, so treat an
+unrecognized `alias:<kind>` value as "matched via some alias". Scores, `match_reason`, ordering, the acceptance
+threshold, and `ambiguous` are unchanged, and the detail names an alias *kind* only — never an alias value the
+match did not already implicate. See [identity-resolution.md](identity-resolution.md#match_detail-which-stored-name-matched).
+
 ## Person context compatibility
 
 M7 does not change existing relationship fields. Each hydrated relationship object adds one field:

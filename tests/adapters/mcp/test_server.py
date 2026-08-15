@@ -174,6 +174,31 @@ def test_remember_then_resolve_and_audit_row(tmp_path: Path) -> None:
     assert any(entry.entity_id == person_id and entry.op == "create" for entry in entries)
 
 
+def test_resolve_person_reports_additive_match_detail_for_both_scripts(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "detail.db")
+
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any]]:
+        await client.call_tool(
+            "remember_person",
+            {"name": "Wang Xiaoming", "aliases": [{"value": "王小明", "kind": "native_script"}]},
+        )
+        by_canonical = await client.call_tool("resolve_person", {"query": "wang xiaoming"})
+        by_alias = await client.call_tool("resolve_person", {"query": "王小明"})
+        return by_canonical.structured_content, by_alias.structured_content
+
+    canonical_payload, alias_payload = _run(server, flow)
+
+    canonical_candidate = canonical_payload["candidates"][0]
+    alias_candidate = alias_payload["candidates"][0]
+    assert canonical_candidate["match_detail"] == "canonical_name"
+    assert alias_candidate["match_detail"] == "alias:native_script"
+    # Additive only: the pre-M15 fields keep their exact shape and values.
+    assert canonical_candidate["match_reason"] == alias_candidate["match_reason"] == "exact"
+    assert canonical_candidate["score"] == alias_candidate["score"] == 1.0
+    assert canonical_candidate["person_id"] == alias_candidate["person_id"]
+    assert canonical_payload["ambiguous"] is False
+
+
 def test_import_content_returns_structured_error_for_empty_email(tmp_path: Path) -> None:
     server = build_server(db_path=tmp_path / "t.db")
 
