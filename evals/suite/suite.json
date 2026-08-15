@@ -22,14 +22,20 @@
           "id": "states-employer-and-role",
           "kind": "answer_contains_all",
           "description": "States both the organisation and the role held there.",
-          "values": ["Kestrel Analytics", "Data Lead"],
+          "values": [
+            "Kestrel Analytics",
+            "Data Lead"
+          ],
           "weight": 2
         },
         {
           "id": "does-not-attribute-the-other-priya",
           "kind": "answer_contains_none",
           "description": "Does not attribute the other Priya's organisation or role to the answer.",
-          "values": ["Harbourline Trust", "Grants Officer"],
+          "values": [
+            "Harbourline Trust",
+            "Grants Officer"
+          ],
           "weight": 1
         }
       ]
@@ -43,28 +49,38 @@
           "id": "states-organisation",
           "kind": "answer_contains_all",
           "description": "Names the organisation Tomas Brandt is affiliated with.",
-          "values": ["Tidepool Collective"],
+          "values": [
+            "Tidepool Collective"
+          ],
           "weight": 2
         },
         {
           "id": "states-role",
           "kind": "answer_contains_all",
           "description": "Names the role he holds there.",
-          "values": ["Operations Manager"],
+          "values": [
+            "Operations Manager"
+          ],
           "weight": 2
         },
         {
           "id": "states-update-preference",
           "kind": "answer_contains_all",
           "description": "Reports the stored update preference rather than a generic one.",
-          "values": ["bullet points"],
+          "values": [
+            "bullet points"
+          ],
           "weight": 2
         },
         {
           "id": "does-not-invent-an-employer",
           "kind": "answer_contains_none",
           "description": "Does not place him at another contact's organisation.",
-          "values": ["Kestrel Analytics", "Northlight Media", "Harbourline Trust"],
+          "values": [
+            "Kestrel Analytics",
+            "Northlight Media",
+            "Harbourline Trust"
+          ],
           "weight": 1
         }
       ]
@@ -78,14 +94,19 @@
           "id": "addresses-the-right-person",
           "kind": "answer_contains_all",
           "description": "Addresses Tomas by name.",
-          "values": ["Tomas"],
+          "values": [
+            "Tomas"
+          ],
           "weight": 1
         },
         {
           "id": "states-the-subject",
           "kind": "answer_contains_all",
           "description": "Names the meeting and the month it concerns.",
-          "values": ["September", "operations review"],
+          "values": [
+            "September",
+            "operations review"
+          ],
           "weight": 2
         },
         {
@@ -99,6 +120,13 @@
             "I hope you're doing well",
             "Trust you are well"
           ],
+          "weight": 2
+        },
+        {
+          "id": "uses-the-recipients-bullet-format",
+          "kind": "answer_matches",
+          "description": "Formats the message as bullet points, which is the recipient's stored preference.",
+          "pattern": "(?:^| )[-*•] \\S.*(?:^| )[-*•] \\S",
           "weight": 2
         },
         {
@@ -119,8 +147,18 @@
           "id": "names-the-intermediaries",
           "kind": "answer_contains_all",
           "description": "Names both people on the shortest path.",
-          "values": ["Tomas Brandt", "Kofi Mensah"],
-          "weight": 3
+          "values": [
+            "Tomas Brandt",
+            "Kofi Mensah"
+          ],
+          "weight": 2
+        },
+        {
+          "id": "orders-the-path-correctly",
+          "kind": "answer_matches",
+          "description": "Presents the hops in route order rather than as an unordered set of names.",
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman",
+          "weight": 2
         },
         {
           "id": "names-the-target",
@@ -133,7 +171,9 @@
           "id": "does-not-route-through-the-other-priya",
           "kind": "answer_contains_none",
           "description": "Does not place the other Priya's organisation on the path.",
-          "values": ["Harbourline Trust"],
+          "values": [
+            "Harbourline Trust"
+          ],
           "weight": 1
         }
       ]
@@ -147,7 +187,9 @@
           "id": "names-the-most-overdue-contact",
           "kind": "answer_contains_all",
           "description": "Names Ingrid Solberg, whose last interaction is the oldest on record.",
-          "values": ["Ingrid Solberg"],
+          "values": [
+            "Ingrid Solberg"
+          ],
           "weight": 3
         },
         {
@@ -161,7 +203,9 @@
           "id": "does-not-name-a-recent-contact",
           "kind": "answer_contains_none",
           "description": "Does not present the most recently seen contact as the overdue one.",
-          "values": ["Kofi Mensah"],
+          "values": [
+            "Kofi Mensah"
+          ],
           "weight": 1
         }
       ]
@@ -194,10 +238,21 @@
         "--allowedTools",
         "mcp__people-context"
       ],
-      "mcp_server_argv": ["uvx", "--from", "people-context", "people-context-mcp"],
+      "mcp_server_argv": [
+        "uv",
+        "run",
+        "--project",
+        "{project_root}",
+        "--locked",
+        "people-context-mcp"
+      ],
       "timeout_seconds": 300,
       "max_output_bytes": 262144,
-      "env_passthrough": ["PATH", "HOME", "ANTHROPIC_API_KEY"]
+      "env_passthrough": [
+        "PATH",
+        "HOME",
+        "ANTHROPIC_API_KEY"
+      ]
     }
   }
 }

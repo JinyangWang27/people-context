@@ -35,13 +35,20 @@ def normalize(text: str) -> str:
 
 @dataclass(frozen=True)
 class CriterionOutcome:
-    """Whether one criterion held, and what it was worth."""
+    """Whether one criterion held, what it was worth, and the exact rule applied.
+
+    The operands travel with the outcome so a report stays self-contained: a reader
+    holding an older published result can re-derive it from the recorded answer even
+    after the suite has moved on and `suite.json` no longer contains that rule.
+    """
 
     id: str
     description: str
     kind: str
     weight: int
     passed: bool
+    values: tuple[str, ...] | None
+    pattern: str | None
 
 
 @dataclass(frozen=True)
@@ -81,6 +88,8 @@ def score_task(task: Task, answer: str) -> TaskScore:
             kind=criterion.kind,
             weight=criterion.weight,
             passed=evaluate_criterion(criterion, answer),
+            values=getattr(criterion, "values", None),
+            pattern=getattr(criterion, "pattern", None),
         )
         for criterion in task.rubric
     )

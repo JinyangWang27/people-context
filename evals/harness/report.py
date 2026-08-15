@@ -36,6 +36,7 @@ def build_report(
     runner_name: str,
     runner_kind: str,
     generated_at: datetime,
+    mcp_server_argv: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Assemble the deterministic report document for one run."""
     ordered = sorted(outcomes, key=lambda outcome: (outcome.task_id, outcome.condition))
@@ -50,7 +51,13 @@ def build_report(
             "world_id": world.world_id,
             "world_as_of": _instant(world.as_of),
         },
-        "runner": {"name": runner_name, "kind": runner_kind},
+        "runner": {
+            "name": runner_name,
+            "kind": runner_kind,
+            # Recorded unsubstituted: it names the code the run evaluated without
+            # baking a local home directory into a published document.
+            "mcp_server_argv": list(mcp_server_argv),
+        },
         "prompts": {
             "system": loaded.suite.system_prompt,
             "tasks": [{"id": task.id, "title": task.title, "prompt": task.prompt} for task in tasks],
@@ -72,6 +79,8 @@ def build_report(
                         "description": criterion.description,
                         "weight": criterion.weight,
                         "passed": criterion.passed,
+                        "values": list(criterion.values) if criterion.values is not None else None,
+                        "pattern": criterion.pattern,
                     }
                     for criterion in outcome.score.criteria
                 ],

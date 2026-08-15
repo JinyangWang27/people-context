@@ -78,13 +78,13 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
     server_argv = config.mcp_server_argv if isinstance(config, CommandRunnerConfig) else ()
     conditions = tuple(args.condition) if args.condition else CONDITIONS
 
-    with _workspace(args.workdir) as workdir:
+    with _workspace(args.workdir) as workdir, _agent_directory() as agent_directory:
         _, mcp_config_path = prepare_workspace(world, workdir, server_argv)
         outcomes = run_suite(
             loaded,
             tasks,
             runner,
-            workdir=workdir,
+            agent_directory=agent_directory,
             mcp_config_path=mcp_config_path,
             conditions=conditions,
         )
@@ -97,6 +97,7 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
         runner_name=args.runner,
         runner_kind=runner.kind,
         generated_at=clock.now(),
+        mcp_server_argv=server_argv,
     )
     document = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     if args.out:
@@ -113,6 +114,19 @@ def _workspace(requested: str | None) -> Iterator[Path]:
         yield Path(requested).expanduser().absolute()
         return
     with tempfile.TemporaryDirectory(prefix="people-context-evals-") as temporary:
+        yield Path(temporary)
+
+
+@contextmanager
+def _agent_directory() -> Iterator[Path]:
+    """Yield an empty directory for the agent process, outside the artifacts tree.
+
+    It is always a fresh temporary directory, never a child of ``--workdir``, so no
+    relative path from the agent's own working directory reaches the fictional
+    database or the MCP configuration. A control run that could read `world.db`
+    directly would not be a control run.
+    """
+    with tempfile.TemporaryDirectory(prefix="people-context-evals-agent-") as temporary:
         yield Path(temporary)
 
 

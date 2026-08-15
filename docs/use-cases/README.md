@@ -21,8 +21,18 @@ and the agent picks the tool. See [mcp-interface.md](../mcp-interface.md) for th
 
 Sample output is illustrative. It shows the shape of a result, not a promise about wording.
 
-Every recipe runs entirely against your local SQLite database. Nothing in this gallery sends your data anywhere,
-and no step requires an account.
+## Where your data goes
+
+Every recipe runs against your local SQLite database. The store, the CLI, and the MCP server are local: no step
+here uploads your database, and no step requires an account.
+
+The agent you use is a separate trust boundary. When you drive these recipes through a cloud-hosted assistant,
+whatever a tool call returns — names, affiliations, facts, interaction summaries — is sent to that model provider
+like any other prompt content, and their retention terms apply to it. The server's job is to bound what leaves:
+tool results are scoped to what you asked for, sensitive and restricted records are withheld unless the operator
+enabled the elevated tool in the server's own environment, and every disclosure is auditable locally. Commands you
+run yourself with `pctx` involve no model at all. See
+[privacy-and-safety.md](../privacy-and-safety.md) for the disclosure model and threat notes.
 
 ## Try them without your own data
 

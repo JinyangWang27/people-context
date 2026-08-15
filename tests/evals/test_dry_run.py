@@ -12,6 +12,10 @@ import pytest
 from evals.harness import HARNESS_VERSION, REPORT_FORMAT, REPORT_VERSION
 from evals.harness.__main__ import main
 from evals.harness.errors import EvalHarnessError
+from evals.harness.ports import AgentRequest, AgentResponse
+from evals.harness.runner import ARTIFACTS_DIRNAME, WORLD_DB_FILENAME, resolve_server_argv
+from evals.harness.runners.stub import StubAgentRunner
+from evals.harness.suite import CommandRunnerConfig, load_suite
 from evals.harness.world import build_world_database, load_world, refuse_real_database
 
 ROOT = Path(__file__).parents[2]
@@ -56,7 +60,7 @@ def test_dry_run_opens_no_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     report = _run(tmp_path)
 
-    assert report["runner"] == {"name": "stub", "kind": "stub"}
+    assert report["runner"] == {"name": "stub", "kind": "stub", "mcp_server_argv": []}
 
 
 def test_dry_run_is_byte_identical_across_runs(tmp_path: Path) -> None:
@@ -214,3 +218,66 @@ def test_the_materialized_world_is_attributed_to_the_fixture(tmp_path: Path) -> 
         "Tomas Brandt",
     ]
     assert [person.canonical_name for person in selves] == ["Noor Vance"]
+
+
+def test_report_carries_the_exact_rule_each_criterion_applied(tmp_path: Path) -> None:
+    """A published score must stay re-derivable after the suite moves on."""
+    report = _run(tmp_path)
+    suite = json.loads(SUITE_PATH.read_text(encoding="utf-8"))
+    rubrics = {task["id"]: {item["id"]: item for item in task["rubric"]} for task in suite["tasks"]}
+
+    for run in report["runs"]:
+        for criterion in run["criteria"]:
+            source = rubrics[run["task_id"]][criterion["id"]]
+            assert criterion["values"] == source.get("values"), criterion["id"]
+            assert criterion["pattern"] == source.get("pattern"), criterion["id"]
+            assert criterion["values"] is not None or criterion["pattern"] is not None
+
+
+def test_the_agent_never_runs_where_the_fictional_database_lives(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a control agent that could read world.db would not be a control."""
+    workdir = tmp_path / "work"
+    database = (workdir / ARTIFACTS_DIRNAME / WORLD_DB_FILENAME).resolve()
+    # The agent directory is a temporary directory removed when the run ends, so its
+    # contents have to be inspected while the agent would be looking at them.
+    seen: list[tuple[Path, list[str]]] = []
+    original = StubAgentRunner.run
+
+    def _record(self: StubAgentRunner, request: AgentRequest) -> AgentResponse:
+        directory = request.working_directory.resolve()
+        seen.append((directory, sorted(entry.name for entry in directory.iterdir())))
+        return original(self, request)
+
+    monkeypatch.setattr(StubAgentRunner, "run", _record)
+    main(
+        ["--suite", str(SUITE_PATH), "--runner", "stub", "--workdir", str(workdir)],
+        clock=_FixedClock(),
+    )
+
+    assert seen
+    assert database.is_file(), "the fixture must still have been built"
+    for directory, entries in seen:
+        assert entries == [], f"the agent directory must be empty: {directory}"
+        assert directory != database.parent
+        assert directory not in database.parents, "the fixture must not sit under the agent directory"
+        assert workdir.resolve() not in directory.parents, "the agent must not run inside the artifacts tree"
+
+
+def test_the_evaluated_server_is_pinned_to_this_checkout() -> None:
+    """An unpinned PyPI resolution would let a later release answer the same suite."""
+    loaded = load_suite(SUITE_PATH)
+    config = loaded.runner_config("claude-cli")
+
+    assert isinstance(config, CommandRunnerConfig)
+    assert "{project_root}" in config.mcp_server_argv
+    assert "people-context" not in config.mcp_server_argv, "the bare PyPI name is not a pin"
+    resolved = resolve_server_argv(config.mcp_server_argv)
+    assert str(ROOT) in resolved
+
+
+def test_an_unknown_server_placeholder_is_refused() -> None:
+    with pytest.raises(EvalHarnessError, match="is not a whole placeholder"):
+        resolve_server_argv(("uv", "run", "--project", "{checkout}"))

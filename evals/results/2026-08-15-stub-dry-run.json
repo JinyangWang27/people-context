@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T20:19:26Z",
+  "generated_at": "2026-08-15T20:40:03Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -11,7 +11,8 @@
   },
   "runner": {
     "name": "stub",
-    "kind": "stub"
+    "kind": "stub",
+    "mcp_server_argv": []
   },
   "prompts": {
     "system": "You are helping the user with questions about the people in their life. If a people-context MCP server is available, resolve the person first and read their stored context before answering; never guess an identity you could look up. Answer concisely, state only what you actually know, and say plainly when you do not know something.",
@@ -47,9 +48,9 @@
     {
       "condition": "with_mcp",
       "tasks": 5,
-      "earned": 27,
-      "possible": 29,
-      "percent": 93.1,
+      "earned": 30,
+      "possible": 32,
+      "percent": 93.8,
       "model_ids": [
         "stub/recorded-answers"
       ]
@@ -58,8 +59,8 @@
       "condition": "without_mcp",
       "tasks": 5,
       "earned": 8,
-      "possible": 29,
-      "percent": 27.6,
+      "possible": 32,
+      "percent": 25.0,
       "model_ids": [
         "stub/recorded-answers"
       ]
@@ -80,28 +81,46 @@
           "kind": "answer_contains_all",
           "description": "Names the organisation Tomas Brandt is affiliated with.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Tidepool Collective"
+          ],
+          "pattern": null
         },
         {
           "id": "states-role",
           "kind": "answer_contains_all",
           "description": "Names the role he holds there.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Operations Manager"
+          ],
+          "pattern": null
         },
         {
           "id": "states-update-preference",
           "kind": "answer_contains_all",
           "description": "Reports the stored update preference rather than a generic one.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": [
+            "bullet points"
+          ],
+          "pattern": null
         },
         {
           "id": "does-not-invent-an-employer",
           "kind": "answer_contains_none",
           "description": "Does not place him at another contact's organisation.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Kestrel Analytics",
+            "Northlight Media",
+            "Harbourline Trust"
+          ],
+          "pattern": null
         }
       ],
       "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews."
@@ -120,28 +139,46 @@
           "kind": "answer_contains_all",
           "description": "Names the organisation Tomas Brandt is affiliated with.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": [
+            "Tidepool Collective"
+          ],
+          "pattern": null
         },
         {
           "id": "states-role",
           "kind": "answer_contains_all",
           "description": "Names the role he holds there.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": [
+            "Operations Manager"
+          ],
+          "pattern": null
         },
         {
           "id": "states-update-preference",
           "kind": "answer_contains_all",
           "description": "Reports the stored update preference rather than a generic one.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": [
+            "bullet points"
+          ],
+          "pattern": null
         },
         {
           "id": "does-not-invent-an-employer",
           "kind": "answer_contains_none",
           "description": "Does not place him at another contact's organisation.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Kestrel Analytics",
+            "Northlight Media",
+            "Harbourline Trust"
+          ],
+          "pattern": null
         }
       ],
       "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates."
@@ -150,8 +187,8 @@
       "task_id": "guided-drafting",
       "condition": "with_mcp",
       "model_id": "stub/recorded-answers",
-      "earned": 6,
-      "possible": 6,
+      "earned": 8,
+      "possible": 8,
       "percent": 100.0,
       "truncated": false,
       "criteria": [
@@ -160,28 +197,56 @@
           "kind": "answer_contains_all",
           "description": "Addresses Tomas by name.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Tomas"
+          ],
+          "pattern": null
         },
         {
           "id": "states-the-subject",
           "kind": "answer_contains_all",
           "description": "Names the meeting and the month it concerns.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": [
+            "September",
+            "operations review"
+          ],
+          "pattern": null
         },
         {
           "id": "omits-filler-openings",
           "kind": "answer_contains_none",
           "description": "Honours the user's stated philosophy by opening without filler pleasantries.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": [
+            "I hope this email finds you well",
+            "I hope this message finds you well",
+            "I hope you are doing well",
+            "I hope you're doing well",
+            "Trust you are well"
+          ],
+          "pattern": null
+        },
+        {
+          "id": "uses-the-recipients-bullet-format",
+          "kind": "answer_matches",
+          "description": "Formats the message as bullet points, which is the recipient's stored preference.",
+          "weight": 2,
+          "passed": true,
+          "values": null,
+          "pattern": "(?:^| )[-*•] \\S.*(?:^| )[-*•] \\S"
         },
         {
           "id": "asks-for-a-decision",
           "kind": "answer_matches",
           "description": "Asks for a specific confirmation rather than open-ended availability.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": null,
+          "pattern": "confirm|which date|can you (?:pick|choose)"
         }
       ],
       "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
@@ -191,8 +256,8 @@
       "condition": "without_mcp",
       "model_id": "stub/recorded-answers",
       "earned": 3,
-      "possible": 6,
-      "percent": 50.0,
+      "possible": 8,
+      "percent": 37.5,
       "truncated": false,
       "criteria": [
         {
@@ -200,28 +265,56 @@
           "kind": "answer_contains_all",
           "description": "Addresses Tomas by name.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Tomas"
+          ],
+          "pattern": null
         },
         {
           "id": "states-the-subject",
           "kind": "answer_contains_all",
           "description": "Names the meeting and the month it concerns.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": [
+            "September",
+            "operations review"
+          ],
+          "pattern": null
         },
         {
           "id": "omits-filler-openings",
           "kind": "answer_contains_none",
           "description": "Honours the user's stated philosophy by opening without filler pleasantries.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": [
+            "I hope this email finds you well",
+            "I hope this message finds you well",
+            "I hope you are doing well",
+            "I hope you're doing well",
+            "Trust you are well"
+          ],
+          "pattern": null
+        },
+        {
+          "id": "uses-the-recipients-bullet-format",
+          "kind": "answer_matches",
+          "description": "Formats the message as bullet points, which is the recipient's stored preference.",
+          "weight": 2,
+          "passed": false,
+          "values": null,
+          "pattern": "(?:^| )[-*•] \\S.*(?:^| )[-*•] \\S"
         },
         {
           "id": "asks-for-a-decision",
           "kind": "answer_matches",
           "description": "Asks for a specific confirmation rather than open-ended availability.",
           "weight": 1,
-          "passed": false
+          "passed": false,
+          "values": null,
+          "pattern": "confirm|which date|can you (?:pick|choose)"
         }
       ],
       "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards"
@@ -240,21 +333,33 @@
           "kind": "answer_matches",
           "description": "Names Priya Raman as a whole name, not the similarly named Priya Ramanathan.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": null,
+          "pattern": "\\bpriya raman\\b"
         },
         {
           "id": "states-employer-and-role",
           "kind": "answer_contains_all",
           "description": "States both the organisation and the role held there.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Kestrel Analytics",
+            "Data Lead"
+          ],
+          "pattern": null
         },
         {
           "id": "does-not-attribute-the-other-priya",
           "kind": "answer_contains_none",
           "description": "Does not attribute the other Priya's organisation or role to the answer.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Harbourline Trust",
+            "Grants Officer"
+          ],
+          "pattern": null
         }
       ],
       "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership."
@@ -273,21 +378,33 @@
           "kind": "answer_matches",
           "description": "Names Priya Raman as a whole name, not the similarly named Priya Ramanathan.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": null,
+          "pattern": "\\bpriya raman\\b"
         },
         {
           "id": "states-employer-and-role",
           "kind": "answer_contains_all",
           "description": "States both the organisation and the role held there.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": [
+            "Kestrel Analytics",
+            "Data Lead"
+          ],
+          "pattern": null
         },
         {
           "id": "does-not-attribute-the-other-priya",
           "kind": "answer_contains_none",
           "description": "Does not attribute the other Priya's organisation or role to the answer.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Harbourline Trust",
+            "Grants Officer"
+          ],
+          "pattern": null
         }
       ],
       "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics."
@@ -296,8 +413,8 @@
       "task_id": "relationship-path",
       "condition": "with_mcp",
       "model_id": "stub/recorded-answers",
-      "earned": 5,
-      "possible": 5,
+      "earned": 6,
+      "possible": 6,
       "percent": 100.0,
       "truncated": false,
       "criteria": [
@@ -305,22 +422,42 @@
           "id": "names-the-intermediaries",
           "kind": "answer_contains_all",
           "description": "Names both people on the shortest path.",
-          "weight": 3,
-          "passed": true
+          "weight": 2,
+          "passed": true,
+          "values": [
+            "Tomas Brandt",
+            "Kofi Mensah"
+          ],
+          "pattern": null
+        },
+        {
+          "id": "orders-the-path-correctly",
+          "kind": "answer_matches",
+          "description": "Presents the hops in route order rather than as an unordered set of names.",
+          "weight": 2,
+          "passed": true,
+          "values": null,
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman"
         },
         {
           "id": "names-the-target",
           "kind": "answer_matches",
           "description": "Ends at Priya Raman rather than the similarly named contact.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": null,
+          "pattern": "\\bpriya raman\\b"
         },
         {
           "id": "does-not-route-through-the-other-priya",
           "kind": "answer_contains_none",
           "description": "Does not place the other Priya's organisation on the path.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Harbourline Trust"
+          ],
+          "pattern": null
         }
       ],
       "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman."
@@ -330,30 +467,50 @@
       "condition": "without_mcp",
       "model_id": "stub/recorded-answers",
       "earned": 2,
-      "possible": 5,
-      "percent": 40.0,
+      "possible": 6,
+      "percent": 33.3,
       "truncated": false,
       "criteria": [
         {
           "id": "names-the-intermediaries",
           "kind": "answer_contains_all",
           "description": "Names both people on the shortest path.",
-          "weight": 3,
-          "passed": false
+          "weight": 2,
+          "passed": false,
+          "values": [
+            "Tomas Brandt",
+            "Kofi Mensah"
+          ],
+          "pattern": null
+        },
+        {
+          "id": "orders-the-path-correctly",
+          "kind": "answer_matches",
+          "description": "Presents the hops in route order rather than as an unordered set of names.",
+          "weight": 2,
+          "passed": false,
+          "values": null,
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman"
         },
         {
           "id": "names-the-target",
           "kind": "answer_matches",
           "description": "Ends at Priya Raman rather than the similarly named contact.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": null,
+          "pattern": "\\bpriya raman\\b"
         },
         {
           "id": "does-not-route-through-the-other-priya",
           "kind": "answer_contains_none",
           "description": "Does not place the other Priya's organisation on the path.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Harbourline Trust"
+          ],
+          "pattern": null
         }
       ],
       "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman."
@@ -372,21 +529,31 @@
           "kind": "answer_contains_all",
           "description": "Names Ingrid Solberg, whose last interaction is the oldest on record.",
           "weight": 3,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Ingrid Solberg"
+          ],
+          "pattern": null
         },
         {
           "id": "states-the-last-interaction-date",
           "kind": "answer_matches",
           "description": "States 5 March 2026 in any common written form.",
           "weight": 2,
-          "passed": true
+          "passed": true,
+          "values": null,
+          "pattern": "2026-03-05|5 march 2026|march 5,? 2026"
         },
         {
           "id": "does-not-name-a-recent-contact",
           "kind": "answer_contains_none",
           "description": "Does not present the most recently seen contact as the overdue one.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Kofi Mensah"
+          ],
+          "pattern": null
         }
       ],
       "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05."
@@ -405,21 +572,31 @@
           "kind": "answer_contains_all",
           "description": "Names Ingrid Solberg, whose last interaction is the oldest on record.",
           "weight": 3,
-          "passed": false
+          "passed": false,
+          "values": [
+            "Ingrid Solberg"
+          ],
+          "pattern": null
         },
         {
           "id": "states-the-last-interaction-date",
           "kind": "answer_matches",
           "description": "States 5 March 2026 in any common written form.",
           "weight": 2,
-          "passed": false
+          "passed": false,
+          "values": null,
+          "pattern": "2026-03-05|5 march 2026|march 5,? 2026"
         },
         {
           "id": "does-not-name-a-recent-contact",
           "kind": "answer_contains_none",
           "description": "Does not present the most recently seen contact as the overdue one.",
           "weight": 1,
-          "passed": true
+          "passed": true,
+          "values": [
+            "Kofi Mensah"
+          ],
+          "pattern": null
         }
       ],
       "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke."

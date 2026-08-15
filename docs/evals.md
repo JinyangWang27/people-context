@@ -43,10 +43,10 @@ fixture record the same timestamps.
 | --- | --- | ---: |
 | `identity-disambiguation` | Picking the right person out of two who share a first name | 5 |
 | `context-recall` | Reporting a contact's organisation, role, and stored update preference | 7 |
-| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 6 |
-| `relationship-path` | Naming the people on the shortest path to a contact | 5 |
+| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 8 |
+| `relationship-path` | Naming the people on the shortest path to a contact, in order | 6 |
 | `stale-follow-up` | Naming the most overdue contact and the date of the last interaction | 6 |
-| **Total** | | **29** |
+| **Total** | | **32** |
 
 The exact prompts live in [`evals/suite/suite.json`](../evals/suite/suite.json) and are also copied verbatim into
 every report, so a published result always carries the wording that produced it.
@@ -64,7 +64,16 @@ every machine and a reader can re-derive a published number from the recorded an
 
 Answers are compared after Unicode NFKC composition, case folding, and whitespace collapsing, so line wrapping
 never changes a score. Word-boundary patterns are what separate `Priya Raman` from `Priya Ramanathan`, which
-plain substring matching cannot do.
+plain substring matching cannot do, and ordered patterns are what stop a reversed relationship path from scoring
+as a correct one.
+
+Where a task's prompt asks the agent to use stored context, a criterion measures that specifically. The drafting
+task scores bullet formatting because bullet points are the *recipient's* stored preference, so an otherwise
+well-written single-line message cannot earn full marks for context the agent never read.
+
+Each report records the exact operands — the phrase list or the regular expression — beside every criterion
+outcome, so an older published result stays re-derivable after the suite has moved on and `suite.json` no longer
+contains that rule.
 
 Each criterion carries a weight; a task's score is the earned share of its possible weight. Partial credit is
 intentional — an answer that names the right person but omits their stated update preference is better than one
@@ -89,6 +98,15 @@ export ANTHROPIC_API_KEY=...
 uv run python -m evals.harness --runner claude-cli --out evals/results/<date>-<model>.json
 ```
 
+The evaluated server is pinned to this checkout — `uv run --project {project_root} --locked people-context-mcp`
+— rather than resolved from PyPI by bare name. A later release answering the same suite differently would make a
+dated result impossible to reproduce; the report records the configured vector so a reader knows which code was
+measured.
+
+The agent process runs in a fresh empty directory that is never under `--workdir`, so a command-backed agent
+cannot read `world.db` straight off disk during the `without_mcp` control. A control run that could read the
+fixture directly would not be a control run.
+
 The API key is read only from the process environment, and only because the suite names `ANTHROPIC_API_KEY` in
 `env_passthrough`. It is never accepted as a flag, never read from a file, and never written into a report. The
 suite refuses an `env_passthrough` entry beginning with `PEOPLE_CONTEXT`, so store configuration cannot reach the
@@ -107,8 +125,8 @@ Harness 1.0.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub
 
 | Condition | Tasks | Earned | Possible | Percent |
 | --- | ---: | ---: | ---: | ---: |
-| `with_mcp` | 5 | 27 | 29 | 93.1 |
-| `without_mcp` | 5 | 8 | 29 | 27.6 |
+| `with_mcp` | 5 | 30 | 32 | 93.8 |
+| `without_mcp` | 5 | 8 | 32 | 25.0 |
 
 **This is not a measurement of any model.** The answers are hand-written illustrations chosen to exercise every
 scoring path, including partial credit in both conditions. The run establishes only that the fixture
@@ -123,7 +141,7 @@ the report file, alongside the dry run rather than replacing it.
 ## What a number from this harness may claim
 
 - It may claim that, on these five fixed tasks over this fictional world, a given model scored *X* with the
-  server and *Y* without it, under the recorded harness and suite versions.
+  server and *Y* without it, under the recorded harness and suite versions and against the pinned checkout.
 - It may not be generalized to a real store. Five tasks over six invented people are a sanity check, not a
   benchmark, and a real store is larger, messier, and differently distributed.
 - It may not be compared across harness or suite versions. Bump both when prompts, rubrics, or the fixture

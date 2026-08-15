@@ -61,9 +61,12 @@ aliases, affiliations, facts, relationships, and recent interactions.
 
 ## What stays local
 
-Everything. The store is a SQLite file on your disk, the importer runs in your process, and no ordinary command
-touches the network. If your agent runs in the cloud, it sees only what a specific tool call returns — bounded,
-sensitivity-filtered context, not the database.
+The store and the import. The database is a SQLite file on your disk, the importer runs in your process, and no
+ordinary command touches the network — the raw vCard, mbox, or chat export you imported never leaves the machine.
+
+What a cloud-hosted agent sees is a separate question: it receives whatever a specific tool call returns —
+bounded, sensitivity-filtered context — as ordinary prompt content, subject to that provider's terms. It never
+receives the database or the raw source you imported.
 
 ## Next
 

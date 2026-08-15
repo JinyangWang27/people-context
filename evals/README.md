@@ -35,6 +35,8 @@ each rubric measures, and what a published number may and may not claim.
 | `harness/` | Loading, world materialization, runners, scoring, and the report |
 | `results/` | Dated report documents, one file per recorded run |
 
+Run artifacts land under `<workdir>/artifacts/`; the agent process gets its own empty directory elsewhere.
+
 ## Safety properties
 
 - The harness builds its own SQLite store in a throwaway directory and refuses to run against the database the
@@ -43,5 +45,9 @@ each rubric measures, and what a published number may and may not claim.
   named on the MCP server command line instead.
 - The agent command is an argument vector with `shell=False` and whole-argument placeholders, so a prompt can
   never become an extra flag.
+- The agent runs in a fresh empty directory outside the artifacts tree, so the `without_mcp` control cannot read
+  `world.db` off disk instead of going through the server.
+- The evaluated server is pinned to this checkout rather than resolved from PyPI by name, so a dated result names
+  the code it measured.
 - Every person, organisation, and event in the fixture is invented, and every address uses the reserved `.test`
   domain.

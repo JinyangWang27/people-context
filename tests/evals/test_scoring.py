@@ -107,3 +107,49 @@ def test_an_empty_answer_earns_only_the_negative_criteria() -> None:
 
     assert score.earned == 1
     assert score.percent == 20.0
+
+
+def test_a_reversed_path_does_not_score_as_the_shortest_path() -> None:
+    """Regression: an unordered name check scored a backwards route as a correct one."""
+    task = _task("relationship-path")
+
+    reversed_route = "Priya Raman -> Kofi Mensah -> Tomas Brandt"
+    correct_route = "You -> Tomas Brandt -> Kofi Mensah -> Priya Raman"
+
+    reversed_score = score_task(task, reversed_route)
+    correct_score = score_task(task, correct_route)
+
+    assert correct_score.earned == correct_score.possible
+    assert reversed_score.earned < correct_score.earned
+    failed = [criterion.id for criterion in reversed_score.criteria if not criterion.passed]
+    assert failed == ["orders-the-path-correctly"]
+
+
+def test_a_single_line_draft_does_not_earn_the_recipients_bullet_preference() -> None:
+    """Regression: the drafting task must measure use of the stored preference."""
+    task = _task("guided-drafting")
+
+    plain = score_task(task, "Tomas, please confirm the September operations review date.")
+    formatted = score_task(
+        task,
+        "Tomas - please confirm the September operations review date.\n"
+        "- Proposed: week of 14 September\n"
+        "- Decision needed by: 5 September",
+    )
+
+    assert formatted.earned == formatted.possible
+    assert plain.earned == formatted.earned - 2
+    failed = [criterion.id for criterion in plain.criteria if not criterion.passed]
+    assert failed == ["uses-the-recipients-bullet-format"]
+
+
+def test_scored_criteria_carry_the_operands_they_applied() -> None:
+    task = _task("identity-disambiguation")
+
+    score = score_task(task, "Priya Raman, Data Lead at Kestrel Analytics.")
+
+    by_id = {criterion.id: criterion for criterion in score.criteria}
+    assert by_id["names-the-right-priya"].pattern == r"\bpriya raman\b"
+    assert by_id["names-the-right-priya"].values is None
+    assert by_id["states-employer-and-role"].values == ("Kestrel Analytics", "Data Lead")
+    assert by_id["states-employer-and-role"].pattern is None

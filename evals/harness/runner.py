@@ -9,6 +9,7 @@ added or withheld.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,8 +21,12 @@ from evals.harness.suite import LoadedSuite, Task
 from evals.harness.world import World, build_world_database
 
 #: Names of the run artifacts inside the working directory.
+ARTIFACTS_DIRNAME = "artifacts"
 WORLD_DB_FILENAME = "world.db"
 MCP_CONFIG_FILENAME = "mcp.json"
+
+#: The checkout this harness belongs to, substituted into a server command vector.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -36,7 +41,7 @@ class RunOutcome:
     score: TaskScore
 
 
-def write_mcp_config(path: Path, server_argv: tuple[str, ...], db_path: Path) -> Path:
+def write_mcp_config(path: Path, server_argv: Sequence[str], db_path: Path) -> Path:
     """Write the MCP client configuration used by the ``with_mcp`` condition.
 
     The database is named on the server command line rather than left to
@@ -56,17 +61,41 @@ def write_mcp_config(path: Path, server_argv: tuple[str, ...], db_path: Path) ->
     return path
 
 
+def resolve_server_argv(server_argv: tuple[str, ...]) -> list[str]:
+    """Substitute the checkout path, so a recorded run names the code it evaluated.
+
+    Resolving the server from PyPI by bare name would let a later release answer the
+    same suite differently, which would make a dated result impossible to reproduce.
+    """
+    resolved: list[str] = []
+    for argument in server_argv:
+        if argument == "{project_root}":
+            resolved.append(str(PROJECT_ROOT))
+        elif "{" in argument or "}" in argument:
+            raise EvalHarnessError(
+                f"argument {argument!r} is not a whole placeholder; expected: {{project_root}}"
+            )
+        else:
+            resolved.append(argument)
+    return resolved
+
+
 def prepare_workspace(
     world: World,
     workdir: Path,
     server_argv: tuple[str, ...],
 ) -> tuple[Path, Path | None]:
-    """Materialize the fictional store and, when configured, its client config."""
-    workdir.mkdir(parents=True, exist_ok=True)
-    db_path = build_world_database(world, workdir / WORLD_DB_FILENAME)
+    """Materialize the fictional store and, when configured, its client config.
+
+    Both land under an ``artifacts`` subdirectory that is deliberately *not* the
+    directory the agent runs in — see ``run_suite``.
+    """
+    artifacts = workdir / ARTIFACTS_DIRNAME
+    artifacts.mkdir(parents=True, exist_ok=True)
+    db_path = build_world_database(world, artifacts / WORLD_DB_FILENAME)
     if not server_argv:
         return db_path, None
-    config_path = write_mcp_config(workdir / MCP_CONFIG_FILENAME, server_argv, db_path)
+    config_path = write_mcp_config(artifacts / MCP_CONFIG_FILENAME, resolve_server_argv(server_argv), db_path)
     return db_path, config_path
 
 
@@ -75,11 +104,17 @@ def run_suite(
     tasks: tuple[Task, ...],
     runner: AgentRunner,
     *,
-    workdir: Path,
+    agent_directory: Path,
     mcp_config_path: Path | None,
     conditions: tuple[str, ...] = CONDITIONS,
 ) -> tuple[RunOutcome, ...]:
-    """Run every selected task under every selected condition, in report order."""
+    """Run every selected task under every selected condition, in report order.
+
+    ``agent_directory`` must be an empty directory outside the artifacts tree. A
+    command-backed agent can read its own working directory, so running it beside
+    ``world.db`` would let the ``without_mcp`` control read the fixture straight off
+    disk and score as though it had the server.
+    """
     unknown = sorted(set(conditions) - set(CONDITIONS))
     if unknown:
         raise EvalHarnessError("unknown conditions: " + ", ".join(unknown))
@@ -93,7 +128,7 @@ def run_suite(
                 system_prompt=loaded.suite.system_prompt,
                 prompt=task.prompt,
                 mcp_config_path=mcp_config_path if condition == "with_mcp" else None,
-                working_directory=workdir,
+                working_directory=agent_directory,
             )
             response = runner.run(request)
             outcomes.append(
