@@ -18,6 +18,7 @@ from evals.harness.runner import (
     WORLD_DB_FILENAME,
     prepare_workspace,
     resolve_server_argv,
+    source_identity,
 )
 from evals.harness.runners.stub import StubAgentRunner
 from evals.harness.suite import CommandRunnerConfig, load_suite
@@ -99,6 +100,7 @@ def test_report_identifies_the_code_and_inputs_that_produced_it(tmp_path: Path) 
         "world_as_of": "2026-08-01T09:00:00Z",
     }
     assert all(run["model_id"] == "stub/recorded-answers" for run in report["runs"])
+    assert report["source"] is None, "the stub spawns no server, so there is no source to identify"
 
 
 def test_report_records_the_verbatim_prompts_it_scored(tmp_path: Path) -> None:
@@ -495,3 +497,24 @@ def test_an_unwritable_report_destination_still_surfaces_the_completed_run(
     recovered = json.loads(captured.out[captured.out.index("{") :])
     assert recovered["totals"], "the completed report must be recoverable from stdout"
     assert "| with_mcp | 5 |" in captured.out, "the summary must be printed before the write is attempted"
+
+
+def test_a_model_backed_run_would_record_the_checkout_it_evaluated() -> None:
+    """Regression: the unsubstituted server vector cannot distinguish two commits."""
+    identity = source_identity()
+
+    assert identity is not None, "this checkout is a git repository, so provenance is available"
+    assert len(str(identity["revision"])) == 40
+    assert isinstance(identity["dirty"], bool)
+
+
+def test_provenance_is_omitted_rather_than_guessed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing provenance line is honest; an invented one is not."""
+    import subprocess
+
+    def _unavailable(*_args: object, **_kwargs: object) -> None:
+        raise OSError("git is not installed")
+
+    monkeypatch.setattr(subprocess, "run", _unavailable)
+
+    assert source_identity() is None

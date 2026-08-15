@@ -38,6 +38,7 @@ def build_report(
     generated_at: datetime,
     mcp_server_argv: tuple[str, ...] = (),
     client_version: str | None = None,
+    source: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the deterministic report document for one run."""
     ordered = sorted(outcomes, key=lambda outcome: (outcome.task_id, outcome.condition))
@@ -63,6 +64,9 @@ def build_report(
             # it does not know which one ran.
             "client_version": client_version,
         },
+        # The checkout whose server answered. Null for the stub runner, which spawns no
+        # server at all, so there is no source code to identify.
+        "source": source,
         "prompts": {
             "system": loaded.suite.system_prompt,
             "tasks": [{"id": task.id, "title": task.title, "prompt": task.prompt} for task in tasks],

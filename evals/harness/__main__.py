@@ -21,7 +21,7 @@ from evals.harness import CONDITIONS
 from evals.harness.errors import EvalHarnessError
 from evals.harness.ports import AgentRunner
 from evals.harness.report import build_report, render_summary
-from evals.harness.runner import prepare_workspace, run_suite
+from evals.harness.runner import prepare_workspace, run_suite, source_identity
 from evals.harness.runners import build_runner
 from evals.harness.runners.command import CommandAgentRunner
 from evals.harness.suite import CommandRunnerConfig, load_suite
@@ -102,6 +102,7 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
         generated_at=clock.now(),
         mcp_server_argv=server_argv,
         client_version=runner.probe_client_version() if isinstance(runner, CommandAgentRunner) else None,
+        source=source_identity() if isinstance(runner, CommandAgentRunner) else None,
     )
     document = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     # The summary goes out before the write is attempted. Publication is the last step

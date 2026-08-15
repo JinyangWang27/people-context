@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -30,6 +31,9 @@ MCP_CONFIG_FILENAME = "mcp.json"
 
 #: The checkout this harness belongs to, substituted into a server command vector.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+#: A provenance probe that has not answered in this long is not worth waiting for.
+_GIT_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,39 @@ def resolve_server_argv(server_argv: tuple[str, ...], world_as_of: datetime) -> 
         else:
             resolved.append(argument)
     return resolved
+
+
+def source_identity() -> dict[str, object] | None:
+    """Return the evaluated checkout's revision and whether it carries local edits.
+
+    ``HARNESS_VERSION`` tracks the harness, and the server command vector is recorded
+    unsubstituted, so neither one changes when the shipped server code does. Without a
+    revision, two runs that exercised materially different tool behaviour would publish
+    identical server identities. Returns ``None`` when git cannot answer, because a
+    missing provenance line is honest and a guessed one is not.
+    """
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if revision.returncode != 0 or status.returncode != 0:
+        return None
+    return {"revision": revision.stdout.strip(), "dirty": bool(status.stdout.strip())}
 
 
 class FixtureWorkspace:

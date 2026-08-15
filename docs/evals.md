@@ -48,9 +48,11 @@ fixture record the same timestamps.
 | `stale-follow-up` | Naming the most overdue contact and the date of the last interaction | 6 |
 | **Total** | | **34** |
 
-Where a task cites stored guidance, every clause of that guidance is scored. The drafting task carries four
-criteria for four clauses: the philosophy's "name the decision" and "name the date", and the recipient's "bullet
-points" and "no preamble". A draft that honours three of them earns three.
+Where a task cites stored guidance, each clause that can be decided textually is scored separately. The drafting
+task carries three such criteria — the philosophy's "name the decision" and "name the date", and the recipient's
+"bullet points" — so a draft honouring two of them earns two. Its fourth clause, "no preamble", is *not* scored
+beyond a fixed list of canned pleasantries; see [Known limits](#what-the-rubrics-do-not-score) for why, and read
+any score in that light.
 
 The exact prompts live in [`evals/suite/suite.json`](../evals/suite/suite.json) and are also copied verbatim into
 every report, so a published result always carries the wording that produced it.
@@ -127,8 +129,11 @@ If the agent command exceeds its output cap or its deadline, the run is refused 
 output — an answer the harness had to cut is not an answer worth publishing.
 
 The report records the agent client's own version when the suite configures a `version_argv` probe, because the
-same model through a different CLI build can see different built-in prompts and MCP handling. The probe is
-best-effort: if it fails, the report records nothing rather than failing the run.
+same model through a different CLI build can see different built-in prompts and MCP handling. It also records the
+checkout's git revision and whether that checkout carried uncommitted edits, since neither the harness version nor
+the unsubstituted server command vector changes when the shipped server code does — without a revision, two runs
+that exercised different tool behaviour would publish identical server identities. Both are best-effort: if the
+probe or git cannot answer, the report records nothing rather than guessing, and rather than failing the run.
 
 The API key is read only from the process environment, and only because the suite names `ANTHROPIC_API_KEY` in
 `env_passthrough`. It is never accepted as a flag, never read from a file, and never written into a report. The
