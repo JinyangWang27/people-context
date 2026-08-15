@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T20:53:37Z",
+  "generated_at": "2026-08-15T21:06:29Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -103,13 +103,23 @@
         {
           "id": "states-update-preference",
           "kind": "answer_contains_all",
-          "description": "Reports the stored update preference rather than a generic one.",
-          "weight": 2,
+          "description": "Reports the format half of the stored preference rather than a generic one.",
+          "weight": 1,
           "passed": false,
           "values": [
             "bullet points"
           ],
           "pattern": null,
+          "min_lines": null
+        },
+        {
+          "id": "states-the-no-preamble-half",
+          "kind": "answer_matches",
+          "description": "Reports the second half of the stored preference: no preamble.",
+          "weight": 1,
+          "passed": false,
+          "values": null,
+          "pattern": "no preamble|without (?:a |any )?preamble|no pleasantries|skips? the preamble",
           "min_lines": null
         },
         {
@@ -165,13 +175,23 @@
         {
           "id": "states-update-preference",
           "kind": "answer_contains_all",
-          "description": "Reports the stored update preference rather than a generic one.",
-          "weight": 2,
+          "description": "Reports the format half of the stored preference rather than a generic one.",
+          "weight": 1,
           "passed": false,
           "values": [
             "bullet points"
           ],
           "pattern": null,
+          "min_lines": null
+        },
+        {
+          "id": "states-the-no-preamble-half",
+          "kind": "answer_matches",
+          "description": "Reports the second half of the stored preference: no preamble.",
+          "weight": 1,
+          "passed": false,
+          "values": null,
+          "pattern": "no preamble|without (?:a |any )?preamble|no pleasantries|skips? the preamble",
           "min_lines": null
         },
         {
@@ -458,11 +478,11 @@
         {
           "id": "orders-the-path-correctly",
           "kind": "answer_matches",
-          "description": "Presents the hops in route order rather than as an unordered set of names.",
+          "description": "Presents the hops in route order and ends the route at the target.",
           "weight": 2,
           "passed": true,
           "values": null,
-          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman",
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman(?!\\s*(?:->|-->|→|,|then|and then)\\s*(?:noor|tomas|kofi|ingrid|priya))",
           "min_lines": null
         },
         {
@@ -517,11 +537,11 @@
         {
           "id": "orders-the-path-correctly",
           "kind": "answer_matches",
-          "description": "Presents the hops in route order rather than as an unordered set of names.",
+          "description": "Presents the hops in route order and ends the route at the target.",
           "weight": 2,
           "passed": false,
           "values": null,
-          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman",
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman(?!\\s*(?:->|-->|→|,|then|and then)\\s*(?:noor|tomas|kofi|ingrid|priya))",
           "min_lines": null
         },
         {
@@ -583,13 +603,15 @@
           "min_lines": null
         },
         {
-          "id": "does-not-name-a-recent-contact",
+          "id": "does-not-name-another-contact",
           "kind": "answer_contains_none",
-          "description": "Does not present the most recently seen contact as the overdue one.",
+          "description": "Names no contact other than the single most overdue one.",
           "weight": 1,
           "passed": true,
           "values": [
-            "Kofi Mensah"
+            "Kofi Mensah",
+            "Tomas Brandt",
+            "Priya Raman"
           ],
           "pattern": null,
           "min_lines": null
@@ -629,13 +651,15 @@
           "min_lines": null
         },
         {
-          "id": "does-not-name-a-recent-contact",
+          "id": "does-not-name-another-contact",
           "kind": "answer_contains_none",
-          "description": "Does not present the most recently seen contact as the overdue one.",
+          "description": "Names no contact other than the single most overdue one.",
           "weight": 1,
           "passed": true,
           "values": [
-            "Kofi Mensah"
+            "Kofi Mensah",
+            "Tomas Brandt",
+            "Priya Raman"
           ],
           "pattern": null,
           "min_lines": null

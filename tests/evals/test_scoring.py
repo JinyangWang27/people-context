@@ -89,7 +89,7 @@ def test_scores_are_weighted_and_partial() -> None:
     assert partial.earned == 5
     assert partial.percent == 71.4
     failed = [criterion.id for criterion in partial.criteria if not criterion.passed]
-    assert failed == ["states-update-preference"]
+    assert failed == ["states-update-preference", "states-the-no-preamble-half"]
 
 
 def test_criteria_are_reported_in_rubric_order() -> None:
@@ -197,5 +197,76 @@ def test_a_path_that_continues_past_the_target_is_not_the_shortest_path() -> Non
     correct = score_task(task, "You -> Tomas Brandt -> Kofi Mensah -> Priya Raman")
 
     assert correct.earned == correct.possible
-    failed = [criterion.id for criterion in overshot.criteria if not criterion.passed]
-    assert failed == ["does-not-add-people-outside-the-path"]
+    assert overshot.earned < correct.earned
+    assert "does-not-add-people-outside-the-path" in [
+        criterion.id for criterion in overshot.criteria if not criterion.passed
+    ]
+
+
+def test_a_route_that_loops_back_to_someone_already_on_it_is_rejected() -> None:
+    """Regression: an off-path name list could not catch a repeated hop."""
+    task = _task("relationship-path")
+
+    looped = score_task(task, "Noor Vance -> Tomas Brandt -> Kofi Mensah -> Priya Raman -> Kofi Mensah")
+
+    failed = [criterion.id for criterion in looped.criteria if not criterion.passed]
+    assert failed == ["orders-the-path-correctly"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "You -> Tomas Brandt -> Kofi Mensah -> Priya Raman",
+        "You -> Tomas Brandt -> Kofi Mensah -> Priya Raman. She is the Data Lead at Kestrel Analytics.",
+        "The path is You -> Tomas Brandt -> Kofi Mensah -> Priya Raman. So Tomas and Kofi connect you.",
+    ],
+)
+def test_prose_after_a_correct_route_is_not_treated_as_another_hop(answer: str) -> None:
+    """Rejecting continuations must not punish an answer that explains itself afterwards."""
+    task = _task("relationship-path")
+
+    score = score_task(task, answer)
+
+    assert score.earned == score.possible
+
+
+def test_reporting_half_a_stored_preference_earns_half_the_credit() -> None:
+    """Regression: 'bullet points with a preamble' contradicts the record but scored full."""
+    task = _task("context-recall")
+
+    contradicting = score_task(
+        task,
+        "Tomas is the Operations Manager at Tidepool Collective and prefers bullet points with a preamble",
+    )
+    complete = score_task(
+        task,
+        "Tomas Brandt is the Operations Manager at Tidepool Collective; he prefers bullet points, no preamble.",
+    )
+
+    assert complete.earned == complete.possible
+    failed = [criterion.id for criterion in contradicting.criteria if not criterion.passed]
+    assert failed == ["states-the-no-preamble-half"]
+
+
+def test_a_paraphrased_preference_still_counts() -> None:
+    """The rubric measures the reported fact, not one exact wording of it."""
+    task = _task("context-recall")
+
+    score = score_task(
+        task,
+        "Tomas Brandt, Operations Manager at Tidepool Collective, likes bullet points without preamble.",
+    )
+
+    assert score.earned == score.possible
+
+
+def test_claiming_a_tie_with_another_contact_is_not_the_single_overdue_answer() -> None:
+    """Regression: only the most recent contact was rejected, so a false tie scored full."""
+    task = _task("stale-follow-up")
+
+    tie = score_task(task, "Ingrid Solberg and Priya Raman are tied; I last spoke with Ingrid on 2026-03-05")
+    single = score_task(task, "Ingrid Solberg is the most overdue; you last spoke on 2026-03-05.")
+
+    assert single.earned == single.possible
+    failed = [criterion.id for criterion in tie.criteria if not criterion.passed]
+    assert failed == ["does-not-name-another-contact"]
