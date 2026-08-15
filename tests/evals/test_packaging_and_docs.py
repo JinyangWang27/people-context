@@ -105,6 +105,17 @@ def test_every_recorded_report_is_a_current_report_document() -> None:
         assert report["harness_version"] == HARNESS_VERSION, path.name
 
 
+def test_every_recorded_report_matches_the_current_rubrics() -> None:
+    """A recorded report whose criteria have drifted from the suite is stale evidence."""
+    suite = json.loads(_read(ROOT / "evals/suite/suite.json"))
+    expected = {task["id"]: [item["id"] for item in task["rubric"]] for task in suite["tasks"]}
+
+    for path in _recorded_reports():
+        for run in json.loads(_read(path))["runs"]:
+            recorded = [criterion["id"] for criterion in run["criteria"]]
+            assert recorded == expected[run["task_id"]], f"{path.name}: {run['task_id']} is stale"
+
+
 def test_the_documented_harness_version_matches_the_code() -> None:
     assert f"Harness version: **{HARNESS_VERSION}**" in _read(EVALS_DOC)
 

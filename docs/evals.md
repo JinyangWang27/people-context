@@ -61,6 +61,7 @@ every machine and a reader can re-derive a published number from the recorded an
 | `answer_contains_all` | Every listed phrase appears in the answer |
 | `answer_contains_none` | None of the listed phrases appears |
 | `answer_matches` | A case-insensitive regular expression matches |
+| `answer_lines_match` | At least `min_lines` individual lines match an expression |
 
 Answers are compared after Unicode NFKC composition, case folding, and whitespace collapsing, so line wrapping
 never changes a score. Word-boundary patterns are what separate `Priya Raman` from `Priya Ramanathan`, which
@@ -69,7 +70,9 @@ as a correct one.
 
 Where a task's prompt asks the agent to use stored context, a criterion measures that specifically. The drafting
 task scores bullet formatting because bullet points are the *recipient's* stored preference, so an otherwise
-well-written single-line message cannot earn full marks for context the agent never read.
+well-written single-line message cannot earn full marks for context the agent never read. That criterion is the
+reason `answer_lines_match` exists: it is the one kind that keeps line boundaries, because collapsing them would
+read any single-line message with two dashes in it as a bulleted list.
 
 Each report records the exact operands — the phrase list or the regular expression — beside every criterion
 outcome, so an older published result stays re-derivable after the suite has moved on and `suite.json` no longer

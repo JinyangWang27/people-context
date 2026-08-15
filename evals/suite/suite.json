@@ -124,9 +124,10 @@
         },
         {
           "id": "uses-the-recipients-bullet-format",
-          "kind": "answer_matches",
-          "description": "Formats the message as bullet points, which is the recipient's stored preference.",
-          "pattern": "(?:^| )[-*•] \\S.*(?:^| )[-*•] \\S",
+          "kind": "answer_lines_match",
+          "description": "Opens at least two lines with a bullet, which is the recipient's stored preference.",
+          "pattern": "^[-*•] \\S",
+          "min_lines": 2,
           "weight": 2
         },
         {
@@ -168,10 +169,12 @@
           "weight": 1
         },
         {
-          "id": "does-not-route-through-the-other-priya",
+          "id": "does-not-add-people-outside-the-path",
           "kind": "answer_contains_none",
-          "description": "Does not place the other Priya's organisation on the path.",
+          "description": "Names nobody off the shortest path, including hops continuing past the target.",
           "values": [
+            "Ingrid Solberg",
+            "Priya Ramanathan",
             "Harbourline Trust"
           ],
           "weight": 1

@@ -104,16 +104,18 @@ def run_suite(
     tasks: tuple[Task, ...],
     runner: AgentRunner,
     *,
-    agent_directory: Path,
+    agent_root: Path,
     mcp_config_path: Path | None,
     conditions: tuple[str, ...] = CONDITIONS,
 ) -> tuple[RunOutcome, ...]:
     """Run every selected task under every selected condition, in report order.
 
-    ``agent_directory`` must be an empty directory outside the artifacts tree. A
-    command-backed agent can read its own working directory, so running it beside
-    ``world.db`` would let the ``without_mcp`` control read the fixture straight off
-    disk and score as though it had the server.
+    Each invocation gets its own empty directory under ``agent_root``, which must sit
+    outside the artifacts tree. Two separate leaks are being closed: an agent running
+    beside ``world.db`` could read the fixture off disk instead of going through the
+    server, and an agent that writes session or memory files into its working directory
+    during ``with_mcp`` would hand that fixture-derived state to the ``without_mcp``
+    control that runs after it.
     """
     unknown = sorted(set(conditions) - set(CONDITIONS))
     if unknown:
@@ -122,13 +124,15 @@ def run_suite(
     outcomes: list[RunOutcome] = []
     for task in tasks:
         for condition in ordered:
+            directory = agent_root / f"{task.id}.{condition}"
+            directory.mkdir(parents=True, exist_ok=False)
             request = AgentRequest(
                 task_id=task.id,
                 condition=condition,
                 system_prompt=loaded.suite.system_prompt,
                 prompt=task.prompt,
                 mcp_config_path=mcp_config_path if condition == "with_mcp" else None,
-                working_directory=agent_directory,
+                working_directory=directory,
             )
             response = runner.run(request)
             outcomes.append(

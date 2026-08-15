@@ -16,11 +16,13 @@ from evals.harness.suite import (
     ContainsAllCriterion,
     ContainsNoneCriterion,
     Criterion,
+    LineMatchesCriterion,
     MatchesCriterion,
     Task,
 )
 
 _WHITESPACE = re.compile(r"\s+")
+_HORIZONTAL_WHITESPACE = re.compile(r"[^\S\n]+")
 
 
 def normalize(text: str) -> str:
@@ -31,6 +33,17 @@ def normalize(text: str) -> str:
     containing the same words score the same.
     """
     return _WHITESPACE.sub(" ", unicodedata.normalize("NFKC", text)).strip().casefold()
+
+
+def normalize_lines(text: str) -> tuple[str, ...]:
+    """Fold an answer line by line, keeping the line boundaries.
+
+    Used only by ``answer_lines_match``, where the layout of the answer is the thing
+    being scored and collapsing newlines would destroy the evidence.
+    """
+    folded = unicodedata.normalize("NFKC", text)
+    lines = (_HORIZONTAL_WHITESPACE.sub(" ", line).strip().casefold() for line in folded.splitlines())
+    return tuple(line for line in lines if line)
 
 
 @dataclass(frozen=True)
@@ -49,6 +62,7 @@ class CriterionOutcome:
     passed: bool
     values: tuple[str, ...] | None
     pattern: str | None
+    min_lines: int | None
 
 
 @dataclass(frozen=True)
@@ -76,6 +90,11 @@ def evaluate_criterion(criterion: Criterion, answer: str) -> bool:
         return not any(normalize(value) in folded for value in criterion.values)
     if isinstance(criterion, MatchesCriterion):
         return re.search(criterion.pattern, folded, re.IGNORECASE) is not None
+    if isinstance(criterion, LineMatchesCriterion):
+        matched = sum(
+            1 for line in normalize_lines(answer) if re.search(criterion.pattern, line, re.IGNORECASE)
+        )
+        return matched >= criterion.min_lines
     raise EvalHarnessError(f"unsupported criterion kind: {type(criterion).__name__}")
 
 
@@ -90,6 +109,7 @@ def score_task(task: Task, answer: str) -> TaskScore:
             passed=evaluate_criterion(criterion, answer),
             values=getattr(criterion, "values", None),
             pattern=getattr(criterion, "pattern", None),
+            min_lines=getattr(criterion, "min_lines", None),
         )
         for criterion in task.rubric
     )

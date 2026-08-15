@@ -51,6 +51,15 @@ class ContainsNoneCriterion(_CriterionBase):
     values: tuple[str, ...] = Field(min_length=1, max_length=20)
 
 
+def _require_compilable(value: str) -> str:
+    """Reject a pattern the harness could not apply, at load time rather than mid-run."""
+    try:
+        re.compile(value)
+    except re.error as exc:
+        raise ValueError(f"invalid regular expression: {exc}") from exc
+    return value
+
+
 class MatchesCriterion(_CriterionBase):
     """Passes when the answer matches a case-insensitive regular expression.
 
@@ -64,15 +73,30 @@ class MatchesCriterion(_CriterionBase):
     @field_validator("pattern")
     @classmethod
     def _compilable(cls, value: str) -> str:
-        try:
-            re.compile(value)
-        except re.error as exc:
-            raise ValueError(f"invalid regular expression: {exc}") from exc
-        return value
+        return _require_compilable(value)
+
+
+class LineMatchesCriterion(_CriterionBase):
+    """Passes when at least ``min_lines`` individual lines match the expression.
+
+    Line structure is preserved for this kind alone. Some stored preferences are about
+    layout — "bullet points, no preamble" is one — and the whitespace collapsing that
+    makes the other kinds wrapping-insensitive would erase exactly what is being
+    measured, scoring a single-line message with two dashes in it as a bulleted list.
+    """
+
+    kind: Literal["answer_lines_match"]
+    pattern: str = Field(min_length=1, max_length=400)
+    min_lines: int = Field(default=1, ge=1, le=50)
+
+    @field_validator("pattern")
+    @classmethod
+    def _compilable(cls, value: str) -> str:
+        return _require_compilable(value)
 
 
 Criterion = Annotated[
-    ContainsAllCriterion | ContainsNoneCriterion | MatchesCriterion,
+    ContainsAllCriterion | ContainsNoneCriterion | MatchesCriterion | LineMatchesCriterion,
     Field(discriminator="kind"),
 ]
 

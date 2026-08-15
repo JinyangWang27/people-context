@@ -266,6 +266,83 @@ def test_the_agent_never_runs_where_the_fictional_database_lives(
         assert workdir.resolve() not in directory.parents, "the agent must not run inside the artifacts tree"
 
 
+def test_each_invocation_gets_its_own_agent_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a shared directory let with_mcp session state reach the control run."""
+    seen: list[Path] = []
+    original = StubAgentRunner.run
+
+    def _record(self: StubAgentRunner, request: AgentRequest) -> AgentResponse:
+        seen.append(request.working_directory.resolve())
+        return original(self, request)
+
+    monkeypatch.setattr(StubAgentRunner, "run", _record)
+    main(
+        ["--suite", str(SUITE_PATH), "--runner", "stub", "--workdir", str(tmp_path / "work")],
+        clock=_FixedClock(),
+    )
+
+    assert len(seen) == 10
+    assert len(set(seen)) == len(seen), "two invocations shared a working directory"
+
+
+def test_a_report_destination_that_would_replace_the_real_database_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Regression: a mistyped --out atomically replaced the user's store with report JSON."""
+    personal = tmp_path / "people.db"
+    personal.write_bytes(b"real store")
+    monkeypatch.setenv("PEOPLE_CONTEXT_DB", str(personal))
+
+    exit_code = main(
+        [
+            "--suite",
+            str(SUITE_PATH),
+            "--runner",
+            "stub",
+            "--workdir",
+            str(tmp_path / "work"),
+            "--out",
+            str(personal),
+        ],
+        clock=_FixedClock(),
+    )
+
+    assert exit_code == 1
+    assert "refusing to write the report to" in capsys.readouterr().err
+    assert personal.read_bytes() == b"real store"
+
+
+def test_a_report_destination_naming_a_database_sidecar_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    personal = tmp_path / "people.db"
+    personal.write_bytes(b"real store")
+    monkeypatch.setenv("PEOPLE_CONTEXT_DB", str(personal))
+
+    exit_code = main(
+        [
+            "--suite",
+            str(SUITE_PATH),
+            "--runner",
+            "stub",
+            "--workdir",
+            str(tmp_path / "work"),
+            "--out",
+            f"{personal}-wal",
+        ],
+        clock=_FixedClock(),
+    )
+
+    assert exit_code == 1
+    assert not Path(f"{personal}-wal").exists()
+
+
 def test_the_evaluated_server_is_pinned_to_this_checkout() -> None:
     """An unpinned PyPI resolution would let a later release answer the same suite."""
     loaded = load_suite(SUITE_PATH)

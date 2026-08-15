@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T20:40:03Z",
+  "generated_at": "2026-08-15T20:53:37Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -85,7 +85,8 @@
           "values": [
             "Tidepool Collective"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-role",
@@ -96,7 +97,8 @@
           "values": [
             "Operations Manager"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-update-preference",
@@ -107,7 +109,8 @@
           "values": [
             "bullet points"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "does-not-invent-an-employer",
@@ -120,7 +123,8 @@
             "Northlight Media",
             "Harbourline Trust"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews."
@@ -143,7 +147,8 @@
           "values": [
             "Tidepool Collective"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-role",
@@ -154,7 +159,8 @@
           "values": [
             "Operations Manager"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-update-preference",
@@ -165,7 +171,8 @@
           "values": [
             "bullet points"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "does-not-invent-an-employer",
@@ -178,7 +185,8 @@
             "Northlight Media",
             "Harbourline Trust"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates."
@@ -201,7 +209,8 @@
           "values": [
             "Tomas"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-the-subject",
@@ -213,7 +222,8 @@
             "September",
             "operations review"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "omits-filler-openings",
@@ -228,16 +238,18 @@
             "I hope you're doing well",
             "Trust you are well"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "uses-the-recipients-bullet-format",
-          "kind": "answer_matches",
-          "description": "Formats the message as bullet points, which is the recipient's stored preference.",
+          "kind": "answer_lines_match",
+          "description": "Opens at least two lines with a bullet, which is the recipient's stored preference.",
           "weight": 2,
           "passed": true,
           "values": null,
-          "pattern": "(?:^| )[-*•] \\S.*(?:^| )[-*•] \\S"
+          "pattern": "^[-*•] \\S",
+          "min_lines": 2
         },
         {
           "id": "asks-for-a-decision",
@@ -246,7 +258,8 @@
           "weight": 1,
           "passed": true,
           "values": null,
-          "pattern": "confirm|which date|can you (?:pick|choose)"
+          "pattern": "confirm|which date|can you (?:pick|choose)",
+          "min_lines": null
         }
       ],
       "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
@@ -269,7 +282,8 @@
           "values": [
             "Tomas"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-the-subject",
@@ -281,7 +295,8 @@
             "September",
             "operations review"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "omits-filler-openings",
@@ -296,16 +311,18 @@
             "I hope you're doing well",
             "Trust you are well"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "uses-the-recipients-bullet-format",
-          "kind": "answer_matches",
-          "description": "Formats the message as bullet points, which is the recipient's stored preference.",
+          "kind": "answer_lines_match",
+          "description": "Opens at least two lines with a bullet, which is the recipient's stored preference.",
           "weight": 2,
           "passed": false,
           "values": null,
-          "pattern": "(?:^| )[-*•] \\S.*(?:^| )[-*•] \\S"
+          "pattern": "^[-*•] \\S",
+          "min_lines": 2
         },
         {
           "id": "asks-for-a-decision",
@@ -314,7 +331,8 @@
           "weight": 1,
           "passed": false,
           "values": null,
-          "pattern": "confirm|which date|can you (?:pick|choose)"
+          "pattern": "confirm|which date|can you (?:pick|choose)",
+          "min_lines": null
         }
       ],
       "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards"
@@ -335,7 +353,8 @@
           "weight": 2,
           "passed": true,
           "values": null,
-          "pattern": "\\bpriya raman\\b"
+          "pattern": "\\bpriya raman\\b",
+          "min_lines": null
         },
         {
           "id": "states-employer-and-role",
@@ -347,7 +366,8 @@
             "Kestrel Analytics",
             "Data Lead"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "does-not-attribute-the-other-priya",
@@ -359,7 +379,8 @@
             "Harbourline Trust",
             "Grants Officer"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership."
@@ -380,7 +401,8 @@
           "weight": 2,
           "passed": false,
           "values": null,
-          "pattern": "\\bpriya raman\\b"
+          "pattern": "\\bpriya raman\\b",
+          "min_lines": null
         },
         {
           "id": "states-employer-and-role",
@@ -392,7 +414,8 @@
             "Kestrel Analytics",
             "Data Lead"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "does-not-attribute-the-other-priya",
@@ -404,7 +427,8 @@
             "Harbourline Trust",
             "Grants Officer"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics."
@@ -428,7 +452,8 @@
             "Tomas Brandt",
             "Kofi Mensah"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "orders-the-path-correctly",
@@ -437,7 +462,8 @@
           "weight": 2,
           "passed": true,
           "values": null,
-          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman"
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman",
+          "min_lines": null
         },
         {
           "id": "names-the-target",
@@ -446,18 +472,22 @@
           "weight": 1,
           "passed": true,
           "values": null,
-          "pattern": "\\bpriya raman\\b"
+          "pattern": "\\bpriya raman\\b",
+          "min_lines": null
         },
         {
-          "id": "does-not-route-through-the-other-priya",
+          "id": "does-not-add-people-outside-the-path",
           "kind": "answer_contains_none",
-          "description": "Does not place the other Priya's organisation on the path.",
+          "description": "Names nobody off the shortest path, including hops continuing past the target.",
           "weight": 1,
           "passed": true,
           "values": [
+            "Ingrid Solberg",
+            "Priya Ramanathan",
             "Harbourline Trust"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman."
@@ -481,7 +511,8 @@
             "Tomas Brandt",
             "Kofi Mensah"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "orders-the-path-correctly",
@@ -490,7 +521,8 @@
           "weight": 2,
           "passed": false,
           "values": null,
-          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman"
+          "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman",
+          "min_lines": null
         },
         {
           "id": "names-the-target",
@@ -499,18 +531,22 @@
           "weight": 1,
           "passed": true,
           "values": null,
-          "pattern": "\\bpriya raman\\b"
+          "pattern": "\\bpriya raman\\b",
+          "min_lines": null
         },
         {
-          "id": "does-not-route-through-the-other-priya",
+          "id": "does-not-add-people-outside-the-path",
           "kind": "answer_contains_none",
-          "description": "Does not place the other Priya's organisation on the path.",
+          "description": "Names nobody off the shortest path, including hops continuing past the target.",
           "weight": 1,
           "passed": true,
           "values": [
+            "Ingrid Solberg",
+            "Priya Ramanathan",
             "Harbourline Trust"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman."
@@ -533,7 +569,8 @@
           "values": [
             "Ingrid Solberg"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-the-last-interaction-date",
@@ -542,7 +579,8 @@
           "weight": 2,
           "passed": true,
           "values": null,
-          "pattern": "2026-03-05|5 march 2026|march 5,? 2026"
+          "pattern": "2026-03-05|5 march 2026|march 5,? 2026",
+          "min_lines": null
         },
         {
           "id": "does-not-name-a-recent-contact",
@@ -553,7 +591,8 @@
           "values": [
             "Kofi Mensah"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05."
@@ -576,7 +615,8 @@
           "values": [
             "Ingrid Solberg"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         },
         {
           "id": "states-the-last-interaction-date",
@@ -585,7 +625,8 @@
           "weight": 2,
           "passed": false,
           "values": null,
-          "pattern": "2026-03-05|5 march 2026|march 5,? 2026"
+          "pattern": "2026-03-05|5 march 2026|march 5,? 2026",
+          "min_lines": null
         },
         {
           "id": "does-not-name-a-recent-contact",
@@ -596,7 +637,8 @@
           "values": [
             "Kofi Mensah"
           ],
-          "pattern": null
+          "pattern": null,
+          "min_lines": null
         }
       ],
       "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke."

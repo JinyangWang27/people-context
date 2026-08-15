@@ -26,6 +26,8 @@ from evals.harness.runners import build_runner
 from evals.harness.suite import CommandRunnerConfig, load_suite
 from evals.harness.world import load_world
 from people_context.adapters.filesystem.private_file import atomic_write_private_text
+from people_context.cli.portability import collides_with_database
+from people_context.config import resolve_db_path
 from people_context.ports.clock import Clock, SystemClock
 
 #: The suite shipped with the repository, resolved relative to this package.
@@ -78,13 +80,13 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
     server_argv = config.mcp_server_argv if isinstance(config, CommandRunnerConfig) else ()
     conditions = tuple(args.condition) if args.condition else CONDITIONS
 
-    with _workspace(args.workdir) as workdir, _agent_directory() as agent_directory:
+    with _workspace(args.workdir) as workdir, _agent_root() as agent_root:
         _, mcp_config_path = prepare_workspace(world, workdir, server_argv)
         outcomes = run_suite(
             loaded,
             tasks,
             runner,
-            agent_directory=agent_directory,
+            agent_root=agent_root,
             mcp_config_path=mcp_config_path,
             conditions=conditions,
         )
@@ -101,10 +103,28 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
     )
     document = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     if args.out:
-        destination = atomic_write_private_text(Path(args.out).expanduser(), document)
-        print(f"Report written: {destination}")
+        destination = _report_destination(args.out)
+        written = atomic_write_private_text(destination, document)
+        print(f"Report written: {written}")
     print(render_summary(report), end="")
     return 0
+
+
+def _report_destination(requested: str) -> Path:
+    """Return the report path, or refuse one that would replace a live database.
+
+    Publication is an atomic replace, so a mistyped ``--out`` naming the configured
+    store — or one of its WAL, shared-memory, or rollback sidecars — would destroy it.
+    This reuses the guard the brief, vCard, and reminder exporters already apply rather
+    than reimplementing a weaker version of it.
+    """
+    destination = Path(requested).expanduser()
+    if collides_with_database(destination, resolve_db_path(None)):
+        raise EvalHarnessError(
+            f"refusing to write the report to {destination}: that path is the configured "
+            "people-context database or one of its sidecars"
+        )
+    return destination
 
 
 @contextmanager
@@ -118,13 +138,13 @@ def _workspace(requested: str | None) -> Iterator[Path]:
 
 
 @contextmanager
-def _agent_directory() -> Iterator[Path]:
-    """Yield an empty directory for the agent process, outside the artifacts tree.
+def _agent_root() -> Iterator[Path]:
+    """Yield the parent of the per-invocation agent directories.
 
-    It is always a fresh temporary directory, never a child of ``--workdir``, so no
-    relative path from the agent's own working directory reaches the fictional
-    database or the MCP configuration. A control run that could read `world.db`
-    directly would not be a control run.
+    It is always a fresh temporary tree, never a child of ``--workdir``, so no relative
+    path from an agent's working directory reaches the fictional database or the MCP
+    configuration. A control run that could read `world.db` directly would not be a
+    control run.
     """
     with tempfile.TemporaryDirectory(prefix="people-context-evals-agent-") as temporary:
         yield Path(temporary)

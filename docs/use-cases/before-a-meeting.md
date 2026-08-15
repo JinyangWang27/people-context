@@ -10,8 +10,13 @@ and cannot remember which one owns the metrics.
 > Who is the Priya I'm meeting about reporting?
 
 The agent calls `resolve_person` rather than guessing. Resolution is explainable: it returns ranked candidates
-with a match reason, and marks the result `ambiguous` instead of silently picking one. Two people who share a
-first name come back as two candidates, each with the organisation and role that separates them.
+with a score and a match reason, and marks the result `ambiguous` instead of silently picking one. Two people who
+share a first name come back as two candidates, each with its person id, canonical name, aliases, and whatever
+one-line summary you stored.
+
+A candidate carries identity, not a dossier: there are no affiliation or role fields on it. Telling the two
+Priyas apart by employer means reading one of them, which is the next step — so expect the agent to resolve
+first and then look up, not to answer from the candidate list alone.
 
 Since M15.3, an exact match also carries an optional `match_detail` saying *which stored name* matched — the
 canonical name, or an alias and its kind. When a colleague is stored under both a native-script name and a

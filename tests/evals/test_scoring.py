@@ -6,10 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from evals.harness.scoring import evaluate_criterion, normalize, score_task
+from evals.harness.scoring import evaluate_criterion, normalize, normalize_lines, score_task
 from evals.harness.suite import (
     ContainsAllCriterion,
     ContainsNoneCriterion,
+    LineMatchesCriterion,
     MatchesCriterion,
     Task,
     load_suite,
@@ -153,3 +154,48 @@ def test_scored_criteria_carry_the_operands_they_applied() -> None:
     assert by_id["names-the-right-priya"].values is None
     assert by_id["states-employer-and-role"].values == ("Kestrel Analytics", "Data Lead")
     assert by_id["states-employer-and-role"].pattern is None
+
+
+def test_line_normalization_keeps_boundaries_that_plain_normalization_collapses() -> None:
+    assert normalize_lines("Tomas\n\n-  Proposed: Friday\n- Confirm by Monday  ") == (
+        "tomas",
+        "- proposed: friday",
+        "- confirm by monday",
+    )
+
+
+def test_dashes_inside_one_line_are_not_bullets() -> None:
+    """Regression: whitespace-collapsed matching read two mid-sentence hyphens as a list."""
+    criterion = LineMatchesCriterion(
+        id="bullets",
+        kind="answer_lines_match",
+        description="two bulleted lines",
+        pattern=r"^[-*•] \S",
+        min_lines=2,
+    )
+
+    assert not evaluate_criterion(criterion, "Tomas - September operations review - please confirm the date.")
+    assert evaluate_criterion(criterion, "Tomas\n- Proposed: Friday\n- Confirm by Monday")
+
+
+def test_a_single_line_message_with_two_hyphens_misses_the_bullet_criterion() -> None:
+    """The same regression, scored through the shipped rubric."""
+    task = _task("guided-drafting")
+
+    score = score_task(task, "Tomas - September operations review - please confirm the date.")
+
+    failed = [criterion.id for criterion in score.criteria if not criterion.passed]
+    assert failed == ["uses-the-recipients-bullet-format"]
+    assert score.earned == score.possible - 2
+
+
+def test_a_path_that_continues_past_the_target_is_not_the_shortest_path() -> None:
+    """Regression: an ordered substring match accepted extra hops after the target."""
+    task = _task("relationship-path")
+
+    overshot = score_task(task, "Noor Vance -> Tomas Brandt -> Kofi Mensah -> Priya Raman -> Ingrid Solberg")
+    correct = score_task(task, "You -> Tomas Brandt -> Kofi Mensah -> Priya Raman")
+
+    assert correct.earned == correct.possible
+    failed = [criterion.id for criterion in overshot.criteria if not criterion.passed]
+    assert failed == ["does-not-add-people-outside-the-path"]
