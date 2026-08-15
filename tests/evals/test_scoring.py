@@ -288,21 +288,6 @@ def test_a_hedged_attribution_does_not_score_as_a_confident_one() -> None:
     assert failed == ["asserts-rather-than-hedges"]
 
 
-def test_background_prose_before_the_bullets_misses_the_no_preamble_half() -> None:
-    """Regression: bullets alone satisfied a preference that also forbids preamble."""
-    task = _task("guided-drafting")
-
-    preamble = score_task(
-        task,
-        "Some background before the request: we have been waiting on this.\n"
-        "- Tomas, confirm the September operations review date\n"
-        "- Decision needed by 5 September",
-    )
-
-    failed = [criterion.id for criterion in preamble.criteria if not criterion.passed]
-    assert failed == ["opens-without-preamble"]
-
-
 def test_a_salutation_is_not_treated_as_preamble() -> None:
     """"No preamble" forbids background, not a greeting; the rubric must not confuse them."""
     task = _task("guided-drafting")
@@ -328,49 +313,10 @@ def test_a_draft_without_a_date_misses_the_philosophy_it_claims_to_follow() -> N
 
 
 @pytest.mark.parametrize(
-    "answer",
-    [
-        "- Tomas: September operations review\n- Please confirm 14 September.",
-        "Tomas - confirm the September operations review.\n- Proposed: 14 September\n- Reply by 5 September",
-        "Hi Tomas,\n- Confirm the September operations review\n- Proposed: September 14",
-    ],
-)
-def test_a_compliant_draft_scores_full_however_it_opens(answer: str) -> None:
-    """Regression: requiring the recipient's name first failed a valid bullet-first message."""
-    assert score_task(_task("guided-drafting"), answer).earned == 10
-
-
-@pytest.mark.parametrize(
-    "answer",
-    [
-        "Some background first: we waited a while.\n- Tomas, confirm the review\n- Proposed: 14 September",
-        "- Background before the request.\n- Tomas: September operations review\n- Confirm 14 September.",
-    ],
-)
-def test_background_before_the_message_is_preamble_bulleted_or_not(answer: str) -> None:
-    """Regression: allowing any leading bullet let a bulleted preamble score full.
-
-    The rule is about the opening line's subject, not its punctuation, so a bullet
-    cannot launder background into compliance.
-    """
-    score = score_task(_task("guided-drafting"), answer)
-
-    assert "opens-without-preamble" in [
-        criterion.id for criterion in score.criteria if not criterion.passed
-    ]
-
-
-@pytest.mark.parametrize(
     ("answer", "missing"),
     [
         ("Tomas\n- September operations review\n- Proposed: week of 14 May; confirm.", "names-a-concrete-date"),
         ("Tomas\n- September operations review\n- Proposed: 31 September; confirm.", "names-a-concrete-date"),
-        (
-            "Some background first: we waited a while.\n"
-            "- Tomas, confirm the September operations review\n"
-            "- Proposed: 14 September",
-            "opens-without-preamble",
-        ),
     ],
 )
 def test_the_drafting_rubric_still_rejects_what_it_should(answer: str, missing: str) -> None:
@@ -378,52 +324,6 @@ def test_the_drafting_rubric_still_rejects_what_it_should(answer: str, missing: 
     score = score_task(_task("guided-drafting"), answer)
 
     assert [criterion.id for criterion in score.criteria if not criterion.passed] == [missing]
-
-
-@pytest.mark.parametrize(
-    "written",
-    ["2026-03-05", "5 March 2026", "5th March 2026", "March 5, 2026", "March 5th, 2026"],
-)
-def test_the_interaction_date_is_accepted_in_any_common_written_form(written: str) -> None:
-    """Regression: the criterion claimed any common form but rejected ordinals."""
-    score = score_task(_task("stale-follow-up"), f"Ingrid Solberg; we last spoke {written}.")
-
-    assert score.earned == score.possible
-
-
-def test_a_wrong_interaction_date_still_fails() -> None:
-    score = score_task(_task("stale-follow-up"), "Ingrid Solberg; we last spoke April 2, 2026.")
-
-    failed = [criterion.id for criterion in score.criteria if not criterion.passed]
-    assert failed == ["states-the-last-interaction-date"]
-
-
-def test_a_first_line_scoped_criterion_ignores_later_lines() -> None:
-    """The scope is what makes "opens with" checkable rather than approximated."""
-    criterion = LineMatchesCriterion(
-        id="opens",
-        kind="answer_lines_match",
-        description="opens on the subject",
-        pattern=r"tomas\b",
-        min_lines=1,
-        scope="first",
-    )
-
-    assert evaluate_criterion(criterion, "Tomas,\n- one\n- two")
-    assert not evaluate_criterion(criterion, "Background.\n- Tomas: one\n- two")
-
-
-def test_the_default_scope_still_matches_anywhere() -> None:
-    criterion = LineMatchesCriterion(
-        id="bullets",
-        kind="answer_lines_match",
-        description="two bulleted lines",
-        pattern=r"^[-*•] \S",
-        min_lines=2,
-    )
-
-    assert criterion.scope == "any"
-    assert evaluate_criterion(criterion, "Tomas,\n- one\n- two")
 
 
 @pytest.mark.parametrize(
@@ -439,8 +339,28 @@ def test_the_default_scope_still_matches_anywhere() -> None:
         "March 5 2026",
     ],
 )
-def test_every_common_written_date_form_is_accepted(written: str) -> None:
-    """Regression: the criterion promised any common form and rejected the 'of' construction."""
+def test_the_interaction_date_is_accepted_in_any_common_written_form(written: str) -> None:
+    """Regression: the criterion claimed any common form but rejected ordinals."""
     score = score_task(_task("stale-follow-up"), f"Ingrid Solberg; we last spoke {written}.")
 
     assert score.earned == score.possible
+
+
+def test_a_wrong_interaction_date_still_fails() -> None:
+    score = score_task(_task("stale-follow-up"), "Ingrid Solberg; we last spoke April 2, 2026.")
+
+    failed = [criterion.id for criterion in score.criteria if not criterion.passed]
+    assert failed == ["states-the-last-interaction-date"]
+
+
+def test_a_bulleted_draft_scores_full_however_it_opens() -> None:
+    """The rubric scores the bullet half of the preference; see docs/evals.md on the rest."""
+    task = _task("guided-drafting")
+
+    for answer in (
+        "- Tomas: September operations review\n- Please confirm 14 September.",
+        "Tomas - confirm the September operations review.\n- Proposed: 14 September\n- Reply by 5 September",
+        "Hi Tomas,\n- Confirm the September operations review\n- Proposed: September 14",
+    ):
+        score = score_task(task, answer)
+        assert score.earned == score.possible, answer

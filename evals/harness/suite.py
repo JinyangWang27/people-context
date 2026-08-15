@@ -77,24 +77,17 @@ class MatchesCriterion(_CriterionBase):
 
 
 class LineMatchesCriterion(_CriterionBase):
-    """Passes when enough lines match, either anywhere or in the opening line.
+    """Passes when at least ``min_lines`` individual lines match the expression.
 
     Line structure is preserved for this kind alone. Some stored preferences are about
-    layout — "bullet points, no preamble" is one — and the whitespace collapsing that
-    makes the other kinds wrapping-insensitive would erase exactly what is being
-    measured, scoring a single-line message with two dashes in it as a bulleted list.
-
-    ``scope="first"`` restricts the match to the opening line. That is what makes "no
-    preamble" checkable without semantic judgement: rather than guessing whether some
-    leading text is background, the rubric asks whether the message opens on its own
-    subject. Bulleted or not, an opening line that mentions neither the recipient nor
-    the meeting is preamble.
+    layout — "bullet points" is one — and the whitespace collapsing that makes the other
+    kinds wrapping-insensitive would erase exactly what is being measured, scoring a
+    single-line message with two dashes in it as a bulleted list.
     """
 
     kind: Literal["answer_lines_match"]
     pattern: str = Field(min_length=1, max_length=400)
     min_lines: int = Field(default=1, ge=1, le=50)
-    scope: Literal["any", "first"] = "any"
 
     @field_validator("pattern")
     @classmethod

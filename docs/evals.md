@@ -43,10 +43,10 @@ fixture record the same timestamps.
 | --- | --- | ---: |
 | `identity-disambiguation` | Picking the right person out of two who share a first name | 6 |
 | `context-recall` | Reporting a contact's organisation, role, and stored update preference | 7 |
-| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 10 |
+| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 9 |
 | `relationship-path` | Naming the people on the shortest path to a contact, in order | 6 |
 | `stale-follow-up` | Naming the most overdue contact and the date of the last interaction | 6 |
-| **Total** | | **35** |
+| **Total** | | **34** |
 
 Where a task cites stored guidance, every clause of that guidance is scored. The drafting task carries four
 criteria for four clauses: the philosophy's "name the decision" and "name the date", and the recipient's "bullet
@@ -65,7 +65,7 @@ every machine and a reader can re-derive a published number from the recorded an
 | `answer_contains_all` | Every listed phrase appears in the answer |
 | `answer_contains_none` | None of the listed phrases appears |
 | `answer_matches` | A case-insensitive regular expression matches |
-| `answer_lines_match` | At least `min_lines` lines match an expression — all of them, or only the first |
+| `answer_lines_match` | At least `min_lines` individual lines match an expression |
 
 Rubrics also reject non-answers. Declining to answer while naming every right string — "I cannot confirm whether
 Priya Raman is the Data Lead at Kestrel Analytics" — is not a correct attribution, and background prose before a
@@ -80,9 +80,7 @@ Where a task's prompt asks the agent to use stored context, a criterion measures
 task scores bullet formatting because bullet points are the *recipient's* stored preference, so an otherwise
 well-written single-line message cannot earn full marks for context the agent never read. That criterion is the
 reason `answer_lines_match` exists: it is the one kind that keeps line boundaries, because collapsing them would
-read any single-line message with two dashes in it as a bulleted list. Its `scope: first` variant is how "no
-preamble" is scored without semantic judgement — rather than guessing whether some leading text is background,
-the rubric asks whether the opening line is on its own subject, which a bullet marker cannot disguise.
+read any single-line message with two dashes in it as a bulleted list.
 
 Each report records the exact operands — the phrase list or the regular expression — beside every criterion
 outcome, so an older published result stays re-derivable after the suite has moved on and `suite.json` no longer
@@ -150,8 +148,8 @@ Harness 1.0.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub
 
 | Condition | Tasks | Earned | Possible | Percent |
 | --- | ---: | ---: | ---: | ---: |
-| `with_mcp` | 5 | 33 | 35 | 94.3 |
-| `without_mcp` | 5 | 9 | 35 | 25.7 |
+| `with_mcp` | 5 | 32 | 34 | 94.1 |
+| `without_mcp` | 5 | 8 | 34 | 23.5 |
 
 **This is not a measurement of any model.** The answers are hand-written illustrations chosen to exercise every
 scoring path, including partial credit in both conditions. The run establishes only that the fixture
@@ -163,7 +161,24 @@ materializes, the prompts load, the rubrics discriminate, and the report is well
 recorded, it will appear here as its own dated section naming the model id, the harness and suite versions, and
 the report file, alongside the dry run rather than replacing it.
 
-## Known limits of reproducibility
+## Known limits
+
+### What the rubrics do not score
+
+The drafting task scores three of the four clauses it cites: the philosophy's "name the decision" and "name the
+date", and the recipient's "bullet points". It does **not** score "no preamble" beyond rejecting a fixed list of
+canned pleasantries.
+
+That is deliberate, and it is a retreat. Four formulations were tried and each was wrong in one direction or the
+other: requiring the recipient's name first rejected valid bullet-first messages; allowing any leading bullet
+accepted a bulleted preamble; matching the opening line's subject accepted a preamble that mentioned the
+recipient; and anchoring that match would again reject an opener like `- Confirm the September operations
+review`. Telling background prose from the message itself is a semantic judgement, and this harness does not make
+those — no model judges another model here. A criterion that systematically penalises a class of correct answers
+would bias the measurement, so the clause is left unscored and said so out loud. Under-measuring compliance is the
+safer error for a harness whose purpose is credible numbers.
+
+### What is not reproducible
 
 Two things are pinned: the server code, and the server's clock. One thing is not.
 

@@ -161,15 +161,6 @@
           "weight": 1
         },
         {
-          "id": "opens-without-preamble",
-          "kind": "answer_lines_match",
-          "description": "Opens on the subject — the recipient or the meeting — rather than with background.",
-          "pattern": "tomas\\b|operations review\\b",
-          "min_lines": 1,
-          "scope": "first",
-          "weight": 1
-        },
-        {
           "id": "names-a-concrete-date",
           "kind": "answer_matches",
           "description": "Proposes an actual September date, which the user's philosophy asks for.",

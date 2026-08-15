@@ -86,7 +86,6 @@ def build_report(
                         "values": list(criterion.values) if criterion.values is not None else None,
                         "pattern": criterion.pattern,
                         "min_lines": criterion.min_lines,
-                        "scope": criterion.scope,
                     }
                     for criterion in outcome.score.criteria
                 ],
