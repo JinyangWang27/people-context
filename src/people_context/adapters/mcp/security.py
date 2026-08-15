@@ -1,17 +1,12 @@
-"""Process-level capability gates for high-disclosure MCP tools."""
+"""Process-level capability gates for high-disclosure MCP tools.
+
+The gate itself lives in `people_context.config` alongside the rest of this project's
+environment resolution, because the CLI now reports the same gate state and both readers must
+agree on it exactly. This module keeps the MCP layer's own name for it.
+"""
 
 from __future__ import annotations
 
-import os
+from people_context.config import EXPORT_ENV, SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
-
-
-def process_elevation_enabled(variable: str) -> bool:
-    """Return whether an operator explicitly enabled a process capability.
-
-    These environment variables are read from the MCP server process, not from
-    model-supplied tool arguments. They are therefore suitable as an operator
-    elevation boundary for tools that must not be enabled by prompt content.
-    """
-    return os.environ.get(variable, "").strip().lower() in _TRUTHY
+__all__ = ["EXPORT_ENV", "SENSITIVE_CONTEXT_ENV", "process_elevation_enabled"]

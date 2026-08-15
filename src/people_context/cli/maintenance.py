@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 
 from people_context.adapters.model2vec_embeddings import (
@@ -16,13 +17,33 @@ from people_context.adapters.model2vec_embeddings import (
 )
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.adapters.sqlite.semantic import create_sqlite_vector_index
+from people_context.app.context import CountEntry, StatsReport, render_stats_json
+from people_context.app.records import (
+    CliAction,
+    DoctorError,
+    DoctorFinding,
+    McpAction,
+    render_doctor_json,
+)
 from people_context.app.semantic import ReindexSemantic
 from people_context.app.sync import WatchChangelogError
+from people_context.config import EXPORT_ENV, SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 from people_context.ports.changelog import ChangelogEntry
+from people_context.ports.stats import STORAGE_FILE
 
 WATCH_DISCLOSURE_WARNING = (
     "Watch prints full replay payloads, which may contain sensitive personal data. "
     "They go to this terminal only; redirecting them anywhere else is your own disclosure decision."
+)
+
+DOCTOR_DISCLOSURE_WARNING = (
+    "This report juxtaposes stored personal values, including elevated ones, and is outside the "
+    "server's disclosure controls. Inspect it before sharing it anywhere."
+)
+
+STATS_DISCLOSURE_WARNING = (
+    "This report carries counts only, never stored personal values, but how much you record "
+    "about whom is itself revealing. Inspect it before sharing it anywhere."
 )
 
 
@@ -75,6 +96,149 @@ def cmd_watch(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
 def _render_entry(entry: ChangelogEntry) -> str:
     """Render one changelog entry as a canonical single-line JSON object."""
     return json.dumps(entry.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def cmd_doctor(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Report deterministic data-quality findings without repairing anything."""
+    only = _requested_codes(args.only)
+    try:
+        report = runtime.use_cases.report_doctor_findings.execute(only=only)
+    except DoctorError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        # The document is the whole of stdout, so the notice goes to stderr and a redirected
+        # report stays byte-identical to the rendered document.
+        print(DOCTOR_DISCLOSURE_WARNING, file=sys.stderr)
+        print(render_doctor_json(report), end="")
+        return 0
+
+    if not report.findings:
+        # Nothing was found, so no stored personal value is about to be printed.
+        print("No findings.")
+        return 0
+    # The notice precedes the evidence: a warning that arrives after the values are already on
+    # screen cannot inform the decision it exists to inform.
+    print(DOCTOR_DISCLOSURE_WARNING)
+    print(f"\n{len(report.findings)} finding(s).")
+    for finding in report.findings:
+        print()
+        _print_finding(finding)
+    # Findings are a report, not a failure: the exit status says the report completed.
+    return 0
+
+
+def _requested_codes(only: str | None) -> list[str] | None:
+    """Split a `--only` value into codes, leaving validation to the use case."""
+    if only is None:
+        return None
+    return [value.strip() for value in only.split(",") if value.strip()]
+
+
+def _print_finding(finding: DoctorFinding) -> None:
+    """Render one finding, including a copyable rendering of each structured action."""
+    print(f"[{finding.code}] {finding.message}")
+    for person in finding.people:
+        marker = " (self)" if person.is_self else ""
+        print(f"  person   {person.person_id}  {person.name}{marker}")
+    for name in finding.names:
+        print(f"  name     {name.person_id}  {name.source}  {name.value!r}")
+    for fact in finding.facts:
+        period = f"{fact.valid_from or '-'}..{fact.valid_to or '-'}"
+        print(f"  fact     {fact.fact_id}  {fact.predicate}={fact.value!r}  [{fact.sensitivity}]  {period}")
+    for reference in finding.references:
+        print(f"  ref      {reference.entity_type}:{reference.entity_id}")
+    for action in finding.actions:
+        print(f"  action   {_render_action(action)}")
+
+
+def _render_action(action: CliAction | McpAction) -> str:
+    """Render a structured action as copyable text; the JSON document keeps the structure."""
+    if isinstance(action, CliAction):
+        return f"cli  {shlex.join(action.argv)}"
+    arguments = json.dumps(action.arguments, ensure_ascii=False)
+    rendered = f"mcp  {action.tool} {arguments}"
+    if not action.requires:
+        return rendered
+    # Say plainly that this one is a starting point rather than a call ready to run.
+    return f"{rendered}  (you supply: {', '.join(action.requires)})"
+
+
+def cmd_stats(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Report aggregate-only counts and storage for the resolved database."""
+    # The gate booleans describe *this* process's environment and are read here, at the
+    # process boundary. Nothing downstream contacts, starts, or probes an MCP server to find
+    # out what a server elsewhere would expose.
+    report = runtime.use_cases.report_store_stats.execute(
+        sensitive_context_enabled=process_elevation_enabled(SENSITIVE_CONTEXT_ENV),
+        export_enabled=process_elevation_enabled(EXPORT_ENV),
+        database_path=str(runtime.path),
+        include_path=args.include_path,
+    )
+
+    if args.json:
+        # The document is the whole of stdout, so the notice goes to stderr and a redirected
+        # report stays byte-identical to the rendered document.
+        print(STATS_DISCLOSURE_WARNING, file=sys.stderr)
+        print(render_stats_json(report), end="")
+        return 0
+
+    print(STATS_DISCLOSURE_WARNING)
+    _print_stats(report)
+    return 0
+
+
+def _print_stats(report: StatsReport) -> None:
+    """Render the aggregate report as sectioned human text."""
+    print()
+    if report.database_path is not None:
+        print(f"Database: {report.database_path}")
+    print(f"Storage:  {_render_storage(report)}")
+    print(
+        f"People:   {report.people.active} active, "
+        f"{report.people.soft_deleted} soft-deleted, {report.people.self_records} self"
+    )
+    for title, entries in (
+        ("Tables", report.tables),
+        ("Alias kinds", report.alias_kinds),
+        ("Facts by sensitivity", report.fact_sensitivity),
+        ("Observations by sensitivity", report.observation_sensitivity),
+        ("Relationships by category", report.relationship_categories),
+        ("Audit operations", report.audit_operations),
+        ("Changelog entries by device", report.changelog_devices),
+    ):
+        print(f"\n{title}")
+        _print_entries(entries)
+    print("\nElevated MCP capabilities in this environment")
+    print(f"  {'sensitive context':<26}  {_render_gate(report.environment.sensitive_context)}")
+    print(f"  {'export':<26}  {_render_gate(report.environment.export)}")
+
+
+def _print_entries(entries: list[CountEntry]) -> None:
+    """Print one distribution, saying so explicitly when it holds nothing."""
+    if not entries:
+        print("  (none)")
+        return
+    width = max(len(entry.key) for entry in entries)
+    for entry in entries:
+        print(f"  {entry.key:<{width}}  {entry.count}")
+
+
+def _render_storage(report: StatsReport) -> str:
+    """Describe the footprint, or say why there is no measurable one."""
+    storage = report.storage
+    if storage.storage_kind != STORAGE_FILE or storage.database_bytes is None:
+        # Never a zero here: an unmeasurable database is not an empty one.
+        return f"{storage.storage_kind} (no measurable file)"
+    return (
+        f"{storage.database_bytes} bytes "
+        f"(main {storage.main_bytes}, wal {storage.wal_bytes}, shm {storage.shm_bytes})"
+    )
+
+
+def _render_gate(enabled: bool) -> str:
+    return "enabled" if enabled else "disabled"
 
 
 def cmd_reindex(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:

@@ -27,6 +27,7 @@ from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRest
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
+from people_context.adapters.sqlite.curation_reader import SqliteCurationReader
 from people_context.adapters.sqlite.db import open_db, open_encrypted_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
@@ -47,10 +48,12 @@ from people_context.adapters.sqlite.semantic import (
     SqliteSemanticMetadataReader,
     open_sqlite_vector_index,
 )
+from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 from people_context.app.context import (
     GetCommunicationGuidance,
     GetPersonContext,
+    ReportStoreStats,
     SetCommunicationPhilosophy,
 )
 from people_context.app.exports import (
@@ -88,6 +91,7 @@ from people_context.app.records import (
     RecordInteraction,
     RecordObservation,
     RecordTrait,
+    ReportDoctorFindings,
     SetAffiliation,
     SetReminder,
 )
@@ -116,6 +120,8 @@ class RuntimeUseCases:
     get_relationship_graph: GetRelationshipGraph
     find_connection: FindConnection
     get_stale_relationships: GetStaleRelationships
+    report_doctor_findings: ReportDoctorFindings
+    report_store_stats: ReportStoreStats
     list_upcoming_dates: ListUpcomingDates
     list_person_index: ListPersonIndex
     search_people: SearchPeople
@@ -166,6 +172,8 @@ class ApplicationRuntime:
     context_reader: SqliteContextReader
     graph_reader: SqliteGraphReader
     recency_reader: SqliteRecencyReader
+    curation_reader: SqliteCurationReader
+    stats_reader: SqliteStatsReader
     records: SqliteRecordStore | IndexingRecordStore
     relationship_store: SqliteRelationshipStore
     relationship_vocabulary: SqliteRelationshipVocabularyStore
@@ -227,6 +235,8 @@ def build_runtime(
     context_reader = SqliteContextReader(conn)
     graph_reader = SqliteGraphReader(conn, runtime_clock)
     recency_reader = SqliteRecencyReader(conn)
+    curation_reader = SqliteCurationReader(conn)
+    stats_reader = SqliteStatsReader(conn, path)
     relationship_store = SqliteRelationshipStore(conn)
     relationship_vocabulary = SqliteRelationshipVocabularyStore(conn)
     organizations = SqliteOrganizationStore(conn)
@@ -255,6 +265,8 @@ def build_runtime(
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
+        report_doctor_findings=ReportDoctorFindings(curation_reader, runtime_clock),
+        report_store_stats=ReportStoreStats(stats_reader, runtime_clock),
         list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
         list_person_index=ListPersonIndex(repo, runtime_clock),
         search_people=SearchPeople(repo),
@@ -342,6 +354,8 @@ def build_runtime(
         context_reader=context_reader,
         graph_reader=graph_reader,
         recency_reader=recency_reader,
+        curation_reader=curation_reader,
+        stats_reader=stats_reader,
         records=records,
         relationship_store=relationship_store,
         relationship_vocabulary=relationship_vocabulary,

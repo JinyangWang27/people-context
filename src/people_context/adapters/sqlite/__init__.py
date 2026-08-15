@@ -7,6 +7,7 @@ from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRest
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
+from people_context.adapters.sqlite.curation_reader import SqliteCurationReader
 from people_context.adapters.sqlite.db import EncryptedDatabaseError, open_db, open_encrypted_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
@@ -30,6 +31,7 @@ from people_context.adapters.sqlite.semantic import (
     open_sqlite_vector_index,
     read_semantic_metadata,
 )
+from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 
@@ -40,6 +42,7 @@ __all__ = [
     "SqliteBundleReader",
     "SqliteChangelog",
     "SqliteContextReader",
+    "SqliteCurationReader",
     "SqliteExportReader",
     "SqliteGraphReader",
     "SqliteHybridLogicalClock",
@@ -56,6 +59,7 @@ __all__ = [
     "SqliteSemanticDocumentReader",
     "SqliteSemanticEntityReader",
     "SqliteSemanticMetadataReader",
+    "SqliteStatsReader",
     "SqliteUnitOfWork",
     "SqliteVaultReader",
     "SqliteVectorIndex",

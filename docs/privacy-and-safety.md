@@ -271,6 +271,86 @@ only. Redirecting that stream to a file, a pipeline, or another program is the o
 decision, and the command says so on stderr before the first entry so that stdout stays a clean stream of JSON
 lines.
 
+## Data-quality findings
+
+`pctx doctor` is a human-operated, CLI-only report with no MCP tool behind it. It is a read path: it records
+nothing, mints no audit or changelog rows, repairs nothing, and makes no network call. Finding something is not
+a failure, so the command exits `0` either way.
+
+The report deliberately juxtaposes stored personal values, and it does not filter facts by sensitivity: a
+contradiction between two `restricted` values is still a contradiction, and hiding it would leave the operator
+unable to judge their own data. It carries no interaction summaries, relationship labels, or affiliation roles —
+a dangling reference is reported as an entity type and id only. Like every other file this CLI writes, the
+output sits outside the server's disclosure controls, and the command says so before printing any evidence — on
+stdout ahead of the human report, and on stderr in `--json` mode. A report with no findings prints no notice,
+because it exposes nothing.
+
+Suggested repairs are data, not commands. Each one is a structured argv list or an MCP tool name with an
+id-only argument mapping, so no display name is ever interpolated into something executable — which matters
+precisely because several findings exist to report that two people share a display name. Nothing is executed for
+the operator, and a soft-deleted person's repair is the operator-gated `forget` tool rather than a CLI command.
+
+The doctor also refuses to adjudicate. It never picks which of two contradictory values should survive, so a
+correction suggestion identifies the record and declares the payload it deliberately left empty
+(`requires: ["fields"]`) rather than inventing a value the operator never asserted.
+
+## Aggregate inventory
+
+`pctx stats` is a human-operated, CLI-only report with no MCP tool behind it. Like the doctor it is a pure read
+path: it records nothing, mints no audit or changelog rows, and makes no network call. It is also the one
+command that refuses a `--db` target it would have to write to in order to read it — an absent database, an
+unreadable one, one whose schema predates this release, or one belonging to a different application entirely.
+The shared bootstrap that creates a missing store or migrates an older one is itself a write, and a report that
+measured a store it had just created or upgraded would be reporting its own footprint back to the operator.
+Someone else's database is a sharper case still: opening it would rewrite its journal mode before failing, so
+identity is checked rather than inferred from a `user_version` any program can set. Whether opening would write
+is decided over a read-only connection that creates and migrates nothing, so a refused target is left
+byte-for-byte as it was.
+
+Its privacy property is structural rather than a filter applied at the end. The read port is defined so that
+only counts, byte totals, and bucket names can cross it: no canonical name, alias value, fact value,
+observation, interaction summary, or device display name is ever selected. Changelog entries are grouped by the
+device's opaque id and the `devices` table is deliberately not joined, because its `display_name` is a machine
+hostname — the one piece of identifying text in the sync tables.
+
+That guarantee has to cover the grouping keys themselves, and not every key is vocabulary this project chooses.
+Alias kinds and sensitivity levels are closed enumerations on every write path, including bundle restore, so
+they are safe as written. Three are not. A relationship category is free text the operator typed at
+`relationship-types add --category`, and a restored audit operation is whatever the origin installation wrote;
+both are folded into non-identifying sentinels — `custom` and `other` — before they cross the port, so those
+rows are still counted but the authored wording is never reported.
+
+Device ids are the third, and they are handled differently because collapsing them would destroy the
+distribution rather than protect it: per-device counts exist precisely to tell devices apart. Only this
+installation's own device id is reported as itself, because it is the only one known to be opaque — the local
+device row is minted here. `sync pull` accepts any non-blank device id, so every imported device is
+pseudonymized instead, keeping its own bucket under a positional name.
+
+The test is provenance rather than shape, and that distinction matters: a bundle can carry a syntactically
+valid identifier that still spells something its author chose, so recognizing the id format would prove
+nothing. Restore forces `retired_at` on every imported device and never retires or overwrites the destination's
+own row, so the retirement flag is a sound signal for "this installation minted it". Tightening bundle
+validation would be the other route, but it would reject bundles that restore today and would bind future id
+formats, so the report pseudonymizes at its own boundary rather than narrowing an established contract.
+
+The report is also a single consistent snapshot, not a series of independent reads. Every count is taken inside
+one transaction, so a writer committing mid-report — the MCP server running beside the CLI is a supported
+arrangement — cannot produce figures that contradict each other.
+
+The resolved database path is not an aggregate. It usually carries the operator's account name and it says where
+the file lives, so the application redacts it and includes it only when the operator passes `--include-path`.
+The adapter measures the file but never returns the path, so a caller cannot obtain it by accident.
+
+Elevation gate status is read from the environment of the CLI process itself, using the same rule the MCP server
+applies, and is reported as a fact about *this* environment. Neither the use case nor the adapter starts,
+contacts, or probes an MCP server to find out what a server elsewhere would expose, and no gate state is ever
+taken from an argument a model could supply.
+
+Aggregate metadata is still information: how many people you track, how much you record about them, how much of
+it is `restricted`, and how many devices have written here are all revealing even without a single name. The
+command says so before the report and on stderr in `--json` mode, and, like every other file this CLI writes,
+the output sits outside the server's disclosure controls.
+
 ## Bootstrap sync bundle
 
 `pctx sync push` writes one complete point-in-time bootstrap bundle: the portable dataset, both relationship

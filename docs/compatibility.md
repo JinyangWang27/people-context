@@ -85,14 +85,30 @@ repurposed, and new fields are additive.
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |
 | Person brief | `people-context-brief` | `1` | `pctx brief --json` |
 | Person index | `people-context-person-index` | `1` | `pctx list --json` |
+| Data-quality findings | `people-context-doctor` | `1` | `pctx doctor --json` |
+| Aggregate inventory | `people-context-stats` | `1` | `pctx stats --json` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
 
-- **Portable dataset export**, **person brief**, and **person index** are producer-only: nothing in this
-  repository consumes them, and external readers are expected to ignore unknown fields. A new field is additive
-  and does not advance `version`; a removal or a repurposing does.
+- **Portable dataset export**, **person brief**, **person index**, **data-quality findings**, and **aggregate
+  inventory** are producer-only: nothing in this repository consumes them, and external readers are expected to
+  ignore unknown fields. A new field is additive and does not advance `version`; a removal or a repurposing does.
+
+  The doctor document's finding `code` values and the `surface` discriminator on a suggested action are part of
+  its contract: an existing code is not removed or given a new meaning, and a later release may add codes and
+  evidence collections additively. Consumers should ignore a `code` they do not recognize rather than fail.
+
+  The stats document's aggregate-only guarantee is part of its contract: a later release may add sections,
+  documented tables, and distribution buckets, but no addition turns a count into a stored personal value.
+  Distribution `key` values are schema vocabulary — an alias kind, a sensitivity level, a seeded relationship
+  category, a known audit operation — a documented sentinel such as `uncategorized`, `custom`, `other`, or
+  `imported-device-N`, or this installation's own device id. Operator-authored and restored strings are folded
+  or pseudonymized rather than reported verbatim, and a reader should tolerate a key it does not
+  recognize. A `storage_kind` other than `file` always
+  carries `null` byte counts rather than zeros, so a reader must not treat a missing measurement as an empty
+  database.
 
   The brief's disclosure labelling is part of its contract, not decoration: `disclosure.guidance` stays
   `ordinary` in every mode, and `disclosure.context` is `sensitive` only when the operator passed

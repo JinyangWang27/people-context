@@ -241,14 +241,14 @@ Check the matching box only in the PR that delivers it.
 
 ## M15 — Data quality & credibility
 
-- [ ] **M15.1 — Deterministic doctor findings**
+- [x] **M15.1 — Deterministic doctor findings**
   - **Scope:** `CurationReader`, SQLite queries, app report, CLI; optional next-free index.
   - **Acceptance:** duplicate handle/alias, contradictory fact, soft-deleted references; handle precedence;
     `ValidityPeriod.overlaps` parity; report-only/exit zero. JSON actions are structured id-based argv or MCP tool
     arguments, never shell names; versioned stable JSON.
   - **Out:** interactive repair/MCP findings tool.
 
-- [ ] **M15.2 — Aggregate-only stats report**
+- [x] **M15.2 — Aggregate-only stats report**
   - **Scope:** `StatsReader`, aggregate adapter, app redaction, CLI.
   - **Acceptance:** no record text/device names/paths from adapter; explicit gate booleans/path; redacted default;
     versioned JSON; no server/network probe; main+WAL+SHM bytes; in-memory/unavailable explicit null state.

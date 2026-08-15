@@ -26,6 +26,8 @@ what encryption does and does not protect.
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
+| `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
+| `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
@@ -172,6 +174,140 @@ Soft-deleted people are excluded unless `--all` is supplied, and then they are m
 rather than by a suffix on the name. `--limit` bounds how many people are read, exactly as it does for the table;
 the entries that survive it are ordered by normalized name and then id, so the document does not depend on the
 database's own collation. An empty store still produces a complete, parseable document.
+
+## Data-quality findings
+
+```bash
+uv run pctx doctor
+uv run pctx doctor --only duplicate_handle,duplicate_alias
+uv run pctx doctor --json > findings.json
+```
+
+Reports stored data-quality problems and repairs nothing. Findings are a report, not a failure: the command
+exits `0` whether or not it found anything, and non-zero is reserved for an error such as an unknown code, which
+exits `2` before printing a partial report.
+
+| Code | What it means |
+|---|---|
+| `duplicate_handle` | Two active people share one normalized handle alias. |
+| `duplicate_alias` | Two active people share other normalized name material — a canonical name or a non-handle alias. |
+| `contradictory_fact` | One person holds two facts with the same predicate, different values, and overlapping validity periods. |
+| `dangling_reference` | Relationships, affiliations, or interactions still point at a soft-deleted person. |
+
+Handle collisions take precedence: a pair reported as `duplicate_handle` is not reported again as
+`duplicate_alias`, and that suppression applies even when `--only duplicate_alias` hides the handle finding
+itself. A third person who shares only the name is still reported. Values are compared using the same
+normalization the identity index is built on, so a collision the doctor reports is one resolution would also see;
+fact values are compared exactly as stored, with no case or whitespace folding invented here. Overlap uses the
+domain `ValidityPeriod` semantics, so periods that merely touch on one day do overlap and a missing bound is
+unbounded on that side.
+
+Every finding carries stable ids and a **structured** suggested action — an argv list, or an MCP tool name with
+an id-only argument mapping — never an interpolated shell string and never a display name. The human report
+renders a copyable form of each action; `--json` preserves the structure. Nothing is executed for you, and
+`pctx doctor` itself writes no rows, audit entries, or changelog entries. A `dangling_reference` suggests the
+operator-gated `forget` tool rather than a command, because `pctx show` and `pctx delete` resolve active people
+only.
+
+An MCP action carries a `requires` list naming arguments the report cannot fill in, rendered as
+`(you supply: ...)` in the human report. It is empty for `merge_people` and `forget`, whose mappings are complete
+as written. It is `["fields"]` for `correct_record`, because that tool refuses an empty `fields` payload and
+deciding which of two contradictory values should survive is adjudication — the doctor points at the record to
+correct and leaves the choice to you.
+
+`--only CODE[,CODE...]` filters to the listed codes after validating them. `--json` prints the versioned
+`people-context-doctor` document as the whole of stdout and sends the disclosure notice to stderr, so a
+redirected report stays byte-identical to the document. Re-running over unchanged data produces identical
+findings.
+
+The report deliberately juxtaposes stored personal values, including `sensitive` and `restricted` fact values,
+because a contradiction you cannot see is one you cannot judge. It carries no interaction summaries,
+relationship labels, or affiliation roles. Like every other file this CLI writes, the output is outside the
+server's disclosure controls, and the disclosure notice is printed *before* the findings — a warning that
+arrives after the values are already on screen cannot inform the decision it exists to inform. A clean report
+prints no notice, because it exposes nothing.
+
+## Aggregate inventory
+
+```bash
+uv run pctx stats
+uv run pctx stats --include-path
+uv run pctx stats --json > inventory.json
+```
+
+Reports how much is in this database without reporting what is in it. Every figure is a count, a byte total, or
+a bucket name that is either schema vocabulary — an alias kind, a sensitivity level, a seeded relationship
+category, a known audit operation — or a documented sentinel. No canonical name, fact value, observation,
+interaction summary, or device display name crosses the read port, so there is nothing in the report to redact
+after the fact.
+
+Three bucket kinds are not vocabulary this project chooses, and none is reported verbatim. A relationship
+category you invented with `relationship-types add --category` is free text, so its relationships are counted
+under `custom` rather than under the words you typed. An audit operation restored from a bundle comes from
+whichever installation wrote it, so anything outside this release's known operations is counted under `other`.
+Both preserve the distribution's total without naming what the operator or the origin wrote.
+
+Device ids are the third, and they are pseudonymized rather than collapsed, because telling devices apart is
+what the per-device distribution is for. Only this installation's own device id is reported as itself: it was
+minted here, so it is opaque and names nobody. Every imported device — `sync pull` writes them all retired, and
+a bundle carries whatever its origin wrote, hostname included — keeps its own bucket under `imported-device-N`,
+numbered in sorted id order so the same store reports the same pseudonyms on every run. The test is where the
+id came from, not what it looks like: a well-formed identifier can still spell something its author chose.
+
+The sections are people by lifecycle state, row counts for every documented table, the alias-kind,
+fact-sensitivity, observation-sensitivity, relationship-category, audit-operation and per-device changelog
+distributions, storage bytes, and the elevation gates in force. People are split into active, soft-deleted, and
+self because a soft-deleted person still occupies a `persons` row, so a single table total would misstate how
+many people the store knows about. Every documented table is listed even when it holds nothing: a table missing
+from the list would be indistinguishable from a table with no rows. Distributions are ordered largest bucket
+first and then by key, so the same data always renders in the same order, and an empty one says `(none)` rather
+than vanishing. A relationship whose stored type has no vocabulary row at all is counted under `uncategorized` —
+the drift `pctx normalize-relationships` exists to resolve — which stays distinct from `custom`, where the type
+has a category that simply is not one this release seeds.
+
+Every count comes from one committed snapshot, read in a single transaction, so the figures cannot contradict
+each other even when the MCP server is writing to the same database while the report runs.
+
+Storage is the main database file plus its `-wal` and `-shm` companions, reported both as components and as
+their sum. WAL mode keeps recently written pages outside the main file, so the main file alone can understate
+the real footprint by an arbitrary amount. A companion that has been checkpointed away contributes zero bytes.
+The path is resolved before the companions are located: SQLite derives their names from the file it actually
+opened, so when `--db` names a symlink they live beside the target rather than beside the link.
+An in-memory database, or a path that cannot be measured, reports an explicit `storage_kind` of `memory` or
+`unavailable` with `database_bytes: null`, because an unmeasurable database is not an empty one.
+
+`Elevated MCP capabilities in this environment` reports whether `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` and
+`PEOPLE_CONTEXT_MCP_ENABLE_EXPORT` are set in the environment of *this* CLI process, using exactly the same
+truthiness rule the MCP server applies. It is not a statement about a running server: a server started from a
+different environment has different gates. Nothing here starts, contacts, or probes a server, and `pctx stats`
+makes no network call.
+
+The resolved database path is a real disclosure — it usually carries an account name and says where the file
+lives — so it is omitted unless you pass `--include-path`. `--json` prints the versioned `people-context-stats`
+document as the whole of stdout and sends the disclosure notice to stderr. The report reads only; it writes no
+rows, audit entries, or changelog entries, and exits `0`.
+
+Reading only is why `stats` is the one command that refuses a `--db` target it would have to write to before it
+could measure it, exiting `1` instead. Every other command opens whatever it is given, and answering
+`No people found` from a database it just created or upgraded is still a true answer. A measurement is not:
+opening a store creates the file when absent, applies any pending migrations, switches the journal mode, and
+registers this installation's device row — so a mistyped path was reported back as a device and a few hundred
+kilobytes the report itself had just brought into existence, and a database written by an older release was
+silently upgraded and then measured in its upgraded state.
+
+Four targets are therefore refused: one with no database, one holding something that is not a readable
+database, one whose schema predates this release, and one that is a valid SQLite database belonging to some
+other application — `user_version` is any program's to set, so a current-looking number cannot admit a file on
+its own, and opening someone else's database would rewrite its journal mode before failing on a table it never
+had. The check runs over a read-only connection that creates and migrates nothing, so a refused database is
+left exactly as it was — not even a parent directory is created, and a path containing `?` or `#` names the
+file it means rather than being read as URI syntax.
+An up-to-date store is opened exactly as every other command opens it, where migration and device registration
+really are no-ops. Run `uv run pctx init` to create a database deliberately, or run any other command once
+against an older one to bring it up to date, and then measure it.
+
+Counts are not personal values, but how much you record about whom is itself revealing — inspect the output
+before sharing it.
 
 ## Relationship vocabulary
 

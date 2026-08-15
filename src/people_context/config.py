@@ -21,6 +21,27 @@ DEFAULT_DB_FILENAME = "people.db"
 #: The only accepted source of the optional at-rest encryption key.
 DB_KEY_ENV = "PEOPLE_CONTEXT_DB_KEY"
 
+#: Operator elevation variables for the two high-disclosure MCP capabilities. They live here
+#: rather than beside the tools that consult them because more than one process boundary now
+#: reads them, and two readers that disagreed about what counts as "enabled" would report a
+#: gate state that does not match the one actually in force.
+SENSITIVE_CONTEXT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE"
+EXPORT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_EXPORT"
+
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def process_elevation_enabled(variable: str, env: Mapping[str, str] | None = None) -> bool:
+    """Return whether an operator explicitly enabled a process capability.
+
+    These environment variables are read from the local process — the MCP server that would
+    expose the capability, or the CLI reporting on its own environment — and never from
+    model-supplied tool arguments. They are therefore suitable as an operator elevation
+    boundary for tools that must not be enabled by prompt content.
+    """
+    env = os.environ if env is None else env
+    return env.get(variable, "").strip().lower() in _TRUTHY
+
 
 class MissingDatabaseKeyError(RuntimeError):
     """Raised when encryption is requested without a usable environment key.

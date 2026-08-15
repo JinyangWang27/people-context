@@ -13,6 +13,7 @@ import importlib
 import re
 import socket
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
@@ -157,6 +158,90 @@ def _discover_migrations() -> list[tuple[int, str]]:
         migrations.append((int(match.group(1)), entry.read_text(encoding="utf-8")))
     migrations.sort(key=lambda item: item[0])
     return migrations
+
+
+def latest_schema_version() -> int:
+    """Return the highest migration version this release ships."""
+    migrations = _discover_migrations()
+    return migrations[-1][0] if migrations else 0
+
+
+#: Tables that identify a database as this project's rather than some other application's.
+#: `persons` has existed since the first migration and `devices` since the second, so any store
+#: at the current schema has both.
+_IDENTIFYING_TABLES = ("persons", "devices")
+
+_IDENTITY_SQL = (
+    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)"
+)
+
+
+@dataclass(frozen=True)
+class StoredSchema:
+    """What a read-only look at an existing database says about opening it.
+
+    `version` is the stored `user_version`; a value below `latest_schema_version()` means
+    opening would migrate. `is_people_context` says whether the file is this project's store at
+    all — an unrelated SQLite database can carry any `user_version`, including one that looks
+    current, and opening it would rewrite its journal mode before failing on a table it never
+    had.
+    """
+
+    version: int
+    is_people_context: bool
+
+
+def inspect_schema(path: str | Path, key: str | None = None) -> StoredSchema | None:
+    """Describe an existing database without creating, migrating, or otherwise touching it.
+
+    Both openers bring a database up to date as a side effect of opening it, which is right for
+    every command that goes on to use the store. A caller that must know whether opening would
+    *change* something has no way to ask them, so this asks SQLite directly over a read-only
+    connection: no file is created, no migration runs, no journal mode is switched, and no
+    device row is registered.
+
+    Returns `None` when there is no readable database to answer for — an absent or unreadable
+    file, something that is not a SQLite database, or an encrypted one the key does not open.
+    Those are reported the same way by design: the caller learns only that it cannot proceed,
+    which is all it needs, and no driver error text reaches a message.
+    """
+    if str(path) == ":memory:":
+        return None
+    connect = sqlite3.connect
+    if key is not None:
+        connect = _load_sqlcipher().connect
+    try:
+        conn = connect(_read_only_uri(path), uri=True)
+    except Exception:  # noqa: BLE001 - absence and permission both mean "cannot answer"
+        return None
+    try:
+        if key is not None:
+            conn.execute(f"PRAGMA key = {_quote_key(key)}")
+        version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        found = conn.execute(_IDENTITY_SQL, _IDENTIFYING_TABLES).fetchone()[0]
+    except Exception:  # noqa: BLE001 - not a database, or the key does not open it
+        return None
+    else:
+        return StoredSchema(version=version, is_people_context=found == len(_IDENTIFYING_TABLES))
+    finally:
+        conn.close()
+
+
+def _read_only_uri(path: str | Path) -> str:
+    """Return a read-only `file:` URI naming exactly `path`.
+
+    The filename is percent-encoded rather than interpolated. `?` and `#` are ordinary
+    characters in a POSIX filename and URI syntax in a SQLite URI, so interpolating a path
+    containing one silently renames the target and drops `mode=ro` into the query string it
+    started — which would open a different file, read-write, and create it. Encoding first is
+    what keeps "creates nothing" true for every path a caller may pass.
+
+    `absolute()` rather than `resolve()`: `as_uri()` only requires an absolute path, and
+    resolving would follow symlinks and change which file is being described.
+    """
+    # Deliberately not `_resolve_target`: that creates parent directories, which is exactly the
+    # kind of side effect a caller reaches for this function to avoid.
+    return f"{Path(path).expanduser().absolute().as_uri()}?mode=ro"
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:

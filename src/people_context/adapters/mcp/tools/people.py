@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
-from people_context.adapters.mcp.security import process_elevation_enabled
+from people_context.adapters.mcp.security import SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 from people_context.app.people import (
     AliasInput,
     AmbiguousPersonError,
@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 _READ_ONLY = ToolAnnotations(read_only_hint=True)
 _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
-_SENSITIVE_CONTEXT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE"
 
 
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
@@ -69,7 +68,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             include_sensitive=False,
         ).model_dump(mode="json")
 
-    if process_elevation_enabled(_SENSITIVE_CONTEXT_ENV):
+    if process_elevation_enabled(SENSITIVE_CONTEXT_ENV):
 
         @mcp.tool(annotations=_READ_ONLY)
         async def get_sensitive_person_context(
