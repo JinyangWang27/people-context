@@ -364,3 +364,30 @@ def test_a_bulleted_draft_scores_full_however_it_opens() -> None:
     ):
         score = score_task(task, answer)
         assert score.earned == score.possible, answer
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "I cannot confirm whether Priya Raman is the Data Lead at Kestrel Analytics",
+        "I am not sure whether Priya Raman is the Data Lead at Kestrel Analytics",
+        "I'm not sure if Priya Raman is the Data Lead at Kestrel Analytics",
+        "It is unclear whether Priya Raman is the Data Lead at Kestrel Analytics",
+    ],
+)
+def test_declining_the_question_never_scores_as_an_attribution(answer: str) -> None:
+    """Regression: the refusal list covered canned wording but not the "not sure" family."""
+    score = score_task(_task("identity-disambiguation"), answer)
+
+    assert "asserts-rather-than-hedges" in [
+        criterion.id for criterion in score.criteria if not criterion.passed
+    ]
+
+
+def test_an_assertion_with_ordinary_detail_still_scores_full() -> None:
+    score = score_task(
+        _task("identity-disambiguation"),
+        "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru.",
+    )
+
+    assert score.earned == score.possible

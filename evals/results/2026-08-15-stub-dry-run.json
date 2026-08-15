@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T22:28:28Z",
+  "generated_at": "2026-08-15T22:38:50Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -431,9 +431,18 @@
             "cannot tell you which",
             "can't tell you which",
             "cannot say which",
+            "cannot say for certain which",
             "unable to determine which",
             "do not know which",
-            "don't know which"
+            "don't know which",
+            "not sure whether",
+            "not sure if",
+            "not sure which",
+            "not certain whether",
+            "not certain which",
+            "unclear whether",
+            "unclear which",
+            "no way to tell which"
           ],
           "pattern": null,
           "min_lines": null
@@ -497,9 +506,18 @@
             "cannot tell you which",
             "can't tell you which",
             "cannot say which",
+            "cannot say for certain which",
             "unable to determine which",
             "do not know which",
-            "don't know which"
+            "don't know which",
+            "not sure whether",
+            "not sure if",
+            "not sure which",
+            "not certain whether",
+            "not certain which",
+            "unclear whether",
+            "unclear which",
+            "no way to tell which"
           ],
           "pattern": null,
           "min_lines": null

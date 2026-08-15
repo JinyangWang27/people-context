@@ -80,6 +80,10 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
     runner: AgentRunner = build_runner(config, loaded)
     server_argv = config.mcp_server_argv if isinstance(config, CommandRunnerConfig) else ()
     conditions = tuple(args.condition) if args.condition else CONDITIONS
+    # Read the checkout state before the run writes anything. A --workdir inside the
+    # checkout would otherwise make its own untracked database and config the reason a
+    # clean tree is recorded as dirty, which misidentifies the code behind a result.
+    source = source_identity() if isinstance(runner, CommandAgentRunner) else None
 
     with _workspace(args.workdir) as workdir, _agent_root() as agent_root:
         workspace = prepare_workspace(world, workdir, server_argv)
@@ -102,7 +106,7 @@ def _run(args: argparse.Namespace, clock: Clock) -> int:
         generated_at=clock.now(),
         mcp_server_argv=server_argv,
         client_version=runner.probe_client_version() if isinstance(runner, CommandAgentRunner) else None,
-        source=source_identity() if isinstance(runner, CommandAgentRunner) else None,
+        source=source,
     )
     document = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     # The summary goes out before the write is attempted. Publication is the last step
