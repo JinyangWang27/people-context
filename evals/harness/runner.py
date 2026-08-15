@@ -12,6 +12,7 @@ import json
 import shutil
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from evals.harness import CONDITIONS
@@ -65,19 +66,26 @@ def write_mcp_config(path: Path, server_argv: Sequence[str], db_path: Path) -> P
     return path
 
 
-def resolve_server_argv(server_argv: tuple[str, ...]) -> list[str]:
-    """Substitute the checkout path, so a recorded run names the code it evaluated.
+def resolve_server_argv(server_argv: tuple[str, ...], world_as_of: datetime) -> list[str]:
+    """Substitute the checkout path and the fixture instant into the server command.
 
-    Resolving the server from PyPI by bare name would let a later release answer the
-    same suite differently, which would make a dated result impossible to reproduce.
+    Two things a dated result depends on: resolving the server from PyPI by bare name
+    would let a later release answer the same suite differently, and leaving the
+    server on the system clock would make time-dependent reads answer differently on
+    a different day. Both are pinned here.
     """
+    substitutions = {
+        "{project_root}": str(PROJECT_ROOT),
+        "{world_as_of}": world_as_of.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
     resolved: list[str] = []
     for argument in server_argv:
-        if argument == "{project_root}":
-            resolved.append(str(PROJECT_ROOT))
+        if argument in substitutions:
+            resolved.append(substitutions[argument])
         elif "{" in argument or "}" in argument:
+            expected = ", ".join(sorted(substitutions))
             raise EvalHarnessError(
-                f"argument {argument!r} is not a whole placeholder; expected: {{project_root}}"
+                f"argument {argument!r} is not a whole placeholder; expected one of: {expected}"
             )
         else:
             resolved.append(argument)
@@ -95,10 +103,17 @@ class FixtureWorkspace:
     byte-identical copy of the pristine store, which is never handed out itself.
     """
 
-    def __init__(self, pristine: Path, artifacts: Path, server_argv: tuple[str, ...]) -> None:
+    def __init__(
+        self,
+        pristine: Path,
+        artifacts: Path,
+        server_argv: tuple[str, ...],
+        world_as_of: datetime,
+    ) -> None:
         self.pristine = pristine
         self._artifacts = artifacts
         self._server_argv = server_argv
+        self._world_as_of = world_as_of
 
     def configuration_for(self, task_id: str, condition: str) -> Path | None:
         """Return a client configuration bound to a fresh copy, or ``None``."""
@@ -114,7 +129,7 @@ class FixtureWorkspace:
                 shutil.copyfile(companion, Path(f"{database}{suffix}"))
         return write_mcp_config(
             directory / MCP_CONFIG_FILENAME,
-            resolve_server_argv(self._server_argv),
+            resolve_server_argv(self._server_argv, self._world_as_of),
             database,
         )
 
@@ -132,7 +147,7 @@ def prepare_workspace(
     artifacts = workdir / ARTIFACTS_DIRNAME
     artifacts.mkdir(parents=True, exist_ok=True)
     pristine = build_world_database(world, artifacts / WORLD_DB_FILENAME)
-    return FixtureWorkspace(pristine, artifacts, server_argv)
+    return FixtureWorkspace(pristine, artifacts, server_argv, world.as_of)
 
 
 def run_suite(

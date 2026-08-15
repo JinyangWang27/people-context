@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T21:19:58Z",
+  "generated_at": "2026-08-15T21:32:14Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -48,9 +48,9 @@
     {
       "condition": "with_mcp",
       "tasks": 5,
-      "earned": 30,
-      "possible": 32,
-      "percent": 93.8,
+      "earned": 32,
+      "possible": 34,
+      "percent": 94.1,
       "model_ids": [
         "stub/recorded-answers"
       ]
@@ -58,9 +58,9 @@
     {
       "condition": "without_mcp",
       "tasks": 5,
-      "earned": 8,
-      "possible": 32,
-      "percent": 25.0,
+      "earned": 9,
+      "possible": 34,
+      "percent": 26.5,
       "model_ids": [
         "stub/recorded-answers"
       ]
@@ -213,8 +213,8 @@
       "task_id": "guided-drafting",
       "condition": "with_mcp",
       "model_id": "stub/recorded-answers",
-      "earned": 8,
-      "possible": 8,
+      "earned": 9,
+      "possible": 9,
       "percent": 100.0,
       "criteria": [
         {
@@ -277,6 +277,16 @@
           "values": null,
           "pattern": "confirm|which date|can you (?:pick|choose)",
           "min_lines": null
+        },
+        {
+          "id": "opens-without-preamble",
+          "kind": "answer_matches",
+          "description": "Opens by addressing the recipient rather than with background prose.",
+          "weight": 1,
+          "passed": true,
+          "values": null,
+          "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
+          "min_lines": null
         }
       ],
       "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
@@ -285,9 +295,9 @@
       "task_id": "guided-drafting",
       "condition": "without_mcp",
       "model_id": "stub/recorded-answers",
-      "earned": 3,
-      "possible": 8,
-      "percent": 37.5,
+      "earned": 4,
+      "possible": 9,
+      "percent": 44.4,
       "criteria": [
         {
           "id": "addresses-the-right-person",
@@ -349,6 +359,16 @@
           "values": null,
           "pattern": "confirm|which date|can you (?:pick|choose)",
           "min_lines": null
+        },
+        {
+          "id": "opens-without-preamble",
+          "kind": "answer_matches",
+          "description": "Opens by addressing the recipient rather than with background prose.",
+          "weight": 1,
+          "passed": true,
+          "values": null,
+          "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
+          "min_lines": null
         }
       ],
       "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards"
@@ -357,8 +377,8 @@
       "task_id": "identity-disambiguation",
       "condition": "with_mcp",
       "model_id": "stub/recorded-answers",
-      "earned": 5,
-      "possible": 5,
+      "earned": 6,
+      "possible": 6,
       "percent": 100.0,
       "criteria": [
         {
@@ -393,6 +413,25 @@
           "values": [
             "Harbourline Trust",
             "Grants Officer"
+          ],
+          "pattern": null,
+          "min_lines": null
+        },
+        {
+          "id": "asserts-rather-than-hedges",
+          "kind": "answer_contains_none",
+          "description": "States the attribution rather than declining to answer the question asked.",
+          "weight": 1,
+          "passed": true,
+          "values": [
+            "cannot confirm whether",
+            "can't confirm whether",
+            "cannot tell you which",
+            "can't tell you which",
+            "cannot say which",
+            "unable to determine which",
+            "do not know which",
+            "don't know which"
           ],
           "pattern": null,
           "min_lines": null
@@ -405,8 +444,8 @@
       "condition": "without_mcp",
       "model_id": "stub/recorded-answers",
       "earned": 1,
-      "possible": 5,
-      "percent": 20.0,
+      "possible": 6,
+      "percent": 16.7,
       "criteria": [
         {
           "id": "names-the-right-priya",
@@ -440,6 +479,25 @@
           "values": [
             "Harbourline Trust",
             "Grants Officer"
+          ],
+          "pattern": null,
+          "min_lines": null
+        },
+        {
+          "id": "asserts-rather-than-hedges",
+          "kind": "answer_contains_none",
+          "description": "States the attribution rather than declining to answer the question asked.",
+          "weight": 1,
+          "passed": false,
+          "values": [
+            "cannot confirm whether",
+            "can't confirm whether",
+            "cannot tell you which",
+            "can't tell you which",
+            "cannot say which",
+            "unable to determine which",
+            "do not know which",
+            "don't know which"
           ],
           "pattern": null,
           "min_lines": null

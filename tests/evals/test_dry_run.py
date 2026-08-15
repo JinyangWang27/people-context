@@ -356,13 +356,52 @@ def test_the_evaluated_server_is_pinned_to_this_checkout() -> None:
     assert isinstance(config, CommandRunnerConfig)
     assert "{project_root}" in config.mcp_server_argv
     assert "people-context" not in config.mcp_server_argv, "the bare PyPI name is not a pin"
-    resolved = resolve_server_argv(config.mcp_server_argv)
+    resolved = resolve_server_argv(config.mcp_server_argv, datetime(2026, 8, 1, 9, 0, tzinfo=UTC))
     assert str(ROOT) in resolved
+    assert "2026-08-01T09:00:00Z" in resolved, "the server must be frozen at the fixture instant"
 
 
 def test_an_unknown_server_placeholder_is_refused() -> None:
     with pytest.raises(EvalHarnessError, match="is not a whole placeholder"):
-        resolve_server_argv(("uv", "run", "--project", "{checkout}"))
+        resolve_server_argv(("uv", "run", "--project", "{checkout}"), datetime(2026, 8, 1, tzinfo=UTC))
+
+
+def test_the_evaluated_server_is_frozen_at_the_fixture_instant(tmp_path: Path) -> None:
+    """Regression: on the system clock, recency answers change with the execution date."""
+    world = load_world(WORLD_PATH)
+    database = build_world_database(world, tmp_path / "world.db")
+
+    at_fixture = _stale_days(database, world.as_of)
+    a_year_later = _stale_days(database, world.as_of.replace(year=world.as_of.year + 1))
+
+    assert at_fixture, "the fixture must produce recency rows"
+    assert at_fixture != a_year_later, "recency output depends on the clock, so it must be pinned"
+
+
+def _stale_days(database: Path, now: datetime) -> list[int | None]:
+    """Return the reported days-since values for one clock."""
+    from evals.harness.world import FixedClock
+    from people_context.adapters.runtime import build_runtime
+
+    runtime = build_runtime(database, clock=FixedClock(now))
+    try:
+        report = runtime.use_cases.get_stale_relationships.execute()
+    finally:
+        runtime.close()
+    return [person.days_since for person in report.people]
+
+
+def test_the_server_wrapper_refuses_a_naive_instant() -> None:
+    from evals.harness.server import parse_instant
+
+    with pytest.raises(ValueError, match="timezone-aware"):
+        parse_instant("2026-08-01T09:00:00")
+
+
+def test_the_server_wrapper_accepts_the_recorded_instant_form() -> None:
+    from evals.harness.server import parse_instant
+
+    assert parse_instant("2026-08-01T09:00:00Z") == datetime(2026, 8, 1, 9, 0, tzinfo=UTC)
 
 
 def test_each_with_mcp_invocation_gets_its_own_copy_of_the_store(tmp_path: Path) -> None:

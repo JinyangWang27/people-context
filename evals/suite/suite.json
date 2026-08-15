@@ -37,6 +37,22 @@
             "Grants Officer"
           ],
           "weight": 1
+        },
+        {
+          "id": "asserts-rather-than-hedges",
+          "kind": "answer_contains_none",
+          "description": "States the attribution rather than declining to answer the question asked.",
+          "values": [
+            "cannot confirm whether",
+            "can't confirm whether",
+            "cannot tell you which",
+            "can't tell you which",
+            "cannot say which",
+            "unable to determine which",
+            "do not know which",
+            "don't know which"
+          ],
+          "weight": 1
         }
       ]
     },
@@ -142,6 +158,13 @@
           "kind": "answer_matches",
           "description": "Asks for a specific confirmation rather than open-ended availability.",
           "pattern": "confirm|which date|can you (?:pick|choose)",
+          "weight": 1
+        },
+        {
+          "id": "opens-without-preamble",
+          "kind": "answer_matches",
+          "description": "Opens by addressing the recipient rather than with background prose.",
+          "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
           "weight": 1
         }
       ]
@@ -253,10 +276,14 @@
       "mcp_server_argv": [
         "uv",
         "run",
-        "--project",
+        "--directory",
         "{project_root}",
         "--locked",
-        "people-context-mcp"
+        "python",
+        "-m",
+        "evals.harness.server",
+        "--as-of",
+        "{world_as_of}"
       ],
       "timeout_seconds": 300,
       "max_output_bytes": 262144,

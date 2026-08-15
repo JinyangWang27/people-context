@@ -41,12 +41,12 @@ fixture record the same timestamps.
 
 | Task | What it probes | Possible weight |
 | --- | --- | ---: |
-| `identity-disambiguation` | Picking the right person out of two who share a first name | 5 |
+| `identity-disambiguation` | Picking the right person out of two who share a first name | 6 |
 | `context-recall` | Reporting a contact's organisation, role, and stored update preference | 7 |
-| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 8 |
+| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 9 |
 | `relationship-path` | Naming the people on the shortest path to a contact, in order | 6 |
 | `stale-follow-up` | Naming the most overdue contact and the date of the last interaction | 6 |
-| **Total** | | **32** |
+| **Total** | | **34** |
 
 The exact prompts live in [`evals/suite/suite.json`](../evals/suite/suite.json) and are also copied verbatim into
 every report, so a published result always carries the wording that produced it.
@@ -62,6 +62,10 @@ every machine and a reader can re-derive a published number from the recorded an
 | `answer_contains_none` | None of the listed phrases appears |
 | `answer_matches` | A case-insensitive regular expression matches |
 | `answer_lines_match` | At least `min_lines` individual lines match an expression |
+
+Rubrics also reject non-answers. Declining to answer while naming every right string — "I cannot confirm whether
+Priya Raman is the Data Lead at Kestrel Analytics" — is not a correct attribution, and background prose before a
+bulleted message violates the second half of a preference that reads "Bullet points, no preamble".
 
 Answers are compared after Unicode NFKC composition, case folding, and whitespace collapsing, so line wrapping
 never changes a score. Word-boundary patterns are what separate `Priya Raman` from `Priya Ramanathan`, which
@@ -101,10 +105,12 @@ export ANTHROPIC_API_KEY=...
 uv run python -m evals.harness --runner claude-cli --out evals/results/<date>-<model>.json
 ```
 
-The evaluated server is pinned to this checkout — `uv run --project {project_root} --locked people-context-mcp`
-— rather than resolved from PyPI by bare name. A later release answering the same suite differently would make a
-dated result impossible to reproduce; the report records the configured vector so a reader knows which code was
-measured.
+The evaluated server is pinned twice. It runs from this checkout rather than resolving `people-context` from
+PyPI by bare name, so a later release cannot answer the same suite differently; and it runs with its clock frozen
+at the fixture's `as_of` via `python -m evals.harness.server`, so time-dependent reads such as
+`get_stale_relationships` report the same "days since" whenever the run happens. That wrapper is the shipped
+server — same `build_server`, same tools, same stdio transport — with only the clock injected. The report records
+the configured vector so a reader knows which code was measured.
 
 Each invocation is isolated twice over. The agent process runs in a fresh empty directory that is never under
 `--workdir`, so a command-backed agent cannot read `world.db` straight off disk during the `without_mcp` control,
@@ -134,8 +140,8 @@ Harness 1.0.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub
 
 | Condition | Tasks | Earned | Possible | Percent |
 | --- | ---: | ---: | ---: | ---: |
-| `with_mcp` | 5 | 30 | 32 | 93.8 |
-| `without_mcp` | 5 | 8 | 32 | 25.0 |
+| `with_mcp` | 5 | 32 | 34 | 94.1 |
+| `without_mcp` | 5 | 9 | 34 | 26.5 |
 
 **This is not a measurement of any model.** The answers are hand-written illustrations chosen to exercise every
 scoring path, including partial credit in both conditions. The run establishes only that the fixture

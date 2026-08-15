@@ -71,9 +71,10 @@ class CommandAgentRunner:
             except OSError as exc:
                 raise EvalHarnessError(f"cannot start agent command {argv[0]!r}: {exc}") from exc
             returncode = self._supervise(process, out, err, request)
-            if _captured_bytes(out) > limit:
+            if _captured_bytes(out) > limit or _captured_bytes(err) > limit:
                 # A process that overproduced faster than the poll interval reaches
-                # here; the rule is the same either way, so the two paths agree.
+                # here. Both streams are checked, on both paths: a small valid answer
+                # beside a large stderr burst still spends the same disk.
                 raise EvalHarnessError(
                     f"agent command exceeded the {limit} byte output cap "
                     f"on task {request.task_id} ({request.condition})"

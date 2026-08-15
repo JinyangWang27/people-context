@@ -106,8 +106,12 @@ def test_an_empty_answer_earns_only_the_negative_criteria() -> None:
 
     score = score_task(task, "I do not know.")
 
-    assert score.earned == 1
-    assert score.percent == 20.0
+    assert score.earned == 2
+    assert score.possible == 6
+    assert [criterion.id for criterion in score.criteria if criterion.passed] == [
+        "does-not-attribute-the-other-priya",
+        "asserts-rather-than-hedges",
+    ]
 
 
 def test_a_reversed_path_does_not_score_as_the_shortest_path() -> None:
@@ -270,3 +274,42 @@ def test_claiming_a_tie_with_another_contact_is_not_the_single_overdue_answer() 
     assert single.earned == single.possible
     failed = [criterion.id for criterion in tie.criteria if not criterion.passed]
     assert failed == ["does-not-name-another-contact"]
+
+
+def test_a_hedged_attribution_does_not_score_as_a_confident_one() -> None:
+    """Regression: declining to answer while naming every right string scored full."""
+    task = _task("identity-disambiguation")
+
+    hedged = score_task(task, "I cannot confirm whether Priya Raman is the Data Lead at Kestrel Analytics")
+    asserted = score_task(task, "Priya Raman is the Data Lead at Kestrel Analytics.")
+
+    assert asserted.earned == asserted.possible
+    failed = [criterion.id for criterion in hedged.criteria if not criterion.passed]
+    assert failed == ["asserts-rather-than-hedges"]
+
+
+def test_background_prose_before_the_bullets_misses_the_no_preamble_half() -> None:
+    """Regression: bullets alone satisfied a preference that also forbids preamble."""
+    task = _task("guided-drafting")
+
+    preamble = score_task(
+        task,
+        "Some background before the request: we have been waiting on this.\n"
+        "- Tomas, confirm the September operations review date\n"
+        "- Decision needed by 5 September",
+    )
+
+    failed = [criterion.id for criterion in preamble.criteria if not criterion.passed]
+    assert failed == ["opens-without-preamble"]
+
+
+def test_a_salutation_is_not_treated_as_preamble() -> None:
+    """"No preamble" forbids background, not a greeting; the rubric must not confuse them."""
+    task = _task("guided-drafting")
+
+    score = score_task(
+        task,
+        "Hi Tomas,\n- Please confirm the September operations review date\n- Decision needed by 5 September",
+    )
+
+    assert score.earned == score.possible
