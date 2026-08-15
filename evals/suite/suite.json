@@ -1,0 +1,203 @@
+{
+  "format": "people-context.eval-suite",
+  "version": 1,
+  "suite_id": "people-context-core",
+  "suite_version": "1.0.0",
+  "world": "world.json",
+  "system_prompt": "You are helping the user with questions about the people in their life. If a people-context MCP server is available, resolve the person first and read their stored context before answering; never guess an identity you could look up. Answer concisely, state only what you actually know, and say plainly when you do not know something.",
+  "tasks": [
+    {
+      "id": "identity-disambiguation",
+      "title": "Tell apart two contacts who share a first name",
+      "prompt": "Two of my contacts are both called Priya. Which one works at Kestrel Analytics, and what is her role there? Give her full name and her role.",
+      "rubric": [
+        {
+          "id": "names-the-right-priya",
+          "kind": "answer_matches",
+          "description": "Names Priya Raman as a whole name, not the similarly named Priya Ramanathan.",
+          "pattern": "\\bpriya raman\\b",
+          "weight": 2
+        },
+        {
+          "id": "states-employer-and-role",
+          "kind": "answer_contains_all",
+          "description": "States both the organisation and the role held there.",
+          "values": ["Kestrel Analytics", "Data Lead"],
+          "weight": 2
+        },
+        {
+          "id": "does-not-attribute-the-other-priya",
+          "kind": "answer_contains_none",
+          "description": "Does not attribute the other Priya's organisation or role to the answer.",
+          "values": ["Harbourline Trust", "Grants Officer"],
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "context-recall",
+      "title": "Recall a contact's organisation, role, and update preference",
+      "prompt": "What do you know about Tomas Brandt: where does he work, what is his role, and how does he prefer to receive updates? Answer in one short paragraph.",
+      "rubric": [
+        {
+          "id": "states-organisation",
+          "kind": "answer_contains_all",
+          "description": "Names the organisation Tomas Brandt is affiliated with.",
+          "values": ["Tidepool Collective"],
+          "weight": 2
+        },
+        {
+          "id": "states-role",
+          "kind": "answer_contains_all",
+          "description": "Names the role he holds there.",
+          "values": ["Operations Manager"],
+          "weight": 2
+        },
+        {
+          "id": "states-update-preference",
+          "kind": "answer_contains_all",
+          "description": "Reports the stored update preference rather than a generic one.",
+          "values": ["bullet points"],
+          "weight": 2
+        },
+        {
+          "id": "does-not-invent-an-employer",
+          "kind": "answer_contains_none",
+          "description": "Does not place him at another contact's organisation.",
+          "values": ["Kestrel Analytics", "Northlight Media", "Harbourline Trust"],
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "guided-drafting",
+      "title": "Draft a message that follows both sides' stated preferences",
+      "prompt": "Draft a short message to Tomas Brandt asking him to confirm a date for the September operations review. Follow my own communication philosophy and his stated update preference. Reply with the message text only.",
+      "rubric": [
+        {
+          "id": "addresses-the-right-person",
+          "kind": "answer_contains_all",
+          "description": "Addresses Tomas by name.",
+          "values": ["Tomas"],
+          "weight": 1
+        },
+        {
+          "id": "states-the-subject",
+          "kind": "answer_contains_all",
+          "description": "Names the meeting and the month it concerns.",
+          "values": ["September", "operations review"],
+          "weight": 2
+        },
+        {
+          "id": "omits-filler-openings",
+          "kind": "answer_contains_none",
+          "description": "Honours the user's stated philosophy by opening without filler pleasantries.",
+          "values": [
+            "I hope this email finds you well",
+            "I hope this message finds you well",
+            "I hope you are doing well",
+            "I hope you're doing well",
+            "Trust you are well"
+          ],
+          "weight": 2
+        },
+        {
+          "id": "asks-for-a-decision",
+          "kind": "answer_matches",
+          "description": "Asks for a specific confirmation rather than open-ended availability.",
+          "pattern": "confirm|which date|can you (?:pick|choose)",
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "relationship-path",
+      "title": "Explain how the user is connected to a contact",
+      "prompt": "How am I connected to Priya Raman? Name the people on the shortest path between us, in order.",
+      "rubric": [
+        {
+          "id": "names-the-intermediaries",
+          "kind": "answer_contains_all",
+          "description": "Names both people on the shortest path.",
+          "values": ["Tomas Brandt", "Kofi Mensah"],
+          "weight": 3
+        },
+        {
+          "id": "names-the-target",
+          "kind": "answer_matches",
+          "description": "Ends at Priya Raman rather than the similarly named contact.",
+          "pattern": "\\bpriya raman\\b",
+          "weight": 1
+        },
+        {
+          "id": "does-not-route-through-the-other-priya",
+          "kind": "answer_contains_none",
+          "description": "Does not place the other Priya's organisation on the path.",
+          "values": ["Harbourline Trust"],
+          "weight": 1
+        }
+      ]
+    },
+    {
+      "id": "stale-follow-up",
+      "title": "Identify the most overdue contact and the last interaction date",
+      "prompt": "As of 1 August 2026, which contact have I gone longest without any interaction? Name that one person and the date we last spoke.",
+      "rubric": [
+        {
+          "id": "names-the-most-overdue-contact",
+          "kind": "answer_contains_all",
+          "description": "Names Ingrid Solberg, whose last interaction is the oldest on record.",
+          "values": ["Ingrid Solberg"],
+          "weight": 3
+        },
+        {
+          "id": "states-the-last-interaction-date",
+          "kind": "answer_matches",
+          "description": "States 5 March 2026 in any common written form.",
+          "pattern": "2026-03-05|5 march 2026|march 5,? 2026",
+          "weight": 2
+        },
+        {
+          "id": "does-not-name-a-recent-contact",
+          "kind": "answer_contains_none",
+          "description": "Does not present the most recently seen contact as the overdue one.",
+          "values": ["Kofi Mensah"],
+          "weight": 1
+        }
+      ]
+    }
+  ],
+  "runners": {
+    "stub": {
+      "kind": "stub",
+      "model_id": "stub/recorded-answers",
+      "transcripts": "stub-transcripts.json"
+    },
+    "claude-cli": {
+      "kind": "command",
+      "model_id": "claude-sonnet-4-5-20250929",
+      "argv": [
+        "claude",
+        "--print",
+        "--strict-mcp-config",
+        "--model",
+        "{model}",
+        "--append-system-prompt",
+        "{system_prompt}",
+        "--output-format",
+        "text",
+        "{prompt}"
+      ],
+      "mcp_argv": [
+        "--mcp-config",
+        "{mcp_config}",
+        "--allowedTools",
+        "mcp__people-context"
+      ],
+      "mcp_server_argv": ["uvx", "--from", "people-context", "people-context-mcp"],
+      "timeout_seconds": 300,
+      "max_output_bytes": 262144,
+      "env_passthrough": ["PATH", "HOME", "ANTHROPIC_API_KEY"]
+    }
+  }
+}

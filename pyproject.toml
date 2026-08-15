@@ -61,6 +61,14 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/people_context"]
 
+# The evaluation harness is developer tooling: fictional fixtures, prompts, and a
+# runner that starts an agent CLI. None of it is importable by the server or the
+# CLI, so it stays out of both published artifacts. The wheel already ships only
+# `src/people_context`; the source distribution needs the exclusion stated. Its
+# tests go with it, so the shipped test suite stays runnable without the harness.
+[tool.hatch.build.targets.sdist]
+exclude = ["/evals", "/tests/evals"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"

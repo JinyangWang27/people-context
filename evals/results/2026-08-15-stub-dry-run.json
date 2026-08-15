@@ -1,0 +1,428 @@
+{
+  "format": "people-context.eval-report",
+  "version": 1,
+  "harness_version": "1.0.0",
+  "generated_at": "2026-08-15T20:19:26Z",
+  "suite": {
+    "id": "people-context-core",
+    "version": "1.0.0",
+    "world_id": "tidepool-2026-08",
+    "world_as_of": "2026-08-01T09:00:00Z"
+  },
+  "runner": {
+    "name": "stub",
+    "kind": "stub"
+  },
+  "prompts": {
+    "system": "You are helping the user with questions about the people in their life. If a people-context MCP server is available, resolve the person first and read their stored context before answering; never guess an identity you could look up. Answer concisely, state only what you actually know, and say plainly when you do not know something.",
+    "tasks": [
+      {
+        "id": "identity-disambiguation",
+        "title": "Tell apart two contacts who share a first name",
+        "prompt": "Two of my contacts are both called Priya. Which one works at Kestrel Analytics, and what is her role there? Give her full name and her role."
+      },
+      {
+        "id": "context-recall",
+        "title": "Recall a contact's organisation, role, and update preference",
+        "prompt": "What do you know about Tomas Brandt: where does he work, what is his role, and how does he prefer to receive updates? Answer in one short paragraph."
+      },
+      {
+        "id": "guided-drafting",
+        "title": "Draft a message that follows both sides' stated preferences",
+        "prompt": "Draft a short message to Tomas Brandt asking him to confirm a date for the September operations review. Follow my own communication philosophy and his stated update preference. Reply with the message text only."
+      },
+      {
+        "id": "relationship-path",
+        "title": "Explain how the user is connected to a contact",
+        "prompt": "How am I connected to Priya Raman? Name the people on the shortest path between us, in order."
+      },
+      {
+        "id": "stale-follow-up",
+        "title": "Identify the most overdue contact and the last interaction date",
+        "prompt": "As of 1 August 2026, which contact have I gone longest without any interaction? Name that one person and the date we last spoke."
+      }
+    ]
+  },
+  "totals": [
+    {
+      "condition": "with_mcp",
+      "tasks": 5,
+      "earned": 27,
+      "possible": 29,
+      "percent": 93.1,
+      "model_ids": [
+        "stub/recorded-answers"
+      ]
+    },
+    {
+      "condition": "without_mcp",
+      "tasks": 5,
+      "earned": 8,
+      "possible": 29,
+      "percent": 27.6,
+      "model_ids": [
+        "stub/recorded-answers"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "task_id": "context-recall",
+      "condition": "with_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 5,
+      "possible": 7,
+      "percent": 71.4,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "states-organisation",
+          "kind": "answer_contains_all",
+          "description": "Names the organisation Tomas Brandt is affiliated with.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "states-role",
+          "kind": "answer_contains_all",
+          "description": "Names the role he holds there.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "states-update-preference",
+          "kind": "answer_contains_all",
+          "description": "Reports the stored update preference rather than a generic one.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "does-not-invent-an-employer",
+          "kind": "answer_contains_none",
+          "description": "Does not place him at another contact's organisation.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews."
+    },
+    {
+      "task_id": "context-recall",
+      "condition": "without_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 1,
+      "possible": 7,
+      "percent": 14.3,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "states-organisation",
+          "kind": "answer_contains_all",
+          "description": "Names the organisation Tomas Brandt is affiliated with.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "states-role",
+          "kind": "answer_contains_all",
+          "description": "Names the role he holds there.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "states-update-preference",
+          "kind": "answer_contains_all",
+          "description": "Reports the stored update preference rather than a generic one.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "does-not-invent-an-employer",
+          "kind": "answer_contains_none",
+          "description": "Does not place him at another contact's organisation.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates."
+    },
+    {
+      "task_id": "guided-drafting",
+      "condition": "with_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 6,
+      "possible": 6,
+      "percent": 100.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "addresses-the-right-person",
+          "kind": "answer_contains_all",
+          "description": "Addresses Tomas by name.",
+          "weight": 1,
+          "passed": true
+        },
+        {
+          "id": "states-the-subject",
+          "kind": "answer_contains_all",
+          "description": "Names the meeting and the month it concerns.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "omits-filler-openings",
+          "kind": "answer_contains_none",
+          "description": "Honours the user's stated philosophy by opening without filler pleasantries.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "asks-for-a-decision",
+          "kind": "answer_matches",
+          "description": "Asks for a specific confirmation rather than open-ended availability.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
+    },
+    {
+      "task_id": "guided-drafting",
+      "condition": "without_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 3,
+      "possible": 6,
+      "percent": 50.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "addresses-the-right-person",
+          "kind": "answer_contains_all",
+          "description": "Addresses Tomas by name.",
+          "weight": 1,
+          "passed": true
+        },
+        {
+          "id": "states-the-subject",
+          "kind": "answer_contains_all",
+          "description": "Names the meeting and the month it concerns.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "omits-filler-openings",
+          "kind": "answer_contains_none",
+          "description": "Honours the user's stated philosophy by opening without filler pleasantries.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "asks-for-a-decision",
+          "kind": "answer_matches",
+          "description": "Asks for a specific confirmation rather than open-ended availability.",
+          "weight": 1,
+          "passed": false
+        }
+      ],
+      "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards"
+    },
+    {
+      "task_id": "identity-disambiguation",
+      "condition": "with_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 5,
+      "possible": 5,
+      "percent": 100.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "names-the-right-priya",
+          "kind": "answer_matches",
+          "description": "Names Priya Raman as a whole name, not the similarly named Priya Ramanathan.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "states-employer-and-role",
+          "kind": "answer_contains_all",
+          "description": "States both the organisation and the role held there.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "does-not-attribute-the-other-priya",
+          "kind": "answer_contains_none",
+          "description": "Does not attribute the other Priya's organisation or role to the answer.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership."
+    },
+    {
+      "task_id": "identity-disambiguation",
+      "condition": "without_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 1,
+      "possible": 5,
+      "percent": 20.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "names-the-right-priya",
+          "kind": "answer_matches",
+          "description": "Names Priya Raman as a whole name, not the similarly named Priya Ramanathan.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "states-employer-and-role",
+          "kind": "answer_contains_all",
+          "description": "States both the organisation and the role held there.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "does-not-attribute-the-other-priya",
+          "kind": "answer_contains_none",
+          "description": "Does not attribute the other Priya's organisation or role to the answer.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics."
+    },
+    {
+      "task_id": "relationship-path",
+      "condition": "with_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 5,
+      "possible": 5,
+      "percent": 100.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "names-the-intermediaries",
+          "kind": "answer_contains_all",
+          "description": "Names both people on the shortest path.",
+          "weight": 3,
+          "passed": true
+        },
+        {
+          "id": "names-the-target",
+          "kind": "answer_matches",
+          "description": "Ends at Priya Raman rather than the similarly named contact.",
+          "weight": 1,
+          "passed": true
+        },
+        {
+          "id": "does-not-route-through-the-other-priya",
+          "kind": "answer_contains_none",
+          "description": "Does not place the other Priya's organisation on the path.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman."
+    },
+    {
+      "task_id": "relationship-path",
+      "condition": "without_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 2,
+      "possible": 5,
+      "percent": 40.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "names-the-intermediaries",
+          "kind": "answer_contains_all",
+          "description": "Names both people on the shortest path.",
+          "weight": 3,
+          "passed": false
+        },
+        {
+          "id": "names-the-target",
+          "kind": "answer_matches",
+          "description": "Ends at Priya Raman rather than the similarly named contact.",
+          "weight": 1,
+          "passed": true
+        },
+        {
+          "id": "does-not-route-through-the-other-priya",
+          "kind": "answer_contains_none",
+          "description": "Does not place the other Priya's organisation on the path.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman."
+    },
+    {
+      "task_id": "stale-follow-up",
+      "condition": "with_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 6,
+      "possible": 6,
+      "percent": 100.0,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "names-the-most-overdue-contact",
+          "kind": "answer_contains_all",
+          "description": "Names Ingrid Solberg, whose last interaction is the oldest on record.",
+          "weight": 3,
+          "passed": true
+        },
+        {
+          "id": "states-the-last-interaction-date",
+          "kind": "answer_matches",
+          "description": "States 5 March 2026 in any common written form.",
+          "weight": 2,
+          "passed": true
+        },
+        {
+          "id": "does-not-name-a-recent-contact",
+          "kind": "answer_contains_none",
+          "description": "Does not present the most recently seen contact as the overdue one.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05."
+    },
+    {
+      "task_id": "stale-follow-up",
+      "condition": "without_mcp",
+      "model_id": "stub/recorded-answers",
+      "earned": 1,
+      "possible": 6,
+      "percent": 16.7,
+      "truncated": false,
+      "criteria": [
+        {
+          "id": "names-the-most-overdue-contact",
+          "kind": "answer_contains_all",
+          "description": "Names Ingrid Solberg, whose last interaction is the oldest on record.",
+          "weight": 3,
+          "passed": false
+        },
+        {
+          "id": "states-the-last-interaction-date",
+          "kind": "answer_matches",
+          "description": "States 5 March 2026 in any common written form.",
+          "weight": 2,
+          "passed": false
+        },
+        {
+          "id": "does-not-name-a-recent-contact",
+          "kind": "answer_contains_none",
+          "description": "Does not present the most recently seen contact as the overdue one.",
+          "weight": 1,
+          "passed": true
+        }
+      ],
+      "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke."
+    }
+  ]
+}
