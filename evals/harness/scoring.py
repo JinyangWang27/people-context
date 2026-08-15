@@ -63,6 +63,7 @@ class CriterionOutcome:
     values: tuple[str, ...] | None
     pattern: str | None
     min_lines: int | None
+    scope: str | None
 
 
 @dataclass(frozen=True)
@@ -91,9 +92,10 @@ def evaluate_criterion(criterion: Criterion, answer: str) -> bool:
     if isinstance(criterion, MatchesCriterion):
         return re.search(criterion.pattern, folded, re.IGNORECASE) is not None
     if isinstance(criterion, LineMatchesCriterion):
-        matched = sum(
-            1 for line in normalize_lines(answer) if re.search(criterion.pattern, line, re.IGNORECASE)
-        )
+        lines = normalize_lines(answer)
+        if criterion.scope == "first":
+            lines = lines[:1]
+        matched = sum(1 for line in lines if re.search(criterion.pattern, line, re.IGNORECASE))
         return matched >= criterion.min_lines
     raise EvalHarnessError(f"unsupported criterion kind: {type(criterion).__name__}")
 
@@ -110,6 +112,7 @@ def score_task(task: Task, answer: str) -> TaskScore:
             values=getattr(criterion, "values", None),
             pattern=getattr(criterion, "pattern", None),
             min_lines=getattr(criterion, "min_lines", None),
+            scope=getattr(criterion, "scope", None),
         )
         for criterion in task.rubric
     )

@@ -341,6 +341,26 @@ def test_a_compliant_draft_scores_full_however_it_opens(answer: str) -> None:
 
 
 @pytest.mark.parametrize(
+    "answer",
+    [
+        "Some background first: we waited a while.\n- Tomas, confirm the review\n- Proposed: 14 September",
+        "- Background before the request.\n- Tomas: September operations review\n- Confirm 14 September.",
+    ],
+)
+def test_background_before_the_message_is_preamble_bulleted_or_not(answer: str) -> None:
+    """Regression: allowing any leading bullet let a bulleted preamble score full.
+
+    The rule is about the opening line's subject, not its punctuation, so a bullet
+    cannot launder background into compliance.
+    """
+    score = score_task(_task("guided-drafting"), answer)
+
+    assert "opens-without-preamble" in [
+        criterion.id for criterion in score.criteria if not criterion.passed
+    ]
+
+
+@pytest.mark.parametrize(
     ("answer", "missing"),
     [
         ("Tomas\n- September operations review\n- Proposed: week of 14 May; confirm.", "names-a-concrete-date"),
@@ -376,3 +396,51 @@ def test_a_wrong_interaction_date_still_fails() -> None:
 
     failed = [criterion.id for criterion in score.criteria if not criterion.passed]
     assert failed == ["states-the-last-interaction-date"]
+
+
+def test_a_first_line_scoped_criterion_ignores_later_lines() -> None:
+    """The scope is what makes "opens with" checkable rather than approximated."""
+    criterion = LineMatchesCriterion(
+        id="opens",
+        kind="answer_lines_match",
+        description="opens on the subject",
+        pattern=r"tomas\b",
+        min_lines=1,
+        scope="first",
+    )
+
+    assert evaluate_criterion(criterion, "Tomas,\n- one\n- two")
+    assert not evaluate_criterion(criterion, "Background.\n- Tomas: one\n- two")
+
+
+def test_the_default_scope_still_matches_anywhere() -> None:
+    criterion = LineMatchesCriterion(
+        id="bullets",
+        kind="answer_lines_match",
+        description="two bulleted lines",
+        pattern=r"^[-*•] \S",
+        min_lines=2,
+    )
+
+    assert criterion.scope == "any"
+    assert evaluate_criterion(criterion, "Tomas,\n- one\n- two")
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "2026-03-05",
+        "5 March 2026",
+        "5th March 2026",
+        "5th of March 2026",
+        "5th of March, 2026",
+        "March 5, 2026",
+        "March 5th, 2026",
+        "March 5 2026",
+    ],
+)
+def test_every_common_written_date_form_is_accepted(written: str) -> None:
+    """Regression: the criterion promised any common form and rejected the 'of' construction."""
+    score = score_task(_task("stale-follow-up"), f"Ingrid Solberg; we last spoke {written}.")
+
+    assert score.earned == score.possible

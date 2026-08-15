@@ -162,9 +162,11 @@
         },
         {
           "id": "opens-without-preamble",
-          "kind": "answer_matches",
-          "description": "Starts with the message itself — a bullet or the recipient's name — not background prose.",
-          "pattern": "\\A(?:[-*•]\\s|(?:(?:hi|hello|hey),?\\s*)?tomas\\b)",
+          "kind": "answer_lines_match",
+          "description": "Opens on the subject — the recipient or the meeting — rather than with background.",
+          "pattern": "tomas\\b|operations review\\b",
+          "min_lines": 1,
+          "scope": "first",
           "weight": 1
         },
         {
@@ -236,7 +238,7 @@
           "id": "states-the-last-interaction-date",
           "kind": "answer_matches",
           "description": "States 5 March 2026 in any common written form.",
-          "pattern": "2026-03-05|\\b5(?:th)? march,? 2026|march 5(?:th)?,? 2026",
+          "pattern": "2026-03-05|\\b5(?:th)?(?: of)? march,? 2026|march 5(?:th)?,? 2026",
           "weight": 2
         },
         {

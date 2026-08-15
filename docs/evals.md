@@ -65,7 +65,7 @@ every machine and a reader can re-derive a published number from the recorded an
 | `answer_contains_all` | Every listed phrase appears in the answer |
 | `answer_contains_none` | None of the listed phrases appears |
 | `answer_matches` | A case-insensitive regular expression matches |
-| `answer_lines_match` | At least `min_lines` individual lines match an expression |
+| `answer_lines_match` | At least `min_lines` lines match an expression — all of them, or only the first |
 
 Rubrics also reject non-answers. Declining to answer while naming every right string — "I cannot confirm whether
 Priya Raman is the Data Lead at Kestrel Analytics" — is not a correct attribution, and background prose before a
@@ -80,7 +80,9 @@ Where a task's prompt asks the agent to use stored context, a criterion measures
 task scores bullet formatting because bullet points are the *recipient's* stored preference, so an otherwise
 well-written single-line message cannot earn full marks for context the agent never read. That criterion is the
 reason `answer_lines_match` exists: it is the one kind that keeps line boundaries, because collapsing them would
-read any single-line message with two dashes in it as a bulleted list.
+read any single-line message with two dashes in it as a bulleted list. Its `scope: first` variant is how "no
+preamble" is scored without semantic judgement — rather than guessing whether some leading text is background,
+the rubric asks whether the opening line is on its own subject, which a bullet marker cannot disguise.
 
 Each report records the exact operands — the phrase list or the regular expression — beside every criterion
 outcome, so an older published result stays re-derivable after the suite has moved on and `suite.json` no longer
