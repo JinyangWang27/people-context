@@ -325,3 +325,54 @@ def test_a_draft_without_a_date_misses_the_philosophy_it_claims_to_follow() -> N
     assert dated.earned == dated.possible
     failed = [criterion.id for criterion in dateless.criteria if not criterion.passed]
     assert failed == ["names-a-concrete-date"]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "- Tomas: September operations review\n- Please confirm 14 September.",
+        "Tomas - confirm the September operations review.\n- Proposed: 14 September\n- Reply by 5 September",
+        "Hi Tomas,\n- Confirm the September operations review\n- Proposed: September 14",
+    ],
+)
+def test_a_compliant_draft_scores_full_however_it_opens(answer: str) -> None:
+    """Regression: requiring the recipient's name first failed a valid bullet-first message."""
+    assert score_task(_task("guided-drafting"), answer).earned == 10
+
+
+@pytest.mark.parametrize(
+    ("answer", "missing"),
+    [
+        ("Tomas\n- September operations review\n- Proposed: week of 14 May; confirm.", "names-a-concrete-date"),
+        ("Tomas\n- September operations review\n- Proposed: 31 September; confirm.", "names-a-concrete-date"),
+        (
+            "Some background first: we waited a while.\n"
+            "- Tomas, confirm the September operations review\n"
+            "- Proposed: 14 September",
+            "opens-without-preamble",
+        ),
+    ],
+)
+def test_the_drafting_rubric_still_rejects_what_it_should(answer: str, missing: str) -> None:
+    """Regression: 'week of 14' matched any month, so a May date passed a September task."""
+    score = score_task(_task("guided-drafting"), answer)
+
+    assert [criterion.id for criterion in score.criteria if not criterion.passed] == [missing]
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["2026-03-05", "5 March 2026", "5th March 2026", "March 5, 2026", "March 5th, 2026"],
+)
+def test_the_interaction_date_is_accepted_in_any_common_written_form(written: str) -> None:
+    """Regression: the criterion claimed any common form but rejected ordinals."""
+    score = score_task(_task("stale-follow-up"), f"Ingrid Solberg; we last spoke {written}.")
+
+    assert score.earned == score.possible
+
+
+def test_a_wrong_interaction_date_still_fails() -> None:
+    score = score_task(_task("stale-follow-up"), "Ingrid Solberg; we last spoke April 2, 2026.")
+
+    failed = [criterion.id for criterion in score.criteria if not criterion.passed]
+    assert failed == ["states-the-last-interaction-date"]

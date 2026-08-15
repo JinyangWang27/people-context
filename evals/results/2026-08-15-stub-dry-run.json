@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T21:44:10Z",
+  "generated_at": "2026-08-15T21:57:55Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -282,21 +282,21 @@
         {
           "id": "opens-without-preamble",
           "kind": "answer_matches",
-          "description": "Opens by addressing the recipient rather than with background prose.",
+          "description": "Starts with the message itself — a bullet or the recipient's name — not background prose.",
           "weight": 1,
           "passed": true,
           "values": null,
-          "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
+          "pattern": "\\A(?:[-*•]\\s|(?:(?:hi|hello|hey),?\\s*)?tomas\\b)",
           "min_lines": null
         },
         {
           "id": "names-a-concrete-date",
           "kind": "answer_matches",
-          "description": "Proposes an actual date, which the user's philosophy asks for explicitly.",
+          "description": "Proposes an actual September date, which the user's philosophy asks for.",
           "weight": 1,
           "passed": true,
           "values": null,
-          "pattern": "\\b\\d{1,2}(?:st|nd|rd|th)? september\\b|september \\d{1,2}\\b|\\b2026-09-\\d{2}\\b|week of \\d{1,2}",
+          "pattern": "\\b(?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b|september (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)?\\b|\\b2026-09-(?:0[1-9]|[12][0-9]|30)\\b|week of (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b",
           "min_lines": null
         }
       ],
@@ -374,21 +374,21 @@
         {
           "id": "opens-without-preamble",
           "kind": "answer_matches",
-          "description": "Opens by addressing the recipient rather than with background prose.",
+          "description": "Starts with the message itself — a bullet or the recipient's name — not background prose.",
           "weight": 1,
           "passed": true,
           "values": null,
-          "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
+          "pattern": "\\A(?:[-*•]\\s|(?:(?:hi|hello|hey),?\\s*)?tomas\\b)",
           "min_lines": null
         },
         {
           "id": "names-a-concrete-date",
           "kind": "answer_matches",
-          "description": "Proposes an actual date, which the user's philosophy asks for explicitly.",
+          "description": "Proposes an actual September date, which the user's philosophy asks for.",
           "weight": 1,
           "passed": false,
           "values": null,
-          "pattern": "\\b\\d{1,2}(?:st|nd|rd|th)? september\\b|september \\d{1,2}\\b|\\b2026-09-\\d{2}\\b|week of \\d{1,2}",
+          "pattern": "\\b(?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b|september (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)?\\b|\\b2026-09-(?:0[1-9]|[12][0-9]|30)\\b|week of (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b",
           "min_lines": null
         }
       ],
@@ -669,7 +669,7 @@
           "weight": 2,
           "passed": true,
           "values": null,
-          "pattern": "2026-03-05|5 march 2026|march 5,? 2026",
+          "pattern": "2026-03-05|\\b5(?:th)? march,? 2026|march 5(?:th)?,? 2026",
           "min_lines": null
         },
         {
@@ -716,7 +716,7 @@
           "weight": 2,
           "passed": false,
           "values": null,
-          "pattern": "2026-03-05|5 march 2026|march 5,? 2026",
+          "pattern": "2026-03-05|\\b5(?:th)? march,? 2026|march 5(?:th)?,? 2026",
           "min_lines": null
         },
         {

@@ -163,15 +163,15 @@
         {
           "id": "opens-without-preamble",
           "kind": "answer_matches",
-          "description": "Opens by addressing the recipient rather than with background prose.",
-          "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
+          "description": "Starts with the message itself — a bullet or the recipient's name — not background prose.",
+          "pattern": "\\A(?:[-*•]\\s|(?:(?:hi|hello|hey),?\\s*)?tomas\\b)",
           "weight": 1
         },
         {
           "id": "names-a-concrete-date",
           "kind": "answer_matches",
-          "description": "Proposes an actual date, which the user's philosophy asks for explicitly.",
-          "pattern": "\\b\\d{1,2}(?:st|nd|rd|th)? september\\b|september \\d{1,2}\\b|\\b2026-09-\\d{2}\\b|week of \\d{1,2}",
+          "description": "Proposes an actual September date, which the user's philosophy asks for.",
+          "pattern": "\\b(?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b|september (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)?\\b|\\b2026-09-(?:0[1-9]|[12][0-9]|30)\\b|week of (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b",
           "weight": 1
         }
       ]
@@ -236,7 +236,7 @@
           "id": "states-the-last-interaction-date",
           "kind": "answer_matches",
           "description": "States 5 March 2026 in any common written form.",
-          "pattern": "2026-03-05|5 march 2026|march 5,? 2026",
+          "pattern": "2026-03-05|\\b5(?:th)? march,? 2026|march 5(?:th)?,? 2026",
           "weight": 2
         },
         {
