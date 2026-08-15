@@ -254,7 +254,7 @@ Check the matching box only in the PR that delivers it.
     versioned JSON; no server/network probe; main+WAL+SHM bytes; in-memory/unavailable explicit null state.
   - **Out:** doctor/telemetry.
 
-- [ ] **M15.3 — Additive transliteration match detail**
+- [x] **M15.3 — Additive transliteration match detail**
   - **Scope:** Optional descriptive `match_detail`, bilingual fixtures/docs.
   - **Acceptance:** preserve exact reason/score/ranking/ambiguity; canonical wins then stable alias-kind detail; CJK
     and non-CJK bidirectional fixtures.
