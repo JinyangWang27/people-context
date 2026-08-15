@@ -26,6 +26,11 @@ from people_context.domain.person import AliasKind, Person
 #: distinguishable from a real one by inspection alone.
 FIXTURE_SOURCE = "evals/fixture"
 
+#: SQLite companions that carry data alongside a store. The same set the shipped
+#: export guard reserves: a rollback journal can be the only surviving copy of a
+#: crashed transaction, so it is refused exactly like the database itself.
+DATABASE_SIDECARS = ("-wal", "-shm", "-journal")
+
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -171,7 +176,7 @@ def refuse_real_database(db_path: Path) -> Path:
             f"refusing to evaluate against the configured people-context database at {resolved}; "
             "the harness only ever builds its own fictional store"
         )
-    for companion in (resolved, Path(f"{resolved}-wal"), Path(f"{resolved}-shm")):
+    for companion in (resolved, *(Path(f"{resolved}{suffix}") for suffix in DATABASE_SIDECARS)):
         if companion.exists() or companion.is_symlink():
             raise EvalHarnessError(f"refusing to reuse an existing database file at {companion}")
     return resolved

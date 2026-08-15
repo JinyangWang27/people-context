@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.0.0",
-  "generated_at": "2026-08-15T21:32:14Z",
+  "generated_at": "2026-08-15T21:44:10Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -12,7 +12,8 @@
   "runner": {
     "name": "stub",
     "kind": "stub",
-    "mcp_server_argv": []
+    "mcp_server_argv": [],
+    "client_version": null
   },
   "prompts": {
     "system": "You are helping the user with questions about the people in their life. If a people-context MCP server is available, resolve the person first and read their stored context before answering; never guess an identity you could look up. Answer concisely, state only what you actually know, and say plainly when you do not know something.",
@@ -48,9 +49,9 @@
     {
       "condition": "with_mcp",
       "tasks": 5,
-      "earned": 32,
-      "possible": 34,
-      "percent": 94.1,
+      "earned": 33,
+      "possible": 35,
+      "percent": 94.3,
       "model_ids": [
         "stub/recorded-answers"
       ]
@@ -59,8 +60,8 @@
       "condition": "without_mcp",
       "tasks": 5,
       "earned": 9,
-      "possible": 34,
-      "percent": 26.5,
+      "possible": 35,
+      "percent": 25.7,
       "model_ids": [
         "stub/recorded-answers"
       ]
@@ -213,8 +214,8 @@
       "task_id": "guided-drafting",
       "condition": "with_mcp",
       "model_id": "stub/recorded-answers",
-      "earned": 9,
-      "possible": 9,
+      "earned": 10,
+      "possible": 10,
       "percent": 100.0,
       "criteria": [
         {
@@ -287,6 +288,16 @@
           "values": null,
           "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
           "min_lines": null
+        },
+        {
+          "id": "names-a-concrete-date",
+          "kind": "answer_matches",
+          "description": "Proposes an actual date, which the user's philosophy asks for explicitly.",
+          "weight": 1,
+          "passed": true,
+          "values": null,
+          "pattern": "\\b\\d{1,2}(?:st|nd|rd|th)? september\\b|september \\d{1,2}\\b|\\b2026-09-\\d{2}\\b|week of \\d{1,2}",
+          "min_lines": null
         }
       ],
       "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
@@ -296,8 +307,8 @@
       "condition": "without_mcp",
       "model_id": "stub/recorded-answers",
       "earned": 4,
-      "possible": 9,
-      "percent": 44.4,
+      "possible": 10,
+      "percent": 40.0,
       "criteria": [
         {
           "id": "addresses-the-right-person",
@@ -368,6 +379,16 @@
           "passed": true,
           "values": null,
           "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
+          "min_lines": null
+        },
+        {
+          "id": "names-a-concrete-date",
+          "kind": "answer_matches",
+          "description": "Proposes an actual date, which the user's philosophy asks for explicitly.",
+          "weight": 1,
+          "passed": false,
+          "values": null,
+          "pattern": "\\b\\d{1,2}(?:st|nd|rd|th)? september\\b|september \\d{1,2}\\b|\\b2026-09-\\d{2}\\b|week of \\d{1,2}",
           "min_lines": null
         }
       ],

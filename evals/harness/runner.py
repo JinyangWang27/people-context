@@ -20,16 +20,13 @@ from evals.harness.errors import EvalHarnessError
 from evals.harness.ports import AgentRequest, AgentRunner
 from evals.harness.scoring import TaskScore, score_task
 from evals.harness.suite import LoadedSuite, Task
-from evals.harness.world import World, build_world_database
+from evals.harness.world import DATABASE_SIDECARS, World, build_world_database
 
 #: Names of the run artifacts inside the working directory.
 ARTIFACTS_DIRNAME = "artifacts"
 INVOCATIONS_DIRNAME = "invocations"
 WORLD_DB_FILENAME = "world.db"
 MCP_CONFIG_FILENAME = "mcp.json"
-
-#: SQLite companions copied alongside a store, when the pristine build left any.
-_DATABASE_SIDECARS = ("-wal", "-shm")
 
 #: The checkout this harness belongs to, substituted into a server command vector.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -123,7 +120,7 @@ class FixtureWorkspace:
         directory.mkdir(parents=True, exist_ok=False)
         database = directory / WORLD_DB_FILENAME
         shutil.copyfile(self.pristine, database)
-        for suffix in _DATABASE_SIDECARS:
+        for suffix in DATABASE_SIDECARS:
             companion = Path(f"{self.pristine}{suffix}")
             if companion.is_file():
                 shutil.copyfile(companion, Path(f"{database}{suffix}"))

@@ -37,6 +37,9 @@ _STDERR_EXCERPT_BYTES = 2048
 #: How often the captured size and the deadline are checked while the child runs.
 _POLL_SECONDS = 0.1
 
+#: A version probe that has not answered in this long is not worth waiting for.
+_VERSION_PROBE_SECONDS = 30.0
+
 _BRACED = re.compile(r"[{}]")
 
 
@@ -92,6 +95,33 @@ class CommandAgentRunner:
                 f"agent command produced no answer on task {request.task_id} ({request.condition})"
             )
         return AgentResponse(answer=answer, model_id=self.model_id)
+
+    def probe_client_version(self) -> str | None:
+        """Return the agent client's own version string, or ``None``.
+
+        A published number should name the client that produced it: the same model
+        through a different CLI build can see different built-in prompts and MCP
+        handling. The probe is best-effort by design — it must never turn a working
+        evaluation into a failed one — so any error simply records nothing.
+        """
+        if not self._config.version_argv:
+            return None
+        try:
+            completed = subprocess.run(
+                list(self._config.version_argv),
+                shell=False,
+                env=_child_environment(self._config.env_passthrough),
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=_VERSION_PROBE_SECONDS,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if completed.returncode != 0:
+            return None
+        first_line = completed.stdout.decode("utf-8", errors="replace").strip().splitlines()
+        return first_line[0][:200] if first_line else None
 
     def _supervise(
         self,

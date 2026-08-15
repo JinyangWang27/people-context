@@ -264,3 +264,42 @@ def test_mcp_arguments_without_the_config_placeholder_are_refused(tmp_path: Path
     """Regression: a with_mcp run could proceed without ever receiving the server."""
     with pytest.raises(ValueError, match=r"mcp_argv must pass \{mcp_config\}"):
         _config(_agent(tmp_path, _ECHO_AGENT), mcp_argv=["--allowedTools", "mcp__people-context"])
+
+
+_VERSION_AGENT = """
+print("2.4.1 (Claude Code)")
+"""
+
+
+def test_the_client_version_is_recorded_when_the_suite_configures_a_probe(tmp_path: Path) -> None:
+    """A published score should name the client build that produced it."""
+    probe = _agent(tmp_path, _VERSION_AGENT, name="version.py")
+    runner = CommandAgentRunner(
+        _config(_agent(tmp_path, _ECHO_AGENT), version_argv=[sys.executable, str(probe)])
+    )
+
+    assert runner.probe_client_version() == "2.4.1 (Claude Code)"
+
+
+def test_no_probe_configured_records_nothing(tmp_path: Path) -> None:
+    runner = CommandAgentRunner(_config(_agent(tmp_path, _ECHO_AGENT)))
+
+    assert runner.probe_client_version() is None
+
+
+def test_a_failing_probe_never_fails_the_evaluation(tmp_path: Path) -> None:
+    """Recording provenance is worth having, but not worth losing a paid run over."""
+    runner = CommandAgentRunner(
+        _config(_agent(tmp_path, _ECHO_AGENT), version_argv=["definitely-not-installed-agent", "--version"])
+    )
+
+    assert runner.probe_client_version() is None
+
+
+def test_a_probe_that_exits_non_zero_records_nothing(tmp_path: Path) -> None:
+    probe = _agent(tmp_path, _FAILING_AGENT, name="version.py")
+    runner = CommandAgentRunner(
+        _config(_agent(tmp_path, _ECHO_AGENT), version_argv=[sys.executable, str(probe)])
+    )
+
+    assert runner.probe_client_version() is None

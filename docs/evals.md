@@ -43,10 +43,14 @@ fixture record the same timestamps.
 | --- | --- | ---: |
 | `identity-disambiguation` | Picking the right person out of two who share a first name | 6 |
 | `context-recall` | Reporting a contact's organisation, role, and stored update preference | 7 |
-| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 9 |
+| `guided-drafting` | Drafting to the user's stated philosophy and the recipient's stated preference | 10 |
 | `relationship-path` | Naming the people on the shortest path to a contact, in order | 6 |
 | `stale-follow-up` | Naming the most overdue contact and the date of the last interaction | 6 |
-| **Total** | | **34** |
+| **Total** | | **35** |
+
+Where a task cites stored guidance, every clause of that guidance is scored. The drafting task carries four
+criteria for four clauses: the philosophy's "name the decision" and "name the date", and the recipient's "bullet
+points" and "no preamble". A draft that honours three of them earns three.
 
 The exact prompts live in [`evals/suite/suite.json`](../evals/suite/suite.json) and are also copied verbatim into
 every report, so a published result always carries the wording that produced it.
@@ -122,6 +126,10 @@ handed to an agent.
 If the agent command exceeds its output cap or its deadline, the run is refused rather than scored on truncated
 output — an answer the harness had to cut is not an answer worth publishing.
 
+The report records the agent client's own version when the suite configures a `version_argv` probe, because the
+same model through a different CLI build can see different built-in prompts and MCP handling. The probe is
+best-effort: if it fails, the report records nothing rather than failing the run.
+
 The API key is read only from the process environment, and only because the suite names `ANTHROPIC_API_KEY` in
 `env_passthrough`. It is never accepted as a flag, never read from a file, and never written into a report. The
 suite refuses an `env_passthrough` entry beginning with `PEOPLE_CONTEXT`, so store configuration cannot reach the
@@ -140,8 +148,8 @@ Harness 1.0.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub
 
 | Condition | Tasks | Earned | Possible | Percent |
 | --- | ---: | ---: | ---: | ---: |
-| `with_mcp` | 5 | 32 | 34 | 94.1 |
-| `without_mcp` | 5 | 9 | 34 | 26.5 |
+| `with_mcp` | 5 | 33 | 35 | 94.3 |
+| `without_mcp` | 5 | 9 | 35 | 25.7 |
 
 **This is not a measurement of any model.** The answers are hand-written illustrations chosen to exercise every
 scoring path, including partial credit in both conditions. The run establishes only that the fixture
@@ -152,6 +160,21 @@ materializes, the prompts load, the rubrics discriminate, and the report is well
 **None recorded yet.** No result in this repository was produced by a language model. When a model-backed run is
 recorded, it will appear here as its own dated section naming the model id, the harness and suite versions, and
 the report file, alongside the dry run rather than replacing it.
+
+## Known limits of reproducibility
+
+Two things are pinned: the server code, and the server's clock. One thing is not.
+
+Materializing the fixture goes through the ordinary write use cases, which mint fresh ULIDs, so the person, alias,
+record, audit, and device identifiers differ between two builds of the same world. Those ids appear in tool
+responses such as `resolve_person` and `get_person_context`, which means two runs of the same suite show the model
+textually different transcripts.
+
+This is a real difference and it is left in place deliberately. Seeding stable identifiers would mean threading an
+id generator through the application's write use cases — a change to shipped core code for an evaluation-only
+benefit — and no rubric matches an identifier, so no score depends on one. What a reader should take from this:
+the *content* of the evaluated store is fixed and re-derivable from `world.json`, while its opaque identifiers are
+not, and a claim of bit-for-bit input equality between two runs would be false.
 
 ## What a number from this harness may claim
 

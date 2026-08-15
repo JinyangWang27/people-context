@@ -150,6 +150,9 @@ class CommandRunnerConfig(_StrictModel):
     argv: tuple[str, ...] = Field(min_length=1, max_length=64)
     mcp_argv: tuple[str, ...] = Field(default=(), max_length=64)
     mcp_server_argv: tuple[str, ...] = Field(default=(), max_length=64)
+    #: Optional vector that prints the client's own version, recorded in the report.
+    #: Configured rather than assumed, because no flag spelling is universal.
+    version_argv: tuple[str, ...] = Field(default=(), max_length=16)
     timeout_seconds: float = Field(gt=0, le=3600)
     max_output_bytes: int = Field(ge=1024, le=8_388_608)
     env_passthrough: tuple[str, ...] = Field(default=(), max_length=32)

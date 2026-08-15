@@ -166,6 +166,13 @@
           "description": "Opens by addressing the recipient rather than with background prose.",
           "pattern": "\\A(?:hi|hello|hey)?,?\\s*tomas\\b",
           "weight": 1
+        },
+        {
+          "id": "names-a-concrete-date",
+          "kind": "answer_matches",
+          "description": "Proposes an actual date, which the user's philosophy asks for explicitly.",
+          "pattern": "\\b\\d{1,2}(?:st|nd|rd|th)? september\\b|september \\d{1,2}\\b|\\b2026-09-\\d{2}\\b|week of \\d{1,2}",
+          "weight": 1
         }
       ]
     },
@@ -291,6 +298,10 @@
         "PATH",
         "HOME",
         "ANTHROPIC_API_KEY"
+      ],
+      "version_argv": [
+        "claude",
+        "--version"
       ]
     }
   }

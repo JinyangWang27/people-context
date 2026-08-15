@@ -21,7 +21,12 @@ from evals.harness.runner import (
 )
 from evals.harness.runners.stub import StubAgentRunner
 from evals.harness.suite import CommandRunnerConfig, load_suite
-from evals.harness.world import build_world_database, load_world, refuse_real_database
+from evals.harness.world import (
+    DATABASE_SIDECARS,
+    build_world_database,
+    load_world,
+    refuse_real_database,
+)
 
 ROOT = Path(__file__).parents[2]
 SUITE_PATH = ROOT / "evals" / "suite" / "suite.json"
@@ -65,7 +70,12 @@ def test_dry_run_opens_no_socket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     report = _run(tmp_path)
 
-    assert report["runner"] == {"name": "stub", "kind": "stub", "mcp_server_argv": []}
+    assert report["runner"] == {
+        "name": "stub",
+        "kind": "stub",
+        "mcp_server_argv": [],
+        "client_version": None,
+    }
 
 
 def test_dry_run_is_byte_identical_across_runs(tmp_path: Path) -> None:
@@ -197,6 +207,22 @@ def test_the_harness_refuses_an_existing_wal_companion(tmp_path: Path) -> None:
 
     with pytest.raises(EvalHarnessError, match="refusing to reuse an existing database"):
         refuse_real_database(target)
+
+
+def test_the_harness_refuses_an_existing_rollback_journal(tmp_path: Path) -> None:
+    """Regression: opening a store deletes a stray journal that may be the only recovery copy."""
+    target = tmp_path / "world.db"
+    Path(f"{target}-journal").write_bytes(b"")
+
+    with pytest.raises(EvalHarnessError, match="refusing to reuse an existing database"):
+        refuse_real_database(target)
+
+
+def test_the_refusal_covers_the_same_sidecars_the_shipped_guard_reserves() -> None:
+    """The harness must not be laxer than the exporter guard it borrows its rule from."""
+    from people_context.cli.portability import _DATABASE_SIDECARS
+
+    assert set(DATABASE_SIDECARS) == set(_DATABASE_SIDECARS)
 
 
 def test_the_materialized_world_is_attributed_to_the_fixture(tmp_path: Path) -> None:

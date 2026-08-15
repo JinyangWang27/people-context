@@ -134,7 +134,7 @@ def test_a_single_line_draft_does_not_earn_the_recipients_bullet_preference() ->
     """Regression: the drafting task must measure use of the stored preference."""
     task = _task("guided-drafting")
 
-    plain = score_task(task, "Tomas, please confirm the September operations review date.")
+    plain = score_task(task, "Tomas, please confirm the September operations review date on 14 September.")
     formatted = score_task(
         task,
         "Tomas - please confirm the September operations review date.\n"
@@ -186,7 +186,7 @@ def test_a_single_line_message_with_two_hyphens_misses_the_bullet_criterion() ->
     """The same regression, scored through the shipped rubric."""
     task = _task("guided-drafting")
 
-    score = score_task(task, "Tomas - September operations review - please confirm the date.")
+    score = score_task(task, "Tomas - September operations review on 14 September - please confirm the date.")
 
     failed = [criterion.id for criterion in score.criteria if not criterion.passed]
     assert failed == ["uses-the-recipients-bullet-format"]
@@ -313,3 +313,15 @@ def test_a_salutation_is_not_treated_as_preamble() -> None:
     )
 
     assert score.earned == score.possible
+
+
+def test_a_draft_without_a_date_misses_the_philosophy_it_claims_to_follow() -> None:
+    """Regression: "name the date" was half of the stored philosophy and went unscored."""
+    task = _task("guided-drafting")
+
+    dateless = score_task(task, "Tomas\n- September operations review\n- Please confirm.")
+    dated = score_task(task, "Tomas\n- Confirm the September operations review\n- Proposed: 2026-09-14")
+
+    assert dated.earned == dated.possible
+    failed = [criterion.id for criterion in dateless.criteria if not criterion.passed]
+    assert failed == ["names-a-concrete-date"]

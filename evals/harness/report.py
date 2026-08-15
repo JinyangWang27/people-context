@@ -37,6 +37,7 @@ def build_report(
     runner_kind: str,
     generated_at: datetime,
     mcp_server_argv: tuple[str, ...] = (),
+    client_version: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the deterministic report document for one run."""
     ordered = sorted(outcomes, key=lambda outcome: (outcome.task_id, outcome.condition))
@@ -57,6 +58,10 @@ def build_report(
             # Recorded unsubstituted: it names the code the run evaluated without
             # baking a local home directory into a published document.
             "mcp_server_argv": list(mcp_server_argv),
+            # The agent CLI build that produced the answers. Flags and built-in
+            # prompts move between releases, so a score names its client or admits
+            # it does not know which one ran.
+            "client_version": client_version,
         },
         "prompts": {
             "system": loaded.suite.system_prompt,
