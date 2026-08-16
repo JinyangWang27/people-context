@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from people_context.domain.person import Person
+from people_context.domain.person import Alias, Person
 from people_context.domain.shared import normalize_name
 from people_context.ports.clock import Clock
 from people_context.ports.context import PersonContextReader
@@ -23,6 +23,7 @@ class ResolutionCandidate(BaseModel):
     canonical_name: str
     score: float
     match_reason: str
+    match_detail: str | None = None
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
 
@@ -45,15 +46,41 @@ class ResolutionHints(BaseModel):
     relationship: str | None = None
 
 
-def _candidate(person: Person, score: float, match_reason: str) -> ResolutionCandidate:
+def _candidate(
+    person: Person,
+    score: float,
+    match_reason: str,
+    match_detail: str | None = None,
+) -> ResolutionCandidate:
     return ResolutionCandidate(
         person_id=person.id,
         canonical_name=person.canonical_name,
         score=score,
         match_reason=match_reason,
+        match_detail=match_detail,
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,
     )
+
+
+def _alias_detail_order(alias: Alias) -> tuple[str, str]:
+    """Order matching aliases by kind string then alias id, so detail is deterministic."""
+    return (str(alias.kind), alias.id)
+
+
+def _exact_match_detail(person: Person, normalized_query: str) -> str | None:
+    """Describe which stored name produced an exact normalized match.
+
+    Canonical always wins when it matches. Otherwise the matching alias with the
+    lowest ``(kind, id)`` pair supplies ``alias:<kind>``. The value is descriptive
+    rather than a closed enum, so callers must tolerate unfamiliar strings.
+    """
+    if normalize_name(person.canonical_name) == normalized_query:
+        return "canonical_name"
+    matching = [alias for alias in person.aliases if normalize_name(alias.value) == normalized_query]
+    if not matching:
+        return None
+    return f"alias:{min(matching, key=_alias_detail_order).kind}"
 
 
 class ResolvePerson:
@@ -76,7 +103,7 @@ class ResolvePerson:
 
         exact_people = self._reader.find_by_normalized_name(normalized_query)
         for person in exact_people:
-            self._offer(best, _candidate(person, 1.0, "exact"))
+            self._offer(best, _candidate(person, 1.0, "exact", _exact_match_detail(person, normalized_query)))
 
         strongest_search_score = 0.0
         for hit in self._reader.search_names(query, limit=limit):

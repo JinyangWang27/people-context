@@ -35,6 +35,46 @@ means a caller (typically an LLM composing a response, or a human looking at CLI
 "boosted because you mentioned Acme Corp" — rather than trusting an opaque similarity number. This keeps
 resolution debuggable and keeps the user able to correct bad matches with confidence about what went wrong.
 
+## `match_detail`: which stored name matched
+
+`match_reason` says *how* a candidate was found; it does not say *which* stored name did the finding. For an
+exact-normalized match that distinction is the whole answer to "why did 王小明 resolve to Wang Xiaoming?".
+`ResolutionCandidate` therefore carries an additional optional field:
+
+```json
+{
+  "person_id": "p-1",
+  "canonical_name": "Wang Xiaoming",
+  "score": 1.0,
+  "match_reason": "exact",
+  "match_detail": "alias:native_script",
+  "aliases": ["王小明"],
+  "summary": null
+}
+```
+
+| Situation | `match_detail` |
+|---|---|
+| The query normalizes to the person's `canonical_name` | `"canonical_name"` |
+| The query normalizes only to an alias | `"alias:<kind>"`, e.g. `"alias:native_script"`, `"alias:transliteration"`, `"alias:nickname"` |
+| Search (stage 3), fuzzy (stage 4), and every `search_people` candidate | `null` |
+
+The field is **descriptive, not a closed enum**. `AliasKind` may gain members in a later minor version, so a
+consumer must treat an unrecognized `alias:<kind>` string as "matched via some alias" rather than failing.
+
+Ties are resolved deterministically, because more than one stored value can normalize to the same query (for
+example a canonical `José` alongside a stored `Jose`, or two aliases recorded in different scripts):
+
+1. the canonical name wins whenever it matches, regardless of how many aliases also match;
+2. otherwise the matching aliases are ordered by alias `kind` string, then by alias `id`, and the first supplies
+   the detail.
+
+`match_detail` is purely additive. It never changes `score`, `match_reason`, candidate ordering, the acceptance
+threshold, or `ambiguous`; hint boosting (stage 5) rewrites `match_reason` and `score` but carries `match_detail`
+through unchanged. It also discloses nothing new: the alias *kind* is reported, never an alias *value* that the
+match did not already implicate. Because it is a new optional response field, it follows the additive rule in
+[compatibility.md](compatibility.md#mcp-tools-and-responses).
+
 ## The ambiguity contract
 
 `ResolutionResult.ambiguous` is `true` when at least two candidates clear the acceptance threshold and the
@@ -66,3 +106,9 @@ whenever an agent or the user learns a new name variant for a person (via `remem
 This may be revisited in a later milestone (e.g. as an optional low-confidence suggestion source feeding
 into stage 5's hint boosting), but is explicitly out of scope for v1. See
 [docs/data-model.md](data-model.md#aliases) for the `aliases` schema this relies on.
+
+Because the match is a stored alias rather than a computed romanization, resolution stays bidirectional and
+symmetric: whichever of the two scripts is stored as the canonical name, querying the other one still reaches
+stage 1 at score `1.0`, and `match_detail` reports which side carried the query. `match_detail` is the only
+visibility this milestone adds — it explains an existing exact match and introduces no cross-script
+similarity, ranking change, or fuzzy transliteration.
