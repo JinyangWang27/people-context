@@ -336,6 +336,8 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/openclaw-plugin.md](docs/openclaw-plugin.md) | OpenClaw install, runtime, privacy, validation, and ClawHub publishing |
 | [docs/obsidian-plugin.md](docs/obsidian-plugin.md) | Obsidian read-only panes, subprocess safety, encryption, and mirrored releases |
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
+| [docs/use-cases](docs/use-cases/README.md) | Narrative recipes for onboarding, meeting prep, follow-up, migration, and auditing |
+| [docs/evals.md](docs/evals.md) | Evaluation harness, fixed tasks, scoring rules, and dated recorded results |
 | [docs/roadmap.md](docs/roadmap.md) | Delivered milestones and planned work |
 | [docs/specs](docs/specs/) | One implementation spec per planned milestone |
 

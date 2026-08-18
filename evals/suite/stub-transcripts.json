@@ -1,0 +1,57 @@
+{
+  "format": "people-context.eval-transcripts",
+  "version": 1,
+  "description": "Hand-written illustrative answers used by the offline stub runner. These are NOT model output and are not evidence about any model: they exist so a dry run exercises the fixture, the prompts, the scoring rules, and the report shape without a network call or an API key.",
+  "transcripts": [
+    {
+      "task_id": "identity-disambiguation",
+      "condition": "with_mcp",
+      "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership."
+    },
+    {
+      "task_id": "identity-disambiguation",
+      "condition": "without_mcp",
+      "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics."
+    },
+    {
+      "task_id": "context-recall",
+      "condition": "with_mcp",
+      "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews."
+    },
+    {
+      "task_id": "context-recall",
+      "condition": "without_mcp",
+      "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates."
+    },
+    {
+      "task_id": "guided-drafting",
+      "condition": "with_mcp",
+      "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
+    },
+    {
+      "task_id": "guided-drafting",
+      "condition": "without_mcp",
+      "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards"
+    },
+    {
+      "task_id": "relationship-path",
+      "condition": "with_mcp",
+      "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman."
+    },
+    {
+      "task_id": "relationship-path",
+      "condition": "without_mcp",
+      "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman."
+    },
+    {
+      "task_id": "stale-follow-up",
+      "condition": "with_mcp",
+      "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05."
+    },
+    {
+      "task_id": "stale-follow-up",
+      "condition": "without_mcp",
+      "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke."
+    }
+  ]
+}
