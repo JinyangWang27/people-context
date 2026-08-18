@@ -27,7 +27,7 @@ Issues = "https://github.com/JinyangWang27/people-context/issues"
 
 [project.optional-dependencies]
 semantic = [
-    "model2vec>=0.8.2,<0.9",
+    "model2vec>=0.8.2,<0.10",
     "sqlite-vec>=0.1.9,<0.2",
 ]
 # Opt-in SQLCipher at-rest encryption. `sqlcipher3-binary` publishes only
@@ -50,7 +50,7 @@ dev = [
     "ipykernel>=7.3.0",
     "pytest>=8",
     "ruff>=0.6",
-    "model2vec>=0.8.2,<0.9",
+    "model2vec>=0.8.2,<0.10",
     "sqlite-vec>=0.1.9,<0.2",
 ]
 
