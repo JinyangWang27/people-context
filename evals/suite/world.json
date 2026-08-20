@@ -1,0 +1,100 @@
+{
+  "format": "people-context.eval-world",
+  "version": 1,
+  "world_id": "tidepool-2026-08",
+  "as_of": "2026-08-01T09:00:00Z",
+  "communication_philosophy": "Short, concrete messages: name the decision, name the date, and skip filler openings.",
+  "people": [
+    {
+      "key": "noor",
+      "name": "Noor Vance",
+      "summary": "Programme lead coordinating a coastal restoration partnership.",
+      "handles": ["noor.vance@example.test"],
+      "is_self": true
+    },
+    {
+      "key": "priya-raman",
+      "name": "Priya Raman",
+      "summary": "Data lead who owns the partnership's quarterly restoration metrics.",
+      "handles": ["priya.raman@example.test"]
+    },
+    {
+      "key": "priya-ramanathan",
+      "name": "Priya Ramanathan",
+      "summary": "Grants officer handling the partnership's funding timeline.",
+      "handles": ["priya.ramanathan@example.test"]
+    },
+    {
+      "key": "tomas",
+      "name": "Tomas Brandt",
+      "summary": "Operations manager who runs the recurring programme reviews.",
+      "handles": ["tomas.brandt@example.test"]
+    },
+    {
+      "key": "kofi",
+      "name": "Kofi Mensah",
+      "summary": "Platform engineer maintaining the shared reporting pipeline.",
+      "handles": ["kofi.mensah@example.test"]
+    },
+    {
+      "key": "ingrid",
+      "name": "Ingrid Solberg",
+      "summary": "Producer exploring a documentary series about the coastline.",
+      "handles": ["ingrid.solberg@example.test"]
+    }
+  ],
+  "affiliations": [
+    { "person_key": "noor", "organization": "Tidepool Collective", "role": "Programme Lead" },
+    { "person_key": "priya-raman", "organization": "Kestrel Analytics", "role": "Data Lead" },
+    { "person_key": "priya-ramanathan", "organization": "Harbourline Trust", "role": "Grants Officer" },
+    { "person_key": "tomas", "organization": "Tidepool Collective", "role": "Operations Manager" },
+    { "person_key": "kofi", "organization": "Kestrel Analytics", "role": "Platform Engineer" },
+    { "person_key": "ingrid", "organization": "Northlight Media", "role": "Producer" }
+  ],
+  "facts": [
+    { "person_key": "priya-raman", "predicate": "location", "value": "Bengaluru" },
+    { "person_key": "priya-raman", "predicate": "reporting_scope", "value": "Quarterly restoration metrics" },
+    { "person_key": "priya-ramanathan", "predicate": "location", "value": "Bristol" },
+    { "person_key": "tomas", "predicate": "preferred_update_style", "value": "Bullet points, no preamble" },
+    { "person_key": "kofi", "predicate": "location", "value": "Accra" },
+    { "person_key": "ingrid", "predicate": "collaboration_topic", "value": "Coastal restoration documentary pilot" }
+  ],
+  "interactions": [
+    {
+      "summary": "Restoration reporting scope call",
+      "participant_keys": ["noor", "priya-raman"],
+      "occurred_at": "2026-06-11T09:00:00Z",
+      "channel": "video"
+    },
+    {
+      "summary": "Grant timeline check-in",
+      "participant_keys": ["noor", "priya-ramanathan"],
+      "occurred_at": "2026-05-22T11:00:00Z",
+      "channel": "email"
+    },
+    {
+      "summary": "Quarterly operations review",
+      "participant_keys": ["noor", "tomas"],
+      "occurred_at": "2026-07-02T10:00:00Z",
+      "channel": "in-person"
+    },
+    {
+      "summary": "Reporting pipeline handover",
+      "participant_keys": ["noor", "kofi"],
+      "occurred_at": "2026-07-20T15:30:00Z",
+      "channel": "video"
+    },
+    {
+      "summary": "Documentary pilot conversation",
+      "participant_keys": ["noor", "ingrid"],
+      "occurred_at": "2026-03-05T13:00:00Z",
+      "channel": "phone"
+    }
+  ],
+  "relationships": [
+    { "subject_key": "noor", "object_key": "tomas", "relationship_type": "colleague_of" },
+    { "subject_key": "tomas", "object_key": "kofi", "relationship_type": "colleague_of" },
+    { "subject_key": "kofi", "object_key": "priya-raman", "relationship_type": "colleague_of" },
+    { "subject_key": "noor", "object_key": "ingrid", "relationship_type": "friend_of" }
+  ]
+}

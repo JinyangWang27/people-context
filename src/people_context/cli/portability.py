@@ -103,7 +103,7 @@ def cmd_brief(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         return 0
 
     destination = Path(args.output).expanduser()
-    if _collides_with_database(destination, runtime.path):
+    if collides_with_database(destination, runtime.path):
         print(
             f"Refusing to write the brief to {destination}: "
             f"it is the database this command is reading, or one of its sidecar files.",
@@ -136,7 +136,7 @@ def cmd_export_vcard(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
         return 0
 
     destination = Path(args.output).expanduser()
-    if _collides_with_database(destination, runtime.path):
+    if collides_with_database(destination, runtime.path):
         print(
             f"Refusing to write the vCards to {destination}: "
             f"it is the database this command is reading, or one of its sidecar files.",
@@ -197,7 +197,7 @@ def _vcard_summary(result: VCardExportResult, destination: Path | None) -> list[
 def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Write active dated reminders as one owner-only iCalendar file."""
     destination = Path(args.output).expanduser()
-    if _collides_with_database(destination, runtime.path):
+    if collides_with_database(destination, runtime.path):
         # Publication replaces the destination's directory entry while SQLite still holds
         # the old inode open, so writing over the live database or one of its sidecars
         # would silently destroy the store when the connection closes.
@@ -227,7 +227,7 @@ def cmd_reminders_ics(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
     return 0
 
 
-def _collides_with_database(destination: Path, database: Path) -> bool:
+def collides_with_database(destination: Path, database: Path) -> bool:
     """Return whether publishing at `destination` would replace a live database entry.
 
     The destination is compared as its own final directory entry, because atomic
