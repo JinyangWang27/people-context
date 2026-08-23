@@ -113,6 +113,20 @@ def test_traversal_stops_on_its_node_budget_and_reports_truncation() -> None:
     assert budgeted.truncated is True
 
 
+def test_traversal_from_an_unknown_or_deleted_seed_yields_an_empty_subgraph() -> None:
+    conn, people, _, _ = _setup()
+    deleted = _person(people, "Gone")
+    deleted.deleted_at = datetime.now(UTC)
+    people.save_person(deleted)
+    reader = SqliteGraphReader(conn, SystemClock())
+
+    for seed in ("missing", deleted.id):
+        subgraph = reader.neighbors(seed, 2)
+        assert subgraph.nodes == []
+        assert subgraph.edges == []
+        assert subgraph.truncated is False
+
+
 def test_a_node_set_larger_than_one_bind_chunk_still_sees_every_edge() -> None:
     """A node set spanning several bind chunks must not drop, duplicate, or reorder edges.
 

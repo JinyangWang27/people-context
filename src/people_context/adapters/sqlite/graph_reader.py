@@ -119,8 +119,6 @@ class SqliteGraphReader:
         return [_graph_person(found[person_id], depth) for person_id in person_ids if person_id in found]
 
     def _frontier_adjacency(self, frontier: list[str], as_of: date) -> dict[str, list[tuple[str, str]]]:
-        if not frontier:
-            return {}
         # Rows are collected by edge id across chunks before adjacency is built: an edge
         # whose two endpoints land in different chunks is returned by both queries, and
         # counting it twice would put a duplicate neighbour in the frontier.
