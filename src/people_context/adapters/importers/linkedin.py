@@ -138,9 +138,9 @@ class LinkedInImportExtractor:
                             }
                         )
                 if connected_on is not None:
-                    key = (person.ref, connected_on.isoformat())
-                    if key not in seen_facts:
-                        seen_facts.add(key)
+                    fact_key = (person.ref, connected_on.isoformat())
+                    if fact_key not in seen_facts:
+                        seen_facts.add(fact_key)
                         facts.append(
                             {
                                 "type": "fact",

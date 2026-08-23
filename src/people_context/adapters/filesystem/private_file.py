@@ -29,7 +29,8 @@ def atomic_write_private_text(path: str | Path, text: str) -> Path:
     destination = Path(path)
     directory = destination.parent
     handle, temp_name = tempfile.mkstemp(prefix=_TEMP_PREFIX, suffix=_TEMP_SUFFIX, dir=directory)
-    temp_path: Path | None = Path(temp_name)
+    temp_path = Path(temp_name)
+    published = False
     try:
         try:
             stream = os.fdopen(handle, "w", encoding="utf-8", newline="\n")
@@ -42,9 +43,11 @@ def atomic_write_private_text(path: str | Path, text: str) -> Path:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp_path, destination)
-        temp_path = None
+        published = True
     finally:
-        if temp_path is not None:
+        # Only an unpublished temporary file is ours to remove; after the rename the
+        # same inode is the destination, so unlinking it would delete the export.
+        if not published:
             with suppress(OSError):
                 os.unlink(temp_path)
     _fsync_directory(directory)

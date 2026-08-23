@@ -10,6 +10,7 @@ from email.message import Message
 from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
 from pathlib import Path
+from typing import Any
 
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import (
@@ -107,7 +108,9 @@ class EmailImportExtractor:
             if path is None or content is not None:
                 raise ImportExtractionError("invalid_source", "mbox import requires path and does not accept content")
 
-            def header_factory(file_obj) -> mailbox.mboxMessage:
+            # `mailbox.mbox` types this parameter with a private typeshed alias, so the
+            # annotation stays deliberately loose rather than importing a non-public name.
+            def header_factory(file_obj: Any) -> mailbox.mboxMessage:
                 lines: list[bytes] = []
                 while True:
                     line = file_obj.readline()

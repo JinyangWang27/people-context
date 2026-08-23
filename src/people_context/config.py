@@ -155,7 +155,9 @@ def describe_resolution(explicit: str | Path | None = None, env: Mapping[str, st
         return f"[{flag}] {source}: {detail}"
 
     explicit_hit = explicit is not None
-    lines.append(mark("explicit argument", explicit_hit, str(_expand(explicit)) if explicit_hit else "(not provided)"))
+    lines.append(
+        mark("explicit argument", explicit_hit, str(_expand(explicit)) if explicit is not None else "(not provided)")
+    )
 
     env_val = env.get("PEOPLE_CONTEXT_DB")
     env_hit = not explicit_hit and bool(env_val)

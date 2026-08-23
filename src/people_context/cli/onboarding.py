@@ -255,41 +255,41 @@ def _seed_demo(runtime: ApplicationRuntime) -> dict[str, Person]:
                 source="demo",
             )
         ).person
-    for seed in DEMO_AFFILIATIONS:
+    for affiliation in DEMO_AFFILIATIONS:
         runtime.use_cases.set_affiliation.execute(
             SetAffiliationInput(
-                person_id=people[seed.person_key].id,
-                org=seed.organization,
-                role=seed.role,
+                person_id=people[affiliation.person_key].id,
+                org=affiliation.organization,
+                role=affiliation.role,
                 source="demo",
             )
         )
-    for seed in DEMO_FACTS:
+    for fact in DEMO_FACTS:
         runtime.use_cases.record_fact.execute(
             RecordFactInput(
-                person_id=people[seed.person_key].id,
-                predicate=seed.predicate,
-                value=seed.value,
-                valid_from=seed.valid_from,
+                person_id=people[fact.person_key].id,
+                predicate=fact.predicate,
+                value=fact.value,
+                valid_from=fact.valid_from,
                 source="demo",
             )
         )
-    for seed in DEMO_INTERACTIONS:
+    for interaction in DEMO_INTERACTIONS:
         runtime.use_cases.record_interaction.execute(
             RecordInteractionInput(
-                summary=seed.summary,
-                participant_ids=[people[key].id for key in seed.participant_keys],
-                occurred_at=seed.occurred_at,
-                channel=seed.channel,
+                summary=interaction.summary,
+                participant_ids=[people[key].id for key in interaction.participant_keys],
+                occurred_at=interaction.occurred_at,
+                channel=interaction.channel,
                 source="demo",
             )
         )
-    for seed in DEMO_RELATIONSHIPS:
+    for relationship in DEMO_RELATIONSHIPS:
         runtime.use_cases.set_relationship.execute(
             SetRelationshipInput(
-                subject_id=people[seed.subject_key].id,
-                object_id=people[seed.object_key].id,
-                type=seed.relationship_type,
+                subject_id=people[relationship.subject_key].id,
+                object_id=people[relationship.object_key].id,
+                type=relationship.relationship_type,
                 source="demo",
             )
         )
