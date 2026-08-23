@@ -19,8 +19,8 @@ from people_context.ports.audit_log import AuditLog
 from people_context.ports.forget import ForgetPreviewStore, ForgetStore
 from people_context.ports.lifecycle import ForgetStoreResult, MergeStoreResult
 from people_context.ports.merge import MergeStore
-from people_context.ports.records import Record, RecordReader, RecordWriter
-from people_context.ports.repository import PersonReader, PersonSearchIndexer, PersonWriter, SearchHit
+from people_context.ports.records import Record, RecordStore
+from people_context.ports.repository import PeopleRepository, SearchHit
 from people_context.ports.unit_of_work import UnitOfWork
 
 _WARNING_SUFFIX = "Primary data was saved; run `uv run pctx reindex --semantic` to repair vectors."
@@ -31,7 +31,7 @@ class IndexingPeopleRepository:
 
     def __init__(
         self,
-        delegate: PersonReader | PersonWriter | PersonSearchIndexer,
+        delegate: PeopleRepository,
         updater: SemanticIndexUpdater,
         warn: Callable[[str], None],
     ) -> None:
@@ -40,32 +40,25 @@ class IndexingPeopleRepository:
         self._warn = warn
 
     def save_person(self, person: Person) -> None:
-        assert isinstance(self._delegate, PersonWriter)
         self._delegate.save_person(person)
         self._best_effort(lambda: self._updater.refresh_person(person))
 
     def get(self, person_id: str) -> Person | None:
-        assert isinstance(self._delegate, PersonReader)
         return self._delegate.get(person_id)
 
     def get_self(self) -> Person | None:
-        assert isinstance(self._delegate, PersonReader)
         return self._delegate.get_self()
 
     def list_people(self, include_deleted: bool = False, limit: int | None = None) -> list[Person]:
-        assert isinstance(self._delegate, PersonReader)
         return self._delegate.list_people(include_deleted=include_deleted, limit=limit)
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
-        assert isinstance(self._delegate, PersonReader)
         return self._delegate.find_by_normalized_name(normalized)
 
     def search_names(self, query: str, limit: int = 10) -> list[SearchHit]:
-        assert isinstance(self._delegate, PersonReader)
         return self._delegate.search_names(query, limit=limit)
 
     def rebuild_person_search(self) -> tuple[int, int]:
-        assert isinstance(self._delegate, PersonSearchIndexer)
         return self._delegate.rebuild_person_search()
 
     def _best_effort(self, operation: Callable[[], None]) -> None:
@@ -80,7 +73,7 @@ class IndexingRecordStore:
 
     def __init__(
         self,
-        delegate: RecordReader | RecordWriter,
+        delegate: RecordStore,
         updater: SemanticIndexUpdater,
         warn: Callable[[str], None],
     ) -> None:
@@ -89,32 +82,32 @@ class IndexingRecordStore:
         self._warn = warn
 
     def save_relationship(self, relationship: Relationship) -> None:
-        self._writer.save_relationship(relationship)
+        self._delegate.save_relationship(relationship)
 
     def save_affiliation(self, affiliation: Affiliation) -> None:
-        self._writer.save_affiliation(affiliation)
+        self._delegate.save_affiliation(affiliation)
 
     def save_fact(self, fact: Fact) -> None:
-        self._writer.save_fact(fact)
+        self._delegate.save_fact(fact)
 
     def save_observation(self, observation: Observation) -> None:
-        self._writer.save_observation(observation)
+        self._delegate.save_observation(observation)
 
     def save_trait(self, trait: Trait) -> None:
-        self._writer.save_trait(trait)
+        self._delegate.save_trait(trait)
 
     def save_interaction(self, interaction: Interaction) -> None:
-        self._writer.save_interaction(interaction)
+        self._delegate.save_interaction(interaction)
         self._best_effort(lambda: self._updater.refresh_interaction(interaction))
 
     def save_reminder(self, reminder: Reminder) -> None:
-        self._writer.save_reminder(reminder)
+        self._delegate.save_reminder(reminder)
 
     def get_record(self, entity_type: str, entity_id: str) -> Record | None:
-        return self._reader.get_record(entity_type, entity_id)
+        return self._delegate.get_record(entity_type, entity_id)
 
     def update_record_fields(self, entity_type: str, entity_id: str, fields: dict[str, Any]) -> Record | None:
-        record = self._writer.update_record_fields(entity_type, entity_id, fields)
+        record = self._delegate.update_record_fields(entity_type, entity_id, fields)
         if isinstance(record, Interaction):
             self._best_effort(lambda: self._updater.refresh_interaction(record))
         return record
@@ -125,17 +118,7 @@ class IndexingRecordStore:
         due_before: datetime | None = None,
         status: ReminderStatus | None = ReminderStatus.ACTIVE,
     ) -> list[Reminder]:
-        return self._reader.list_reminders(person_id=person_id, due_before=due_before, status=status)
-
-    @property
-    def _writer(self) -> RecordWriter:
-        assert isinstance(self._delegate, RecordWriter)
-        return self._delegate
-
-    @property
-    def _reader(self) -> RecordReader:
-        assert isinstance(self._delegate, RecordReader)
-        return self._delegate
+        return self._delegate.list_reminders(person_id=person_id, due_before=due_before, status=status)
 
     def _best_effort(self, operation: Callable[[], None]) -> None:
         try:
