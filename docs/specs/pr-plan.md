@@ -1,4 +1,4 @@
-# M8–M15 pull-request plan
+# M8–M19 pull-request plan
 
 One checklist item is one independently mergeable pull request. Implementers must read the referenced milestone
 spec first; the bullets below are binding acceptance criteria and the out-of-scope bullets are hard boundaries.
@@ -19,8 +19,11 @@ Check the matching box only in the PR that delivers it.
   `O_TRUNC, 0o600` pattern.
 - Machine JSON explicitly documented for integrations is versioned and additive under the M12 promise.
 - New app behavior gets fake-port and real-SQLite tests; MCP tools get in-memory tests; CLI commands get CLI tests.
-- Every PR ends with `uv lock --check` where metadata/dependencies changed, `uv run ruff check .`, and
-  `uv run pytest -q`; plugin PRs also run locked Node install/test/build.
+- Raw import/transcript/document bodies never become staging metadata, logs, errors, audit/changelog payloads, or
+  provenance receipts unless an older importer contract explicitly permits a distilled field.
+- Every PR ends with `uv lock --check` where metadata/dependencies changed, `uv run ruff check .`, `uv run mypy`,
+  and `uv run pytest -q`; packaging/surface PRs also run `uv build`. Plugin PRs additionally run locked Node
+  install/test/build.
 
 | Milestone | Theme | PRs |
 |---|---|---:|
@@ -32,7 +35,11 @@ Check the matching box only in the PR that delivers it.
 | M13 | Daily utility | 4 |
 | M14 | Ecosystem interoperability | 4 |
 | M15 | Data quality & credibility | 4 |
-| **Total** | | **31** |
+| M16 | First-class CLI import | 1 |
+| M17 | Agent-assisted extraction | 2 |
+| M18 | Provenance, idempotency & evidence | 3 |
+| M19 | Consolidation & temporal views | 2 |
+| **Total** | | **39** |
 
 ## Cross-milestone dependencies
 
@@ -43,6 +50,12 @@ Check the matching box only in the PR that delivers it.
 - M12.1 → M12.2: the 1.0 release checklist references the compatibility promise.
 - M12.4 → M14.4: the plugin's encrypted toggle invokes the canonical encrypted CLI path.
 - M14.1 → M14.4: the plugin consumes `list --json` and `brief --json`.
+- M16.1 → M17.2: agent-side strict-candidate CLI staging reuses the `pctx import` group and stable stage/review/commit
+  machine surfaces rather than creating a second lifecycle.
+- M17.1 → M18.3: durable trait evidence links target observation/interaction records produced by the expanded
+  candidate vocabulary.
+- M18.1 → M18.2: source-session persistence/idempotency exists before commit provenance and inspection consume it.
+- M18.2/M18.3 → M19.1/M19.2: timeline and consolidation can explain source provenance and evidence when present.
 
 ## M8 — Distribution & reach
 
@@ -265,3 +278,85 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** prompts/model ids/harness version; environment-only keys; no real DB; network-free stub dry run;
     production package excludes eval assets.
   - **Out:** hosted telemetry benchmark.
+
+## M16 — First-class CLI import workflow
+
+- [ ] **M16.1 — Expose the existing import lifecycle through `pctx`**
+  - **Scope:** Add `pctx import stage SOURCE PATH`, `import review`, and `import commit --all|--accept`, all with
+    stable `--json`; support exactly the seven existing router sources; refactor shared vCard onboarding rendering /
+    selection only enough to avoid a second CLI implementation.
+  - **Acceptance:** stage never commits; `--all` and repeatable canonical `--accept` are mutually exclusive and one
+    is required; no second confirmation prompt; stable v1 batch/review/commit JSON documents are deterministic;
+    errors/raw-content sentinels stay off stdout/stderr; installed CLI stage→review→commit→list E2E passes; existing
+    `pctx init` semantics remain unchanged.
+  - **Out:** new importers/candidate types, stdin/raw-content import, `stage_candidates` CLI, batch management,
+    embedded models/network, general CLI/MCP parity.
+
+## M17 — Agent-assisted knowledge extraction
+
+- [ ] **M17.1 — Expand strict candidates to observation, trait, and relationship**
+  - **Scope:** Add strict candidate models/staging dependency rewriting and `CommitImport` support through existing
+    `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases.
+  - **Acceptance:** staged traits require explicit confidence and non-blank concise evidence note; relationship
+    candidates use batch-local person refs and canonical M7 vocabulary semantics; people commit/resolve before
+    dependants; unresolved refs remain unresolved; all durable writes retain normal audit/changelog/provenance;
+    existing candidate types/envelopes remain additive-compatible.
+  - **Out:** source receipts/evidence tables, raw-text parsing, LLM/runtime dependency, automatic commit/confidence.
+
+- [ ] **M17.2 — Add agent candidate CLI and unstructured-source workflow**
+  - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` over the same strict models
+    as MCP and extend the packaged agent skill for transcript/note extraction.
+  - **Acceptance:** input is candidate JSON, never raw transcript; stdin/file fail closed on malformed/extra fields;
+    workflow distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for identities,
+    discourages speculative sensitive inference/verbatim evidence, stages only, and requires explicit later commit;
+    human/MCP paths remain usable without CLI.
+  - **Out:** model invocation, prompt storage, transcript persistence, automatic review/commit, source idempotency.
+
+## M18 — Provenance, idempotency & evidence
+
+- [ ] **M18.1 — Add source receipts and duplicate-safe staging**
+  - **Scope:** Add the next-free migration and ports/app/SQLite support for minimal source sessions/receipts; hash
+    exact bytes for M16 structured files and associate one staging batch with one source session.
+  - **Acceptance:** receipt stores bounded kind/optional label/digest/timestamps/batch metadata only—no body/default
+    absolute path; same source-kind+digest does not create a second batch by default; agent candidate staging may
+    supply optional digest metadata; existing no-digest staging still works; sync/bootstrap policy for new primary
+    state is explicit and tested.
+  - **Out:** semantic candidate dedup, commit provenance propagation, trait evidence, source rollback, folder watch.
+
+- [ ] **M18.2 — Propagate source provenance and expose source inspection**
+  - **Scope:** Trace every batch-committed record back to its M18 source session using existing provenance/session
+    semantics where compatible; add local `sources` / `source show` inspection with versioned JSON if agent-facing.
+  - **Acceptance:** each committed candidate has one durable source-session anchor without raw content; preserve
+    compatibility where legacy message-id session semantics require an explicit association; inspection shows ids,
+    kind/digest/status/batch and derived record summaries/ids only; no raw source/path leak; partial/idempotent
+    commits remain understandable.
+  - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation.
+
+- [ ] **M18.3 — Ground traits in durable evidence records**
+  - **Scope:** Add the next-free additive trait-evidence relation and support observation/interaction evidence ids,
+    including same-batch staged evidence resolution from M17 candidates.
+  - **Acceptance:** only active supported evidence entity types; stable id ordering; accepted trait remains unresolved
+    when required accepted evidence cannot resolve; retrieval respects sensitivity and never exposes restricted
+    evidence through a visible trait; `evidence_note` remains additive human context; sync/bootstrap/lifecycle tests
+    cover the new relation.
+  - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation.
+
+## M19 — Knowledge consolidation & temporal views
+
+- [ ] **M19.1 — Add bounded person timeline reads**
+  - **Scope:** Add a narrow timeline port/use case, bounded SQLite projection, local `pctx timeline` and ordinary-
+    disclosure MCP read over interactions/observations/dated state/traits plus M18 provenance/evidence where useful.
+  - **Acceptance:** deterministic effective-time ordering with stable tie-breaks; explicit undated behavior; app and
+    underlying traversal/query work bounded; ordinary MCP excludes restricted data; CLI sensitivity opt-in is
+    explicit; timeline is read-only projection, not a denormalized event store; stable JSON if documented.
+  - **Out:** audit-log dump, new timeline table, consolidation mutation, automatic history rewriting.
+
+- [ ] **M19.2 — Add bounded consolidation context and review-only maintenance workflow**
+  - **Scope:** Provide a person-scoped read model exposing duplicate/superseding/reinforcing/contradictory knowledge
+    with provenance/evidence and extend the agent skill to propose structured existing-tool actions.
+  - **Acceptance:** deterministic bounds/order; M15 doctor remains unchanged; multiple observations can remain
+    distinct supporting evidence; agent explains proposals and waits for explicit approval before
+    `correct_record`/merge/other mutations; no report/read path writes audit/changelog/domain state; scripted
+    approval regression passes.
+  - **Out:** autonomous belief updater, confidence-by-count formula, background maintenance daemon, required semantic
+    vector clustering, automatic merge/correction.
