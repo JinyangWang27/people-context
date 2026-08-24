@@ -20,9 +20,10 @@ In scope:
 - a grouped `pctx import` CLI surface for staging a supported local export, reviewing one batch, and explicitly
   committing all or selected candidates;
 - all seven source types already supported by `ImportExtractorRouter`;
+- bounded source-file and candidate accumulation for the new file-staging process boundary;
 - stable versioned JSON documents for stage, review, and commit results;
 - reuse of shared CLI import rendering/orchestration from `pctx init` where doing so removes duplicate behavior;
-- CLI, runtime, importer-matrix, privacy, and E2E coverage.
+- CLI, runtime, importer-matrix, privacy, resource-bound, and E2E coverage.
 
 Non-goals:
 
@@ -32,7 +33,9 @@ Non-goals:
 - stdin/raw-content import or agent-generated candidate ingestion (M17);
 - batch listing, batch deletion, retention/expiry policy, or background folder watching;
 - graph/read/write parity between CLI and MCP;
-- schema migrations or changes to import matching/commit policy.
+- schema migrations or changes to import matching/commit policy;
+- retroactively narrowing released MCP `import_content` or `pctx init` input sizes merely because the new CLI is
+  bounded.
 
 ## Design principles
 
@@ -45,7 +48,9 @@ The existing application workflow is authoritative. M16 must preserve these inva
 5. import provenance, audit, changelog, matching, and transaction behavior continue through existing use cases;
 6. human rendering is not a machine contract;
 7. stable JSON is deterministic and additive under the M12 compatibility promise;
-8. ordinary commands make no network request.
+8. ordinary commands make no network request;
+9. the newly exposed file-staging process boundary is bounded before a wrong/oversized file can become an
+   unbounded in-memory parse or candidate accumulation.
 
 The CLI should expose the lifecycle, not hide it behind a one-shot command. A staged batch is meaningful durable
 review state, so the human or agent may review it in a separate invocation before deciding what to commit.
@@ -77,6 +82,34 @@ Prefer one reusable accepted-source declaration beside the router rather than a 
 approval action. M16 must not silently expand a selected candidate into other candidates or change dependency
 semantics.
 
+### Resource bounds
+
+The new `pctx import stage` file surface is bounded from its first release. Binding limits are:
+
+- at most **64 MiB** of source-file bytes per invocation;
+- at most **100,000 staged candidates** produced from one source file.
+
+These deliberately differ from M17's much smaller agent-candidate JSON limits: a structured export can contain many
+thousands of narrow rows without being raw prose, while the boundary must still have a finite memory/work ceiling.
+An operator with a larger export can split it and stage the parts separately.
+
+The byte limit is a real read budget, not merely a `Path.stat()` advisory check. For adapters that currently call
+`read_text()` / `read_bytes()`, use a bounded loader that reads at most the limit plus one byte and rejects the source
+without parsing/staging when exceeded. For the existing path-only `mbox` seam, reject an already-oversized regular
+file before iteration and enforce the same byte budget while processing so growth/races cannot turn the command into
+an unbounded read. M18 later strengthens file identity/hash consistency; M16's requirement here is strictly the
+resource ceiling.
+
+The candidate limit must also prevent unbounded accumulation rather than validating only after an arbitrarily large
+list has already been built. Extraction/staging orchestration should stop/fail once the budget would be exceeded,
+and `CandidateStager` (or the narrow M16 composition seam immediately before it) must reject an over-budget result
+before durable `stage_batch`. Limit failures create no staging rows and diagnostics never echo source/candidate
+content.
+
+Do not impose these limits globally on pre-existing MCP `import_content`, direct application callers, or the released
+`pctx init` vCard path as an incidental refactor. M16 may introduce a bounded loader/budget abstraction reused by the
+new CLI without changing those older accepted-input contracts.
+
 ### Human output
 
 `import stage` prints the batch id, candidate count, existing non-sensitive skip counts/details, and the next
@@ -104,6 +137,7 @@ Follow existing CLI conventions. At minimum:
 
 - unsupported source / malformed argument selection: exit 2;
 - missing or unreadable source path: non-zero with a concise safe diagnostic;
+- source >64 MiB or candidate budget exceeded: non-zero before durable staging with a concise bounded diagnostic;
 - extraction failure: non-zero;
 - no candidates: non-zero because no batch exists to review;
 - unknown batch or candidate outside the batch: non-zero;
@@ -181,6 +215,9 @@ Preserve all onboarding semantics established in M9:
 - only explicitly selected candidates commit;
 - communication-philosophy behavior is unchanged.
 
+The new M16 file/candidate budgets apply to `pctx import stage`; they do not silently change the released onboarding
+input contract while sharing rendering/selection helpers.
+
 ## Migration needs
 
 None.
@@ -189,6 +226,8 @@ None.
 
 - Local file imports remain offline.
 - Raw source bodies are never persisted or copied into CLI diagnostics.
+- Oversized/wrong files fail under a fixed byte/work budget before staging; limit errors do not include rejected
+  payload text.
 - Review output contains distilled personal data and documentation must warn before redirecting/sharing it.
 - Stable JSON is also personal data and is not a sanitized export format.
 - WhatsApp body exclusion and calendar/LinkedIn free-text exclusion remain unchanged importer invariants.
@@ -198,6 +237,10 @@ None.
 
 - Parser tests cover all seven source choices, unknown source rejection, mutually exclusive commit selectors, and a
   required commit selector.
+- Resource tests cover exactly-at/over **64 MiB** for byte/text sources, a path-only `mbox` over/growing past the
+  byte budget, exactly-at/over **100,000 candidates**, early-stop/no-unbounded-accumulation behavior, and prove no
+  staging rows survive any resource rejection.
+- Regression tests prove those M16 CLI limits do not retroactively narrow legacy MCP `import_content` or `pctx init`.
 - CLI/runtime tests cover representative LinkedIn, ICS, WhatsApp self-sender, missing path, no candidates, known and
   unknown batch, partial acceptance, `--all`, unresolved dependencies, and already-committed rows.
 - Human-output tests assert useful batch/review information and raw-content sentinel absence.
@@ -212,6 +255,8 @@ None.
 
 - Stage/review/commit remain separate commands because the review gate is a product invariant, not incidental UX.
 - `--all` is explicit acceptance and does not require a second confirmation prompt.
+- The new structured-file CLI has a 64 MiB source budget and 100,000-candidate budget; these are process-boundary
+  safety limits, not a global narrowing of older import APIs.
 - Canonical candidate ids remain the only selection ids; richer bulk-review UX should be driven by observed usage.
 - Agent-generated strict candidate ingestion is intentionally deferred to M17 so M16 stays an adapter over already
   structured import sources.
