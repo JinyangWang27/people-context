@@ -178,7 +178,7 @@ Check the matching box only in the PR that delivers it.
     no invented deprecation window.
   - **Out:** release bump, encryption, threat comparison.
 
-- [x] **M12.2 — Synchronize 1.0 server metadata and lock**
+- [ ] **M12.2 — Synchronize 1.0 server metadata and lock**
   - **Scope:** Root project, Registry, MCPB, `uv.lock`, classifier, release docs.
   - **Acceptance:** five server semantic values equal `1.0.0`; MCPB schema independent; Registry entry by identifier;
     lock root version matches and `uv lock --check` passes. Shim/plugin version domains remain independent unless
@@ -316,29 +316,35 @@ Check the matching box only in the PR that delivers it.
 
 - [ ] **M18.1 — Add source receipts and duplicate-safe staging**
   - **Scope:** Add the next-free migration and ports/app/SQLite support for minimal source sessions/receipts; hash
-    exact bytes for M16 structured files and associate one staging batch with one source session.
+    exact bytes for M16 structured files, associate one staging batch with one source session, and extend M11
+    bootstrap bundles additively with incomplete source-session staging state.
   - **Acceptance:** receipt stores bounded kind/optional label/digest/timestamps/batch metadata only—no body/default
-    absolute path; same source-kind+digest does not create a second batch by default; agent candidate staging may
-    supply optional digest metadata; existing no-digest staging still works; sync/bootstrap policy for new primary
-    state is explicit and tested.
-  - **Out:** semantic candidate dedup, commit provenance propagation, trait evidence, source rollback, folder watch.
+    absolute path; default source-kind+digest claim + source-session insert + batch/candidate staging publish
+    atomically under a uniqueness mechanism so concurrent importers create one canonical batch; intentional forced
+    reprocessing is explicitly distinct; agent candidate staging may supply optional digest metadata; no-digest
+    staging still works; staged/partially committed bundles restore with their reviewable staging rows and older
+    bundles without M18 fields remain valid.
+  - **Out:** semantic candidate dedup, commit provenance propagation, trait evidence, source rollback, folder watch,
+    incremental peer replication of staging state.
 
 - [ ] **M18.2 — Propagate source provenance and expose source inspection**
-  - **Scope:** Trace every batch-committed record back to its M18 source session using existing provenance/session
-    semantics where compatible; add local `sources` / `source show` inspection with versioned JSON if agent-facing.
-  - **Acceptance:** each committed candidate has one durable source-session anchor without raw content; preserve
-    compatibility where legacy message-id session semantics require an explicit association; inspection shows ids,
-    kind/digest/status/batch and derived record summaries/ids only; no raw source/path leak; partial/idempotent
-    commits remain understandable.
+  - **Scope:** Add a durable record-to-source-session association for every batch-committed record while preserving
+    existing `Provenance.session` values; add local `sources` / `source show` inspection with versioned JSON if
+    agent-facing.
+  - **Acceptance:** each committed candidate has one durable source-session anchor without raw content; existing
+    message/event-id `Provenance.session` semantics remain unchanged; association writes are atomic with record
+    commit and sync/bootstrap-aware; inspection shows ids, kind/digest/status/batch and derived record summaries/ids
+    only; no raw source/path leak; partial/idempotent commits remain understandable.
   - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation.
 
 - [ ] **M18.3 — Ground traits in durable evidence records**
   - **Scope:** Add the next-free additive trait-evidence relation and support observation/interaction evidence ids,
     including same-batch staged evidence resolution from M17 candidates.
-  - **Acceptance:** only active supported evidence entity types; stable id ordering; accepted trait remains unresolved
-    when required accepted evidence cannot resolve; retrieval respects sensitivity and never exposes restricted
-    evidence through a visible trait; `evidence_note` remains additive human context; sync/bootstrap/lifecycle tests
-    cover the new relation.
+  - **Acceptance:** only active supported evidence entity types; an observation evidence row must belong to the trait
+    subject and an interaction must include that subject; stable id ordering; accepted trait remains unresolved when
+    required accepted evidence cannot resolve or resolves to another person's evidence; persisted-id and same-batch
+    subject-validation tests; retrieval respects sensitivity and never exposes restricted evidence through a
+    visible trait; `evidence_note` remains additive human context; sync/bootstrap/lifecycle tests cover the relation.
   - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation.
 
 ## M19 — Knowledge consolidation & temporal views
