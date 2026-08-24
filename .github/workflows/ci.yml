@@ -16,6 +16,13 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every version the package claims to support in its `requires-python` and
+        # its PyPI classifiers. Publishing a classifier nothing exercises is how a
+        # release reaches users broken on a version the project says it supports.
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -24,6 +31,8 @@ jobs:
 
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: uv sync --locked --all-extras
@@ -37,7 +46,16 @@ jobs:
       - name: Run Ruff
         run: uv run --locked ruff check .
 
+      # The ports-and-adapters wiring is held together by `typing.Protocol`, which
+      # only means something if a checker verifies it. Runs on every version in the
+      # matrix, so the check sees each one's standard library.
+      - name: Run mypy
+        run: uv run --locked mypy
+
+      # Packaging is version-independent, so it runs once rather than once per matrix
+      # entry building the same distributions.
       - name: Verify package distributions
+        if: matrix.python-version == '3.12'
         run: |
           uv lock --check
           uv build
@@ -46,8 +64,11 @@ jobs:
       - name: Run tests with coverage
         run: uv run --locked --with pytest-cov==7.1.0 pytest --cov=people_context --cov-report=xml -q
 
+      # One upload, from one interpreter: the matrix runs the same suite three times,
+      # and three reports of the same lines would be merged for no added signal.
       - name: Upload coverage to Codecov
         if: >-
+          matrix.python-version == '3.12' &&
           github.actor != 'dependabot[bot]' &&
           (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0

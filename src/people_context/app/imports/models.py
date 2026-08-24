@@ -131,7 +131,7 @@ CandidateInput = Annotated[
     Field(discriminator="type"),
 ]
 
-CANDIDATE_MODELS = {
+CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
     "person": PersonCandidateInput,
     "interaction": InteractionCandidateInput,
     "affiliation": AffiliationCandidateInput,

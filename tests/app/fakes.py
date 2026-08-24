@@ -62,7 +62,7 @@ class FakeAuditLog:
 
 
 class FakePeopleRepository:
-    """An in-memory PersonReader + PersonWriter backed by a dict.
+    """An in-memory `PeopleRepository` backed by a dict.
 
     `search_names` does containment matching with a length-ratio score by default.
     Tests can force exact hits per query via `forced_hits` to control scores precisely.
@@ -117,6 +117,13 @@ class FakePeopleRepository:
                 hits.append(hit)
         hits.sort(key=lambda h: (-h.score, h.person.canonical_name))
         return hits[:limit]
+
+    # -- search indexer ----------------------------------------------------
+
+    def rebuild_person_search(self) -> tuple[int, int]:
+        """Report what a rebuild would index; the fake's search needs no stored index."""
+        active = [person for person in self._people.values() if person.deleted_at is None]
+        return len(active), sum(len(person.all_names()) for person in active)
 
     @staticmethod
     def _best_containment(person: Person, normalized_query: str) -> SearchHit | None:

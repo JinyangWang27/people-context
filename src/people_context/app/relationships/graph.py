@@ -16,6 +16,12 @@ DEFAULT_GRAPH_DEPTH = 2
 MAX_GRAPH_NODES = 100
 MAX_GRAPH_EDGES = 300
 
+#: Ceiling on how many people a single traversal may visit before it stops. It bounds
+#: the work a depth-4 request can cost on a dense store; it is deliberately far above
+#: `MAX_GRAPH_NODES` because type filtering happens after traversal, so a budget at the
+#: display cap would starve a filtered query of nodes it should still be able to reach.
+TRAVERSAL_NODE_BUDGET = 2000
+
 
 class GraphTraversalError(ValueError):
     """Raised when an application traversal limit is invalid."""
@@ -85,7 +91,7 @@ class GetRelationshipGraph:
         person = self._people.get(person_id)
         if person is None or person.deleted_at is not None:
             return GraphPersonNotFound(person_id=person_id)
-        raw = self._graph.neighbors(person_id, depth)
+        raw = self._graph.neighbors(person_id, depth, TRAVERSAL_NODE_BUDGET)
         allowed = {self._canonical_type(value) for value in types} if types else None
         raw_edges = [edge for edge in raw.edges if allowed is None or edge.type in allowed]
         included_ids = {person_id}
@@ -98,7 +104,11 @@ class GetRelationshipGraph:
             edge for edge in raw_edges if edge.subject_id in selected_ids and edge.object_id in selected_ids
         ]
         selected_edges = candidate_edges[:MAX_GRAPH_EDGES]
-        truncated = len(candidate_nodes) > len(selected_nodes) or len(candidate_edges) > len(selected_edges)
+        truncated = (
+            raw.truncated
+            or len(candidate_nodes) > len(selected_nodes)
+            or len(candidate_edges) > len(selected_edges)
+        )
         return RelationshipGraphResult(
             nodes=[_person_result(node) for node in selected_nodes],
             edges=[_edge_result(edge) for edge in selected_edges],

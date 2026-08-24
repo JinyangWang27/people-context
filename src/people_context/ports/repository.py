@@ -45,3 +45,14 @@ class PersonSearchIndexer(Protocol):
     """Rebuild the derived active-person name index atomically."""
 
     def rebuild_person_search(self) -> tuple[int, int]: ...
+
+
+@runtime_checkable
+class PeopleRepository(PersonReader, PersonWriter, PersonSearchIndexer, Protocol):
+    """The whole person-persistence surface, for callers that need every side of it.
+
+    The narrow ports above stay the right dependency for a use case that only reads or
+    only writes. A decorator that wraps person persistence as a unit is a different case:
+    naming the three ports as a union would let a read-only object satisfy the annotation
+    and then fail at runtime on the first write, so the composition is stated once here.
+    """

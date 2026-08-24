@@ -36,6 +36,7 @@ Install dependencies and run the same primary checks used in CI:
 uv sync --locked --all-extras
 uv lock --check
 uv run --locked ruff check .
+uv run --locked mypy
 uv run --locked --with pytest-cov==7.1.0 pytest --cov=people_context -q
 uv build
 uvx --from twine==7.0.0 twine check dist/*

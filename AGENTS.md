@@ -22,6 +22,7 @@ Tests mirror these layers and capabilities under `tests/domain/`, `tests/app/`, 
 - `uv run pctx db-path` shows the active SQLite database.
 - `uv run pytest -q` runs the complete test suite.
 - `uv run ruff check .` checks formatting-independent style and imports.
+- `uv run mypy` type-checks `src/people_context`; Ruff does not check types.
 - `uv build` creates source and wheel distributions.
 
 ## Coding Style & Naming Conventions
