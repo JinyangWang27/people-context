@@ -10,8 +10,9 @@ contradict earlier inferences, and changing affiliations. Users and agents need 
 over time and identify where consolidation would improve quality.
 
 M19 adds bounded chronological views and review-only consolidation proposals. It deliberately does **not** create an
-autonomous belief updater. Durable corrections, merges, supersession, or replacement continue to use existing
-explicit write paths after human approval.
+autonomous belief updater. Durable corrections, merges, and temporal state transitions remain explicit approved
+mutations. M19 adds one narrow fact-supersession operation because the existing `correct_record` contract is an
+in-place correction and must not be repurposed to overwrite historically correct values.
 
 ## Scope
 
@@ -21,6 +22,8 @@ In scope:
 - local CLI and ordinary-disclosure MCP access to that timeline with explicit sensitivity handling;
 - a bounded consolidation-context read that gives an agent enough evidence/provenance to reason about duplicate,
   superseding, reinforcing, or contradictory knowledge;
+- a narrow atomic `supersede_fact` application/MCP mutation for a fact that was historically correct but changes at
+  a known effective date;
 - an agent workflow that proposes structured maintenance actions and requires explicit approval before writes;
 - reuse of M18 source/evidence links when explaining why a trait exists or why a consolidation is proposed;
 - tests that prove no report/read path performs durable mutation.
@@ -33,7 +36,10 @@ Non-goals:
 - a continuously running maintenance agent/daemon;
 - semantic vector clustering as a required core dependency;
 - deleting source sessions/evidence as a side effect of consolidation;
-- rewriting history to make the current state look cleaner.
+- rewriting history to make the current state look cleaner;
+- a generic multi-record “consolidate” mutation or arbitrary batch-write tool;
+- temporal supersession for every record type in M19; affiliation/relationship transitions can be designed later if
+  real usage demonstrates the need.
 
 ## Temporal view
 
@@ -50,7 +56,7 @@ from:
 
 - interactions;
 - observations;
-- dated facts / validity changes;
+- dated facts / validity changes, including explicit fact supersession;
 - affiliation validity changes;
 - relationship creation/change where useful and attributable;
 - trait creation/correction/evidence additions;
@@ -91,6 +97,49 @@ This read complements, not replaces, M15 `doctor`: doctor continues to report de
 quality findings, while consolidation context supplies richer person-scoped evidence for judgement calls that
 cannot safely be decided by deterministic core policy alone.
 
+## Fact correction vs supersession
+
+A factual **correction** and a factual **state transition** are different domain events:
+
+- correction: “the stored value was wrong at the time”;
+- supersession: “the old value was correct, then the real-world state changed”.
+
+`CorrectRecord` explicitly updates a record in place and preserves the prior snapshot only in audit history. It
+therefore remains the tool for erroneous data and must not be used to replace an historically correct fact's value
+with its newer value.
+
+For temporal supersession add a narrow `SupersedeFact` use case and MCP mutation, conceptually:
+
+```text
+supersede_fact(
+  fact_id,
+  new_value,
+  effective_from,
+  confidence?,
+  sensitivity?
+)
+```
+
+The operation is one atomic unit of work:
+
+1. load the existing fact and require its person to remain active;
+2. require a concrete `effective_from` date that is after any existing `valid_from` and represents a transition
+   while the old fact is still effective; reject inconsistent/already-ended periods rather than guessing;
+3. close the old fact at `effective_from - 1 day` because `ValidityPeriod` endpoints are inclusive;
+4. preserve the old fact's person, predicate, value, original provenance, and recorded timestamp; only its
+   `valid_to` changes;
+5. create a new fact for the same person/predicate with `new_value` and `valid_from=effective_from`; new confidence
+   and sensitivity may be supplied, otherwise inherit the old fact's values;
+6. give the new fact normal provenance from the approved supersession call;
+7. emit ordinary audit/changelog mutations for both rows in the same transaction, so neither “old closed, new
+   missing” nor “new created, old still open” can commit.
+
+The use case does not allow changing the predicate/person as part of supersession. A caller correcting a typo,
+misidentified predicate, wrong historical value, or wrong validity date still uses `correct_record`.
+
+This narrow operation is a temporal domain primitive, not a generic consolidation mutation. It exists so the M19
+maintenance workflow can preserve canonical history without abusing an in-place correction API.
+
 ## Review-only consolidation workflow
 
 Extend the packaged agent skill with a maintenance workflow:
@@ -99,13 +148,15 @@ Extend the packaged agent skill with a maintenance workflow:
 2. read ordinary context, timeline, and consolidation context;
 3. identify possible duplicate, superseding, reinforcing, or contradictory knowledge;
 4. explain the evidence and provenance supporting each proposal;
-5. propose structured actions using existing mutation tools/ids;
+5. propose structured actions using stable mutation tools/ids;
 6. do not execute those actions until the user explicitly accepts them;
 7. after approved writes, re-read the affected person and report the resulting state.
 
 Examples of proposals:
 
-- correct/supersede an outdated fact using `correct_record`;
+- correct an erroneous historical fact using `correct_record`;
+- when a historically correct fact changes, use `supersede_fact` so the old row keeps its value with a closed
+  validity period and a new row begins at the effective date;
 - merge duplicate people only when identity is independently established;
 - add a better-supported trait that supersedes an earlier weak inference;
 - retain two observations because they are separate evidence rather than “deduplicating” history;
@@ -113,6 +164,9 @@ Examples of proposals:
 
 The agent must distinguish **redundant representation** from **multiple evidence**. Three observations that all
 support one trait are not necessarily duplicates and should not be collapsed merely to reduce row count.
+
+The agent must also distinguish **correction** from **temporal supersession**. It must never propose changing an old
+fact's `value` in place merely because a newer value is now true.
 
 ## Trait confidence policy
 
@@ -124,8 +178,8 @@ new value is committed only through the normal explicit mutation/review path. No
 
 ## Migration needs
 
-Prefer none for timeline/consolidation reads. Use existing primary records, provenance, validity, M18 source
-sessions, and evidence links.
+Prefer none for timeline/consolidation reads or fact supersession; facts already carry inclusive validity periods.
+Use existing primary records, provenance, validity, M18 source sessions, and evidence links.
 
 If implementation-time query plans require an additive index, use the next free migration number and document the
 measured reason. Do not create a denormalized timeline table merely for presentation unless profiling proves the
@@ -139,14 +193,19 @@ Expected additive surfaces:
 pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
 ```
 
-and one read-only MCP timeline tool. A separate consolidation-context MCP read may be added if the existing context
-response cannot provide the required bounded evidence/provenance cleanly; keep it read-only and narrowly scoped.
+plus:
+
+- one read-only MCP timeline tool;
+- a separate consolidation-context MCP read if the existing context response cannot provide the required bounded
+  evidence/provenance cleanly;
+- one narrow write MCP tool `supersede_fact`, following the ordinary mutation/audit/disclosure conventions.
 
 Any machine JSON documented for CLI integration is versioned and additive under M12. Human rendering remains
 non-frozen.
 
-No consolidation mutation tool is added merely to bundle multiple writes. Existing explicit record/person tools
-remain the authority for approved changes.
+No generic consolidation mutation tool is added merely to bundle arbitrary writes. `supersede_fact` is the single
+narrow exception because temporal fact transition is a domain operation that cannot be represented correctly by
+in-place value correction or by two non-atomic independent writes.
 
 ## Security and privacy
 
@@ -157,18 +216,28 @@ remain the authority for approved changes.
 - Maintenance suggestions use stable ids and structured tool arguments, never shell-interpolated names/text.
 - The agent workflow must not infer or “clean up” sensitive characteristics merely for consistency.
 - Reports and proposal generation are read-only; no hidden write occurs during analysis.
+- `supersede_fact` is invoked only after explicit approval and preserves the old historical value rather than
+  rewriting it.
 
 ## Testing strategy
 
-- Timeline fixtures cover interactions, observations, validity-dated facts/affiliations, trait/evidence metadata,
-  undated records, stable ties, limits, and disclosure filtering.
+- Timeline fixtures cover interactions, observations, validity-dated facts/affiliations, explicit supersession,
+  trait/evidence metadata, undated records, stable ties, limits, and disclosure filtering.
 - SQLite tests prove underlying reads are bounded and query plans remain reasonable on dense synthetic history.
 - Consolidation-context tests cover deterministic ordering/bounds and include provenance/evidence without raw-source
   leakage.
-- Regression tests prove M15 doctor behavior remains unchanged and no M19 read mutates audit/changelog/domain state.
-- MCP tests cover ordinary disclosure and ambiguity/not-found behavior.
-- CLI tests cover human/JSON output, explicit sensitivity opt-in, stable ids, and no shell construction.
-- Scripted agent-workflow tests prove proposals occur before any mutation and approval is required.
+- `SupersedeFact` tests cover inclusive boundary math, old-value preservation, inherited/explicit confidence and
+  sensitivity, invalid/already-ended periods, inactive people, stable same person/predicate, provenance on the new
+  fact, and full rollback when either old-close or new-create/audit phase fails.
+- Audit/changelog tests prove supersession emits both mutations atomically and does not masquerade as a
+  `correct_record` value replacement.
+- Regression tests prove M15 doctor and existing `correct_record` behavior remain unchanged and no M19 read mutates
+  audit/changelog/domain state.
+- MCP tests cover ordinary disclosure, ambiguity/not-found behavior, `supersede_fact` validation, and explicit
+  mutation semantics.
+- CLI tests cover human/JSON timeline output, explicit sensitivity opt-in, stable ids, and no shell construction.
+- Scripted agent-workflow tests prove proposals occur before any mutation, approval is required, erroneous facts use
+  correction, and historically correct changed facts use supersession without overwriting the old value.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
 ## Implementation decisions
@@ -176,5 +245,7 @@ remain the authority for approved changes.
 - Timeline is a projection over canonical history, not a duplicate event store.
 - Consolidation separates deterministic retrieval from agent judgement.
 - Multiple supporting observations remain evidence rather than being collapsed automatically.
+- `correct_record` is for erroneous stored data; historically correct fact changes use the atomic
+  `supersede_fact` temporal operation.
 - Confidence changes, corrections, merges, and supersession remain explicit approved mutations.
 - A background self-modifying memory process is intentionally outside M19.
