@@ -1,6 +1,6 @@
 # M12 — Trust, stability, and v1.0
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m12--trust-stability-and-v10).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m12--trust-stability-and-v10).
 
 ## Motivation
 
