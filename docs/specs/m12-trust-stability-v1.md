@@ -1,13 +1,14 @@
 # M12 — Trust, stability, and v1.0
 
-Status: Delivered. See [docs/roadmap.md](../roadmap.md#m12--trust-stability-and-v10).
+Status: Partially delivered — M12.1, M12.3, and M12.4 are delivered; M12.2 remains pending. See
+[docs/roadmap.md](../roadmap.md#m12--trust-stability-and-v10).
 
 ## Motivation
 
-`pyproject.toml` still classifies the project as Alpha, although the implementation already follows an additive
-response-contract discipline and forward-only migrations. M12 turns that practice into an explicit compatibility
-promise, synchronizes every server-distribution surface for 1.0, adds an opt-in encrypted SQLite connection path,
-and publishes a factual local-first threat-model comparison.
+Most of the trust/stability work is already present: the project has an explicit compatibility promise, opt-in
+SQLCipher support, a dated threat-model comparison, and packaged-demo documentation. The primary distribution and
+server metadata, however, still report `0.4.0`, so M12 is not complete until the planned `1.0.0` synchronization
+lands across every primary server-distribution surface.
 
 ## Scope
 
