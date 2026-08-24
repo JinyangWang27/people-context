@@ -173,7 +173,8 @@ and cloud-memory comparisons.
 - a dated, primary-source threat-model comparison with cloud memory tools;
 - README demo polish based on the packaged M9 demo.
 
-**Status:** Delivered.
+**Status:** Partially delivered — compatibility, threat comparison/demo, and SQLCipher are delivered; synchronized
+`1.0.0` primary server metadata remains pending.
 
 ## M13 — Daily utility & proactive signals
 
@@ -276,16 +277,19 @@ store, and ground inferred traits in durable evidence records.
 
 - a minimal durable source-session/receipt model with bounded metadata and exact-byte SHA-256 digest, never raw
   source content or default absolute paths;
-- association of staging/import batches and committed candidate writes with a durable source-session provenance
-  anchor;
-- default duplicate-source detection for structured file imports, with optional digest metadata for agent-extracted
-  workflows;
+- concurrency-safe atomic default claiming of source-kind+digest together with source-session/batch/candidate
+  staging publication, while explicitly forced reprocessing remains distinct;
+- additive bootstrap preservation of staged/partially committed source sessions and the incomplete staging rows
+  required to keep their batches reviewable after restore;
+- a separate durable record-to-source-session association for committed writes while preserving existing
+  message/event-derived `Provenance.session` semantics;
 - local source-session inspection showing batch/record ids and status summaries but no source body;
-- durable trait-evidence links to observations/interactions, including same-batch staged evidence resolution;
-- additive migration/sync/bootstrap/privacy coverage for the new primary provenance/evidence state.
+- durable trait-evidence links to observations/interactions involving the same trait subject, including same-batch
+  staged evidence resolution and subject validation;
+- additive migration/sync/bootstrap/privacy/concurrency coverage for the new provenance/evidence state.
 
 M18 deliberately does not perform semantic record deduplication, automatic confidence recomputation, source
-rollback, or document storage.
+rollback, document storage, or incremental peer replication of incomplete staging state.
 
 **Status:** Planned.
 
