@@ -18,6 +18,8 @@ traceability and safe idempotency, not document management.
 In scope:
 
 - first-class local source/ingestion receipts containing bounded metadata and a content digest, never raw source;
+- hash/extraction consistency so a receipt digest always describes the same stable source snapshot that produced
+  the staged candidates;
 - atomic association of a staged import batch with one source session;
 - a separate durable record-to-source-session association that preserves existing per-message/event provenance;
 - duplicate-source detection before creating another staging batch;
@@ -44,7 +46,7 @@ are:
 - stable `id`;
 - `source_kind` such as `linkedin`, `ics`, `meeting_transcript`, or another caller-defined bounded label;
 - optional user/caller label for human inspection;
-- SHA-256 digest of the exact source bytes when a source artifact exists;
+- SHA-256 digest of the exact stable source bytes when a source artifact exists;
 - optional externally supplied stable source id when the caller has one;
 - created/processed timestamp;
 - associated staging batch id when applicable;
@@ -66,10 +68,28 @@ personal source material.
 
 ### Structured file imports
 
-For M16 `pctx import stage SOURCE PATH`, compute SHA-256 over the exact file bytes before extraction. Extraction may
-happen in memory before durable writes, but the default digest claim, source-session insertion, staging-batch
-creation, source-session/batch association, and candidate-row staging must become visible atomically. Two concurrent
-processes importing the same source kind and digest must not both create default source sessions/batches.
+For M16 `pctx import stage SOURCE PATH`, the digest and candidate extraction must describe the **same stable source
+snapshot**. A path is not a snapshot: the file may change between a hash read and a later extractor reopen.
+
+Use one of two implementation patterns depending on the source adapter:
+
+1. For importers that can consume bytes/content directly, read one bounded immutable byte snapshot once, compute
+   SHA-256 over those bytes, and extract from those exact same bytes.
+2. For an adapter that must retain path-oriented processing (notably the existing `mbox` path-only contract), use
+   verified stable-path extraction without creating a raw temporary copy: capture file identity/metadata and a
+   pre-extraction SHA-256, run extraction, then capture identity/metadata and SHA-256 again. If identity, size,
+   high-resolution modification metadata, or digest differs, discard the extracted candidates and retry a bounded
+   number of times or fail with a safe `source_changed_during_import`-style error. No source session, batch, or
+   candidate row becomes durable until a stable pass succeeds.
+
+The second pattern is a compatibility seam for path-only parsing, not permission to accept a digest from one file
+version and candidates from another. Rehashing after extraction is mandatory; metadata-only checks are insufficient.
+A source that is continuously changing must fail rather than stage an indeterminate mixture. Do not solve this by
+persisting an unencrypted/raw temporary duplicate of the user's source.
+
+After a stable snapshot/pass exists, the default digest claim, source-session insertion, staging-batch creation,
+source-session/batch association, and candidate-row staging must become visible atomically. Two concurrent processes
+importing the same source kind and digest must not both create default source sessions/batches.
 
 Use a database uniqueness mechanism plus one transaction (for example `BEGIN IMMEDIATE` around the claim/stage
 write) rather than a check-then-insert race. If another process wins the canonical claim, the loser returns/reports
@@ -104,7 +124,9 @@ by the calling agent over the source artifact. When no digest is supplied, the w
 claim source-level idempotency.
 
 People Context must never hash raw text that it has not been given. The agent remains responsible for reading the
-source and may provide the exact-byte digest when its environment can do so deterministically.
+source and may provide the exact-byte digest when its environment can do so deterministically. A caller-supplied
+digest is provenance metadata from that caller; People Context must not imply it independently verified source
+bytes that were never provided.
 
 ### Candidate-level duplicates
 
@@ -220,13 +242,16 @@ meaning.
 
 - Source receipts are metadata about personal material and must be treated as sensitive local state.
 - A SHA-256 digest is not anonymization and must not be presented as such.
+- Digest/source attribution is accepted only after stable snapshot verification for file imports; a TOCTOU race
+  must not attach digest A to candidates parsed from bytes B.
 - Absolute source paths are not persisted by default because they can disclose usernames, organizations, project
   names, and machine layout.
 - Evidence retrieval respects existing sensitivity/disclosure gates; a trait must not reveal restricted evidence to
   an ordinary MCP caller merely because the trait is visible.
 - Subject validation prevents Alice's trait from exposing Bob-only observation metadata or an interaction in which
   Alice did not participate.
-- No raw source text enters logs, audit payloads, changelog payloads, errors, or source-session rows.
+- No raw source text enters logs, audit payloads, changelog payloads, errors, source-session rows, or temporary
+  persistent copies created solely for hashing/extraction consistency.
 - Duplicate detection happens locally without external lookups.
 
 ## Testing strategy
@@ -234,8 +259,12 @@ meaning.
 - Migration tests cover fresh and upgraded databases, FK integrity, indexes, and bootstrap/sync compatibility.
 - Exact-byte digest tests cover deterministic hashing, same-source duplicate detection, source-kind scoping, and
   intentional distinct forced sessions where supported.
-- Concurrency tests run two staging attempts for the same source/digest and prove exactly one canonical default
-  source session/batch is created; the losing attempt observes the winner's state.
+- Snapshot-consistency tests prove byte-capable importers hash and parse the exact same immutable bytes.
+- Concurrent-modification tests change a source between/during hash and extraction and prove no durable receipt or
+  staging batch is created from mismatched bytes. Include the path-only `mbox` case and assert stable rehash/retry or
+  safe failure behavior.
+- Concurrency tests run two staging attempts for the same stable source/digest and prove exactly one canonical
+  default source session/batch is created; the losing attempt observes the winner's state.
 - Structured and agent-extracted import tests prove one batch/source association and no duplicate batch by default.
 - Bootstrap tests cover staged and partially committed source sessions, preserving reviewable/committable staging
   rows and source-session/batch references; older bundles without M18 fields still restore.
@@ -252,6 +281,8 @@ meaning.
 ## Implementation decisions
 
 - Idempotency is source-level first; semantic record consolidation is intentionally left to M19.
+- A source digest and its extracted candidates always come from one verified stable snapshot/pass; path reopen races
+  are detected and discarded before staging.
 - Duplicate claiming plus staging publication is atomic; check-then-insert races are not permitted.
 - Existing per-message/event `Provenance.session` semantics are preserved; source-session traceability uses a
   separate durable association.
