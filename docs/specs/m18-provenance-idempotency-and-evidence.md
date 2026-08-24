@@ -27,7 +27,10 @@ In scope:
 - a durable candidate-to-record commit mapping that is also the canonical record-to-source-session association;
 - duplicate-source detection before creating another staging batch plus an explicit non-default reprocessing escape
   hatch;
-- versioned bootstrap continuity for source sessions, incomplete staging rows, and committed-candidate mappings;
+- versioned bootstrap continuity for source sessions, **all** durable committed-candidate mappings, and the staging
+  rows required only for incomplete batches;
+- hard-forget integration for new durable provenance/evidence relations so erased records cannot remain addressable
+  through source inspection or their relation history;
 - CLI inspection of source sessions and their derived records/batches;
 - durable evidence links from traits to observations/interactions that support the same person;
 - explicit bounded batch-local evidence references so one staged trait can address observation/interaction
@@ -195,7 +198,18 @@ Exact table/port naming is implementation-time. The mapping has these invariants
 - retrying an already committed candidate uses the stored mapping rather than name/text heuristics;
 - the mapping remains durable even if completed staging rows are eventually cleaned up;
 - `source_session_id` makes this same relation the canonical record-to-source-session association used by source
-  inspection, avoiding a second parallel provenance table.
+  inspection, avoiding a second parallel provenance table;
+- hard-forgetting a durable mapped entity removes every mapping targeting that entity in the **same forget
+  transaction**, and the forget preview/counts include those mapping rows;
+- mapping audit/changelog history selected by a record- or person-scope hard forget is redacted with the same
+  guarantees as the forgotten entity, so a mapping id/payload cannot remain a replayable provenance side channel.
+
+For person-scope forget, mapping cleanup follows the actual durable entities that the existing forget operation will
+remove: mappings to the person and to records/relationships/orphan interactions that are hard-deleted are removed;
+a mapping to a shared interaction that remains after removing only that person's participation remains valid because
+its target entity still exists. Record-scope forget removes mappings to the selected record. Source-session rows are
+not automatically cascaded merely because one derived entity is forgotten; they may still provenance other retained
+entities, but source inspection must no longer expose any forgotten mapping.
 
 Pre-M18 legacy batches that never had a source session are not guessed/backfilled from ambiguous audit history. New
 M18-tracked batches must always satisfy the mapping invariant from the first release of source sessions.
@@ -205,7 +219,9 @@ The resulting provenance model is:
 - `source` continues to describe the import/extraction surface;
 - existing `Provenance.session` values keep their existing source-local semantics;
 - every committed candidate in an M18-tracked batch has a durable candidate→entity→source-session mapping;
-- source inspection and later same-batch dependencies traverse that mapping without storing the raw source.
+- source inspection and later same-batch dependencies traverse that mapping without storing the raw source;
+- hard forget removes provenance associations to entities it actually erases rather than leaving dangling
+  inspectable ids.
 
 ## Bootstrap bundle versioning
 
@@ -217,16 +233,23 @@ ignore additions. M18 therefore **does not add fields to bundle version 1**.
 M18.1 introduces `people-context-sync-bundle` **version 2**. The exporter emits v2 and the restorer accepts both the
 released v1 shape and the new strict v2 shape.
 
-V2 carries the new source-session primary state plus the operational rows required to keep an incomplete batch
-usable after bootstrap:
+V2 carries the new durable provenance state plus only the operational staging rows that are still needed:
 
-- source sessions/claim metadata;
-- staging rows for staged or partially committed M18-tracked batches;
-- candidate commit mappings for any candidates already committed from those batches.
+- all source sessions/claim metadata;
+- **all candidate commit mappings for every exported M18-tracked source session, including fully committed sessions
+  whose staging rows have already been cleaned up**;
+- staging rows only for staged or partially committed M18-tracked batches that must remain reviewable/committable.
 
-Restore validates source-session → batch → staging/mapping references and restores them atomically. A partially
-committed source must not arrive in a state where duplicate detection suppresses re-staging, `review_import` cannot
-find pending candidates, or a committed candidate has lost the durable entity id needed by a later dependency.
+The distinction is binding: commit mappings are durable primary provenance and are never restricted to incomplete
+batches merely because incomplete staging is the only operational state that needs transfer. A fully committed
+source restored from v2/v3 must retain the same candidate→entity associations so `source show` and future provenance
+reads still identify its derived records.
+
+Restore validates source-session → mapping → durable-entity references for all mappings, plus source-session → batch
+→ staging/mapping references for incomplete batches, and restores them atomically. A partially committed source must
+not arrive in a state where duplicate detection suppresses re-staging, `review_import` cannot find pending candidates,
+or a committed candidate has lost the durable entity id needed by a later dependency. A completed source must not
+arrive with its source session intact but its record associations missing.
 
 V1 bundles remain valid inputs and simply contain no M18 source-session state. Existing v1 readers continue to reject
 v2 as designed rather than accidentally accepting a document they do not understand.
@@ -237,7 +260,8 @@ M18.2 adds source-inspection/read surfaces over the same v2 state and does not c
 
 M18.3 adds durable trait-evidence relations, which are additional primary state and therefore require another strict
 bundle version. The exporter emits **version 3** after M18.3; the restorer accepts v1, v2, and v3. V3 adds the
-evidence-relation collection to the v2 shape and validates it fail-closed.
+evidence-relation collection to the v2 shape and validates it fail-closed; it inherits v2's requirement to carry all
+candidate commit mappings, including mappings from completed source sessions.
 
 Do not predeclare future fields in v2 merely to avoid a version increment: a bundle version means the reader fully
 understands the semantics of every field it accepts.
@@ -267,6 +291,11 @@ Requirements:
   interaction's participant ids contain the trait's `person_id`;
 - links are deterministic and id-based;
 - deleting/correcting evidence must not silently rewrite the trait text or confidence;
+- hard-forgetting a trait deletes its evidence-link rows, and hard-forgetting an observation/interaction deletes
+  links that cite that erased evidence; those relation rows participate in preview counts and audit/changelog
+  redaction in the same forget transaction;
+- person-scope forget applies the same rule to every trait/evidence entity it actually hard-deletes, while links to
+  a shared interaction that remains durable are not removed merely because one participant was forgotten;
 - retrieval should be able to explain a trait with evidence ids and concise evidence metadata while respecting
   disclosure/sensitivity rules;
 - `evidence_note` remains useful human-readable context and is not removed merely because evidence ids exist.
@@ -335,7 +364,8 @@ A source detail may include:
 - committed candidate ids and durable record ids/types from the candidate commit mapping.
 
 It never returns raw source content or raw extraction self-identity configuration. Stable JSON is versioned from
-first release if documented for agents. Human output may render concise provenance paths.
+first release if documented for agents. Human output may render concise provenance paths. Hard-forgotten mapping
+rows are absent, so inspection cannot resurrect an erased record id through provenance metadata.
 
 ## Migration needs
 
@@ -350,6 +380,11 @@ atomic audit/changelog seam unless the row is explicitly operational staging sta
 policy. Source sessions, candidate commit mappings, and trait-evidence metadata that affect user-visible provenance
 are replicable primary state. Incomplete staging remains operational state but is carried in full bootstrap bundles
 so durable source/batch/dependency references cannot become dangling.
+
+The existing hard-forget lifecycle must be extended in the same PR that introduces each new durable relation:
+M18.1 integrates candidate commit mappings with record/person preview, deletion, audit redaction, and changelog
+`redact_covered`; M18.3 applies the same lifecycle guarantees to trait-evidence relation rows. New relation history
+must not survive merely because its entity id differs from the record id being forgotten.
 
 ## CLI / MCP surface changes
 
@@ -384,6 +419,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   an ordinary MCP caller merely because the trait is visible.
 - Subject validation prevents Alice's trait from exposing Bob-only observation metadata or an interaction in which
   Alice did not participate.
+- Hard forget removes new provenance/evidence relations to erased entities and redacts their audit/changelog
+  history atomically, preventing durable relation metadata from becoming a post-erasure identifier leak.
 - No raw source text enters logs, audit payloads, changelog payloads, errors, source-session rows, or temporary
   persistent copies created solely for hashing/extraction consistency.
 - Duplicate detection happens locally without external lookups.
@@ -405,10 +442,16 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   already-committed retries resolve through the mapping, and mapping rows survive staging cleanup policy.
 - Bundle tests pin strict v1/v2 compatibility at M18.1, v1/v2/v3 compatibility at M18.3, reject unknown fields per
   declared version, and prove each exporter emits only its current version.
-- Bootstrap tests cover staged and partially committed source sessions, preserving reviewable/committable staging
-  rows, candidate commit mappings, and source-session/batch references.
+- Bootstrap tests cover staged, partially committed, **and fully committed** source sessions. They preserve all
+  durable candidate commit mappings for completed and incomplete sessions, carry staging rows only for incomplete
+  batches, and prove `source show` after restore still reports derived records for a completed source whose staging
+  rows were cleaned up.
 - Provenance tests prove every committed M18-tracked candidate traces to the correct source session while existing
   message/event-derived `Provenance.session` values remain byte/semantically unchanged.
+- Hard-forget tests cover both record and person scope: preview counts include relation rows; mappings/evidence links
+  targeting entities actually erased are deleted in the same transaction; shared retained interactions keep valid
+  mappings/links; relation audit payloads are redacted; covered relation changelog operations/transactions are
+  redacted; and `source show` cannot return a forgotten entity id afterward.
 - Evidence-reference validation tests cover unique/duplicate/unknown/wrong-type/blank/overlong `evidence_ref`, the
   32-reference combined trait budget, deterministic rewrite to canonical candidate ids, and legacy interaction
   candidates without the optional ref remaining unchanged.
@@ -430,6 +473,10 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   is the explicit escape hatch for intentional identical reprocessing.
 - Candidate→entity commit mapping is durable from M18.1 and doubles as the record→source-session provenance seam,
   allowing later partial commits to resolve already-committed dependencies without guessing.
+- Full bootstrap carries every durable candidate mapping, including completed source sessions; only incomplete
+  staging rows are operationally scoped to staged/partially committed batches.
+- New durable provenance/evidence relations participate in hard-forget preview/deletion/history-redaction from the
+  PR that introduces them; erasure semantics are not deferred to a later cleanup milestone.
 - Same-batch evidence uses bounded caller `evidence_ref` tokens rewritten to canonical candidate ids during staging;
   callers never need to know ids before staging or append candidates to an existing batch.
 - Existing per-message/event `Provenance.session` semantics are preserved.
