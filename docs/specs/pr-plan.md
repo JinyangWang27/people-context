@@ -332,7 +332,7 @@ Check the matching box only in the PR that delivers it.
   - **Scope:** Add the next-free migration and ports/app/SQLite support for source sessions plus durable
     candidate→record commit mappings; ensure each file digest/extraction describes one verified stable snapshot;
     define extraction-configuration fingerprints; add explicit `pctx import stage ... --force`; advance strict full
-    bootstrap export to v2 while retaining v1 restore support.
+    bootstrap export to v2 while retaining v1 restore support; extend hard forget for the new mapping relation.
   - **Acceptance:** byte-capable importers hash and parse the same immutable bytes under the existing M16 resource
     budgets; path-only `mbox` verifies identity/metadata plus pre/post SHA-256 and discards/retries or fails safely if
     the source changes; no durable receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is
@@ -342,10 +342,14 @@ Check the matching box only in the PR that delivers it.
     publication are atomic under a uniqueness mechanism; `--force` creates a distinct non-default processing session
     for an identical claim. Every committed candidate in an M18-tracked batch atomically records candidate id/batch/
     source-session/entity type/entity id with its durable mutation and committed status, including matched/reused
-    entities; committed retries use that mapping rather than heuristics. Export emits strict sync-bundle v2; restore
-    accepts v1/v2. V2 carries source sessions, incomplete staging rows, and candidate commit mappings needed to keep
-    partial batches reviewable and dependency-resolvable after bootstrap; unknown fields still fail per declared
-    version.
+    entities; committed retries use that mapping rather than heuristics. Record/person hard forget previews and
+    deletes mappings to entities actually erased in the same forget transaction, redacts those mapping audit and
+    covered changelog histories, keeps mappings to shared interactions that remain durable, and leaves no forgotten
+    entity id inspectable through source provenance afterward. Export emits strict sync-bundle v2; restore accepts
+    v1/v2. V2 carries **all source sessions and all candidate commit mappings, including fully committed sessions
+    after staging cleanup**; staging rows are carried only for staged/partially committed batches. Restore validates
+    all mapping→durable-entity references and preserves completed-source associations as well as incomplete-batch
+    review/dependency continuity; unknown fields still fail per declared version.
   - **Out:** semantic candidate dedup, trait evidence, source rollback, folder watch, incremental peer replication of
     staging state, raw extraction-option persistence.
 
@@ -355,15 +359,16 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** existing message/event-id `Provenance.session` semantics remain byte/semantically unchanged;
     inspection shows bounded ids, kind/digest/extraction fingerprint/status/batch and committed candidate/record
     summaries only; no raw source/path/self-configuration leak; mappings remain usable after staging cleanup policy;
-    partial/idempotent commits are understandable. This PR does not change the strict v2 bootstrap shape introduced
-    by M18.1.
+    completed-source mappings survive bootstrap restore, while hard-forgotten mappings are absent; partial/idempotent
+    commits are understandable. This PR does not change the strict v2 bootstrap shape introduced by M18.1.
   - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
     second parallel record-source provenance table.
 
 - [ ] **M18.3 — Ground traits in durable evidence records and bootstrap v3**
   - **Scope:** Add the next-free additive trait-evidence relation plus a bounded caller-addressable same-batch
     evidence-ref rewrite; support evidence committed in an earlier partial commit and explicit durable evidence ids;
-    advance strict bootstrap export to v3 while retaining v1/v2 restore support.
+    advance strict bootstrap export to v3 while retaining v1/v2 restore support; integrate the new relation with
+    hard-forget lifecycle/redaction.
   - **Acceptance:** observation/interaction candidates may add optional unique non-blank `evidence_ref` tokens of at
     most **256 characters**. Traits may reference up to **32 combined** unique same-batch `evidence_refs` and durable
     `evidence_ids`; unknown/duplicate/wrong-type refs fail before staging. Staging rewrites caller refs to canonical
@@ -372,11 +377,14 @@ Check the matching box only in the PR that delivers it.
     committed in a prior invocation or earlier in the current one; only active supported durable evidence types are
     legal. An observation must belong to the trait subject and an interaction must include that subject; stable id
     ordering; accepted trait remains unresolved when required evidence has no valid mapping/cannot resolve/does not
-    exist/resolves to another person's evidence. Persisted-id, earlier-partial-commit, same-invocation, and ref-bound
-    tests are required; retrieval respects sensitivity and never exposes restricted evidence through a visible trait;
-    `evidence_note` remains additive human context. Existing interactions without `evidence_ref` remain unchanged.
-    Export emits strict sync-bundle v3 with trait-evidence relations; restore accepts v1/v2/v3 and validates each
-    version fail-closed.
+    exist/resolves to another person's evidence. Hard forget of a trait/evidence entity deletes affected evidence
+    relations in the same transaction, includes them in preview counts, redacts their audit/covered changelog
+    history, and preserves links to shared interaction evidence only when that interaction itself remains durable.
+    Persisted-id, earlier-partial-commit, same-invocation, ref-bound, record/person-forget tests are required;
+    retrieval respects sensitivity and never exposes restricted evidence through a visible trait; `evidence_note`
+    remains additive human context. Existing interactions without `evidence_ref` remain unchanged. Export emits
+    strict sync-bundle v3 with trait-evidence relations **and inherits v2's all-commit-mapping rule**; restore accepts
+    v1/v2/v3 and validates each version fail-closed.
   - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation,
     append-to-batch mutation or caller control of canonical candidate ids.
 
