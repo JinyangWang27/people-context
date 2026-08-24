@@ -298,32 +298,39 @@ Check the matching box only in the PR that delivers it.
   - **Scope:** Add strict candidate models/staging dependency rewriting and `CommitImport` support through existing
     `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases.
   - **Acceptance:** staged traits require explicit confidence and non-blank concise evidence note; relationship
-    candidates use batch-local person refs and canonical M7 vocabulary semantics; people commit/resolve before
-    dependants; unresolved refs remain unresolved; all durable writes retain normal audit/changelog/provenance;
-    existing candidate types/envelopes remain additive-compatible.
+    candidates use batch-local person refs and exactly preserve `SetRelationship` semantics—known vocabulary/
+    synonyms canonicalize, normalized syntactically valid unknown types remain legal uncategorized edges, and only
+    blank/non-word values fail; people commit/resolve before dependants; unresolved refs remain unresolved; all
+    durable writes retain normal audit/changelog/provenance; existing candidate types/envelopes remain
+    additive-compatible. New M17 candidate fields carry the binding string limits in the milestone spec.
   - **Out:** source receipts/evidence tables, raw-text parsing, LLM/runtime dependency, automatic commit/confidence.
 
-- [ ] **M17.2 — Add agent candidate CLI and unstructured-source workflow**
-  - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` over the same strict models
-    as MCP and extend the packaged agent skill for transcript/note extraction.
-  - **Acceptance:** input is candidate JSON, never raw transcript; stdin/file fail closed on malformed/extra fields;
-    workflow distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for identities,
-    discourages speculative sensitive inference/verbatim evidence, stages only, and requires explicit later commit;
-    human/MCP paths remain usable without CLI.
-  - **Out:** model invocation, prompt storage, transcript persistence, automatic review/commit, source idempotency.
+- [ ] **M17.2 — Add bounded agent candidate CLI and unstructured-source workflow**
+  - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` and extend the packaged
+    agent skill for transcript/note extraction.
+  - **Acceptance:** input is candidate JSON, never raw transcript; reject >1 MiB input, >500 candidates, >8 KiB
+    generic CLI strings, and the tighter M17 field limits before staging; malformed/extra fields fail closed and
+    rejected payloads are never echoed. MCP requests using any M17 candidate type are capped at 500 candidates and
+    use the new field bounds, while legacy-only MCP candidate batches retain their released accepted-shape behavior.
+    Workflow distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for identities,
+    discourages speculative sensitive inference/verbatim evidence, stages only, and requires explicit later commit.
+  - **Out:** model invocation, prompt storage, transcript persistence, automatic review/commit, source idempotency,
+    retroactive global size/count narrowing of legacy-only MCP staging.
 
 ## M18 — Provenance, idempotency & evidence
 
-- [ ] **M18.1 — Add source receipts and duplicate-safe staging**
-  - **Scope:** Add the next-free migration and ports/app/SQLite support for minimal source sessions/receipts; hash
-    exact bytes for M16 structured files, associate one staging batch with one source session, and extend M11
-    bootstrap bundles additively with incomplete source-session staging state.
-  - **Acceptance:** receipt stores bounded kind/optional label/digest/timestamps/batch metadata only—no body/default
-    absolute path; default source-kind+digest claim + source-session insert + batch/candidate staging publish
-    atomically under a uniqueness mechanism so concurrent importers create one canonical batch; intentional forced
-    reprocessing is explicitly distinct; agent candidate staging may supply optional digest metadata; no-digest
-    staging still works; staged/partially committed bundles restore with their reviewable staging rows and older
-    bundles without M18 fields remain valid.
+- [ ] **M18.1 — Add source receipts and duplicate-safe stable-snapshot staging**
+  - **Scope:** Add the next-free migration and ports/app/SQLite support for minimal source sessions/receipts; ensure
+    each file digest and extraction describe one verified stable snapshot; associate one staging batch with one
+    source session; extend M11 bootstrap bundles additively with incomplete source-session staging state.
+  - **Acceptance:** byte-capable importers hash and parse the same immutable bytes; path-only `mbox` verifies
+    identity/metadata plus pre/post SHA-256 and discards/retries or fails safely if the source changes; no durable
+    receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is created. Receipt stores bounded
+    kind/optional label/digest/timestamps/batch metadata only—no body/default absolute path; default source-kind+
+    digest claim + source-session insert + batch/candidate staging publish atomically under a uniqueness mechanism
+    so concurrent importers create one canonical batch; intentional forced reprocessing is explicitly distinct;
+    agent candidate staging may supply optional digest metadata; no-digest staging still works; staged/partially
+    committed bundles restore with their reviewable staging rows and older bundles without M18 fields remain valid.
   - **Out:** semantic candidate dedup, commit provenance propagation, trait evidence, source rollback, folder watch,
     incremental peer replication of staging state.
 
@@ -355,14 +362,19 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** deterministic effective-time ordering with stable tie-breaks; explicit undated behavior; app and
     underlying traversal/query work bounded; ordinary MCP excludes restricted data; CLI sensitivity opt-in is
     explicit; timeline is read-only projection, not a denormalized event store; stable JSON if documented.
-  - **Out:** audit-log dump, new timeline table, consolidation mutation, automatic history rewriting.
+  - **Out:** audit-log dump, new timeline table, automatic history rewriting.
 
-- [ ] **M19.2 — Add bounded consolidation context and review-only maintenance workflow**
-  - **Scope:** Provide a person-scoped read model exposing duplicate/superseding/reinforcing/contradictory knowledge
-    with provenance/evidence and extend the agent skill to propose structured existing-tool actions.
+- [ ] **M19.2 — Add consolidation context, atomic fact supersession, and review-only maintenance workflow**
+  - **Scope:** Provide a person-scoped read model exposing duplicate/superseding/reinforcing/contradictory knowledge;
+    add narrow atomic `SupersedeFact` + `supersede_fact` MCP mutation; extend the agent skill to propose structured
+    approved maintenance actions.
   - **Acceptance:** deterministic bounds/order; M15 doctor remains unchanged; multiple observations can remain
-    distinct supporting evidence; agent explains proposals and waits for explicit approval before
-    `correct_record`/merge/other mutations; no report/read path writes audit/changelog/domain state; scripted
-    approval regression passes.
+    distinct supporting evidence; `correct_record` remains for erroneous data and never overwrites an historically
+    correct fact merely because a newer value is true. `supersede_fact` preserves old person/predicate/value/
+    provenance, closes old inclusive validity at `effective_from - 1 day`, creates the new same-person/predicate fact
+    at `effective_from`, and audits/changelogs both atomically with rollback on either phase failure. Agent explains
+    proposals and waits for explicit approval before supersession/correction/merge/other mutations; no report/read
+    path writes audit/changelog/domain state; scripted approval/correction-vs-supersession regression passes.
   - **Out:** autonomous belief updater, confidence-by-count formula, background maintenance daemon, required semantic
-    vector clustering, automatic merge/correction.
+    vector clustering, generic consolidation/batch mutation, automatic merge/correction, supersession for every
+    record type.
