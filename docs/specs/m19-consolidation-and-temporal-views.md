@@ -24,6 +24,7 @@ In scope:
   superseding, reinforcing, or contradictory knowledge;
 - a narrow atomic `supersede_fact` application/MCP mutation for a fact that was historically correct but changes at
   a known effective date;
+- one shared logical transaction id across every changelog row emitted by that supersession;
 - an agent workflow that proposes structured maintenance actions and requires explicit approval before writes;
 - reuse of M18 source/evidence links when explaining why a trait exists or why a consolidation is proposed;
 - tests that prove no report/read path performs durable mutation.
@@ -131,8 +132,21 @@ The operation is one atomic unit of work:
 5. create a new fact for the same person/predicate with `new_value` and `valid_from=effective_from`; new confidence
    and sensitivity may be supplied, otherwise inherit the old fact's values;
 6. give the new fact normal provenance from the approved supersession call;
-7. emit ordinary audit/changelog mutations for both rows in the same transaction, so neither “old closed, new
+7. mint one logical `transaction_id` for the supersession and pass that exact id to the `audit_mutation` call for
+   both the old-row update and the new-row creation;
+8. commit both durable rows, audit entries, and changelog rows in the same unit of work, so neither “old closed, new
    missing” nor “new created, old still open” can commit.
+
+The shared `transaction_id` requirement is independent of SQLite atomicity. `audit_mutation` mints a new id when
+none is supplied, while the sync contract defines `transaction_id` as the grouping key for every row-level effect of
+one logical transaction. Calling `audit_mutation` twice without sharing the id would therefore make replay and
+inspection describe one indivisible supersession as two unrelated transactions even though SQLite committed them
+together.
+
+Implementation may generate the id explicitly before both mutations or use the id returned by the first
+`audit_mutation` for the second; either way both supersession changelog entries must carry the same non-empty id. The
+ordinary audit rows remain whatever the existing audit schema supports; do not add an audit-only transaction field
+merely for this operation.
 
 The use case does not allow changing the predicate/person as part of supersession. A caller correcting a typo,
 misidentified predicate, wrong historical value, or wrong validity date still uses `correct_record`.
@@ -229,8 +243,11 @@ in-place value correction or by two non-atomic independent writes.
 - `SupersedeFact` tests cover inclusive boundary math, old-value preservation, inherited/explicit confidence and
   sensitivity, invalid/already-ended periods, inactive people, stable same person/predicate, provenance on the new
   fact, and full rollback when either old-close or new-create/audit phase fails.
-- Audit/changelog tests prove supersession emits both mutations atomically and does not masquerade as a
-  `correct_record` value replacement.
+- Audit/changelog tests prove supersession emits exactly the expected two row-level changelog effects with the same
+  non-empty `transaction_id`, while the entity ids/op kinds/changed fields remain distinct and correct. The test also
+  proves the operation does not masquerade as a `correct_record` value replacement.
+- Failure-injection tests prove the shared transaction grouping and both durable mutations roll back together on
+  either phase failure; no one-sided changelog group survives.
 - Regression tests prove M15 doctor and existing `correct_record` behavior remain unchanged and no M19 read mutates
   audit/changelog/domain state.
 - MCP tests cover ordinary disclosure, ambiguity/not-found behavior, `supersede_fact` validation, and explicit
@@ -247,5 +264,7 @@ in-place value correction or by two non-atomic independent writes.
 - Multiple supporting observations remain evidence rather than being collapsed automatically.
 - `correct_record` is for erroneous stored data; historically correct fact changes use the atomic
   `supersede_fact` temporal operation.
+- Both row-level changelog effects of one supersession share one logical `transaction_id` as required by the sync
+  contract; SQLite transaction scope alone is not sufficient grouping metadata.
 - Confidence changes, corrections, merges, and supersession remain explicit approved mutations.
 - A background self-modifying memory process is intentionally outside M19.
