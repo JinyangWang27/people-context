@@ -23,7 +23,7 @@ In scope:
 - a bounded consolidation-context read that gives an agent enough evidence/provenance to reason about duplicate,
   superseding, reinforcing, or contradictory knowledge;
 - a narrow atomic `supersede_fact` application/MCP mutation for a fact that was historically correct but changes at
-  a known effective date;
+  a known effective date, preserving any existing bounded validity endpoint;
 - one shared logical transaction id across every changelog row emitted by that supersession;
 - an agent workflow that proposes structured maintenance actions and requires explicit approval before writes;
 - reuse of M18 source/evidence links when explaining why a trait exists or why a consolidation is proposed;
@@ -39,6 +39,7 @@ Non-goals:
 - deleting source sessions/evidence as a side effect of consolidation;
 - rewriting history to make the current state look cleaner;
 - a generic multi-record “consolidate” mutation or arbitrary batch-write tool;
+- allowing fact supersession to silently widen a previously bounded assertion into an open-ended one;
 - temporal supersession for every record type in M19; affiliation/relationship transitions can be designed later if
   real usage demonstrates the need.
 
@@ -125,17 +126,26 @@ The operation is one atomic unit of work:
 
 1. load the existing fact and require its person to remain active;
 2. require a concrete `effective_from` date that is after any existing `valid_from` and represents a transition
-   while the old fact is still effective; reject inconsistent/already-ended periods rather than guessing;
-3. close the old fact at `effective_from - 1 day` because `ValidityPeriod` endpoints are inclusive;
+   while the old fact is still effective. If the old fact has `valid_to`, require
+   `effective_from <= old.valid_to`; reject inconsistent/already-ended periods rather than guessing;
+3. remember the old fact's original `valid_to`, then close the old fact at `effective_from - 1 day` because
+   `ValidityPeriod` endpoints are inclusive;
 4. preserve the old fact's person, predicate, value, original provenance, and recorded timestamp; only its
    `valid_to` changes;
-5. create a new fact for the same person/predicate with `new_value` and `valid_from=effective_from`; new confidence
-   and sensitivity may be supplied, otherwise inherit the old fact's values;
+5. create a new fact for the same person/predicate with `new_value`, `valid_from=effective_from`, and
+   `valid_to=old_original_valid_to`. New confidence and sensitivity may be supplied, otherwise inherit the old
+   fact's values;
 6. give the new fact normal provenance from the approved supersession call;
 7. mint one logical `transaction_id` for the supersession and pass that exact id to the `audit_mutation` call for
    both the old-row update and the new-row creation;
 8. commit both durable rows, audit entries, and changelog rows in the same unit of work, so neither “old closed, new
    missing” nor “new created, old still open” can commit.
+
+The original validity endpoint is part of the meaning of the assertion. Superseding `[2026-01-01, 2026-12-31]` at
+`2026-07-01` therefore yields an old fact valid through `2026-06-30` and a replacement valid
+`[2026-07-01, 2026-12-31]`; it must **not** silently turn the replacement into an open-ended fact. An originally
+open-ended fact remains open-ended. M19 intentionally inherits the old endpoint rather than adding a second
+`valid_to` argument whose extension/shortening semantics would need a broader temporal-edit policy.
 
 The shared `transaction_id` requirement is independent of SQLite atomicity. `audit_mutation` mints a new id when
 none is supplied, while the sync contract defines `transaction_id` as the grouping key for every row-level effect of
@@ -148,8 +158,9 @@ Implementation may generate the id explicitly before both mutations or use the i
 ordinary audit rows remain whatever the existing audit schema supports; do not add an audit-only transaction field
 merely for this operation.
 
-The use case does not allow changing the predicate/person as part of supersession. A caller correcting a typo,
-misidentified predicate, wrong historical value, or wrong validity date still uses `correct_record`.
+The use case does not allow changing the predicate/person or independently editing the replacement `valid_to` as
+part of supersession. A caller correcting a typo, misidentified predicate, wrong historical value, wrong validity
+endpoint, or other erroneous stored data still uses `correct_record`.
 
 This narrow operation is a temporal domain primitive, not a generic consolidation mutation. It exists so the M19
 maintenance workflow can preserve canonical history without abusing an in-place correction API.
@@ -170,7 +181,7 @@ Examples of proposals:
 
 - correct an erroneous historical fact using `correct_record`;
 - when a historically correct fact changes, use `supersede_fact` so the old row keeps its value with a closed
-  validity period and a new row begins at the effective date;
+  validity period and a new row begins at the effective date while retaining the old assertion's original end date;
 - merge duplicate people only when identity is independently established;
 - add a better-supported trait that supersedes an earlier weak inference;
 - retain two observations because they are separate evidence rather than “deduplicating” history;
@@ -230,8 +241,8 @@ in-place value correction or by two non-atomic independent writes.
 - Maintenance suggestions use stable ids and structured tool arguments, never shell-interpolated names/text.
 - The agent workflow must not infer or “clean up” sensitive characteristics merely for consistency.
 - Reports and proposal generation are read-only; no hidden write occurs during analysis.
-- `supersede_fact` is invoked only after explicit approval and preserves the old historical value rather than
-  rewriting it.
+- `supersede_fact` is invoked only after explicit approval and preserves the old historical value and any original
+  bounded validity endpoint rather than rewriting/widening it.
 
 ## Testing strategy
 
@@ -243,6 +254,9 @@ in-place value correction or by two non-atomic independent writes.
 - `SupersedeFact` tests cover inclusive boundary math, old-value preservation, inherited/explicit confidence and
   sensitivity, invalid/already-ended periods, inactive people, stable same person/predicate, provenance on the new
   fact, and full rollback when either old-close or new-create/audit phase fails.
+- Bounded-period supersession tests pin `effective_from <= old.valid_to`, inheritance of the original endpoint onto
+  the new fact, the one-day replacement case where `effective_from == old.valid_to`, and prove an open-ended old fact
+  remains open-ended rather than a bounded fact becoming open-ended accidentally.
 - Audit/changelog tests prove supersession emits exactly the expected two row-level changelog effects with the same
   non-empty `transaction_id`, while the entity ids/op kinds/changed fields remain distinct and correct. The test also
   proves the operation does not masquerade as a `correct_record` value replacement.
@@ -254,7 +268,8 @@ in-place value correction or by two non-atomic independent writes.
   mutation semantics.
 - CLI tests cover human/JSON timeline output, explicit sensitivity opt-in, stable ids, and no shell construction.
 - Scripted agent-workflow tests prove proposals occur before any mutation, approval is required, erroneous facts use
-  correction, and historically correct changed facts use supersession without overwriting the old value.
+  correction, and historically correct changed facts use supersession without overwriting the old value or widening
+  its original validity endpoint.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
 ## Implementation decisions
@@ -264,6 +279,7 @@ in-place value correction or by two non-atomic independent writes.
 - Multiple supporting observations remain evidence rather than being collapsed automatically.
 - `correct_record` is for erroneous stored data; historically correct fact changes use the atomic
   `supersede_fact` temporal operation.
+- `supersede_fact` inherits the old fact's original `valid_to`; M19 does not add an independent endpoint-edit input.
 - Both row-level changelog effects of one supersession share one logical `transaction_id` as required by the sync
   contract; SQLite transaction scope alone is not sufficient grouping metadata.
 - Confidence changes, corrections, merges, and supersession remain explicit approved mutations.
