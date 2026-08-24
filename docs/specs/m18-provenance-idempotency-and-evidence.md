@@ -10,8 +10,9 @@ create a second copy of the same observations, and a derived trait should be exp
 that motivated it rather than surviving as a free-floating conclusion.
 
 M18 adds a minimal source/session layer that records *that* material was processed without storing the material
-itself, makes repeat ingestion detectable, and lets inferred traits point to durable evidence records. The goal is
-traceability and safe idempotency, not document management.
+itself, makes repeat ingestion detectable, records which durable entity each committed candidate produced, and lets
+inferred traits point to durable evidence records. The goal is traceability and safe idempotency, not document
+management.
 
 ## Scope
 
@@ -20,10 +21,13 @@ In scope:
 - first-class local source/ingestion receipts containing bounded metadata and a content digest, never raw source;
 - hash/extraction consistency so a receipt digest always describes the same stable source snapshot that produced
   the staged candidates;
+- extraction-configuration fingerprints so idempotency distinguishes the same bytes parsed under materially
+  different options/self-identity inputs;
 - atomic association of a staged import batch with one source session;
-- a separate durable record-to-source-session association that preserves existing per-message/event provenance;
-- duplicate-source detection before creating another staging batch;
-- bootstrap continuity for incomplete source sessions and their staging rows;
+- a durable candidate-to-record commit mapping that is also the canonical record-to-source-session association;
+- duplicate-source detection before creating another staging batch plus an explicit non-default reprocessing escape
+  hatch;
+- versioned bootstrap continuity for source sessions, incomplete staging rows, and committed-candidate mappings;
 - CLI inspection of source sessions and their derived records/batches;
 - durable evidence links from traits to observations/interactions that support the same person;
 - deterministic, reviewable behavior across structured-file and agent-extracted candidate workflows.
@@ -44,9 +48,11 @@ Add a small durable source-session/receipt entity. Exact naming is implementatio
 are:
 
 - stable `id`;
-- `source_kind` such as `linkedin`, `ics`, `meeting_transcript`, or another caller-defined bounded label;
-- optional user/caller label for human inspection;
+- bounded `source_kind` such as `linkedin`, `ics`, `meeting_transcript`, or another caller-defined label;
+- optional bounded user/caller label for human inspection;
 - SHA-256 digest of the exact stable source bytes when a source artifact exists;
+- an extraction fingerprint describing the extraction-affecting configuration without persisting raw options/self
+  identities;
 - optional externally supplied stable source id when the caller has one;
 - created/processed timestamp;
 - associated staging batch id when applicable;
@@ -58,11 +64,12 @@ Do **not** store:
 - copied transcript excerpts;
 - attachments;
 - absolute filesystem paths by default;
+- raw self-address/name/sender configuration merely to make an idempotency key;
 - model prompts/responses;
 - credentials or external service tokens.
 
-A digest is an idempotency key, not a privacy transform; documentation must still treat it as metadata about
-personal source material.
+A digest or extraction fingerprint is an idempotency key, not a privacy transform; documentation must still treat
+both as metadata about personal source material.
 
 ## Idempotency policy
 
@@ -87,35 +94,49 @@ version and candidates from another. Rehashing after extraction is mandatory; me
 A source that is continuously changing must fail rather than stage an indeterminate mixture. Do not solve this by
 persisting an unencrypted/raw temporary duplicate of the user's source.
 
-After a stable snapshot/pass exists, the default digest claim, source-session insertion, staging-batch creation,
-source-session/batch association, and candidate-row staging must become visible atomically. Two concurrent processes
-importing the same source kind and digest must not both create default source sessions/batches.
+### Extraction fingerprint
+
+The same bytes can legitimately produce different candidates when extraction-affecting inputs change. WhatsApp is
+the obvious example: changing `self_sender` changes which sender is omitted, and the existing import composition also
+passes self handles/names into extractors.
+
+For structured imports, derive a deterministic `extraction_fingerprint` from a canonical representation of only the
+inputs that can affect extraction for that source. At minimum this includes:
+
+- the normalized explicit `self_sender` where that source uses it;
+- the normalized self-address/self-name identity snapshot actually supplied to the extractor where relevant;
+- a stable per-source extraction-contract revision controlled by People Context, so an intentional future change in
+  parsing semantics can opt into a new claim identity rather than silently reusing an old batch.
+
+Persist only the fingerprint (and the bounded contract-revision identifier if useful for inspection), not the raw
+self identity values used to derive it. Canonicalization and ordering must be deterministic.
+
+The default duplicate claim identity is therefore:
+
+```text
+(source_kind, content_digest, extraction_fingerprint)
+```
+
+not merely `(source_kind, content_digest)`. Retrying the same WhatsApp bytes with a corrected `self_sender` must be
+able to create the correct canonical batch without pretending it is the same extraction as the earlier attempt.
+
+After a stable source snapshot and extraction fingerprint exist, the default claim, source-session insertion,
+staging-batch creation, source-session/batch association, and candidate-row staging become visible atomically. Two
+concurrent processes using the same claim identity must not both create default source sessions/batches.
 
 Use a database uniqueness mechanism plus one transaction (for example `BEGIN IMMEDIATE` around the claim/stage
 write) rather than a check-then-insert race. If another process wins the canonical claim, the loser returns/reports
 the already-existing source session and batch state without creating any new durable row.
 
-An explicit implementation-time override such as `--force` may permit intentional reprocessing, but it must be
-clearly named, non-default, and create a distinct processing session while retaining the same digest. The uniqueness
-scheme must distinguish intentional forced reprocessing from the one canonical duplicate-safe default claim.
+M18 also **requires** an explicit non-default file-import reprocessing control, conceptually:
 
-### Bootstrap and incomplete batches
+```text
+pctx import stage SOURCE PATH --force
+```
 
-M11 intentionally did not transfer device-local `import_staging`, but M18 source sessions make a durable
-source-session → batch reference user-visible. That reference must never be restored without the rows needed to
-review/finish an incomplete batch.
-
-Therefore M18 extends the bootstrap bundle additively to carry source-session state and any associated incomplete
-`import_staging` rows needed to preserve staged/partially committed batches. Restore validates those references and
-restores them atomically with the other source-session state. Older v1 bundles that do not contain the additive M18
-fields remain valid and treat the new collections as empty.
-
-A fully committed source may be represented by its durable source/record associations without retaining staging
-rows once existing lifecycle policy considers them unnecessary. A staged or partially committed source must not be
-restored into a state where duplicate detection suppresses re-staging yet `review_import` cannot find its batch.
-
-Incremental peer replay of staging state remains out of scope; this requirement is for the existing M11 full-bundle
-bootstrap/backup contract.
+`--force` creates a distinct processing session while retaining the same content digest/extraction fingerprint and
+never weakens the canonical default uniqueness rule. It is for intentional reprocessing of exactly the same claim,
+not a workaround for incorrect claim identity.
 
 ### Agent-extracted sources
 
@@ -128,13 +149,17 @@ source and may provide the exact-byte digest when its environment can do so dete
 digest is provenance metadata from that caller; People Context must not imply it independently verified source
 bytes that were never provided.
 
+If an agent workflow supplies an extraction/configuration fingerprint, its semantics must be explicit and bounded;
+otherwise omit it rather than inventing unverifiable configuration state. The structured-import fingerprint above
+is authoritative only for People Context-controlled extraction.
+
 ### Candidate-level duplicates
 
 M18 does not attempt semantic candidate deduplication. Two different sources may legitimately assert the same fact
-or observation. Source-level idempotency prevents accidental reprocessing of one artifact; knowledge consolidation
-is a separate M19 concern.
+or observation. Source-level idempotency prevents accidental reprocessing of one extraction claim; knowledge
+consolidation is a separate M19 concern.
 
-## Provenance propagation
+## Candidate commit mapping and provenance
 
 A source session is an additional durable ingestion anchor; it does **not** replace or repurpose existing
 `Provenance.session` semantics.
@@ -143,22 +168,81 @@ Existing import behavior that stores source-local message/event identifiers in `
 contract and remains unchanged. In particular, email message ids, calendar event ids, and any existing candidate
 `message_id`-derived session values retain their current meaning.
 
-Add the smallest explicit record-to-source-session association needed to trace each committed candidate to its
-source session, conceptually keyed by durable record type/id plus `source_session_id`. That association is written
-atomically with the corresponding committed record and participates in normal durability/sync policy. This avoids
-parallel provenance fields on every domain model while preserving message-level traceability.
+M18.1 adds the smallest durable commit mapping needed to preserve both provenance and dependency resolution across
+separate commit invocations. Conceptually each committed staging candidate records:
 
-The invariant is:
+```text
+candidate_id
+batch_id
+source_session_id
+entity_type
+entity_id
+```
+
+Exact table/port naming is implementation-time. The mapping has these invariants:
+
+- one committed candidate resolves deterministically to the durable primary entity returned/affected by its normal
+  write use case;
+- the mapping and the candidate's transition to `committed` are written in the same unit of work as that durable
+  mutation, so a committed status can never become visible without its output mapping;
+- matched/existing entities are legal mapping targets when the existing write contract updates/reuses them;
+- retrying an already committed candidate uses the stored mapping rather than name/text heuristics;
+- the mapping remains durable even if completed staging rows are eventually cleaned up;
+- `source_session_id` makes this same relation the canonical record-to-source-session association used by source
+  inspection, avoiding a second parallel provenance table.
+
+Pre-M18 legacy batches that never had a source session are not guessed/backfilled from ambiguous audit history. New
+M18-tracked batches must always satisfy the mapping invariant from the first release of source sessions.
+
+The resulting provenance model is:
 
 - `source` continues to describe the import/extraction surface;
 - existing `Provenance.session` values keep their existing source-local semantics;
-- each record committed from an M18-tracked batch additionally has one durable source-session association;
-- source inspection can traverse that association without storing the raw source.
+- every committed candidate in an M18-tracked batch has a durable candidate→entity→source-session mapping;
+- source inspection and later same-batch dependencies traverse that mapping without storing the raw source.
+
+## Bootstrap bundle versioning
+
+The bootstrap sync bundle is intentionally strict: nested models forbid unknown fields and older readers cannot
+ignore additions. M18 therefore **does not add fields to bundle version 1**.
+
+### M18.1 — bundle version 2
+
+M18.1 introduces `people-context-sync-bundle` **version 2**. The exporter emits v2 and the restorer accepts both the
+released v1 shape and the new strict v2 shape.
+
+V2 carries the new source-session primary state plus the operational rows required to keep an incomplete batch
+usable after bootstrap:
+
+- source sessions/claim metadata;
+- staging rows for staged or partially committed M18-tracked batches;
+- candidate commit mappings for any candidates already committed from those batches.
+
+Restore validates source-session → batch → staging/mapping references and restores them atomically. A partially
+committed source must not arrive in a state where duplicate detection suppresses re-staging, `review_import` cannot
+find pending candidates, or a committed candidate has lost the durable entity id needed by a later dependency.
+
+V1 bundles remain valid inputs and simply contain no M18 source-session state. Existing v1 readers continue to reject
+v2 as designed rather than accidentally accepting a document they do not understand.
+
+M18.2 adds source-inspection/read surfaces over the same v2 state and does not change the bootstrap document shape.
+
+### M18.3 — bundle version 3
+
+M18.3 adds durable trait-evidence relations, which are additional primary state and therefore require another strict
+bundle version. The exporter emits **version 3** after M18.3; the restorer accepts v1, v2, and v3. V3 adds the
+evidence-relation collection to the v2 shape and validates it fail-closed.
+
+Do not predeclare future fields in v2 merely to avoid a version increment: a bundle version means the reader fully
+understands the semantics of every field it accepts.
+
+Incremental peer replay of staging state remains out of scope; these requirements apply to the existing full-bundle
+bootstrap/backup contract.
 
 ## Trait evidence links
 
-Traits are inferred state and should be able to reference durable evidence. Add a narrow evidence relation from a
-trait to one or more existing observations/interactions.
+Traits are inferred state and should be able to reference durable evidence. M18.3 adds a narrow evidence relation
+from a trait to one or more existing observations/interactions.
 
 Conceptually:
 
@@ -181,18 +265,22 @@ Requirements:
   disclosure/sensitivity rules;
 - `evidence_note` remains useful human-readable context and is not removed merely because evidence ids exist.
 
-For same-batch agent extraction, a staged trait may reference staged observation/interaction candidate ids. Commit
-must resolve those to durable ids only after the evidence records and trait subject resolve. It then applies the
-same subject-ownership rule to the resolved records. If any accepted required evidence cannot resolve or belongs to
-a different person, the trait remains unresolved rather than dropping the link or guessing.
+For same-batch agent extraction, a staged trait may reference staged observation/interaction **candidate ids**.
+Commit resolves those references through the M18.1 candidate commit mapping:
+
+- evidence committed in an earlier partial commit resolves through its persisted candidate→entity mapping;
+- evidence committed earlier in the current invocation creates its mapping before dependent trait resolution;
+- the resolved durable entity must then pass the same type, active-state, and subject-ownership checks;
+- if required accepted evidence is not yet resolvable, has no valid mapping, or belongs to a different person, the
+  trait remains unresolved rather than dropping the link or guessing.
 
 Do not allow a trait to cite another trait as evidence in M18; this keeps inference grounded in observed/interacted
 material and avoids recursive belief chains.
 
 ## Source inspection
 
-Expose local inspection sufficient to answer “where did this come from?” without becoming a document browser.
-Conceptual CLI:
+M18.2 exposes local inspection sufficient to answer “where did this come from?” without becoming a document
+browser. Conceptual CLI:
 
 ```text
 pctx sources [--json]
@@ -201,37 +289,38 @@ pctx source show SOURCE_SESSION_ID [--json]
 
 A source detail may include:
 
-- id, kind, optional label, digest, timestamps/status;
+- id, kind, optional label, digest/extraction fingerprint, timestamps/status;
 - staging batch id;
 - candidate counts/status summaries;
-- committed record ids/types derived from the source.
+- committed candidate ids and durable record ids/types from the candidate commit mapping.
 
-It never returns raw source content. Stable JSON should be versioned from first release if documented for agents.
-Human output may render concise provenance paths.
+It never returns raw source content or raw extraction self-identity configuration. Stable JSON is versioned from
+first release if documented for agents. Human output may render concise provenance paths.
 
 ## Migration needs
 
 Expected additive migration(s):
 
-- source-session/receipt table with a concurrency-safe canonical digest claim for default processing;
-- association from staging batch/rows to source session;
-- durable record-to-source-session relation preserving existing `Provenance.session` meaning;
-- trait-evidence relation table with foreign keys/indexes appropriate to supported lifecycle behavior.
+- M18.1: source-session/receipt table with a concurrency-safe canonical claim over source kind + content digest +
+  extraction fingerprint, batch association, and durable candidate commit mapping;
+- M18.3: trait-evidence relation table with foreign keys/indexes appropriate to supported lifecycle behavior.
 
 Use the next free migration number at implementation time. Every new durable write participates in the established
 atomic audit/changelog seam unless the row is explicitly operational staging state under the documented bootstrap
-policy. Source sessions, record-source associations, and trait-evidence metadata that affect user-visible provenance
+policy. Source sessions, candidate commit mappings, and trait-evidence metadata that affect user-visible provenance
 are replicable primary state. Incomplete staging remains operational state but is carried in full bootstrap bundles
-so source-session/batch references cannot become dangling.
+so durable source/batch/dependency references cannot become dangling.
 
 ## CLI / MCP surface changes
 
 Expected additive changes:
 
-- M16 file staging reports duplicate-source state and source-session id;
-- M17 candidate staging optionally accepts source-session metadata/digest;
-- local source list/show CLI;
-- trait/context representations may gain additive evidence metadata;
+- M18.1 file staging reports duplicate-source state and source-session id and adds explicit `--force` reprocessing;
+- M17 candidate staging may optionally accept bounded source-session metadata/digest;
+- M18.2 adds local source list/show inspection over candidate commit mappings;
+- trait/context representations may gain additive evidence metadata in M18.3;
+- sync bundle emission advances to v2 in M18.1 and v3 in M18.3 while restore remains backward-compatible with
+  prior supported versions;
 - no raw-source retrieval tool.
 
 Do not break existing import envelopes; add fields only where allowed by the M12 compatibility promise or introduce
@@ -241,9 +330,11 @@ meaning.
 ## Security and privacy
 
 - Source receipts are metadata about personal material and must be treated as sensitive local state.
-- A SHA-256 digest is not anonymization and must not be presented as such.
+- SHA-256 digests/extraction fingerprints are not anonymization and must not be presented as such.
 - Digest/source attribution is accepted only after stable snapshot verification for file imports; a TOCTOU race
   must not attach digest A to candidates parsed from bytes B.
+- Raw self identities/options used to derive an extraction fingerprint are not copied into the receipt merely for
+  idempotency.
 - Absolute source paths are not persisted by default because they can disclose usernames, organizations, project
   names, and machine layout.
 - Evidence retrieval respects existing sensitivity/disclosure gates; a trait must not reveal restricted evidence to
@@ -256,37 +347,46 @@ meaning.
 
 ## Testing strategy
 
-- Migration tests cover fresh and upgraded databases, FK integrity, indexes, and bootstrap/sync compatibility.
-- Exact-byte digest tests cover deterministic hashing, same-source duplicate detection, source-kind scoping, and
-  intentional distinct forced sessions where supported.
+- Migration tests cover fresh and upgraded databases, FK integrity, indexes, and sync compatibility.
+- Exact-byte digest tests cover deterministic hashing, same-claim duplicate detection, source-kind scoping, and
+  intentional distinct forced sessions.
+- Extraction-fingerprint tests prove the same WhatsApp bytes with different effective `self_sender`/self identity
+  configuration do not alias to the same canonical claim, while equivalent normalized configuration does.
 - Snapshot-consistency tests prove byte-capable importers hash and parse the exact same immutable bytes.
 - Concurrent-modification tests change a source between/during hash and extraction and prove no durable receipt or
   staging batch is created from mismatched bytes. Include the path-only `mbox` case and assert stable rehash/retry or
   safe failure behavior.
-- Concurrency tests run two staging attempts for the same stable source/digest and prove exactly one canonical
+- Concurrency tests run two staging attempts for the same stable claim identity and prove exactly one canonical
   default source session/batch is created; the losing attempt observes the winner's state.
-- Structured and agent-extracted import tests prove one batch/source association and no duplicate batch by default.
+- Candidate commit mapping tests prove entity ids are persisted atomically with durable writes/status transitions,
+  already-committed retries resolve through the mapping, and mapping rows survive staging cleanup policy.
+- Bundle tests pin strict v1/v2 compatibility at M18.1, v1/v2/v3 compatibility at M18.3, reject unknown fields per
+  declared version, and prove each exporter emits only its current version.
 - Bootstrap tests cover staged and partially committed source sessions, preserving reviewable/committable staging
-  rows and source-session/batch references; older bundles without M18 fields still restore.
-- Provenance tests prove every committed candidate traces to the correct source session while existing
+  rows, candidate commit mappings, and source-session/batch references.
+- Provenance tests prove every committed M18-tracked candidate traces to the correct source session while existing
   message/event-derived `Provenance.session` values remain byte/semantically unchanged.
-- Evidence-link tests cover same-batch observation/interaction resolution, persisted-id references, wrong-person
-  observations, interactions that omit the trait subject, missing/unaccepted evidence, lifecycle edge cases, stable
-  ordering, and sensitivity filtering.
-- Source list/show tests contain only bounded metadata/ids and never path/body sentinels.
-- Sync/bootstrap/export tests explicitly account for the new durable state according to the chosen replication
-  policy.
+- Evidence-link tests cover evidence committed in an earlier partial commit and in the current invocation,
+  persisted candidate mappings, wrong-person observations, interactions that omit the trait subject,
+  missing/unaccepted evidence, lifecycle edge cases, stable ordering, and sensitivity filtering.
+- Source list/show tests contain only bounded metadata/ids and never path/body/raw-self-configuration sentinels.
+- Sync/bootstrap/export tests explicitly account for the new durable state according to the versioned policy.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
 ## Implementation decisions
 
-- Idempotency is source-level first; semantic record consolidation is intentionally left to M19.
+- Idempotency is source/extraction-claim level first; semantic record consolidation is intentionally left to M19.
 - A source digest and its extracted candidates always come from one verified stable snapshot/pass; path reopen races
   are detected and discarded before staging.
-- Duplicate claiming plus staging publication is atomic; check-then-insert races are not permitted.
-- Existing per-message/event `Provenance.session` semantics are preserved; source-session traceability uses a
-  separate durable association.
-- Full bootstrap preserves incomplete staging needed by durable source-session references.
+- Extraction-affecting configuration participates in claim identity through a deterministic fingerprint; raw self
+  identity values are not stored merely to achieve this.
+- Duplicate claiming plus staging publication is atomic; check-then-insert races are not permitted, and `--force`
+  is the explicit escape hatch for intentional identical reprocessing.
+- Candidate→entity commit mapping is durable from M18.1 and doubles as the record→source-session provenance seam,
+  allowing later partial commits to resolve already-committed dependencies without guessing.
+- Existing per-message/event `Provenance.session` semantics are preserved.
+- Strict bootstrap additions advance document versions: v2 for M18.1 source/staging/commit-map state and v3 for
+  M18.3 trait evidence; older supported versions remain readable.
 - Trait evidence is grounded only in observations/interactions involving the same person in M18.
 - Automatic source rollback and automatic confidence recomputation remain deferred until real usage demonstrates
   safe semantics.
