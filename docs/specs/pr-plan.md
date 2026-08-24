@@ -54,8 +54,9 @@ Check the matching box only in the PR that delivers it.
   machine surfaces rather than creating a second lifecycle.
 - M17.1 → M18.3: durable trait evidence links target observation/interaction records produced by the expanded
   candidate vocabulary.
-- M18.1 → M18.2: source-session persistence/idempotency exists before commit provenance and inspection consume it.
-- M18.2/M18.3 → M19.1/M19.2: timeline and consolidation can explain source provenance and evidence when present.
+- M18.1 → M18.2: durable source sessions and candidate→record mappings exist before source inspection consumes
+  them.
+- M18.1/M18.3 → M19.1/M19.2: timeline and consolidation can explain source provenance and evidence when present.
 
 ## M8 — Distribution & reach
 
@@ -294,64 +295,78 @@ Check the matching box only in the PR that delivers it.
 
 ## M17 — Agent-assisted knowledge extraction
 
-- [ ] **M17.1 — Expand strict candidates to observation, trait, and relationship**
+- [ ] **M17.1 — Expand and bound strict candidates to observation, trait, and relationship**
   - **Scope:** Add strict candidate models/staging dependency rewriting and `CommitImport` support through existing
-    `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases.
+    `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases; bound the new MCP extraction forms in this
+    same PR.
   - **Acceptance:** staged traits require explicit confidence and non-blank concise evidence note; relationship
     candidates use batch-local person refs and exactly preserve `SetRelationship` semantics—known vocabulary/
     synonyms canonicalize, normalized syntactically valid unknown types remain legal uncategorized edges, and only
-    blank/non-word values fail; people commit/resolve before dependants; unresolved refs remain unresolved; all
-    durable writes retain normal audit/changelog/provenance; existing candidate types/envelopes remain
-    additive-compatible. New M17 candidate fields carry the binding string limits in the milestone spec.
-  - **Out:** source receipts/evidence tables, raw-text parsing, LLM/runtime dependency, automatic commit/confidence.
+    blank/non-word values fail. New M17 candidate fields carry the binding string limits in the milestone spec.
+    Any MCP batch containing an M17 candidate is capped at 500 total candidates and its normalized `source` label at
+    128 characters, with rejection before staging/no payload echo; legacy-only MCP batches retain their released
+    accepted shape. People commit/resolve before dependants; unresolved refs remain unresolved; all durable writes
+    retain normal audit/changelog/provenance; existing candidate envelopes remain additive-compatible.
+  - **Out:** source receipts/evidence tables, raw-text parsing, LLM/runtime dependency, automatic commit/confidence,
+    retroactive global caps on legacy-only MCP staging.
 
 - [ ] **M17.2 — Add bounded agent candidate CLI and unstructured-source workflow**
   - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` and extend the packaged
     agent skill for transcript/note extraction.
   - **Acceptance:** input is candidate JSON, never raw transcript; reject >1 MiB input, >500 candidates, >8 KiB
-    generic CLI strings, and the tighter M17 field limits before staging; malformed/extra fields fail closed and
-    rejected payloads are never echoed. MCP requests using any M17 candidate type are capped at 500 candidates and
-    use the new field bounds, while legacy-only MCP candidate batches retain their released accepted-shape behavior.
-    Workflow distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for identities,
-    discourages speculative sensitive inference/verbatim evidence, stages only, and requires explicit later commit.
+    generic CLI strings, >128-character source labels, and the tighter M17 field limits before staging;
+    malformed/extra fields fail closed and rejected payloads are never echoed. The MCP count/source/new-field bounds
+    already shipped in M17.1 remain unchanged. Workflow distinguishes explicit fact vs observation vs inferred
+    trait, uses candidate matching for identities, discourages speculative sensitive inference/verbatim evidence,
+    stages only, and requires explicit later commit.
   - **Out:** model invocation, prompt storage, transcript persistence, automatic review/commit, source idempotency,
-    retroactive global size/count narrowing of legacy-only MCP staging.
+    retroactive global size/count/source narrowing of legacy-only MCP staging.
 
 ## M18 — Provenance, idempotency & evidence
 
-- [ ] **M18.1 — Add source receipts and duplicate-safe stable-snapshot staging**
-  - **Scope:** Add the next-free migration and ports/app/SQLite support for minimal source sessions/receipts; ensure
-    each file digest and extraction describe one verified stable snapshot; associate one staging batch with one
-    source session; extend M11 bootstrap bundles additively with incomplete source-session staging state.
+- [ ] **M18.1 — Add durable source claims, commit mappings, and bootstrap v2**
+  - **Scope:** Add the next-free migration and ports/app/SQLite support for source sessions plus durable
+    candidate→record commit mappings; ensure each file digest/extraction describes one verified stable snapshot;
+    define extraction-configuration fingerprints; add explicit `pctx import stage ... --force`; advance strict full
+    bootstrap export to v2 while retaining v1 restore support.
   - **Acceptance:** byte-capable importers hash and parse the same immutable bytes; path-only `mbox` verifies
     identity/metadata plus pre/post SHA-256 and discards/retries or fails safely if the source changes; no durable
-    receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is created. Receipt stores bounded
-    kind/optional label/digest/timestamps/batch metadata only—no body/default absolute path; default source-kind+
-    digest claim + source-session insert + batch/candidate staging publish atomically under a uniqueness mechanism
-    so concurrent importers create one canonical batch; intentional forced reprocessing is explicitly distinct;
-    agent candidate staging may supply optional digest metadata; no-digest staging still works; staged/partially
-    committed bundles restore with their reviewable staging rows and older bundles without M18 fields remain valid.
-  - **Out:** semantic candidate dedup, commit provenance propagation, trait evidence, source rollback, folder watch,
-    incremental peer replication of staging state.
+    receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is created. Canonical duplicate
+    identity is `(source_kind, content_digest, extraction_fingerprint)`, where the fingerprint deterministically
+    covers extraction-affecting normalized self inputs/`self_sender` and a per-source extraction-contract revision
+    without persisting raw self values. Claim + source session + batch/candidate publication are atomic under a
+    uniqueness mechanism; `--force` creates a distinct non-default processing session for an identical claim.
+    Every committed candidate in an M18-tracked batch atomically records candidate id/batch/source-session/entity
+    type/entity id with its durable mutation and committed status, including matched/reused entities; committed
+    retries use that mapping rather than heuristics. Export emits strict sync-bundle v2; restore accepts v1/v2. V2
+    carries source sessions, incomplete staging rows, and candidate commit mappings needed to keep partial batches
+    reviewable and dependency-resolvable after bootstrap; unknown fields still fail per declared version.
+  - **Out:** semantic candidate dedup, trait evidence, source rollback, folder watch, incremental peer replication of
+    staging state, raw extraction-option persistence.
 
-- [ ] **M18.2 — Propagate source provenance and expose source inspection**
-  - **Scope:** Add a durable record-to-source-session association for every batch-committed record while preserving
-    existing `Provenance.session` values; add local `sources` / `source show` inspection with versioned JSON if
-    agent-facing.
-  - **Acceptance:** each committed candidate has one durable source-session anchor without raw content; existing
-    message/event-id `Provenance.session` semantics remain unchanged; association writes are atomic with record
-    commit and sync/bootstrap-aware; inspection shows ids, kind/digest/status/batch and derived record summaries/ids
-    only; no raw source/path leak; partial/idempotent commits remain understandable.
-  - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation.
+- [ ] **M18.2 — Expose source provenance and inspection over commit mappings**
+  - **Scope:** Add local `sources` / `source show` inspection and any narrow app/read ports needed to traverse M18.1
+    candidate→entity→source-session mappings while preserving existing `Provenance.session` meanings.
+  - **Acceptance:** existing message/event-id `Provenance.session` semantics remain byte/semantically unchanged;
+    inspection shows bounded ids, kind/digest/extraction fingerprint/status/batch and committed candidate/record
+    summaries only; no raw source/path/self-configuration leak; mappings remain usable after staging cleanup policy;
+    partial/idempotent commits are understandable. This PR does not change the strict v2 bootstrap shape introduced
+    by M18.1.
+  - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
+    second parallel record-source provenance table.
 
-- [ ] **M18.3 — Ground traits in durable evidence records**
-  - **Scope:** Add the next-free additive trait-evidence relation and support observation/interaction evidence ids,
-    including same-batch staged evidence resolution from M17 candidates.
-  - **Acceptance:** only active supported evidence entity types; an observation evidence row must belong to the trait
-    subject and an interaction must include that subject; stable id ordering; accepted trait remains unresolved when
-    required accepted evidence cannot resolve or resolves to another person's evidence; persisted-id and same-batch
-    subject-validation tests; retrieval respects sensitivity and never exposes restricted evidence through a
-    visible trait; `evidence_note` remains additive human context; sync/bootstrap/lifecycle tests cover the relation.
+- [ ] **M18.3 — Ground traits in durable evidence records and bootstrap v3**
+  - **Scope:** Add the next-free additive trait-evidence relation and support observation/interaction evidence
+    candidate ids, including evidence committed in an earlier partial commit; advance strict bootstrap export to v3
+    while retaining v1/v2 restore support.
+  - **Acceptance:** evidence candidate ids resolve through the M18.1 candidate commit mapping whether committed in a
+    prior invocation or earlier in the current one; only active supported durable evidence types are legal. An
+    observation must belong to the trait subject and an interaction must include that subject; stable id ordering;
+    accepted trait remains unresolved when required accepted evidence has no valid mapping/cannot resolve/resolves to
+    another person's evidence. Persisted-id, earlier-partial-commit, and same-invocation tests are required;
+    retrieval respects sensitivity and never exposes restricted evidence through a visible trait; `evidence_note`
+    remains additive human context. Export emits strict sync-bundle v3 with trait-evidence relations; restore accepts
+    v1/v2/v3 and validates each version fail-closed.
   - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation.
 
 ## M19 — Knowledge consolidation & temporal views
@@ -372,9 +387,11 @@ Check the matching box only in the PR that delivers it.
     distinct supporting evidence; `correct_record` remains for erroneous data and never overwrites an historically
     correct fact merely because a newer value is true. `supersede_fact` preserves old person/predicate/value/
     provenance, closes old inclusive validity at `effective_from - 1 day`, creates the new same-person/predicate fact
-    at `effective_from`, and audits/changelogs both atomically with rollback on either phase failure. Agent explains
-    proposals and waits for explicit approval before supersession/correction/merge/other mutations; no report/read
-    path writes audit/changelog/domain state; scripted approval/correction-vs-supersession regression passes.
+    at `effective_from`, and audits/changelogs both atomically with rollback on either phase failure. Both row-level
+    changelog effects share one non-empty logical `transaction_id` passed through `audit_mutation`, and tests assert
+    that grouping explicitly. Agent explains proposals and waits for explicit approval before supersession/
+    correction/merge/other mutations; no report/read path writes audit/changelog/domain state; scripted approval/
+    correction-vs-supersession regression passes.
   - **Out:** autonomous belief updater, confidence-by-count formula, background maintenance daemon, required semantic
     vector clustering, generic consolidation/batch mutation, automatic merge/correction, supersession for every
     record type.
