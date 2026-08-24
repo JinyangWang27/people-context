@@ -25,6 +25,7 @@ In scope:
   audit/changelog seam;
 - require stronger evidence metadata for inferred traits than direct `record_trait` writes require;
 - expose strict candidate staging through the CLI for agents that do not use MCP;
+- add bounded resource contracts for the new CLI surface and newly accepted M17 candidate forms;
 - extend the packaged agent usage skill with an unstructured-source extraction workflow;
 - preserve source text outside People Context and never add an internal model/API dependency.
 
@@ -36,7 +37,8 @@ Non-goals:
 - storing transcript/message bodies, verbatim evidence passages, embeddings of raw sources, or attachments;
 - psychiatric diagnosis, demographic inference, or speculative sensitive-trait inference;
 - automatic trait confidence recomputation or cross-source consolidation (M19);
-- source receipts/idempotency/evidence edges (M18).
+- source receipts/idempotency/evidence edges (M18);
+- silently narrowing the released legacy-only MCP `stage_candidates` contract merely to add M17 candidate types.
 
 ## Epistemic model
 
@@ -52,7 +54,9 @@ The farther a candidate moves from explicit assertion toward inference, the stro
 requirements become. One observed behavior must not silently become a high-confidence personality claim.
 
 Relationship statements are also first-class knowledge rather than generic facts: “Sarah manages Bob”, “Alice is
-John's sister”, or “Mohsen reports to Quinn” should use the canonical relationship vocabulary and graph semantics.
+John's sister”, or “Mohsen reports to Quinn” should use the existing relationship normalization and graph semantics.
+Known vocabulary gains category/direction/inverse behavior; legal unknown relationship types remain supported as
+uncategorized edges under the existing write contract.
 
 ## Candidate vocabulary
 
@@ -115,8 +119,17 @@ Conceptual shape:
 ```
 
 Both refs are batch-local person refs. Staging resolves/matches person candidates as it already does, and commit
-uses the canonical relationship vocabulary, synonym/inverse handling, endpoint ordering, and write semantics from
-M7. Unknown/invalid relationship types fail rather than being stored as unvalidated free text.
+uses the existing M7 relationship contract through `SetRelationship`:
+
+- normalize free-form type text to the existing stable snake-case representation;
+- resolve registered vocabulary/synonyms and apply inverse/symmetric endpoint semantics when known;
+- preserve a normalized unknown but syntactically valid type as a legal `uncategorized` relationship;
+- reject only values that are blank or normalize to no word characters under the existing validation rule.
+
+M17 must **not** require a relationship type to be pre-registered in the canonical vocabulary. Doing so would
+narrow the existing `SetRelationship` contract and make currently legal uncategorized edges impossible to import.
+The example `manager` therefore remains legal even if it does not resolve to a seeded synonym; callers that want
+canonical `manages`/`reports_to` semantics should use a registered spelling/synonym.
 
 If the current relationship write contract has no confidence field, omit it from the durable write rather than
 changing relationship semantics solely for extraction; the staged schema may omit confidence too. Implementation
@@ -159,7 +172,33 @@ pctx import stage-candidates --source SOURCE --input - [--json]
 ```
 
 The input is **candidate JSON**, not raw meeting text. `-` means read candidate JSON from stdin. The JSON validates
-against the same strict candidate models used by MCP `stage_candidates`; unknown fields/types fail closed.
+against the same candidate vocabulary used by MCP staging; unknown fields/types fail closed.
+
+### Resource bounds
+
+The new CLI surface is bounded from its first release. Binding limits are:
+
+- at most **1 MiB** of UTF-8 JSON input before decoding/parsing;
+- at most **500 candidates** per staging request;
+- no individual string value accepted by this CLI may exceed **8 KiB**;
+- newly introduced observation `text` is capped at **4 KiB**;
+- newly introduced trait `value` and `evidence_note` are each capped at **2 KiB**;
+- newly introduced relationship type and batch-local reference strings are each capped at **256 characters**;
+- the CLI `--source` label is capped at **128 characters**.
+
+Reject limit violations before durable staging and report only bounded diagnostics; never echo the rejected payload.
+Where practical, the byte limit is enforced while reading rather than after allocating an unbounded input buffer.
+These are safety/resource limits, not suggested target sizes; normal distilled candidates should be far smaller.
+
+The same field limits are part of the **new M17 candidate models** accepted through MCP. Any MCP `stage_candidates`
+request containing at least one M17 candidate type is also capped at 500 total candidates so the newly introduced
+extraction path is bounded. A legacy-only MCP batch containing only the four pre-M17 candidate types retains its
+released accepted-shape behavior; M17 does not retroactively impose a new batch/string cap on that old surface.
+If the project later wants global caps for legacy MCP staging too, treat that as an explicit compatibility/security
+hardening decision rather than smuggling it into this additive candidate milestone.
+
+This split is deliberate: the new CLI can be safe-by-construction, and all newly accepted M17 forms are bounded,
+without silently narrowing pre-existing integrations.
 
 The command stages only. Review and commit continue through the M16 commands:
 
@@ -204,29 +243,38 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 
 ## CLI / MCP surface changes
 
-- MCP `stage_candidates` accepts three additive candidate types;
+- MCP `stage_candidates` accepts three additive, bounded candidate types;
+- requests that use an M17 candidate type are bounded to 500 total candidates, while legacy-only MCP batches retain
+  their pre-M17 accepted-shape behavior;
 - `review_import` / `commit_import` response envelopes remain unchanged;
-- new CLI `pctx import stage-candidates ...` composes the existing staging use case;
+- new bounded CLI `pctx import stage-candidates ...` composes the existing staging use case;
 - no new raw-text import tool and no model execution tool.
 
 ## Security and privacy
 
 - Raw unstructured source material is never persisted by People Context.
 - Candidate JSON itself contains distilled personal information and must be treated as sensitive local data.
+- Byte/count/string limits prevent the new agent-facing surface from becoming an accidental transcript archive or
+  unbounded-memory sink.
 - Trait evidence notes must be concise derivations, not hidden transcript archives.
 - Agents never bypass the review gate merely because they performed the extraction.
-- The CLI stdin path validates JSON before staging and never evaluates code or invokes a shell.
+- The CLI stdin path validates bounded JSON before staging and never evaluates code or invokes a shell.
 - All candidate writes retain existing sensitivity, provenance, audit, and changelog behavior.
 
 ## Testing strategy
 
 - Strict-model tests cover valid/invalid observation, trait, and relationship candidates and reject extra fields.
+- Relationship tests cover seeded/synonym canonicalization **and** a syntactically valid unknown type remaining a
+  legal uncategorized edge; blank/non-word relationship types fail exactly as `SetRelationship` does.
 - Trait candidate tests require explicit confidence and non-blank evidence note.
+- Boundary tests pin every new M17 string limit and the 500-candidate cap for MCP requests using M17 candidates.
 - Staging tests verify person-ref rewriting/matching for each new dependent type.
-- Commit tests cover known/new/matched people, unresolved refs, relationship canonicalization, and all new writes
-  flowing through existing audited use cases.
-- Regression tests pin all four existing candidate types and response envelopes unchanged.
-- CLI tests cover file/stdin candidate JSON, malformed JSON, unknown candidate types, `--json`, and stdout purity.
+- Commit tests cover known/new/matched people, unresolved refs, relationship canonicalization/uncategorized behavior,
+  and all new writes flowing through existing audited use cases.
+- Regression tests pin all four existing candidate types and response envelopes unchanged, including a legacy-only
+  MCP staging fixture proving M17 did not retroactively apply the new count/string limits to that contract.
+- CLI tests cover file/stdin candidate JSON, malformed JSON, unknown candidate types, >1 MiB rejection, >500
+  candidates, oversized generic/new-type strings, `--json`, and stdout purity.
 - Skill/workflow tests or scripted transcript fixtures prove stage-only behavior and explicit commit approval.
 - Raw-source sentinels must be absent from staged candidates except for deliberately distilled test values.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
@@ -235,7 +283,10 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 
 - People Context remains model-agnostic; semantic extraction belongs to the calling agent.
 - Observation and trait candidates preserve the existing fact/observation/trait epistemic distinction.
+- Relationship candidates preserve legal uncategorized relationship types instead of narrowing the existing write
+  contract to registered vocabulary only.
+- New CLI/M17 candidate forms are resource-bounded; legacy-only MCP candidate behavior is not silently narrowed.
 - Relationship candidates are included now because unstructured conversations routinely reveal graph edges and the
-  canonical relationship subsystem already exists.
+  relationship subsystem already exists.
 - Source receipts, duplicate-source detection, durable evidence links, and consolidation are intentionally deferred
   to M18/M19 rather than overloading the candidate-vocabulary change.
