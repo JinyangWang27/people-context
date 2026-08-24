@@ -30,6 +30,8 @@ In scope:
 - versioned bootstrap continuity for source sessions, incomplete staging rows, and committed-candidate mappings;
 - CLI inspection of source sessions and their derived records/batches;
 - durable evidence links from traits to observations/interactions that support the same person;
+- explicit bounded batch-local evidence references so one staged trait can address observation/interaction
+  candidates before People Context allocates canonical candidate ids;
 - deterministic, reviewable behavior across structured-file and agent-extracted candidate workflows.
 
 Non-goals:
@@ -93,6 +95,10 @@ The second pattern is a compatibility seam for path-only parsing, not permission
 version and candidates from another. Rehashing after extraction is mandatory; metadata-only checks are insufficient.
 A source that is continuously changing must fail rather than stage an indeterminate mixture. Do not solve this by
 persisting an unencrypted/raw temporary duplicate of the user's source.
+
+M18 retains M16's file/candidate process budgets while adding the stronger snapshot guarantee. Stable-snapshot
+verification must never bypass or double the bounded read budget by repeatedly loading an oversized source into
+memory.
 
 ### Extraction fingerprint
 
@@ -265,14 +271,48 @@ Requirements:
   disclosure/sensitivity rules;
 - `evidence_note` remains useful human-readable context and is not removed merely because evidence ids exist.
 
-For same-batch agent extraction, a staged trait may reference staged observation/interaction **candidate ids**.
-Commit resolves those references through the M18.1 candidate commit mapping:
+### Addressable same-batch evidence
+
+A calling agent cannot know staging-row ids before `CandidateStager` allocates them, so M18.3 must not require callers
+to predict or recover canonical candidate ids. Instead it extends the strict candidate vocabulary additively with a
+small caller-addressable dependency language:
+
+- observation and interaction candidates may include optional `evidence_ref`: a non-blank opaque batch-local string
+  of at most **256 characters**;
+- a trait candidate may include `evidence_refs`: up to **32** unique batch-local strings, each at most 256
+  characters, referring to observation/interaction `evidence_ref` values in the same request;
+- a trait candidate may separately include `evidence_ids`: up to **32** unique durable observation/interaction ids
+  already present in the store;
+- the combined number of `evidence_refs` + `evidence_ids` on one trait is at most **32**.
+
+`evidence_ref` values are exact opaque tokens after surrounding-whitespace rejection; do not case-fold or otherwise
+normalize them into identity semantics. They must be unique among evidence-capable candidates in one batch. Duplicate
+or unknown `evidence_refs`, a ref targeting an unsupported candidate type, blank refs, overlong refs, or an over-budget
+trait fail strict validation before staging.
+
+During staging, build the evidence-ref map before writing rows. Mirror the existing person-ref rewrite pattern:
+
+1. allocate canonical staging candidate ids for all candidates;
+2. map each caller `evidence_ref` to the allocated observation/interaction candidate id;
+3. remove caller-local `evidence_ref` / `evidence_refs` from the persisted staged candidate representation;
+4. persist the trait's rewritten canonical `evidence_candidate_ids` plus any explicit durable `evidence_ids`.
+
+This gives the caller one self-contained request format while keeping canonical candidate ids authoritative after
+staging. It does not add an append-to-batch API or expose internal id allocation.
+
+For same-batch agent extraction, commit resolves rewritten `evidence_candidate_ids` through the M18.1 candidate
+commit mapping:
 
 - evidence committed in an earlier partial commit resolves through its persisted candidate→entity mapping;
 - evidence committed earlier in the current invocation creates its mapping before dependent trait resolution;
-- the resolved durable entity must then pass the same type, active-state, and subject-ownership checks;
-- if required accepted evidence is not yet resolvable, has no valid mapping, or belongs to a different person, the
-  trait remains unresolved rather than dropping the link or guessing.
+- explicit durable `evidence_ids` are loaded directly through the supported evidence read port;
+- every resolved durable entity then passes the same type, active-state, and subject-ownership checks;
+- if required accepted evidence is not yet resolvable, has no valid mapping, does not exist, or belongs to a
+  different person, the trait remains unresolved rather than dropping the link or guessing.
+
+A trait may omit durable evidence links entirely; M17's required concise `evidence_note` and explicit confidence
+remain the staged inference boundary. M18 adds addressable durable grounding where evidence records exist rather than
+retroactively making every M17 trait depend on a durable observation/interaction.
 
 Do not allow a trait to cite another trait as evidence in M18; this keeps inference grounded in observed/interacted
 material and avoids recursive belief chains.
@@ -318,6 +358,8 @@ Expected additive changes:
 - M18.1 file staging reports duplicate-source state and source-session id and adds explicit `--force` reprocessing;
 - M17 candidate staging may optionally accept bounded source-session metadata/digest;
 - M18.2 adds local source list/show inspection over candidate commit mappings;
+- M18.3 additively accepts bounded `evidence_ref` on observation/interaction candidates and bounded
+  `evidence_refs`/`evidence_ids` on trait candidates, rewriting batch-local refs to canonical candidate ids;
 - trait/context representations may gain additive evidence metadata in M18.3;
 - sync bundle emission advances to v2 in M18.1 and v3 in M18.3 while restore remains backward-compatible with
   prior supported versions;
@@ -325,7 +367,7 @@ Expected additive changes:
 
 Do not break existing import envelopes; add fields only where allowed by the M12 compatibility promise or introduce
 new versioned JSON documents when a new machine surface is required. Existing provenance fields keep their prior
-meaning.
+meaning. Existing interaction candidates remain valid without `evidence_ref`; the new field is optional and additive.
 
 ## Security and privacy
 
@@ -337,6 +379,7 @@ meaning.
   idempotency.
 - Absolute source paths are not persisted by default because they can disclose usernames, organizations, project
   names, and machine layout.
+- Evidence refs are bounded opaque local tokens, not a place to copy source excerpts or transcript text.
 - Evidence retrieval respects existing sensitivity/disclosure gates; a trait must not reveal restricted evidence to
   an ordinary MCP caller merely because the trait is visible.
 - Subject validation prevents Alice's trait from exposing Bob-only observation metadata or an interaction in which
@@ -366,9 +409,12 @@ meaning.
   rows, candidate commit mappings, and source-session/batch references.
 - Provenance tests prove every committed M18-tracked candidate traces to the correct source session while existing
   message/event-derived `Provenance.session` values remain byte/semantically unchanged.
+- Evidence-reference validation tests cover unique/duplicate/unknown/wrong-type/blank/overlong `evidence_ref`, the
+  32-reference combined trait budget, deterministic rewrite to canonical candidate ids, and legacy interaction
+  candidates without the optional ref remaining unchanged.
 - Evidence-link tests cover evidence committed in an earlier partial commit and in the current invocation,
-  persisted candidate mappings, wrong-person observations, interactions that omit the trait subject,
-  missing/unaccepted evidence, lifecycle edge cases, stable ordering, and sensitivity filtering.
+  explicit durable `evidence_ids`, persisted candidate mappings, wrong-person observations, interactions that omit
+  the trait subject, missing/unaccepted evidence, lifecycle edge cases, stable ordering, and sensitivity filtering.
 - Source list/show tests contain only bounded metadata/ids and never path/body/raw-self-configuration sentinels.
 - Sync/bootstrap/export tests explicitly account for the new durable state according to the versioned policy.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
@@ -384,6 +430,8 @@ meaning.
   is the explicit escape hatch for intentional identical reprocessing.
 - Candidate→entity commit mapping is durable from M18.1 and doubles as the record→source-session provenance seam,
   allowing later partial commits to resolve already-committed dependencies without guessing.
+- Same-batch evidence uses bounded caller `evidence_ref` tokens rewritten to canonical candidate ids during staging;
+  callers never need to know ids before staging or append candidates to an existing batch.
 - Existing per-message/event `Provenance.session` semantics are preserved.
 - Strict bootstrap additions advance document versions: v2 for M18.1 source/staging/commit-map state and v3 for
   M18.3 trait evidence; older supported versions remain readable.
