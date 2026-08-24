@@ -1,0 +1,180 @@
+# M19 — Knowledge consolidation and temporal views
+
+Status: Planned. See [docs/roadmap.md](../roadmap.md#m19--knowledge-consolidation--temporal-views).
+
+## Motivation
+
+Once repeated structured imports and agent-assisted extraction become normal, the main problem shifts from capture
+to maintenance. Long-lived stores accumulate repeated facts, overlapping traits, observations that reinforce or
+contradict earlier inferences, and changing affiliations. Users and agents need to understand how knowledge evolved
+over time and identify where consolidation would improve quality.
+
+M19 adds bounded chronological views and review-only consolidation proposals. It deliberately does **not** create an
+autonomous belief updater. Durable corrections, merges, supersession, or replacement continue to use existing
+explicit write paths after human approval.
+
+## Scope
+
+In scope:
+
+- a deterministic bounded person timeline over durable events/state transitions already stored;
+- local CLI and ordinary-disclosure MCP access to that timeline with explicit sensitivity handling;
+- a bounded consolidation-context read that gives an agent enough evidence/provenance to reason about duplicate,
+  superseding, reinforcing, or contradictory knowledge;
+- an agent workflow that proposes structured maintenance actions and requires explicit approval before writes;
+- reuse of M18 source/evidence links when explaining why a trait exists or why a consolidation is proposed;
+- tests that prove no report/read path performs durable mutation.
+
+Non-goals:
+
+- automatically merging people, facts, observations, traits, or relationships;
+- automatically changing trait confidence from evidence count;
+- opaque model-generated scores stored as truth;
+- a continuously running maintenance agent/daemon;
+- semantic vector clustering as a required core dependency;
+- deleting source sessions/evidence as a side effect of consolidation;
+- rewriting history to make the current state look cleaner.
+
+## Temporal view
+
+Add a bounded application read for one resolved person. Exact naming is implementation-time; conceptual CLI/MCP
+surface:
+
+```text
+pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
+get_person_timeline(person, limit=...)
+```
+
+The timeline is a projection, not a new source of truth. It may include appropriate chronological entries derived
+from:
+
+- interactions;
+- observations;
+- dated facts / validity changes;
+- affiliation validity changes;
+- relationship creation/change where useful and attributable;
+- trait creation/correction/evidence additions;
+- reminders only if they represent historical durable events rather than future task state.
+
+Each timeline item should expose stable ids/type, an event/effective timestamp, concise display metadata,
+provenance/source-session id when available, and sensitivity/disclosure metadata needed by the caller. Do not expose
+raw source material.
+
+### Ordering and bounds
+
+- sort by effective/event timestamp with a stable id/type tie-breaker;
+- define behavior for undated durable state explicitly rather than inventing timestamps;
+- bound rows in the application layer and, where material, bound underlying SQLite work too;
+- ordinary MCP disclosure excludes restricted/sensitive material according to existing policy;
+- local CLI may support explicit `--include-sensitive` because it is a human-operated local surface, but the default
+  should remain conservative for newly introduced machine JSON.
+
+The timeline should answer “what changed / what happened around this person?” rather than reconstructing every audit
+row. Audit/changelog remain lower-level operational history.
+
+## Consolidation context
+
+Add a bounded read model intended for review/agent reasoning, not direct mutation. For one person it should make
+visible enough structured context to identify:
+
+- exact/near-duplicate facts or traits;
+- facts with overlapping validity and different values;
+- observations supporting or contradicting a trait;
+- multiple traits expressing substantially the same durable characteristic;
+- later explicit facts that supersede older state;
+- provenance/source-session/evidence links needed to justify a maintenance proposal.
+
+Prefer deterministic selection/bounding and existing normalized values before adding semantic dependencies. If an
+agent wants semantic comparison, it may reason over the bounded returned text using its own model.
+
+This read complements, not replaces, M15 `doctor`: doctor continues to report deterministic store-integrity/data
+quality findings, while consolidation context supplies richer person-scoped evidence for judgement calls that
+cannot safely be decided by deterministic core policy alone.
+
+## Review-only consolidation workflow
+
+Extend the packaged agent skill with a maintenance workflow:
+
+1. resolve one person unambiguously;
+2. read ordinary context, timeline, and consolidation context;
+3. identify possible duplicate, superseding, reinforcing, or contradictory knowledge;
+4. explain the evidence and provenance supporting each proposal;
+5. propose structured actions using existing mutation tools/ids;
+6. do not execute those actions until the user explicitly accepts them;
+7. after approved writes, re-read the affected person and report the resulting state.
+
+Examples of proposals:
+
+- correct/supersede an outdated fact using `correct_record`;
+- merge duplicate people only when identity is independently established;
+- add a better-supported trait that supersedes an earlier weak inference;
+- retain two observations because they are separate evidence rather than “deduplicating” history;
+- leave contradictory evidence intact when the source material genuinely conflicts.
+
+The agent must distinguish **redundant representation** from **multiple evidence**. Three observations that all
+support one trait are not necessarily duplicates and should not be collapsed merely to reduce row count.
+
+## Trait confidence policy
+
+M19 deliberately avoids a formula such as `confidence += N * 0.1`. Confidence is epistemic judgement, not a count of
+supporting rows. Evidence can be correlated, repetitive, low-quality, or contradicted.
+
+An agent may propose a corrected/replacement trait with a different confidence and cite the evidence used, but the
+new value is committed only through the normal explicit mutation/review path. No background task recalculates it.
+
+## Migration needs
+
+Prefer none for timeline/consolidation reads. Use existing primary records, provenance, validity, M18 source
+sessions, and evidence links.
+
+If implementation-time query plans require an additive index, use the next free migration number and document the
+measured reason. Do not create a denormalized timeline table merely for presentation unless profiling proves the
+read cannot be bounded efficiently from canonical data.
+
+## CLI / MCP surface changes
+
+Expected additive surfaces:
+
+```text
+pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
+```
+
+and one read-only MCP timeline tool. A separate consolidation-context MCP read may be added if the existing context
+response cannot provide the required bounded evidence/provenance cleanly; keep it read-only and narrowly scoped.
+
+Any machine JSON documented for CLI integration is versioned and additive under M12. Human rendering remains
+non-frozen.
+
+No consolidation mutation tool is added merely to bundle multiple writes. Existing explicit record/person tools
+remain the authority for approved changes.
+
+## Security and privacy
+
+- Timeline/consolidation views can juxtapose sensitive information; ordinary MCP disclosure rules apply before
+  model exposure.
+- Local `--include-sensitive` is explicit and documentation warns before redirecting/sharing output.
+- Source-session ids and evidence metadata do not grant access to raw source content because none is stored.
+- Maintenance suggestions use stable ids and structured tool arguments, never shell-interpolated names/text.
+- The agent workflow must not infer or “clean up” sensitive characteristics merely for consistency.
+- Reports and proposal generation are read-only; no hidden write occurs during analysis.
+
+## Testing strategy
+
+- Timeline fixtures cover interactions, observations, validity-dated facts/affiliations, trait/evidence metadata,
+  undated records, stable ties, limits, and disclosure filtering.
+- SQLite tests prove underlying reads are bounded and query plans remain reasonable on dense synthetic history.
+- Consolidation-context tests cover deterministic ordering/bounds and include provenance/evidence without raw-source
+  leakage.
+- Regression tests prove M15 doctor behavior remains unchanged and no M19 read mutates audit/changelog/domain state.
+- MCP tests cover ordinary disclosure and ambiguity/not-found behavior.
+- CLI tests cover human/JSON output, explicit sensitivity opt-in, stable ids, and no shell construction.
+- Scripted agent-workflow tests prove proposals occur before any mutation and approval is required.
+- `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
+
+## Implementation decisions
+
+- Timeline is a projection over canonical history, not a duplicate event store.
+- Consolidation separates deterministic retrieval from agent judgement.
+- Multiple supporting observations remain evidence rather than being collapsed automatically.
+- Confidence changes, corrections, merges, and supersession remain explicit approved mutations.
+- A background self-modifying memory process is intentionally outside M19.
