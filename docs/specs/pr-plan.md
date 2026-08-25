@@ -285,17 +285,22 @@ Check the matching box only in the PR that delivers it.
 - [ ] **M16.1 — Expose the existing import lifecycle through `pctx`**
   - **Scope:** Add `pctx import stage SOURCE PATH`, `import review`, and `import commit --all|--accept`, all with
     stable `--json`; support exactly the seven existing router sources; refactor shared vCard onboarding rendering /
-    selection only enough to avoid a second CLI implementation; bound the new structured-file process boundary.
+    selection only enough to avoid a second CLI implementation; bound file staging **and existing-batch review/commit
+    reads** at the new CLI process boundary.
   - **Acceptance:** stage never commits; `--all` and repeatable canonical `--accept` are mutually exclusive and one
     is required; no second confirmation prompt; stable v1 batch/review/commit JSON documents are deterministic.
-    `pctx import stage` rejects source files over **64 MiB** under a real bounded read budget and rejects more than
-    **100,000 staged candidates**, stopping accumulation before an unbounded list is built; path-only `mbox` obeys
-    the same byte budget while processing. Resource rejection creates no staging rows and never echoes payload text.
-    These new limits do not retroactively narrow released MCP `import_content` or `pctx init`. Errors/raw-content
-    sentinels stay off stdout/stderr; installed CLI stage→review→commit→list E2E passes; existing `pctx init`
-    semantics remain unchanged.
+    `pctx import stage` rejects source files over **64 MiB**, more than **100,000 staged candidates**, or more than
+    **64 MiB persisted reviewable staging payload** (at minimum UTF-8 bytes of staged `source` + candidate JSON),
+    stopping before unbounded read/accumulation and before durable staging; path-only `mbox` obeys the byte budget
+    while processing. Before either `import review` or commit form calls any full-batch `list_batch` path, a narrow
+    SQLite preflight computes row count plus persisted reviewable payload bytes without loading candidate JSON and
+    rejects batches over **100,000 rows or 64 MiB** with a safe `batch_too_large_for_cli`-style error and no mutation.
+    This makes M16-created batches self-reviewable while safely refusing oversized legacy MCP batches at the new CLI
+    boundary only; released MCP `import_content`/`review_import`/`commit_import` and `pctx init` behavior is not
+    retroactively narrowed. Resource errors never echo payload text; installed CLI stage→review→commit→list E2E
+    passes; existing `pctx init` semantics remain unchanged.
   - **Out:** new importers/candidate types, stdin/raw-content import, `stage_candidates` CLI, batch management,
-    embedded models/network, general CLI/MCP parity, retroactive global import-size caps.
+    embedded models/network, general CLI/MCP parity, retroactive global import-size/read caps.
 
 ## M17 — Agent-assisted knowledge extraction
 
@@ -342,12 +347,15 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** byte-capable importers hash and parse the same immutable bytes under the existing M16 resource
     budgets; path-only `mbox` verifies identity/metadata plus pre/post SHA-256 and discards/retries or fails safely if
     the source changes; no durable receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is
-    created. Canonical duplicate identity is `(source_kind, content_digest, extraction_fingerprint)`, where the
+    created. Structured duplicate identity is `(source_kind, content_digest, extraction_fingerprint)`, where the
     fingerprint deterministically covers extraction-affecting normalized self inputs/`self_sender` and a per-source
-    extraction-contract revision without persisting raw self values. `source_kind` is a bounded non-personal machine
-    category, while optional human label/external source id are separately bounded caller metadata. Claim + source
-    session + batch/candidate publication are atomic under a uniqueness mechanism; `--force` creates a distinct non-
-    default processing session for an identical claim.
+    extraction-contract revision without persisting raw self values. Agent sessions with a digest may participate in
+    a claim; if their optional fingerprint is absent, uniqueness uses an explicit internal absence state rather than
+    SQLite NULL-distinct behavior. A digestless agent session has **no canonical duplicate claim** and makes no
+    source-level idempotency promise. `source_kind` is a bounded non-personal machine category, while optional human
+    label/external source id are separately bounded caller metadata. Claim + source session + batch/candidate
+    publication are atomic under a uniqueness mechanism; `--force` creates a distinct non-default processing session
+    for an identical claim.
 
     Every successful `CommitImport.execute` mints/propagates **one non-empty logical `transaction_id`** across every
     child entity mutation, candidate mapping mutation, and source-session status mutation produced by that commit;
@@ -366,19 +374,20 @@ Check the matching box only in the PR that delivers it.
     In the **same forget transaction**, retained staging rows structurally linked through typed candidate/person/
     endpoint/participant/evidence ids are deleted recursively to a fixed point (including pending `matched_person_id`
     and explicit durable `evidence_ids`); no free-text/name guessing. Preview/result counts include removed staging
-    rows. If a source is left with no live mapping and no reviewable staging, set it terminal `redacted`, clear its
-    optional human label/external source id/batch association and other caller-authored inspection metadata, redact
-    corresponding audit/covered changelog history, and retain only internal id + canonical claim key + redacted
-    status. Redacted inspection must not expose former timestamps/batch/counts/mappings; the minimal claim remains
-    non-restageable and `--force` is still required to process the same claim again.
+    rows. If a source is left with no live mapping and no reviewable staging, lifecycle depends on claim availability:
+    a **claim-backed** session becomes terminal `redacted`, clears human label/external source id/batch/other caller
+    inspection metadata, redacts corresponding history, and retains only internal id + canonical claim key + status;
+    a **digestless** session is deleted entirely and its receipt history redacted because `(source_kind,null,null)` is
+    not a usable duplicate claim. Redacted inspection exposes no former timestamps/batch/counts/mappings; claim-backed
+    redaction remains non-restageable and `--force` reprocesses it, while a later digestless source may stage anew.
 
-    Export emits strict sync-bundle v2; restore accepts v1/v2. V2 carries **all source sessions and all candidate
-    commit mappings/outcomes, including fully committed sessions after staging cleanup**; staging rows are carried
-    only for staged/partially committed batches. Live-entity mappings must reference bundled durable entities;
-    terminal `merged_away` mappings have no entity id and terminal `redacted` source rows satisfy the minimal-claim
-    invariant. M18.1 source-session/mapping tables are added to the existing transactional baseline-empty check for
-    **both v1 and v2 restore**, so an older incoming document cannot merge into local M18 state. Unknown fields still
-    fail per declared version.
+    Export emits strict sync-bundle v2; restore accepts v1/v2. V2 carries **all surviving source sessions and all
+    candidate commit mappings/outcomes, including fully committed sessions after staging cleanup**; staging rows are
+    carried only for staged/partially committed batches. Live-entity mappings must reference bundled durable entities;
+    terminal `merged_away` mappings have no entity id and terminal `redacted` source rows must be claim-backed and
+    satisfy the minimal-claim invariant; fully forgotten digestless sessions are absent. M18.1 source-session/mapping
+    tables are added to the existing transactional baseline-empty check for **both v1 and v2 restore**, so an older
+    incoming document cannot merge into local M18 state. Unknown fields still fail per declared version.
   - **Out:** semantic candidate dedup, trait evidence, source rollback, folder watch, incremental peer replication of
     staging state, raw extraction-option persistence, heuristic free-text staging erasure.
 
@@ -391,11 +400,12 @@ Check the matching box only in the PR that delivers it.
     and returns at most one bounded page with nullable `next_cursor`; rendering must never materialize the complete
     source table first. Non-redacted inspection shows bounded ids, kind/digest/extraction fingerprint/status/batch
     and committed candidate/record summaries only; terminal merge outcomes are bounded and contain no removed edge
-    id. A terminal redacted source returns only internal id + non-personal source kind + digest/fingerprint claim key
-    + status, never its cleared label/external id/batch/timestamps/counts/mappings. No raw source/path/self-
-    configuration leak; mappings remain usable after staging cleanup policy; completed-source mappings survive
-    bootstrap restore, while hard-forgotten mappings/staging/caller metadata are absent; partial/idempotent commits
-    are understandable. This PR does not change the strict v2 bootstrap shape introduced by M18.1.
+    id. A terminal redacted source is always claim-backed and returns only internal id + non-personal source kind +
+    digest/fingerprint-or-absence claim state + status, never its cleared label/external id/batch/timestamps/counts/
+    mappings; a fully forgotten digestless source has no retained row. No raw source/path/self-configuration leak;
+    mappings remain usable after staging cleanup policy; completed-source mappings survive bootstrap restore, while
+    hard-forgotten mappings/staging/caller metadata are absent; partial/idempotent commits are understandable. This PR
+    does not change the strict v2 bootstrap shape introduced by M18.1.
   - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
     second parallel record-source provenance table, offset/unbounded source scans.
 
@@ -406,24 +416,26 @@ Check the matching box only in the PR that delivers it.
     hard-forget lifecycle/redaction and the baseline-empty restore contract.
   - **Acceptance:** observation/interaction candidates may add optional unique non-blank `evidence_ref` tokens of at
     most **256 characters**. Traits may reference up to **32 combined** unique same-batch `evidence_refs` and durable
-    `evidence_ids`; each `evidence_id` is exactly a canonicalizable **26-character Crockford ULID** and invalid
-    length/alphabet values fail before staging without echo. Unknown/duplicate/wrong-type refs fail before staging.
-    Staging rewrites caller refs to canonical `evidence_candidate_ids` exactly like person-ref rewriting, so callers
-    never need preallocated candidate ids or an append-to-batch API. Rewritten candidate ids resolve through the
-    M18.1 live-entity mapping whether evidence was committed in a prior invocation or earlier in the current one;
-    only active supported durable evidence types are legal. An observation must belong to the trait subject and an
-    interaction must include that subject; stable id ordering; accepted trait remains unresolved when required
-    evidence has no valid live mapping/cannot resolve/does not exist/resolves to another person's evidence.
+    `evidence_ids`; each `evidence_id` is a **format-opaque non-blank identifier of at most 256 characters** and is
+    preserved exactly—do not require/canonicalize ULID shape, so valid restored/custom ids such as `obs-1` remain
+    addressable. Blank/overlong ids and unknown/duplicate/wrong-type refs fail before staging without echo. Staging
+    rewrites caller refs to canonical `evidence_candidate_ids` exactly like person-ref rewriting, so callers never
+    need preallocated candidate ids or an append-to-batch API. Rewritten candidate ids resolve through the M18.1
+    live-entity mapping whether evidence was committed in a prior invocation or earlier in the current one; explicit
+    durable ids use exact lookup semantics; only active supported evidence types are legal. An observation must belong
+    to the trait subject and an interaction must include that subject; stable id ordering; accepted trait remains
+    unresolved when required evidence has no valid live mapping/cannot resolve/does not exist/resolves to another
+    person's evidence.
 
     Hard forget of a trait/evidence entity deletes affected evidence relations in the same transaction, includes
     them in preview/replay affected state, redacts their audit/covered changelog history, and preserves links to
     shared interaction evidence only when that interaction itself remains durable. M18.3 adds the trait-evidence
-    table to the transactional baseline-empty check for **v1, v2, and v3 restore**. Persisted-id, earlier-partial-
-    commit, same-invocation, ref-bound, record/person-forget, and baseline-version tests are required; retrieval
-    respects sensitivity and never exposes restricted evidence through a visible trait; `evidence_note` remains
-    additive human context. Existing interactions without `evidence_ref` remain unchanged. Export emits strict
-    sync-bundle v3 with trait-evidence relations **and inherits v2's all-commit-mapping/outcome and terminal-redacted-
-    source rules**; restore accepts v1/v2/v3 and validates each version fail-closed.
+    table to the transactional baseline-empty check for **v1, v2, and v3 restore**. Persisted-id (including non-ULID
+    restored ids), earlier-partial-commit, same-invocation, ref-bound, record/person-forget, and baseline-version tests
+    are required; retrieval respects sensitivity and never exposes restricted evidence through a visible trait;
+    `evidence_note` remains additive human context. Existing interactions without `evidence_ref` remain unchanged.
+    Export emits strict sync-bundle v3 with trait-evidence relations **and inherits v2's all-commit-mapping/outcome
+    and claim-backed terminal-redacted-source rules**; restore accepts v1/v2/v3 and validates each version fail-closed.
   - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation,
     append-to-batch mutation or caller control of canonical candidate ids.
 
