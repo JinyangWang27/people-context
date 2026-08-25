@@ -37,7 +37,9 @@ In scope:
   supported bundle version is being restored;
 - hard-forget integration for new durable provenance/evidence relations and structurally linked retained staging so
   erased records cannot remain addressable or reviewable through import state;
-- CLI inspection of source sessions and their derived records/batches;
+- privacy-preserving terminal source claims that retain only the non-restageable claim key/status after all derived
+  personal state has been forgotten;
+- bounded, keyset-paginated CLI inspection of source sessions and their derived records/batches;
 - durable evidence links from traits to observations/interactions that support the same person;
 - explicit bounded batch-local evidence references so one staged trait can address observation/interaction
   candidates before People Context allocates canonical candidate ids;
@@ -59,7 +61,8 @@ Add a small durable source-session/receipt entity. Exact naming is implementatio
 are:
 
 - stable `id`;
-- bounded `source_kind` such as `linkedin`, `ics`, `meeting_transcript`, or another caller-defined label;
+- bounded `source_kind`, which is a non-personal **machine category** such as `linkedin`, `ics`, or
+  `meeting_transcript`, not a human description such as `interview_with_alice`;
 - optional bounded user/caller label for human inspection;
 - SHA-256 digest of the exact stable source bytes when a source artifact exists;
 - an extraction fingerprint describing the extraction-affecting configuration without persisting raw options/self
@@ -72,14 +75,18 @@ are:
 
 New source-session metadata is bounded at the process boundary. At minimum:
 
-- `source_kind`: non-blank, at most **128 characters**;
+- `source_kind`: non-blank, at most **128 characters**, restricted to a conservative machine-identifier alphabet
+  such as ASCII letters, digits, `.`, `_`, `-`, and `/`; it describes a source class/adapter, not a person/source
+  title;
 - optional human label and external source id: at most **256 characters** each;
 - SHA-256 content digest and extraction fingerprint: exactly **64 lowercase hexadecimal characters** when present;
 - optional extraction-contract revision identifier: at most **64 ASCII characters**, restricted to a conservative
   identifier alphabet such as letters, digits, `.`, `_`, and `-`.
 
 Normalize only fields whose semantics explicitly define normalization; do not silently case-fold opaque external
-identifiers. Rejected metadata is never echoed with its original value.
+identifiers. Rejected metadata is never echoed with its original value. Human descriptions belong in the optional
+label, not `source_kind`, so a terminal redacted claim can retain its canonical claim key without retaining a name or
+other caller-authored identifying description.
 
 Do **not** store:
 
@@ -282,11 +289,24 @@ hard-forget transaction and their counts appear in preview/result metadata. Dura
 changes remain part of the forget replay manifest/affected-entity set so peer replay can erase the corresponding
 primary state.
 
-If staging cleanup leaves an M18-tracked batch with no reviewable rows, its source-session/batch metadata remains a
-known terminal/redacted claim rather than becoming indistinguishable from a never-existing batch. Duplicate detection
-must not silently restage the forgotten source; review reports no reviewable candidates for that known batch, and
-explicit `--force` remains the intentional route to reprocess the same source claim. If unrelated rows remain, the
-batch stays reviewable with only those survivors.
+If staging cleanup leaves an M18-tracked source with **no live mapped entity and no reviewable staging row**, retain
+only the minimum non-restageable claim rather than its inspectable caller metadata. In the same forget transaction:
+
+- set the source session to terminal `redacted`;
+- clear the optional human label, external source id, batch association, and any other caller-authored optional
+  inspection metadata not required by the canonical duplicate claim;
+- retain only the internal source-session id, the canonical claim key `(source_kind, content_digest,
+  extraction_fingerprint)`, and redacted status as durable claim identity; implementation-required timestamps may
+  remain internally if the schema needs them, but redacted inspection does not expose them;
+- redact prior audit payloads and covered changelog history that contain the cleared label/external id/batch or other
+  removed caller metadata, with the same atomic privacy guarantee as the forgotten mapped entities.
+
+`source_kind` remains safe to retain because M18 defines it as a non-personal machine category rather than a human
+source title. A redacted claim must not expose its former label, external source id, batch id, timestamps, candidate
+counts, or removed mappings through `source show`/`sources`. Duplicate detection must still recognize the canonical
+claim and must not silently restage the forgotten source; explicit `--force` remains the intentional route to
+reprocess it. If unrelated live mappings or reviewable rows remain, the source stays non-redacted and inspectable only
+with those retained survivors.
 
 Pre-M18 legacy batches that never had a source session are not guessed/backfilled from ambiguous audit history. New
 M18-tracked batches must always satisfy the mapping invariant from the first release of source sessions.
@@ -299,7 +319,8 @@ The resulting provenance model is:
 - source inspection and later same-batch dependencies traverse live `entity` mappings without storing the raw
   source, while terminal merge outcomes remain non-dangling history;
 - hard forget removes provenance associations and structurally linked staging content for entities it actually
-  erases rather than leaving inspectable ids or reviewable distilled content.
+  erases, and a fully emptied source retains only a non-identifying non-restageable claim key/status rather than
+  caller-authored source metadata.
 
 ## Bootstrap bundle versioning
 
@@ -319,7 +340,7 @@ released v1 shape and the new strict v2 shape.
 
 V2 carries the new durable provenance state plus only the operational staging rows that are still needed:
 
-- all source sessions/claim metadata;
+- all source sessions/claim metadata, including minimal terminal redacted claims with cleared caller metadata;
 - **all candidate commit mappings for every exported M18-tracked source session, including fully committed sessions
   whose staging rows have already been cleaned up**;
 - staging rows only for staged or partially committed M18-tracked batches that must remain reviewable/committable.
@@ -331,11 +352,12 @@ reads still identify its derived records.
 
 Restore validates source-session → mapping references for every mapping. An `entity` disposition must reference a
 durable entity present in the bundle; a terminal `merged_away` relationship mapping must have `entity_id=null` and
-needs no live-entity reference. Restore additionally validates source-session → batch → staging/mapping references
-for incomplete batches and restores the whole document atomically. A partially committed source must not arrive in
-a state where duplicate detection suppresses re-staging, `review_import` cannot find pending candidates, or a
-committed candidate has lost the durable entity id needed by a later dependency. A completed source must not arrive
-with its source session intact but its record associations missing.
+needs no live-entity reference. A terminal `redacted` source must satisfy the minimal-claim invariant and must not
+carry cleared caller metadata or reviewable staging. Restore additionally validates source-session → batch →
+staging/mapping references for incomplete batches and restores the whole document atomically. A partially committed
+source must not arrive in a state where duplicate detection suppresses re-staging, `review_import` cannot find
+pending candidates, or a committed candidate has lost the durable entity id needed by a later dependency. A
+completed source must not arrive with its source session intact but its record associations missing.
 
 V1 bundles remain valid inputs and simply contain no M18 source-session state. Existing v1 readers continue to reject
 v2 as designed rather than accidentally accepting a document they do not understand.
@@ -347,7 +369,8 @@ M18.2 adds source-inspection/read surfaces over the same v2 state and does not c
 M18.3 adds durable trait-evidence relations, which are additional primary state and therefore require another strict
 bundle version. The exporter emits **version 3** after M18.3; the restorer accepts v1, v2, and v3. V3 adds the
 evidence-relation collection to the v2 shape and validates it fail-closed; it inherits v2's requirement to carry all
-candidate commit mappings, including mappings from completed source sessions and terminal merge outcomes.
+candidate commit mappings, including mappings from completed source sessions and terminal merge outcomes, and the
+same minimal terminal-redacted-source invariant.
 
 Do not predeclare future fields in v2 merely to avoid a version increment: a bundle version means the reader fully
 understands the semantics of every field it accepts.
@@ -441,11 +464,22 @@ M18.2 exposes local inspection sufficient to answer “where did this come from?
 browser. Conceptual CLI:
 
 ```text
-pctx sources [--json]
+pctx sources [--limit N] [--cursor CURSOR] [--json]
 pctx source show SOURCE_SESSION_ID [--json]
 ```
 
-A source detail may include:
+`pctx sources` is bounded at the read boundary:
+
+- default `limit` is **50**, accepted range is **1..200**;
+- order is deterministic newest-first by `(created_at DESC, id DESC)`;
+- pagination is keyset/cursor based, not an unbounded read followed by slicing. The opaque cursor represents the last
+  returned `(created_at, id)` key and must be bounded/validated before query execution;
+- the SQLite reader applies the cursor predicate and `LIMIT limit + 1` itself, returns at most `limit` rows plus a
+  `next_cursor` indication, and never materializes the full source-session table merely to render one page;
+- stable machine JSON includes the applied limit and nullable `next_cursor`; human rendering uses the same bounded
+  application result.
+
+A non-redacted source detail may include:
 
 - id, kind, optional label, digest/extraction fingerprint, timestamps/status;
 - staging batch id;
@@ -454,8 +488,12 @@ A source detail may include:
 - a bounded terminal `merged_away` disposition for a committed relationship candidate whose edge disappeared during
   identity merge, without returning the removed edge id.
 
-It never returns raw source content or raw extraction self-identity configuration. Stable JSON is versioned from
-first release if documented for agents. Human output may render concise provenance paths. Hard-forgotten mapping
+A terminal `redacted` source is deliberately narrower: list/show returns only its internal id, non-personal
+`source_kind`, digest/extraction fingerprint claim key, and `redacted` status. It does not expose the cleared human
+label, external source id, batch id, timestamps, candidate counts, mappings, or former optional metadata.
+
+Inspection never returns raw source content or raw extraction self-identity configuration. Stable JSON is versioned
+from first release if documented for agents. Human output may render concise provenance paths. Hard-forgotten mapping
 rows and structurally linked staging rows are absent, so inspection/review cannot resurrect an erased record id or
 its retained candidate content through provenance metadata.
 
@@ -478,9 +516,10 @@ supported incoming bundle version, including v1, because freshness is a property
 than of the document being restored.
 
 The existing lifecycle paths are extended in the same PR that introduces each new durable relation. M18.1 integrates
-candidate mappings with person merge, record/person hard-forget preview/deletion/replay-history redaction, and typed
-retained-staging cleanup. M18.3 applies the same hard-forget guarantees to trait-evidence relation rows. New relation
-history must not survive merely because its entity id differs from the record id being forgotten.
+candidate mappings with person merge, record/person hard-forget preview/deletion/replay-history redaction, typed
+retained-staging cleanup, and terminal source-receipt metadata scrubbing. M18.3 applies the same hard-forget guarantees
+to trait-evidence relation rows. New relation or receipt history must not survive merely because its entity id differs
+from the record id being forgotten.
 
 ## CLI / MCP surface changes
 
@@ -488,7 +527,7 @@ Expected additive changes:
 
 - M18.1 file staging reports duplicate-source state and source-session id and adds explicit `--force` reprocessing;
 - M17 candidate staging may optionally accept bounded source-session metadata/digest;
-- M18.2 adds local source list/show inspection over candidate commit mappings;
+- M18.2 adds bounded, cursor-paginated local source list/show inspection over candidate commit mappings;
 - M18.3 additively accepts bounded `evidence_ref` on observation/interaction candidates and bounded, canonical-ULID
   `evidence_refs`/`evidence_ids` on trait candidates, rewriting batch-local refs to canonical candidate ids;
 - trait/context representations may gain additive evidence metadata in M18.3;
@@ -503,6 +542,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
 ## Security and privacy
 
 - Source receipts are metadata about personal material and must be treated as sensitive local state.
+- `source_kind` is a machine category, not a place for names/source titles; human descriptions belong only in the
+  optional label that hard forget can scrub.
 - SHA-256 digests/extraction fingerprints are not anonymization and must not be presented as such.
 - Digest/source attribution is accepted only after stable snapshot verification for file imports; a TOCTOU race
   must not attach digest A to candidates parsed from bytes B.
@@ -512,13 +553,15 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   names, and machine layout.
 - Source-session labels/ids and evidence refs/ids are explicitly bounded; none is a place to copy a source excerpt or
   transcript body.
+- When forget removes the final live derived state for a source, caller-authored receipt metadata is cleared and its
+  audit/covered changelog history redacted; list/show exposes only the non-restageable claim key/status.
 - Evidence retrieval respects existing sensitivity/disclosure gates; a trait must not reveal restricted evidence to
   an ordinary MCP caller merely because the trait is visible.
 - Subject validation prevents Alice's trait from exposing Bob-only observation metadata or an interaction in which
   Alice did not participate.
 - Hard forget removes new provenance/evidence relations to erased entities, deletes structurally linked retained
-  candidate rows, and redacts durable relation audit/changelog history atomically, preventing import metadata from
-  becoming a post-erasure identifier/content leak.
+  candidate rows, scrubs terminal receipt metadata, and redacts durable relation/receipt audit/changelog history
+  atomically, preventing import metadata from becoming a post-erasure identifier/content leak.
 - No raw source text enters logs, audit payloads, changelog payloads, errors, source-session rows, or temporary
   persistent copies created solely for hashing/extraction consistency.
 - Duplicate detection happens locally without external lookups.
@@ -528,7 +571,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
 - Migration tests cover fresh and upgraded databases, FK integrity, indexes, and sync compatibility.
 - Exact-byte digest tests cover deterministic hashing, same-claim duplicate detection, source-kind scoping, and
   intentional distinct forced sessions.
-- Source-session metadata tests pin all length/digest/identifier bounds and prove rejected values are not echoed.
+- Source-session metadata tests pin all length/digest/identifier bounds, the machine-category-only `source_kind`
+  contract, and prove rejected values are not echoed.
 - Extraction-fingerprint tests prove the same WhatsApp bytes with different effective `self_sender`/self identity
   configuration do not alias to the same canonical claim, while equivalent normalized configuration does.
 - Snapshot-consistency tests prove byte-capable importers hash and parse the exact same immutable bytes.
@@ -551,7 +595,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   durable candidate commit mappings for completed and incomplete sessions, carry staging rows only for incomplete
   batches, and prove `source show` after restore still reports derived records for a completed source whose staging
   rows were cleaned up. Baseline tests also prove any non-empty M18.1/M18.3 table rejects restore under the installed
-  schema for **every** accepted incoming version, including a v1 bundle.
+  schema for **every** accepted incoming version, including a v1 bundle. Terminal-redacted bundle fixtures prove
+  cleared caller metadata cannot reappear after restore.
 - Provenance tests prove every committed M18-tracked candidate traces to the correct source session while existing
   message/event-derived `Provenance.session` values remain byte/semantically unchanged.
 - Hard-forget tests cover both record and person scope: preview counts include relation and structurally linked
@@ -559,8 +604,9 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   evidence links targeting entities actually erased are deleted in the same transaction; shared retained
   interactions keep valid durable mappings/links while any staging row that still references the forgotten candidate
   is removed; relation audit payloads are redacted; covered relation changelog operations/transactions are redacted;
-  all-staging-removed batches remain known/redacted rather than becoming silently re-stageable; and `source show` /
-  review cannot return a forgotten entity id or retained candidate text afterward.
+  a source with no live mapping/reviewable staging is set `redacted`, clears label/external id/batch and other caller
+  metadata, redacts their history, remains non-restageable, and returns only minimal claim-key/status metadata from
+  source inspection afterward.
 - Evidence-reference validation tests cover unique/duplicate/unknown/wrong-type/blank/overlong `evidence_ref`, exact
   canonical ULID validation/canonicalization for every `evidence_id`, the 32-reference combined trait budget,
   deterministic rewrite to canonical candidate ids, no rejected-value echo, and legacy interaction candidates without
@@ -569,6 +615,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   explicit durable `evidence_ids`, persisted candidate mappings, wrong-person observations, interactions that omit
   the trait subject, missing/unaccepted evidence, lifecycle edge cases, stable ordering, and sensitivity filtering.
 - Source list/show tests contain only bounded metadata/ids and never path/body/raw-self-configuration sentinels.
+  Listing tests pin default `50`, range `1..200`, deterministic `(created_at DESC, id DESC)` order, opaque keyset
+  cursor behavior, `next_cursor`, and a SQLite `LIMIT limit + 1` query so large stores are never fully materialized.
 - Sync/bootstrap/export tests explicitly account for the new durable state according to the versioned policy.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
@@ -591,8 +639,11 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   outcomes; only incomplete staging rows are operationally scoped to staged/partially committed batches. Every new
   M18 mutable table participates in the destination baseline-empty check for all accepted bundle versions.
 - New durable provenance/evidence relations participate in merge/forget lifecycle behavior as applicable from the
-  PR that introduces them; hard forget also deletes structurally linked operational staging rows to a fixed point and
-  preserves a non-restageable known/redacted claim when nothing reviewable remains.
+  PR that introduces them; hard forget also deletes structurally linked operational staging rows to a fixed point.
+  Once no live derived/reviewable state remains, the source receipt is reduced to a non-restageable canonical claim
+  key/status and caller-authored inspectable metadata/history is scrubbed.
+- Source inspection is bounded at the storage read: default 50/max 200 keyset-paginated rows, never an unbounded
+  source-session materialization followed by rendering-time truncation.
 - Same-batch evidence uses bounded caller `evidence_ref` tokens rewritten to canonical candidate ids during staging;
   explicit durable evidence ids are canonical 26-character ULIDs, so neither field can become an unbounded raw-text
   side channel.
