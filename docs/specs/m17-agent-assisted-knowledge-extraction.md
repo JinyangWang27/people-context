@@ -195,15 +195,22 @@ The new extraction surface is bounded from its first release. Binding limits are
 
 - at most **500 candidates** in any MCP `stage_candidates` request that contains at least one M17 candidate type;
 - the normalized MCP `source` label is at most **128 characters** for any request containing an M17 candidate type;
+- for any such mixed/new MCP request, the UTF-8 canonical JSON serialization of the complete candidate array is at
+  most **1 MiB** and **every string value in every candidate, including fields on legacy candidate types, is at most
+  8 KiB**;
 - newly introduced observation `text` is capped at **4 KiB**;
 - newly introduced trait `value` and `evidence_note` are each capped at **2 KiB**;
 - newly introduced relationship type and batch-local reference strings are each capped at **256 characters**.
 
 These MCP limits belong to the first implementation PR that exposes M17 candidate types. They are checked before
-any staging row is written, and rejected values are never echoed in diagnostics. `StageCandidates` currently stores
-its normalized `source` in every staged row and later provenance/audit paths, so bounding the M17 source label is a
-privacy as well as a resource invariant: a caller must not be able to use `source` as a transcript-sized side
-channel.
+any staging row is written, and rejected values are never echoed in diagnostics. The whole-request payload/string
+limits are intentionally conditional on the request containing at least one M17 candidate: a caller must not be able
+to smuggle transcript-sized text through a legacy person/fact/interaction field in an otherwise M17 extraction
+batch. A genuinely legacy-only MCP request retains its released accepted shape.
+
+`StageCandidates` currently stores its normalized `source` in every staged row and later provenance/audit paths, so
+bounding the M17 source label is a privacy as well as a resource invariant: a caller must not be able to use `source`
+as a transcript-sized side channel.
 
 The later M17 CLI surface adds these additional process-boundary limits:
 
@@ -219,8 +226,9 @@ smaller.
 
 The same new-field limits apply whether an M17 candidate arrives through MCP or CLI. A legacy-only MCP batch
 containing only the four pre-M17 candidate types retains its released accepted-shape behavior, including its existing
-source-label behavior; M17 does not retroactively impose new count/string/source caps on that old surface. If the
-project later wants global caps for legacy MCP staging too, treat that as an explicit compatibility/security
+source-label and legacy-field behavior; M17 does not retroactively impose new count/string/source caps on that old
+surface. The conditional whole-request limits apply only when the request opts into at least one M17 candidate type.
+If the project later wants global caps for legacy MCP staging too, treat that as an explicit compatibility/security
 hardening decision rather than smuggling it into this additive candidate milestone.
 
 This split is deliberate: M17.1 makes the newly accepted MCP forms safe at first exposure, while M17.2 adds the
@@ -276,8 +284,9 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 ## CLI / MCP surface changes
 
 - MCP `stage_candidates` accepts three additive, bounded candidate types;
-- from M17.1, requests using an M17 candidate type are bounded to 500 total candidates, a normalized 128-character
-  source label, and the new-type field limits, while legacy-only MCP batches retain their pre-M17 accepted shape;
+- from M17.1, any request using an M17 candidate type is bounded to 500 total candidates, a normalized 128-character
+  source label, **1 MiB canonical serialized candidate payload, 8 KiB for every candidate string including legacy
+  fields**, and the tighter new-type field limits; legacy-only MCP batches retain their pre-M17 accepted shape;
 - `review_import` / `commit_import` response envelopes remain unchanged;
 - M17.2 adds bounded CLI `pctx import stage-candidates ...` over the same application use case;
 - no new raw-text import tool and no model execution tool.
@@ -286,8 +295,8 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 
 - Raw unstructured source material is never persisted by People Context.
 - Candidate JSON itself contains distilled personal information and must be treated as sensitive local data.
-- Count/source/string limits prevent the new MCP extraction forms from becoming an accidental transcript archive or
-  amplification path across hundreds of staging/provenance rows.
+- Conditional whole-request count/source/payload/string limits prevent mixed M17 MCP batches from using legacy
+  fields as an accidental transcript archive or amplification path across hundreds of staging/provenance rows.
 - Byte/count/string limits prevent the new agent-facing CLI surface from becoming an accidental transcript archive
   or unbounded-memory sink.
 - Trait evidence notes must be concise derivations, not hidden transcript archives.
@@ -305,13 +314,16 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
   legal uncategorized edge; blank/non-word relationship types fail exactly as `SetRelationship` does. A relationship
   candidate carrying an unsupported `sensitivity` field fails strict validation rather than being silently ignored.
 - Trait candidate tests require explicit confidence and non-blank evidence note.
-- M17.1 boundary tests pin every new field limit, the conditional 500-candidate MCP cap, and the conditional
-  128-character normalized MCP source-label cap; rejection occurs before staging and does not echo the source.
+- M17.1 boundary tests pin every new field limit, the conditional 500-candidate MCP cap, conditional 128-character
+  normalized MCP source-label cap, **1 MiB mixed/new candidate-payload cap, and 8 KiB all-string cap**. Include mixed
+  requests where an oversized legacy person/fact/interaction field accompanies one M17 candidate; rejection occurs
+  before staging and does not echo the rejected value/source.
 - Staging tests verify person-ref rewriting/matching for each new dependent type.
 - Commit tests cover known/new/matched people, unresolved refs, relationship canonicalization/uncategorized behavior,
   and all new writes flowing through existing audited use cases.
 - Regression tests pin all four existing candidate types and response envelopes unchanged, including a legacy-only
-  MCP staging fixture proving M17 did not retroactively apply the new count/string/source limits to that contract.
+  MCP staging fixture proving M17 did not retroactively apply the new count/string/source/payload limits to that
+  contract.
 - M17.2 CLI tests cover file/stdin candidate JSON, malformed JSON, unknown candidate types, >1 MiB rejection, >500
   candidates, oversized generic/new-type strings/source label, `--json`, and stdout purity.
 - Skill/workflow tests or scripted transcript fixtures prove stage-only behavior, explicit commit approval, and that
@@ -327,8 +339,8 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
   contract to registered vocabulary only.
 - Relationship extraction is ordinary-disclosure only until the durable relationship model/read path grows an
   enforceable sensitivity contract; M17 does not silently downgrade elevated edges.
-- The first MCP release of M17 candidate types already carries count, source-label, and new-field bounds; the CLI
-  adds byte/process bounds in the following PR.
+- The first MCP release of M17 candidate types already carries conditional count/source/payload/all-string bounds plus
+  tighter new-field limits; the CLI adds file/stdin read bounds in the following PR.
 - Legacy-only MCP candidate behavior is not silently narrowed.
 - Relationship candidates are included now because unstructured conversations routinely reveal graph edges and the
   relationship subsystem already exists.
