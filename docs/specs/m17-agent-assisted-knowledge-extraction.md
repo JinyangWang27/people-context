@@ -37,6 +37,8 @@ Non-goals:
 - automatically committing extracted knowledge;
 - storing transcript/message bodies, verbatim evidence passages, embeddings of raw sources, or attachments;
 - psychiatric diagnosis, demographic inference, or speculative sensitive-trait inference;
+- extracting `sensitive`/`restricted` relationship edges before the durable relationship model/read surfaces have an
+  enforceable sensitivity/disclosure contract;
 - automatic trait confidence recomputation or cross-source consolidation (M19);
 - source receipts/idempotency/evidence edges (M18);
 - silently narrowing the released legacy-only MCP `stage_candidates` contract merely to add M17 candidate types.
@@ -131,6 +133,18 @@ M17 must **not** require a relationship type to be pre-registered in the canonic
 narrow the existing `SetRelationship` contract and make currently legal uncategorized edges impossible to import.
 The example `manager` therefore remains legal even if it does not resolve to a seeded synonym; callers that want
 canonical `manages`/`reports_to` semantics should use a registered spelling/synonym.
+
+Relationship extraction has one additional disclosure restriction. The current durable `Relationship` model and
+ordinary graph/context reads do **not** carry an enforceable sensitivity field. M17 therefore treats every staged
+relationship candidate as an **ordinary-disclosure (`public`/`personal`) edge**. If the source relationship would
+need `sensitive` or `restricted` treatment under the existing disclosure policy, the agent must not create a
+relationship candidate for it. M17 intentionally does not add a candidate-only `sensitivity` field that would be
+silently discarded at commit and falsely imply protection the durable graph cannot enforce. Because candidate models
+are strict, an attempted extra relationship `sensitivity` field fails rather than being accepted and ignored.
+
+Adding elevated relationship storage/disclosure later requires a separate durable schema/write/read compatibility
+design; it is not smuggled into agent extraction. Until then, explicit sensitive relationship statements remain
+outside the relationship graph rather than being downgraded to ordinary-disclosure data.
 
 If the current relationship write contract has no confidence field, omit it from the durable write rather than
 changing relationship semantics solely for extraction; the staged schema may omit confidence too. Implementation
@@ -242,11 +256,17 @@ Guidance should explicitly discourage:
 - gossip promoted to fact;
 - temporary emotion promoted to temperament;
 - unsupported relationship guesses;
+- **any sensitive/restricted relationship edge**, even when explicitly stated, because the current relationship
+  store/read contract cannot preserve elevated disclosure;
 - a single observation promoted to a high-confidence trait;
 - copying raw transcript passages into evidence notes.
 
-Sensitive information explicitly stated in source material may still be represented according to existing
-sensitivity/provenance policy; the agent should distinguish extraction from inference.
+Sensitive information explicitly stated in source material may still be represented through candidate types whose
+durable records actually enforce the existing sensitivity/provenance policy (for example facts, observations,
+traits, or interactions). This exception does **not** apply to relationship candidates in M17: an elevated
+relationship is omitted from the graph until relationship sensitivity exists as a durable contract. The agent should
+distinguish extraction from inference rather than downgrading sensitive content merely because it was stated
+explicitly.
 
 ## Migration needs
 
@@ -271,15 +291,19 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 - Byte/count/string limits prevent the new agent-facing CLI surface from becoming an accidental transcript archive
   or unbounded-memory sink.
 - Trait evidence notes must be concise derivations, not hidden transcript archives.
+- Relationship candidates are ordinary-disclosure only in M17; sensitive/restricted relationships are not staged
+  because the durable relationship model cannot enforce those disclosure levels.
 - Agents never bypass the review gate merely because they performed the extraction.
 - The CLI stdin path validates bounded JSON before staging and never evaluates code or invokes a shell.
-- All candidate writes retain existing sensitivity, provenance, audit, and changelog behavior.
+- Candidate writes retain the sensitivity/provenance behavior their durable target actually supports; M17 never
+  claims an elevated relationship policy that the graph schema/read surfaces do not implement.
 
 ## Testing strategy
 
 - Strict-model tests cover valid/invalid observation, trait, and relationship candidates and reject extra fields.
 - Relationship tests cover seeded/synonym canonicalization **and** a syntactically valid unknown type remaining a
-  legal uncategorized edge; blank/non-word relationship types fail exactly as `SetRelationship` does.
+  legal uncategorized edge; blank/non-word relationship types fail exactly as `SetRelationship` does. A relationship
+  candidate carrying an unsupported `sensitivity` field fails strict validation rather than being silently ignored.
 - Trait candidate tests require explicit confidence and non-blank evidence note.
 - M17.1 boundary tests pin every new field limit, the conditional 500-candidate MCP cap, and the conditional
   128-character normalized MCP source-label cap; rejection occurs before staging and does not echo the source.
@@ -290,7 +314,8 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
   MCP staging fixture proving M17 did not retroactively apply the new count/string/source limits to that contract.
 - M17.2 CLI tests cover file/stdin candidate JSON, malformed JSON, unknown candidate types, >1 MiB rejection, >500
   candidates, oversized generic/new-type strings/source label, `--json`, and stdout purity.
-- Skill/workflow tests or scripted transcript fixtures prove stage-only behavior and explicit commit approval.
+- Skill/workflow tests or scripted transcript fixtures prove stage-only behavior, explicit commit approval, and that
+  explicitly stated sensitive/restricted relationships do not produce relationship candidates.
 - Raw-source sentinels must be absent from staged candidates except for deliberately distilled test values.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
@@ -300,6 +325,8 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 - Observation and trait candidates preserve the existing fact/observation/trait epistemic distinction.
 - Relationship candidates preserve legal uncategorized relationship types instead of narrowing the existing write
   contract to registered vocabulary only.
+- Relationship extraction is ordinary-disclosure only until the durable relationship model/read path grows an
+  enforceable sensitivity contract; M17 does not silently downgrade elevated edges.
 - The first MCP release of M17 candidate types already carries count, source-label, and new-field bounds; the CLI
   adds byte/process bounds in the following PR.
 - Legacy-only MCP candidate behavior is not silently narrowed.
