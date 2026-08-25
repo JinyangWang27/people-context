@@ -159,8 +159,29 @@ candidates continue to reference one batch-local person candidate id.
 Do not add a second “existing person id or candidate ref” dependency language. One batch-local dependency model is
 simpler and keeps review/commit behavior uniform across structured and agent-extracted imports.
 
-An ambiguous identity must remain reviewable/unresolved. The agent must not create a new person merely to bypass an
-ambiguous existing match.
+For every request containing at least one M17 candidate, person matching must preserve the distinction between
+**unmatched**, **matched**, and **ambiguous** rather than representing both unmatched and ambiguous as
+`matched_person_id=null`. Matching considers the union of active existing-person ids found by the candidate's
+canonical name plus handle aliases after the existing normalization rules:
+
+- no matched id → `unmatched`;
+- exactly one distinct matched id → `matched` and retain that `matched_person_id`;
+- more than one distinct matched id → `ambiguous`, with no authoritative `matched_person_id`.
+
+The staged review representation must expose a bounded machine-readable `match_disposition` (or an equivalent typed
+operational field) so a human/agent can tell ambiguity from a genuine new identity. It need not persist or expose an
+unbounded list of every colliding person id; the disposition itself is the binding correctness state. A unique match
+on one token must not short-circuit conflicting/multi-match evidence from another token into a false match.
+
+An accepted ambiguous person candidate must **not** fall through to `RememberPerson` as a new person. It remains in
+`unresolved_ids`, and every accepted dependant whose batch-local person reference resolves only through that
+ambiguous candidate remains unresolved as well. A later commit may resolve the candidate only if the same
+deterministic active-person matching now yields exactly one person (for example after an explicit external identity
+merge/correction); ambiguity is never reinterpreted as “no match”. Re-staging a corrected candidate is also valid.
+
+This stronger ambiguity-preserving behavior belongs to the M17-containing extraction path from its first release.
+A genuinely legacy-only MCP `stage_candidates` request retains its released pre-M17 matching behavior; M17 does not
+silently redefine that old surface merely to add the new candidate types.
 
 ## Commit behavior
 
@@ -169,10 +190,13 @@ Extend `CommitImport` using injected existing write use cases, not direct reposi
 - observation → `RecordObservation`;
 - trait → `RecordTrait`;
 - relationship → `SetRelationship`;
-- existing person/affiliation/fact/interaction behavior remains unchanged.
+- existing person/affiliation/fact/interaction behavior remains unchanged except for the M17-containing batch
+  ambiguity guard above.
 
 Commit ordering must satisfy dependencies: people first, then person-scoped candidates/relationships/interactions
 once all referenced people resolve. Accepted candidates with unresolved dependencies remain in `unresolved_ids`.
+An accepted person with `match_disposition=ambiguous` is itself unresolved and must not invoke `RememberPerson`; its
+accepted dependants therefore cannot commit until that person has one authoritative resolution.
 
 Every durable write continues through the normal atomic audit/changelog seam. M17 does not add a privileged import
 write path.
@@ -278,8 +302,10 @@ explicitly.
 
 ## Migration needs
 
-No schema migration is required if observation/trait/relationship candidates map entirely onto existing durable
-entities. Candidate staging remains JSON-backed and strict-model validated.
+No durable domain/schema migration is required if observation/trait/relationship candidates map entirely onto
+existing durable entities. Candidate staging remains JSON-backed and strict-model validated. The M17-containing
+staging path may add the typed operational `match_disposition`/match metadata above to staged person JSON (or an
+equivalent operational staging representation) without creating a second durable identity model.
 
 ## CLI / MCP surface changes
 
@@ -287,7 +313,9 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 - from M17.1, any request using an M17 candidate type is bounded to 500 total candidates, a normalized 128-character
   source label, **1 MiB canonical serialized candidate payload, 8 KiB for every candidate string including legacy
   fields**, and the tighter new-type field limits; legacy-only MCP batches retain their pre-M17 accepted shape;
-- `review_import` / `commit_import` response envelopes remain unchanged;
+- M17-containing review state additively distinguishes `unmatched`/`matched`/`ambiguous` person matching so
+  ambiguity cannot be mistaken for a new identity; the surrounding `review_import`/`commit_import` envelopes remain
+  unchanged;
 - M17.2 adds bounded CLI `pctx import stage-candidates ...` over the same application use case;
 - no new raw-text import tool and no model execution tool.
 
@@ -302,6 +330,8 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
 - Trait evidence notes must be concise derivations, not hidden transcript archives.
 - Relationship candidates are ordinary-disclosure only in M17; sensitive/restricted relationships are not staged
   because the durable relationship model cannot enforce those disclosure levels.
+- Ambiguous identity state is explicit and bounded; M17 never converts “several possible existing people” into a
+  silent new person merely because no single `matched_person_id` exists.
 - Agents never bypass the review gate merely because they performed the extraction.
 - The CLI stdin path validates bounded JSON before staging and never evaluates code or invokes a shell.
 - Candidate writes retain the sensitivity/provenance behavior their durable target actually supports; M17 never
@@ -318,12 +348,17 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
   normalized MCP source-label cap, **1 MiB mixed/new candidate-payload cap, and 8 KiB all-string cap**. Include mixed
   requests where an oversized legacy person/fact/interaction field accompanies one M17 candidate; rejection occurs
   before staging and does not echo the rejected value/source.
-- Staging tests verify person-ref rewriting/matching for each new dependent type.
-- Commit tests cover known/new/matched people, unresolved refs, relationship canonicalization/uncategorized behavior,
-  and all new writes flowing through existing audited use cases.
+- Staging tests verify person-ref rewriting/matching for each new dependent type. Identity tests specifically cover
+  no match, one unique match, multiple matches for one token, and conflicting matches across name/handle tokens; the
+  latter two produce explicit `ambiguous` review state rather than `unmatched` or an arbitrary first match.
+- Commit tests cover known/new/matched people, **accepted ambiguous people remaining unresolved without calling
+  `RememberPerson`, their accepted dependants remaining unresolved**, unresolved refs, relationship
+  canonicalization/uncategorized behavior, and all new writes flowing through existing audited use cases. Include a
+  regression where a name has no match but a handle matches multiple existing people, plus a later deterministic
+  re-evaluation after an explicit external merge/correction.
 - Regression tests pin all four existing candidate types and response envelopes unchanged, including a legacy-only
-  MCP staging fixture proving M17 did not retroactively apply the new count/string/source/payload limits to that
-  contract.
+  MCP staging fixture proving M17 did not retroactively apply the new count/string/source/payload/ambiguity semantics
+  to that contract.
 - M17.2 CLI tests cover file/stdin candidate JSON, malformed JSON, unknown candidate types, >1 MiB rejection, >500
   candidates, oversized generic/new-type strings/source label, `--json`, and stdout purity.
 - Skill/workflow tests or scripted transcript fixtures prove stage-only behavior, explicit commit approval, and that
@@ -339,6 +374,8 @@ entities. Candidate staging remains JSON-backed and strict-model validated.
   contract to registered vocabulary only.
 - Relationship extraction is ordinary-disclosure only until the durable relationship model/read path grows an
   enforceable sensitivity contract; M17 does not silently downgrade elevated edges.
+- M17-containing batches preserve explicit unmatched/matched/ambiguous identity state and never let ambiguity fall
+  through to new-person creation; genuinely legacy-only MCP staging keeps its released behavior.
 - The first MCP release of M17 candidate types already carries conditional count/source/payload/all-string bounds plus
   tighter new-field limits; the CLI adds file/stdin read bounds in the following PR.
 - Legacy-only MCP candidate behavior is not silently narrowed.
