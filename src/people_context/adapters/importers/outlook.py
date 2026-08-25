@@ -135,9 +135,9 @@ class OutlookImportExtractor:
                     # The row's identity is still trustworthy, so only the birthday is dropped.
                     skipped.append({"index": row_index, "reason": "invalid_birthday"})
                 elif birthday is not None:
-                    key = (person.ref, birthday.isoformat())
-                    if key not in seen_facts:
-                        seen_facts.add(key)
+                    fact_key = (person.ref, birthday.isoformat())
+                    if fact_key not in seen_facts:
+                        seen_facts.add(fact_key)
                         facts.append(
                             {
                                 "type": "fact",

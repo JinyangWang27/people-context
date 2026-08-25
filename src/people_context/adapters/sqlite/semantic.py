@@ -6,6 +6,7 @@ import json
 import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
+from types import ModuleType
 
 from people_context.adapters.model2vec_embeddings import MODEL_DIMENSION
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
@@ -238,7 +239,7 @@ def _read_preferences(conn: sqlite3.Connection, keys: list[str]) -> dict[str, ob
     return {row["key"]: json.loads(row["value_json"]) for row in rows}
 
 
-def _load_sqlite_vec(conn: sqlite3.Connection):
+def _load_sqlite_vec(conn: sqlite3.Connection) -> ModuleType:
     try:
         import sqlite_vec
     except ImportError as exc:

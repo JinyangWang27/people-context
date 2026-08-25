@@ -52,6 +52,15 @@ class RecordReader(Protocol):
 
 
 @runtime_checkable
+class RecordStore(RecordReader, RecordWriter, Protocol):
+    """Both sides of record persistence, for callers that need to read and write.
+
+    Stated for the same reason as `PeopleRepository`: a decorator that wraps the store as
+    a unit must not be annotated with a union that a half-implementation would satisfy.
+    """
+
+
+@runtime_checkable
 class OrganizationStore(Protocol):
     """Resolve and persist organizations used by affiliations."""
 

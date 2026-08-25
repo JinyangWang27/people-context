@@ -46,7 +46,9 @@ All ten tools are annotated `readOnlyHint=true`.
 
 Nodes intentionally contain only id, name, and `is_self`; summaries, facts, traits, observations, interactions,
 and reminders are not graph data. Edge `type` is canonical. Depth defaults to 2 and is capped at 4; application
-caps are 100 nodes and 300 edges. Cap removal sets `truncated=true`.
+caps are 100 nodes and 300 edges. Traversal is separately bounded by a node budget well above the node cap, so
+a request cannot cost unbounded work on a dense store. Cap removal, and traversal stopping on its budget, both
+set `truncated=true`.
 
 Unknown or soft-deleted roots return:
 

@@ -87,6 +87,12 @@ actions in `records/doctor.py`, or the path redaction in `context/stats.py`) is 
 `UnitOfWork` (`ports/unit_of_work.py`), `Clock` (`ports/clock.py`), and
 `Sleeper` (`ports/sleep.py`).
 Splitting concerns means read, merge, forget, audit, and sync use cases depend only on capabilities they consume.
+
+A few callers legitimately need every side of one store — the semantic indexing decorators wrap person and
+record persistence as a unit. They depend on `PeopleRepository` and `RecordStore`, which compose the narrow
+ports rather than listing them as a union: a union would let a half-implementation satisfy the annotation and
+fail on its first unsupported call. The narrow ports remain the right dependency everywhere else.
+
 The application layer owns transaction orchestration through the UoW port; SQLite owns BEGIN/COMMIT/ROLLBACK.
 
 ### `adapters`
