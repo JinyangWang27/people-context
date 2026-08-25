@@ -53,7 +53,6 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
         ("json", "mcpb/manifest.json", "$.version"),
         ("json", ".codex-plugin/plugin.json", "$.version"),
         ("generic", "mcpb/pyproject.toml", None),
-        ("toml", "uv.lock", '$.package[?(@.name=="people-context")].version'),
         ("generic", "tests/test_packaging_metadata.py", None),
         ("generic", "docs/mcp-registry.md", None),
     }
@@ -61,6 +60,25 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     server = _json(ROOT / "server.json")
     requirement = server["packages"][0]["runtimeArguments"][0]["value"]
     assert requirement == f"people-context=={server['version']}"
+
+
+def test_uv_lock_is_relocked_by_the_workflow_not_an_extra_file() -> None:
+    """`uv.lock` records the project version, but no updater entry can rewrite it.
+
+    Release Please resolves an `extra-files` jsonpath against literal keys and indices,
+    so a filter over the `[[package]]` array of tables matches nothing and the entry
+    silently does nothing — the failure surfaces later as every `uv sync --locked` job
+    on the release pull request rejecting the stale lockfile. The workflow therefore
+    relocks on the release branch and pushes before it dispatches the checks.
+    """
+    package = _json(ROOT / "release-please-config.json")["packages"]["."]
+    workflow = (ROOT / ".github/workflows/release-please.yml").read_text(encoding="utf-8")
+
+    assert all(entry["path"] != "uv.lock" for entry in package["extra-files"])
+    assert "uv lock" in workflow
+    assert 'git push origin "HEAD:${{ steps.pr.outputs.branch }}"' in workflow
+    # The refreshed lockfile has to be on the branch before the checks read it.
+    assert workflow.index("uv lock") < workflow.index("Dispatch release pull request checks")
 
 
 def test_explicit_versions_are_never_pinned_in_configuration() -> None:
@@ -125,7 +143,8 @@ def test_release_workflow_dispatches_suppressed_pull_request_checks() -> None:
 
     assert "steps.release.outputs.prs_created == 'true'" in release_workflow
     assert "RELEASE_PRS: ${{ steps.release.outputs.prs }}" in release_workflow
-    assert "PR_BRANCH=\"$(jq -r '.[0].headBranchName' <<< \"$RELEASE_PRS\")\"" in release_workflow
+    assert "branch=$(jq -r '.[0].headBranchName' <<< \"$RELEASE_PRS\")" in release_workflow
+    assert "PR_BRANCH: ${{ steps.pr.outputs.branch }}" in release_workflow
     assert "fromJSON(steps.release.outputs.pr)" not in release_workflow
     for workflow_name in RELEASE_PR_WORKFLOWS:
         workflow = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
