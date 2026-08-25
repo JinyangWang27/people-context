@@ -1,6 +1,6 @@
 # M13 — Daily utility & proactive signals
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m13--daily-utility--proactive-signals).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m13--daily-utility--proactive-signals).
 
 ## Motivation
 

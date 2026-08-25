@@ -65,7 +65,7 @@ provide a safe human-operated Obsidian export without changing existing response
   deduplication through the M6 atomic audit/changelog seam;
 - additive perspective `display_type` in relationship hydration, context, guidance, and CLI show;
 - add-only custom vocabulary curation plus dry-run/apply legacy relationship normalization;
-- narrow `GraphReader` port with cycle-safe recursive SQLite CTEs;
+- narrow `GraphReader` port with cycle-safe bounded breadth-first SQLite traversal;
 - read-only `get_relationship_graph` and `find_connection` MCP tools with depth/node/edge caps and explicit
   truncation/not-found/not-connected contracts;
 - CLI-only deterministic Obsidian vault export with marker-file ownership safety, Unicode/collision-safe names,
@@ -173,7 +173,8 @@ and cloud-memory comparisons.
 - a dated, primary-source threat-model comparison with cloud memory tools;
 - README demo polish based on the packaged M9 demo.
 
-**Status:** Planned.
+**Status:** Partially delivered — compatibility, threat comparison/demo, and SQLCipher are delivered; synchronized
+`1.0.0` primary server metadata remains pending.
 
 ## M13 — Daily utility & proactive signals
 
@@ -191,7 +192,7 @@ and cloud-memory comparisons.
 - `pctx watch`: local-only JSON-lines changelog tail with explicit initial-cursor and `--from-start`
   semantics.
 
-**Status:** Planned.
+**Status:** Delivered.
 
 ## M14 — Ecosystem & interoperability
 
@@ -210,7 +211,7 @@ additional import funnels, and a first-class live Obsidian view.
 - a desktop-only Obsidian plugin using stable person ids and shell-free bounded CLI subprocesses, with typed
   database/encryption settings, a committed Node lockfile, and deterministic mirrored release artifacts.
 
-**Status:** Planned.
+**Status:** Delivered.
 
 ## M15 — Data quality, insight, and credibility
 
@@ -226,6 +227,90 @@ evidence and narratives.
 - additive transliteration-aware `match_detail` while preserving exact-match reason/ranking/ambiguity;
 - a fictional-data, locally runnable evaluation plus dated results and use-case gallery.
 
+**Status:** Delivered.
+
+## M16 — First-class CLI import workflow
+
+**Goals:** make the existing review-gated import subsystem directly usable from `pctx` by both humans and
+automation, without inventing another import policy or adding model/network dependencies.
+
+**Deliverables:**
+
+- `pctx import stage SOURCE PATH [--self-sender TEXT] [--json]` over the seven existing import sources;
+- `pctx import review BATCH_ID [--json]` with deterministic review-safe rendering;
+- `pctx import commit BATCH_ID --all|--accept ... [--json]` with explicit acceptance and unchanged unresolved
+  dependency semantics;
+- stable v1 `people-context-import-batch`, `people-context-import-review`, and
+  `people-context-import-commit` JSON documents;
+- reuse of the general CLI import workflow/rendering from `pctx init` without changing onboarding safety;
+- parser/CLI/runtime/privacy/subprocess coverage and documentation of the local/offline lifecycle.
+
+No new importer, candidate type, schema migration, live service integration, raw-text extraction, or general
+CLI/MCP parity is part of M16.
+
+**Status:** Planned.
+
+## M17 — Agent-assisted knowledge extraction
+
+**Goals:** let agents distill meeting transcripts, conversation logs, notes, and other unstructured material into
+strict reviewable people-context candidates while keeping semantic reasoning outside the core server.
+
+**Deliverables:**
+
+- additive strict candidate types for observations, inferred traits, and canonical relationships;
+- mandatory explicit confidence plus concise evidence note for staged inferred traits;
+- commit support for the new candidates through existing audited/changelogged write use cases;
+- `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` for agents without MCP access;
+- packaged agent guidance distinguishing fact vs observation vs trait, resolving participants through batch-local
+  person candidates, and preserving stage → review → explicit commit;
+- explicit safeguards against raw-transcript persistence, unsupported sensitive inference, evidence-free traits,
+  and an embedded LLM/model dependency.
+
+**Status:** Planned.
+
+## M18 — Provenance, idempotency & evidence
+
+**Goals:** make repeated ingestion traceable and duplicate-safe without turning People Context into a document
+store, and ground inferred traits in durable evidence records.
+
+**Deliverables:**
+
+- a minimal durable source-session/receipt model with bounded metadata and exact-byte SHA-256 digest, never raw
+  source content or default absolute paths;
+- concurrency-safe atomic default claiming of source-kind+digest together with source-session/batch/candidate
+  staging publication, while explicitly forced reprocessing remains distinct;
+- additive bootstrap preservation of staged/partially committed source sessions and the incomplete staging rows
+  required to keep their batches reviewable after restore;
+- a separate durable record-to-source-session association for committed writes while preserving existing
+  message/event-derived `Provenance.session` semantics;
+- local source-session inspection showing batch/record ids and status summaries but no source body;
+- durable trait-evidence links to observations/interactions involving the same trait subject, including same-batch
+  staged evidence resolution and subject validation;
+- additive migration/sync/bootstrap/privacy/concurrency coverage for the new provenance/evidence state.
+
+M18 deliberately does not perform semantic record deduplication, automatic confidence recomputation, source
+rollback, document storage, or incremental peer replication of incomplete staging state.
+
+**Status:** Planned.
+
+## M19 — Knowledge consolidation & temporal views
+
+**Goals:** make accumulated memory understandable and maintainable over time without introducing an autonomous
+belief updater.
+
+**Deliverables:**
+
+- bounded deterministic person timelines over interactions, observations, dated state changes, traits, and M18
+  provenance/evidence metadata;
+- local CLI timeline output plus ordinary-disclosure MCP access with explicit sensitivity policy;
+- a bounded person-scoped consolidation-context read exposing duplicate/superseding/reinforcing/contradictory
+  knowledge and the evidence/provenance needed to reason about it;
+- an agent maintenance workflow that proposes structured corrections/merges/supersession actions, explains its
+  evidence, and waits for explicit user approval before using existing mutation tools;
+- deterministic bounds/order/privacy tests proving all analysis/report paths remain read-only.
+
+M19 does not automatically merge records, rewrite traits, recalculate confidence, or run a maintenance daemon.
+
 **Status:** Planned.
 
 ## Post-roadmap candidates
@@ -238,7 +323,9 @@ The following remain candidates, not commitments:
 - authenticated remote transport;
 - reminder notification daemon (M13 ships only a pull-based calendar-feed export);
 - read-only local web viewer (`pctx browse`; M14's Obsidian plugin covers browsing for Obsidian users);
-- CardDAV synchronization (M14 ships only one-way vCard export).
+- CardDAV synchronization (M14 ships only one-way vCard export);
+- watched-folder/background ingestion orchestration outside the core import transaction;
+- source-session rollback/retraction after safe lifecycle semantics are designed from real usage.
 
-See `docs/specs/` for one implementation spec per M8–M15 milestone, and
+See `docs/specs/` for one implementation spec per M8–M19 milestone, and
 [docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.

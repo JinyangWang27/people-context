@@ -1,6 +1,6 @@
 # M15 — Data quality, insight, and credibility
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m15--data-quality-insight-and-credibility).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m15--data-quality-insight-and-credibility).
 
 ## Motivation
 

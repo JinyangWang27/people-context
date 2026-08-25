@@ -1,6 +1,6 @@
 # M14 — Ecosystem & interoperability
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m14--ecosystem--interoperability).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m14--ecosystem--interoperability).
 
 ## Motivation
 
