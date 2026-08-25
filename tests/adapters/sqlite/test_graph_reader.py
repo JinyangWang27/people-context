@@ -97,6 +97,58 @@ def test_disconnected_and_not_found_results_are_structured() -> None:
     assert missing.model_dump(mode="json") == {"error": "person_not_found", "person_id": "missing"}
 
 
+def test_traversal_stops_on_its_node_budget_and_reports_truncation() -> None:
+    """Regression: the display cap alone let a depth-4 request materialize the whole store."""
+    conn, people, _, setter = _setup()
+    chain = [_person(people, f"Person {index:03d}") for index in range(40)]
+    for previous, following in zip(chain, chain[1:], strict=False):
+        setter.execute(SetRelationshipInput(subject_id=previous.id, object_id=following.id, type="friend_of"))
+
+    reader = SqliteGraphReader(conn, SystemClock())
+    unbounded = reader.neighbors(chain[0].id, 4)
+    assert unbounded.truncated is False
+
+    budgeted = reader.neighbors(chain[0].id, 4, 3)
+    assert len(budgeted.nodes) == 3
+    assert budgeted.truncated is True
+
+
+def test_traversal_from_an_unknown_or_deleted_seed_yields_an_empty_subgraph() -> None:
+    conn, people, _, _ = _setup()
+    deleted = _person(people, "Gone")
+    deleted.deleted_at = datetime.now(UTC)
+    people.save_person(deleted)
+    reader = SqliteGraphReader(conn, SystemClock())
+
+    for seed in ("missing", deleted.id):
+        subgraph = reader.neighbors(seed, 2)
+        assert subgraph.nodes == []
+        assert subgraph.edges == []
+        assert subgraph.truncated is False
+
+
+def test_a_node_set_larger_than_one_bind_chunk_still_sees_every_edge() -> None:
+    """A node set spanning several bind chunks must not drop, duplicate, or reorder edges.
+
+    Edge queries chunk both sides of their `IN` clauses, so every edge is matched by
+    exactly one pair of chunks and the results are merged. This exercises that boundary:
+    an off-by-one in the chunking, or a merge that appended instead of keying by edge id,
+    would show up here as a missing or repeated edge.
+    """
+    conn, people, _, setter = _setup()
+    center = _person(people, "Center")
+    leaves = [_person(people, f"Leaf {index:04d}") for index in range(450)]
+    for leaf in leaves:
+        setter.execute(SetRelationshipInput(subject_id=center.id, object_id=leaf.id, type="friend_of"))
+
+    subgraph = SqliteGraphReader(conn, SystemClock()).neighbors(center.id, 1)
+
+    assert len(subgraph.nodes) == len(leaves) + 1
+    assert len(subgraph.edges) == len(leaves)
+    assert len({edge.id for edge in subgraph.edges}) == len(leaves)
+    assert [edge.id for edge in subgraph.edges] == sorted(edge.id for edge in subgraph.edges)
+
+
 def test_sqlite_graph_reader_satisfies_exact_port() -> None:
     reader: GraphReader = SqliteGraphReader(open_db(":memory:"), SystemClock())
     assert isinstance(reader, GraphReader)

@@ -30,6 +30,9 @@ class RelationshipSubgraph(BaseModel):
 
     nodes: list[GraphPerson] = Field(default_factory=list)
     edges: list[GraphRelationship] = Field(default_factory=list)
+    #: Whether traversal stopped on its work budget rather than exhausting the depth.
+    #: Distinct from the caller's display cap, and folded into the reported truncation.
+    truncated: bool = False
 
 
 class RelationshipPath(BaseModel):

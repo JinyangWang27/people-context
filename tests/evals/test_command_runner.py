@@ -14,9 +14,12 @@ from evals.harness.runner import write_mcp_config
 from evals.harness.runners.command import CommandAgentRunner
 from evals.harness.suite import CommandRunnerConfig
 
-#: CPython's C locale coercion (PEP 538) puts LC_CTYPE into a child that has no
-#: locale variables, so it appears regardless of the allowlist and is discounted here.
-_INTERPRETER_ADDED = {"LC_CTYPE"}
+#: Variables the platform puts into a child regardless of the allowlist, discounted
+#: here so the assertions describe the allowlist rather than the operating system:
+#: CPython's C locale coercion (PEP 538) sets LC_CTYPE in a child that has no locale
+#: variables, and macOS CoreFoundation sets __CF_USER_TEXT_ENCODING in every process
+#: it starts, even when the parent's own environment does not contain it.
+_INTERPRETER_ADDED = {"LC_CTYPE", "__CF_USER_TEXT_ENCODING"}
 
 #: A fake agent: it reports its own argument vector and environment as JSON.
 _ECHO_AGENT = """

@@ -48,6 +48,7 @@ pctx = "people_context.cli:main"
 [dependency-groups]
 dev = [
     "ipykernel>=7.3.0",
+    "mypy>=1.18",
     "pytest>=8",
     "ruff>=0.6",
     "model2vec>=0.8.2,<0.10",
@@ -78,3 +79,28 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# The architecture depends on static typing to hold: use cases receive narrow
+# `typing.Protocol` ports rather than concrete adapters, so a port that a delegate
+# does not actually satisfy is a mistake nothing else in the pipeline catches. Ruff
+# checks style and imports, not types. The interpreter version is deliberately not
+# pinned here: CI runs this across the supported range, so each run checks the code
+# against the standard library it will actually import.
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+files = ["src/people_context"]
+# Third-party packages here ship no type information; the project's own code is
+# checked, and its use of those packages is not silently skipped.
+ignore_missing_imports = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+# numpy arrives through the optional semantic extra and ships stubs written for a
+# newer Python than the lowest version checked here. Its internals are not this
+# project's code to check; call sites still are.
+[[tool.mypy.overrides]]
+module = ["numpy.*"]
+follow_imports = "skip"

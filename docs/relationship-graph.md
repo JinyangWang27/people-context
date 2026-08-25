@@ -56,13 +56,16 @@ the same perspective rule.
 The `GraphReader` port is deliberately narrow:
 
 ```python
-neighbors(person_id, depth)
+neighbors(person_id, depth, node_budget=None)
 path_between(a, b, max_depth)
-subgraph(person_ids, depth)
+subgraph(person_ids, depth, node_budget=None)
 ```
 
-The SQLite adapter uses cycle-safe recursive CTEs over active relationships whose two endpoint people are not
-soft-deleted. Ordering is deterministic, with edge id used to break traversal ties.
+The SQLite adapter expands breadth-first over active relationships whose two endpoint people are not
+soft-deleted, visiting each person once. Ordering is deterministic, with edge id used to break traversal ties.
+Each level is hydrated in one query rather than one per person, and the `IN` clauses that carry a level's node
+set are chunked, so a large store cannot exceed the bound-variable limit of older SQLite builds. Edge rows are
+merged by id across chunks and sorted, so chunking changes no result.
 
 Application use cases enforce all disclosure caps:
 
@@ -70,7 +73,12 @@ Application use cases enforce all disclosure caps:
 - at most 100 nodes;
 - at most 300 edges.
 
-When a cap removes data, `truncated` is `true`; truncation is never silent.
+Disclosure caps apply after type filtering, so they cannot also bound the traversal: stopping at 100 nodes
+would starve a filtered query of nodes it should still reach. Traversal is therefore bounded separately by
+`node_budget`, a ceiling on how many people one request may visit, passed by the use case and far above the
+node cap. It bounds work, not disclosure.
+
+When a cap removes data, or traversal stops on its budget, `truncated` is `true`; truncation is never silent.
 
 ### `get_relationship_graph`
 

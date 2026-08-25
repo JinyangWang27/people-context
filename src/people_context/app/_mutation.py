@@ -8,6 +8,7 @@ from typing import Any, ParamSpec, Protocol, TypeVar, cast
 
 from pydantic import BaseModel
 
+from people_context.domain.person import Person
 from people_context.domain.shared import Provenance, new_id
 from people_context.ports.audit_log import AuditEntry, AuditLog
 from people_context.ports.changelog import Changelog, ChangelogEntry
@@ -95,7 +96,7 @@ class InvalidReminderError(Exception):
     """Raised when reminder kind and scheduling fields conflict."""
 
 
-def require_active_person(people: PersonReader, person_id: str):
+def require_active_person(people: PersonReader, person_id: str) -> Person:
     """Return an active person or raise the common not-found error."""
     person = people.get(person_id)
     if person is None or person.deleted_at is not None:
