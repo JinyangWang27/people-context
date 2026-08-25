@@ -30,15 +30,16 @@ In scope:
 - merge integration that retargets both durable candidate mappings and retained staged person matches to surviving
   identities/relationships instead of leaving inactive or deleted ids;
 - duplicate-source detection before creating another staging batch plus an explicit non-default reprocessing escape
-  hatch;
+  hatch and an explicit refusal contract for duplicate claims whose prior batch was fully redacted;
 - versioned bootstrap continuity for source sessions, **all** durable committed-candidate mappings, and the staging
   rows required only for incomplete batches;
 - M18-aware bootstrap baseline-empty checks for every new mutable source/mapping/evidence table, regardless of which
   supported bundle version is being restored;
 - hard-forget integration for new durable provenance/evidence relations and structurally linked retained staging so
   erased records cannot remain addressable or reviewable through import state;
-- privacy-preserving terminal source claims for **claim-backed** sessions, while fully forgotten digestless sessions
-  are removed rather than pretending they remain duplicate-detectable;
+- privacy-preserving caller-metadata scrubbing whenever hard forget affects an M18 source, including sources that
+  still have unrelated surviving mappings, plus terminal source claims for fully emptied **claim-backed** sessions;
+- fully forgotten digestless sessions are removed rather than pretending they remain duplicate-detectable;
 - bounded, keyset-paginated CLI inspection of source sessions **and per-source candidate mappings**;
 - durable evidence links from traits to observations/interactions that support the same person;
 - explicit bounded batch-local evidence references so one staged trait can address observation/interaction
@@ -172,6 +173,18 @@ pctx import stage SOURCE PATH --force
 never weakens the canonical default uniqueness rule. It is for intentional reprocessing of exactly the same claim,
 not a workaround for incorrect claim identity.
 
+A special duplicate case exists after hard forget. If the canonical claim resolves to a terminal `redacted`
+claim-backed source, that row deliberately has **no reviewable batch association**. The default staging command must
+therefore **not** fabricate/reuse a batch id or emit the successful M16 `people-context-import-batch` v1 document.
+Instead it refuses deterministically with application error code `source_previously_redacted`: CLI exit is non-zero,
+stdout remains empty even when `--json` was requested, stderr contains only a bounded safe diagnostic identifying the
+stable error code and that `--force` is required for intentional reprocessing, and no durable row is created or
+changed. This is an explicit refusal contract, not a new success-document version. A forced invocation may then
+create the normal distinct processing session/batch and, on success, emits the ordinary M16 batch document.
+
+This does not weaken the M16 JSON promise: M16 promises one JSON document on **successful** `--json` commands. A
+redacted duplicate is intentionally not a success because there is no batch to review or commit.
+
 ### Agent-extracted sources
 
 `pctx import stage-candidates` / MCP staging may accept optional source-session metadata including a digest computed
@@ -304,14 +317,24 @@ hard-forget transaction and their counts appear in preview/result metadata. Dura
 changes remain part of the forget replay manifest/affected-entity set so peer replay can erase the corresponding
 primary state.
 
-If staging cleanup leaves an M18-tracked source with **no live mapped entity and no reviewable staging row**, the
-receipt lifecycle depends on whether the source ever had a canonical duplicate claim:
+Caller-authored receipt metadata is opaque and cannot safely be attributed to only one surviving/forgotten person.
+Therefore, **whenever a hard-forget operation removes any mapping or retained staging row associated with an M18
+source session**, the same forget transaction clears that source's optional human label, external source id, and any
+other caller-authored optional inspection metadata, and redacts audit/covered-changelog history containing those
+values. This happens even when unrelated live mappings or reviewable rows survive and the source remains otherwise
+non-redacted. Internal claim fields (`source_kind`, digest, extraction fingerprint/absence state), status, and an
+internal batch association still required to review surviving rows may remain. This conservative rule prevents a
+label such as `Interview with Alice` from surviving merely because the same source also produced a live Bob record.
 
-- **claim-backed session** (a content digest is present): set the source session to terminal `redacted`; clear the
-  optional human label, external source id, batch association, and every caller-authored optional inspection field
-  not required by the claim; retain only the internal source-session id, `source_kind`, content digest, optional
-  extraction fingerprint/its internal absence state, and redacted status. Implementation-required timestamps may
-  remain internally if the schema needs them, but redacted inspection does not expose them;
+If staging cleanup leaves an M18-tracked source with **no live mapped entity and no reviewable staging row**, the
+receipt lifecycle then depends on whether the source ever had a canonical duplicate claim:
+
+- **claim-backed session** (a content digest is present): set the source session to terminal `redacted`; the
+  caller-authored metadata has already been scrubbed as above, and now also clear the batch association and every
+  remaining optional inspection field not required by the claim; retain only the internal source-session id,
+  `source_kind`, content digest, optional extraction fingerprint/its internal absence state, and redacted status.
+  Implementation-required timestamps may remain internally if the schema needs them, but redacted inspection does
+  not expose them;
 - **digestless session**: there is no canonical claim to preserve. Delete the source-session row itself in the same
   forget transaction after mappings/staging are gone. Do not keep `(source_kind, null, null)` as a fake claim and do
   not use the now-cleared external id as an implicit idempotency key. A later staging of similar source material is
@@ -325,9 +348,11 @@ source title.
 
 A claim-backed redacted source must not expose its former label, external source id, batch id, timestamps, candidate
 counts, or removed mappings through `source show`/`sources`. Duplicate detection still recognizes its canonical claim
-and does not silently restage it; explicit `--force` remains the intentional route to reprocess it. A fully forgotten
-digestless session is absent from inspection. If unrelated live mappings or reviewable rows remain, the source stays
-non-redacted and inspectable only with those retained survivors.
+but follows the explicit `source_previously_redacted` refusal contract above rather than inventing a review batch;
+explicit `--force` remains the intentional route to reprocess it. A fully forgotten digestless session is absent from
+inspection. If unrelated live mappings or reviewable rows remain, the source stays non-redacted and inspectable only
+with those retained survivors **and with caller-authored receipt metadata scrubbed if this forget affected the
+source**.
 
 Pre-M18 legacy batches that never had a source session are not guessed/backfilled from ambiguous audit history. New
 M18-tracked batches must always satisfy the mapping invariant from the first release of source sessions.
@@ -340,8 +365,9 @@ The resulting provenance model is:
 - source inspection and later same-batch dependencies traverse live `entity` mappings without storing the raw
   source, while terminal merge outcomes remain non-dangling history;
 - hard forget removes provenance associations and structurally linked staging content for entities it actually
-  erases; a fully emptied claim-backed source retains only a non-identifying non-restageable claim key/status, while
-  a fully emptied digestless source receipt is deleted entirely.
+  erases and scrubs opaque caller-authored receipt metadata for every affected source; a fully emptied claim-backed
+  source retains only a non-identifying non-restageable claim key/status, while a fully emptied digestless source
+  receipt is deleted entirely.
 
 ## Bootstrap bundle versioning
 
@@ -523,7 +549,8 @@ pctx source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]
 
 A non-redacted source detail may include:
 
-- id, kind, optional label, digest/extraction fingerprint, timestamps/status;
+- id, kind, optional label **only when that caller metadata has not been scrubbed by a prior hard forget**,
+  digest/extraction fingerprint, timestamps/status;
 - staging batch id;
 - aggregate candidate counts/status summaries;
 - **one bounded page** of committed candidate ids and live durable record ids/types from candidate mappings;
@@ -538,8 +565,9 @@ parameters do not widen redacted output.
 
 Inspection never returns raw source content or raw extraction self-identity configuration. Stable JSON is versioned
 from first release if documented for agents. Human output may render concise provenance paths. Hard-forgotten mapping
-rows and structurally linked staging rows are absent, so inspection/review cannot resurrect an erased record id or
-its retained candidate content through provenance metadata.
+rows and structurally linked staging rows are absent, and any affected surviving source has its opaque caller-authored
+receipt metadata scrubbed, so inspection/review cannot resurrect an erased record id/name through provenance
+metadata.
 
 ## Migration needs
 
@@ -561,16 +589,18 @@ than of the document being restored.
 
 The existing lifecycle paths are extended in the same PR that introduces each new durable relation. M18.1 integrates
 candidate mappings **and retained staged person matches** with person merge, record/person hard-forget preview/
-deletion/replay-history redaction, typed retained-staging cleanup, claim-backed terminal source-receipt metadata
-scrubbing, and deletion of fully forgotten digestless receipts. M18.3 applies the same hard-forget guarantees to
-trait-evidence relation rows. New relation or receipt history must not survive merely because its entity id differs
-from the record id being forgotten.
+deletion/replay-history redaction, typed retained-staging cleanup, **caller-receipt metadata scrubbing for every
+source affected by forget**, claim-backed terminal source handling and deletion of fully forgotten digestless
+receipts. M18.3 applies the same hard-forget guarantees to trait-evidence relation rows. New relation or receipt
+history must not survive merely because its entity id differs from the record id being forgotten.
 
 ## CLI / MCP surface changes
 
 Expected additive changes:
 
 - M18.1 file staging reports duplicate-source state and source-session id and adds explicit `--force` reprocessing;
+- a duplicate claim whose existing source is terminal `redacted` returns explicit non-success
+  `source_previously_redacted` with no batch document/id; `--force` is the only intentional reprocessing path;
 - M17 candidate staging may optionally accept bounded source-session metadata/digest;
 - M18.2 adds bounded, cursor-paginated local source listing **and bounded per-source candidate-mapping detail**;
 - M18.3 additively accepts bounded `evidence_ref` on observation/interaction candidates and bounded format-opaque
@@ -583,6 +613,8 @@ Expected additive changes:
 Do not break existing import envelopes; add fields only where allowed by the M12 compatibility promise or introduce
 new versioned JSON documents when a new machine surface is required. Existing provenance fields keep their prior
 meaning. Existing interaction candidates remain valid without `evidence_ref`; the new field is optional and additive.
+The terminal-redacted duplicate case is deliberately a refusal rather than a successful extension of the frozen M16
+batch document.
 
 ## Security and privacy
 
@@ -598,15 +630,19 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   names, and machine layout.
 - Source-session labels/ids and evidence refs/ids are explicitly bounded; none is a place to copy a source excerpt or
   transcript body.
-- When forget removes the final live derived state for a claim-backed source, caller-authored receipt metadata is
-  cleared and its audit/covered changelog history redacted; list/show exposes only the non-restageable claim
-  key/status. A digestless source has no such idempotency key and is deleted completely once fully forgotten.
+- **Any hard forget that affects an M18 source scrubs that source's opaque caller-authored label/external id/optional
+  inspection metadata and their audit/covered-changelog history, even if unrelated mappings survive.** This avoids
+  trying to infer which person an opaque label refers to.
+- When forget removes the final live derived state for a claim-backed source, the already-scrubbed receipt is further
+  reduced to the non-restageable claim key/status; list/show exposes no batch or former metadata. Retrying the same
+  default claim fails with `source_previously_redacted` rather than fabricating a batch. A digestless source has no
+  such idempotency key and is deleted completely once fully forgotten.
 - Evidence retrieval respects existing sensitivity/disclosure gates; a trait must not reveal restricted evidence to
   an ordinary MCP caller merely because the trait is visible.
 - Subject validation prevents Alice's trait from exposing Bob-only observation metadata or an interaction in which
   Alice did not participate.
 - Hard forget removes new provenance/evidence relations to erased entities, deletes structurally linked retained
-  candidate rows, scrubs/deletes terminal receipt metadata according to claim availability, and redacts durable
+  candidate rows, scrubs/deletes receipt metadata according to claim availability, and redacts durable
   relation/receipt audit/changelog history atomically, preventing import metadata from becoming a post-erasure
   identifier/content leak.
 - Source list/detail reads are bounded in SQLite; one source with an arbitrarily large legacy-derived mapping set
@@ -632,6 +668,10 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   safe failure behavior.
 - Concurrency tests run two staging attempts for the same stable claim identity and prove exactly one canonical
   default source session/batch is created; the losing attempt observes the winner's state.
+- Redacted-duplicate tests stage/commit/fully forget a claim-backed file source, then retry the same default claim and
+  assert non-zero `source_previously_redacted`, empty stdout in both normal/`--json` mode, bounded safe stderr with
+  `--force` guidance, no fabricated/reused `batch_id`, and zero mutation; the forced retry creates a distinct normal
+  batch and emits the ordinary successful batch document.
 - Candidate commit mapping tests prove entity ids/outcomes are persisted atomically with durable writes/status
   transitions, already-committed retries resolve through the mapping, terminal merge outcomes do not recreate
   removed self-loop relationships, and mapping rows survive staging cleanup policy.
@@ -657,10 +697,13 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   staging rows; typed staging dependencies are deleted to a fixed point without free-text guessing; mappings/
   evidence links targeting entities actually erased are deleted in the same transaction; shared retained
   interactions keep valid durable mappings/links while any staging row that still references the forgotten candidate
-  is removed; relation audit payloads are redacted; covered relation changelog operations/transactions are redacted;
-  a claim-backed source with no live mapping/reviewable staging becomes minimal `redacted`, clears caller metadata and
-  redacts history while remaining non-restageable; the corresponding digestless case deletes the source receipt and
-  redacts its history, permits later fresh staging, and leaves nothing in `source show`/`sources`.
+  is removed; relation audit payloads are redacted; covered relation changelog operations/transactions are redacted.
+  Include a **multi-person source whose label/external id names the forgotten person while another person's mapping
+  survives**: the source remains non-redacted but its caller-authored metadata/history is scrubbed and survivor
+  mappings/batch state remain usable. Also cover a claim-backed source with no live mapping/reviewable staging becoming
+  minimal `redacted`, clearing batch/remaining optional metadata while remaining non-restageable, and the
+  corresponding digestless case deleting the source receipt/history, permitting later fresh staging, and leaving
+  nothing in `source show`/`sources`.
 - Evidence-reference validation tests cover unique/duplicate/unknown/wrong-type/blank/overlong `evidence_ref`,
   non-blank/over-256 `evidence_id`, a restored non-ULID id such as `obs-1`, the 32-reference combined trait budget,
   deterministic rewrite to canonical candidate ids, no rejected-value echo, and legacy interaction candidates without
@@ -674,7 +717,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   cursor behavior, `next_cursor`, and a SQLite `LIMIT limit + 1` query. Detail tests create a source with more than
   200 mappings and pin default/max mapping limits, deterministic `candidate_id ASC` keyset traversal, mapping
   `next_cursor`, aggregate counts, and SQLite `LIMIT limit + 1`, proving neither source list nor one source detail
-  materializes an unbounded relation.
+  materializes an unbounded relation. Include a partially forgotten surviving source and prove scrubbed caller
+  metadata is absent while survivor mappings remain inspectable.
 - Sync/bootstrap/export tests explicitly account for the new durable state according to the versioned policy.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
@@ -688,7 +732,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   use an explicit internal absence state in uniqueness; digestless agent sessions deliberately have no canonical
   duplicate claim.
 - Duplicate claiming plus staging publication is atomic; check-then-insert races are not permitted, and `--force`
-  is the explicit escape hatch for intentional identical reprocessing.
+  is the explicit escape hatch for intentional identical reprocessing. A duplicate canonical claim already reduced
+  to terminal `redacted` refuses with `source_previously_redacted` and no batch-shaped success output.
 - One import commit is one logical sync transaction: every audited/changelogged child entity, source-session status,
   and candidate mapping effect shares one transaction id and rolls back together.
 - Candidate commit mapping is durable from M18.1 and doubles as the record→source-session provenance seam, allowing
@@ -699,10 +744,11 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   outcomes; only incomplete staging rows are operationally scoped to staged/partially committed batches. Every new
   M18 mutable table participates in the destination baseline-empty check for all accepted bundle versions.
 - New durable provenance/evidence relations participate in merge/forget lifecycle behavior as applicable from the
-  PR that introduces them; hard forget also deletes structurally linked operational staging rows to a fixed point.
-  Once no live derived/reviewable state remains, a claim-backed receipt is reduced to a non-restageable canonical
-  claim key/status, while a digestless receipt is deleted because no such claim exists; caller-authored history is
-  scrubbed in either case.
+  PR that introduces them; hard forget also deletes structurally linked operational staging rows to a fixed point
+  **and scrubs opaque caller-authored receipt metadata on every affected source even when unrelated mappings
+  survive**. Once no live derived/reviewable state remains, a claim-backed receipt is reduced to a non-restageable
+  canonical claim key/status, while a digestless receipt is deleted because no such claim exists; caller-authored
+  history is scrubbed in either case.
 - Source inspection is bounded at every storage read: source sessions use default 50/max 200 keyset pages and each
   source-detail mapping relation independently uses default 50/max 200 `candidate_id` keyset pages; aggregate counts
   do not require mapping materialization.
