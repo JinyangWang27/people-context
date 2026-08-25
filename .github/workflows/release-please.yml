@@ -29,13 +29,47 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      - name: Resolve the release pull request branch
+        id: pr
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: echo "branch=$(jq -r '.[0].headBranchName' <<< "$RELEASE_PRS")" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the release pull request branch
+        if: steps.release.outputs.prs_created == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+
+      - name: Install uv
+        if: steps.release.outputs.prs_created == 'true'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      # release-please cannot bump the project version inside uv.lock, so the
+      # version bump it commits leaves the lockfile stale and every `uv sync
+      # --locked` job on the release PR fails. Relock here and push before the
+      # checks are dispatched.
+      - name: Commit the refreshed lockfile
+        if: steps.release.outputs.prs_created == 'true'
+        run: |
+          uv lock
+          if git diff --quiet -- uv.lock; then
+            echo "uv.lock already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add uv.lock
+          git commit -m "chore: refresh uv.lock for the release version bump"
+          git push origin "HEAD:${{ steps.pr.outputs.branch }}"
+
       - name: Dispatch release pull request checks
         if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+          PR_BRANCH: ${{ steps.pr.outputs.branch }}
         run: |
-          PR_BRANCH="$(jq -r '.[0].headBranchName' <<< "$RELEASE_PRS")"
           gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
           gh workflow run codeql.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"
           gh workflow run claude-plugin-validate.yml --repo "$GITHUB_REPOSITORY" --ref "$PR_BRANCH"

@@ -33,11 +33,6 @@
           "path": "mcpb/pyproject.toml"
         },
         {
-          "type": "toml",
-          "path": "uv.lock",
-          "jsonpath": "$.package[?(@.name==\"people-context\")].version"
-        },
-        {
           "type": "generic",
           "path": "tests/test_packaging_metadata.py"
         },
