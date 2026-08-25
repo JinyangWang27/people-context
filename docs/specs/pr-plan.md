@@ -318,11 +318,19 @@ Check the matching box only in the PR that delivers it.
     M17 candidate** is capped at 500 total candidates, a normalized 128-character `source`, **1 MiB canonical UTF-8
     serialization of the complete candidate array, and 8 KiB for every string field on every candidate—including
     legacy person/fact/interaction/affiliation fields in a mixed request**. The tighter M17 field limits also apply.
-    Rejection occurs before staging and never echoes payload values. A genuinely legacy-only MCP batch retains its
-    released accepted shape. People commit/resolve before dependants; unresolved refs remain unresolved; all durable
-    writes retain normal audit/changelog/provenance; existing candidate envelopes remain additive-compatible.
+    Rejection occurs before staging and never echoes payload values. For the same M17-containing request, person
+    matching must preserve explicit **unmatched / matched / ambiguous** disposition across canonical-name + handle
+    identity tokens: zero distinct active matches is unmatched, exactly one is matched, and more than one is
+    ambiguous. An ambiguous person exposes bounded reviewable match state, has no authoritative
+    `matched_person_id`, **must not call `RememberPerson` as a new identity when accepted**, remains unresolved, and
+    leaves every accepted dependant unresolved until deterministic re-evaluation yields one active person or the
+    candidate is corrected/re-staged. A unique token must not short-circuit conflicting matches on another token.
+    A genuinely legacy-only MCP batch retains its released accepted shape **and pre-M17 matching behavior**. People
+    commit/resolve before dependants; unresolved refs remain unresolved; all durable writes retain normal
+    audit/changelog/provenance; existing candidate envelopes remain additive-compatible.
   - **Out:** source receipts/evidence tables, raw-text parsing, LLM/runtime dependency, automatic commit/confidence,
-    elevated relationship storage/disclosure, retroactive global caps on genuinely legacy-only MCP staging.
+    elevated relationship storage/disclosure, retroactive global caps or ambiguity-semantics changes on genuinely
+    legacy-only MCP staging.
 
 - [ ] **M17.2 — Add bounded agent candidate CLI and unstructured-source workflow**
   - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` and extend the packaged
@@ -330,11 +338,11 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** input is candidate JSON, never raw transcript; reject >1 MiB input, >500 candidates, >8 KiB
     generic CLI strings, >128-character source labels, and the tighter M17 field limits before staging;
     malformed/extra fields fail closed and rejected payloads are never echoed. The MCP mixed/new-request count,
-    source, payload, all-string, and new-field bounds already shipped in M17.1 remain unchanged. Workflow
-    distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for identities, discourages
-    speculative sensitive inference/verbatim evidence, and **omits sensitive/restricted relationship edges even when
-    explicitly stated** rather than downgrading them to the ordinary graph. It stages only and requires explicit
-    later commit.
+    source, payload, all-string, new-field, and ambiguity-preserving identity rules already shipped in M17.1 remain
+    unchanged. Workflow distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for
+    identities, discourages speculative sensitive inference/verbatim evidence, and **omits sensitive/restricted
+    relationship edges even when explicitly stated** rather than downgrading them to the ordinary graph. It stages
+    only and requires explicit later commit.
   - **Out:** model invocation, prompt storage, transcript persistence, automatic review/commit, source idempotency,
     relationship-sensitivity schema/read changes, retroactive global size/count/source narrowing of legacy-only MCP
     staging.
@@ -359,7 +367,10 @@ Check the matching box only in the PR that delivers it.
     source-level idempotency promise. `source_kind` is a bounded non-personal machine category, while optional human
     label/external source id are separately bounded caller metadata. Claim + source session + batch/candidate
     publication are atomic under a uniqueness mechanism; `--force` creates a distinct non-default processing session
-    for an identical claim.
+    for an identical claim. If a default duplicate claim resolves to a terminal claim-backed `redacted` source with
+    no batch association, staging **refuses rather than fabricating/reusing a batch**: stable application code
+    `source_previously_redacted`, non-zero CLI exit, empty stdout even under `--json`, bounded safe stderr with
+    `--force` guidance, and no mutation. A forced retry may create the ordinary distinct batch/success document.
 
     Every successful `CommitImport.execute` mints/propagates **one non-empty logical `transaction_id`** across every
     child entity mutation, candidate mapping mutation, and source-session status mutation produced by that commit;
@@ -381,12 +392,16 @@ Check the matching box only in the PR that delivers it.
     In the **same forget transaction**, retained staging rows structurally linked through typed candidate/person/
     endpoint/participant/evidence ids are deleted recursively to a fixed point (including pending `matched_person_id`
     and explicit durable `evidence_ids`); no free-text/name guessing. Preview/result counts include removed staging
-    rows. If a source is left with no live mapping and no reviewable staging, lifecycle depends on claim availability:
-    a **claim-backed** session becomes terminal `redacted`, clears human label/external source id/batch/other caller
-    inspection metadata, redacts corresponding history, and retains only internal id + canonical claim key + status;
-    a **digestless** session is deleted entirely and its receipt history redacted because `(source_kind,null,null)` is
-    not a usable duplicate claim. Redacted inspection exposes no former timestamps/batch/counts/mappings; claim-backed
-    redaction remains non-restageable and `--force` reprocesses it, while a later digestless source may stage anew.
+    rows. **Whenever that forget removes any mapping or staging row belonging to an M18 source, scrub that source's
+    opaque caller-authored human label, external source id, and other optional inspection metadata plus their
+    audit/covered-changelog history even if unrelated mappings/reviewable rows survive.** Keep internal claim fields,
+    status, and any batch association still required for surviving review state. If the source is then left with no
+    live mapping and no reviewable staging, lifecycle depends on claim availability: a **claim-backed** session
+    becomes terminal `redacted`, additionally clears its batch/remaining optional inspection state, and retains only
+    internal id + canonical claim key + status; a **digestless** session is deleted entirely and its receipt history
+    redacted because `(source_kind,null,null)` is not a usable duplicate claim. Redacted inspection exposes no former
+    timestamps/batch/counts/mappings; claim-backed redaction remains non-restageable except through explicit
+    `--force`, while a later digestless source may stage anew.
 
     Export emits strict sync-bundle v2; restore accepts v1/v2. V2 carries **all surviving source sessions and all
     candidate commit mappings/outcomes, including fully committed sessions after staging cleanup**; staging rows are
@@ -410,13 +425,15 @@ Check the matching box only in the PR that delivers it.
     source's candidate mappings with default 50/max 200, deterministic `candidate_id ASC` keyset order, validated
     opaque cursor, and SQLite `LIMIT limit + 1`; aggregate candidate/status counts are computed in SQL rather than by
     loading all mappings.** Non-redacted inspection returns metadata plus at most that bounded mapping page and
-    nullable mapping `next_cursor`; terminal merge outcomes contain no removed edge id. A terminal redacted source is
-    always claim-backed and returns only internal id + non-personal source kind + digest/fingerprint-or-absence claim
-    state + status, never its cleared label/external id/batch/timestamps/counts/mappings; a fully forgotten digestless
-    source has no retained row. No raw source/path/self-configuration leak; mappings remain usable after staging
-    cleanup policy; completed-source mappings survive bootstrap restore, while hard-forgotten mappings/staging/caller
-    metadata are absent; partial/idempotent commits are understandable. This PR does not change the strict v2
-    bootstrap shape introduced by M18.1.
+    nullable mapping `next_cursor`; if an earlier hard forget affected that source, its caller-authored label/external
+    id/optional inspection metadata remain absent even while survivor mappings are shown. Terminal merge outcomes
+    contain no removed edge id. A terminal redacted source is always claim-backed and returns only internal id +
+    non-personal source kind + digest/fingerprint-or-absence claim state + status, never its cleared label/external
+    id/batch/timestamps/counts/mappings; a fully forgotten digestless source has no retained row. No raw
+    source/path/self-configuration leak; mappings remain usable after staging cleanup policy; completed-source
+    mappings survive bootstrap restore, while hard-forgotten mappings/staging/caller metadata are absent;
+    partial/idempotent commits are understandable. This PR does not change the strict v2 bootstrap shape introduced
+    by M18.1.
   - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
     second parallel record-source provenance table, offset/unbounded source or mapping scans.
 
