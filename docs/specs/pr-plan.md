@@ -329,38 +329,58 @@ Check the matching box only in the PR that delivers it.
 ## M18 — Provenance, idempotency & evidence
 
 - [ ] **M18.1 — Add durable source claims, commit mappings, and bootstrap v2**
-  - **Scope:** Add the next-free migration and ports/app/SQLite support for source sessions plus durable
-    candidate→record commit mappings; ensure each file digest/extraction describes one verified stable snapshot;
-    define extraction-configuration fingerprints; add explicit `pctx import stage ... --force`; advance strict full
-    bootstrap export to v2 while retaining v1 restore support; extend hard forget for the new mapping relation.
+  - **Scope:** Add the next-free migration and ports/app/SQLite support for source sessions plus durable candidate
+    commit-outcome mappings; ensure each file digest/extraction describes one verified stable snapshot; define
+    extraction-configuration fingerprints; add explicit `pctx import stage ... --force`; advance strict full
+    bootstrap export to v2 while retaining v1 restore support; integrate mapping state with commit transaction
+    grouping, person merge, hard forget/retained staging, and baseline-empty restore checks.
   - **Acceptance:** byte-capable importers hash and parse the same immutable bytes under the existing M16 resource
     budgets; path-only `mbox` verifies identity/metadata plus pre/post SHA-256 and discards/retries or fails safely if
     the source changes; no durable receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is
     created. Canonical duplicate identity is `(source_kind, content_digest, extraction_fingerprint)`, where the
     fingerprint deterministically covers extraction-affecting normalized self inputs/`self_sender` and a per-source
-    extraction-contract revision without persisting raw self values. Claim + source session + batch/candidate
-    publication are atomic under a uniqueness mechanism; `--force` creates a distinct non-default processing session
-    for an identical claim. Every committed candidate in an M18-tracked batch atomically records candidate id/batch/
-    source-session/entity type/entity id with its durable mutation and committed status, including matched/reused
-    entities; committed retries use that mapping rather than heuristics. Record/person hard forget previews and
-    deletes mappings to entities actually erased in the same forget transaction, redacts those mapping audit and
-    covered changelog histories, keeps mappings to shared interactions that remain durable, and leaves no forgotten
-    entity id inspectable through source provenance afterward. Export emits strict sync-bundle v2; restore accepts
-    v1/v2. V2 carries **all source sessions and all candidate commit mappings, including fully committed sessions
-    after staging cleanup**; staging rows are carried only for staged/partially committed batches. Restore validates
-    all mapping→durable-entity references and preserves completed-source associations as well as incomplete-batch
-    review/dependency continuity; unknown fields still fail per declared version.
+    extraction-contract revision without persisting raw self values. New source metadata is explicitly bounded per
+    the milestone spec. Claim + source session + batch/candidate publication are atomic under a uniqueness mechanism;
+    `--force` creates a distinct non-default processing session for an identical claim.
+
+    Every successful `CommitImport.execute` mints/propagates **one non-empty logical `transaction_id`** across every
+    child entity mutation, candidate mapping mutation, and source-session status mutation produced by that commit;
+    multiple accepted candidates share it, unresolved rows emit no durable effect, and any phase failure rolls the
+    whole commit back. Every committed candidate records a durable mapping/outcome with its mutation/status;
+    matched/reused entities are legal and committed retries use that mapping rather than heuristics.
+
+    Person merge updates mappings inside the existing merge transaction and **same merge transaction id**: duplicate
+    person mappings retarget to the survivor; reparented records keep surviving ids; deduped relationship mappings
+    retarget to the chosen keeper; a relationship removed as a merge-created self-loop becomes terminal
+    `merged_away` with no entity id and never recreates the edge on retry. Source inspection/bootstrap understand that
+    terminal state instead of carrying a dangling id.
+
+    Record/person hard forget previews and deletes mappings to entities actually erased, redacts their mapping audit
+    and covered changelog histories/replay state, and keeps mappings to shared interactions that remain durable.
+    In the **same forget transaction**, retained staging rows structurally linked through typed candidate/person/
+    endpoint/participant/evidence ids are deleted recursively to a fixed point (including pending `matched_person_id`
+    and explicit durable `evidence_ids`); no free-text/name guessing. Preview/result counts include removed staging
+    rows. If no reviewable rows survive, the M18 source/batch remains a known terminal/redacted claim rather than
+    becoming silently restageable; `--force` is still required to reprocess the same claim.
+
+    Export emits strict sync-bundle v2; restore accepts v1/v2. V2 carries **all source sessions and all candidate
+    commit mappings/outcomes, including fully committed sessions after staging cleanup**; staging rows are carried
+    only for staged/partially committed batches. Live-entity mappings must reference bundled durable entities;
+    terminal `merged_away` mappings have no entity id. M18.1 source-session/mapping tables are added to the existing
+    transactional baseline-empty check for **both v1 and v2 restore**, so an older incoming document cannot merge
+    into local M18 state. Unknown fields still fail per declared version.
   - **Out:** semantic candidate dedup, trait evidence, source rollback, folder watch, incremental peer replication of
-    staging state, raw extraction-option persistence.
+    staging state, raw extraction-option persistence, heuristic free-text staging erasure.
 
 - [ ] **M18.2 — Expose source provenance and inspection over commit mappings**
   - **Scope:** Add local `sources` / `source show` inspection and any narrow app/read ports needed to traverse M18.1
     candidate→entity→source-session mappings while preserving existing `Provenance.session` meanings.
   - **Acceptance:** existing message/event-id `Provenance.session` semantics remain byte/semantically unchanged;
     inspection shows bounded ids, kind/digest/extraction fingerprint/status/batch and committed candidate/record
-    summaries only; no raw source/path/self-configuration leak; mappings remain usable after staging cleanup policy;
-    completed-source mappings survive bootstrap restore, while hard-forgotten mappings are absent; partial/idempotent
-    commits are understandable. This PR does not change the strict v2 bootstrap shape introduced by M18.1.
+    summaries only; terminal merge outcomes are bounded and contain no removed edge id; no raw source/path/self-
+    configuration leak; mappings remain usable after staging cleanup policy; completed-source mappings survive
+    bootstrap restore, while hard-forgotten mappings/staging content are absent; partial/idempotent commits are
+    understandable. This PR does not change the strict v2 bootstrap shape introduced by M18.1.
   - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
     second parallel record-source provenance table.
 
@@ -368,22 +388,26 @@ Check the matching box only in the PR that delivers it.
   - **Scope:** Add the next-free additive trait-evidence relation plus a bounded caller-addressable same-batch
     evidence-ref rewrite; support evidence committed in an earlier partial commit and explicit durable evidence ids;
     advance strict bootstrap export to v3 while retaining v1/v2 restore support; integrate the new relation with
-    hard-forget lifecycle/redaction.
+    hard-forget lifecycle/redaction and the baseline-empty restore contract.
   - **Acceptance:** observation/interaction candidates may add optional unique non-blank `evidence_ref` tokens of at
     most **256 characters**. Traits may reference up to **32 combined** unique same-batch `evidence_refs` and durable
-    `evidence_ids`; unknown/duplicate/wrong-type refs fail before staging. Staging rewrites caller refs to canonical
-    `evidence_candidate_ids` exactly like person-ref rewriting, so callers never need preallocated candidate ids or
-    an append-to-batch API. Rewritten candidate ids resolve through the M18.1 commit mapping whether evidence was
-    committed in a prior invocation or earlier in the current one; only active supported durable evidence types are
-    legal. An observation must belong to the trait subject and an interaction must include that subject; stable id
-    ordering; accepted trait remains unresolved when required evidence has no valid mapping/cannot resolve/does not
-    exist/resolves to another person's evidence. Hard forget of a trait/evidence entity deletes affected evidence
-    relations in the same transaction, includes them in preview counts, redacts their audit/covered changelog
-    history, and preserves links to shared interaction evidence only when that interaction itself remains durable.
-    Persisted-id, earlier-partial-commit, same-invocation, ref-bound, record/person-forget tests are required;
-    retrieval respects sensitivity and never exposes restricted evidence through a visible trait; `evidence_note`
-    remains additive human context. Existing interactions without `evidence_ref` remain unchanged. Export emits
-    strict sync-bundle v3 with trait-evidence relations **and inherits v2's all-commit-mapping rule**; restore accepts
+    `evidence_ids`; each `evidence_id` is exactly a canonicalizable **26-character Crockford ULID** and invalid
+    length/alphabet values fail before staging without echo. Unknown/duplicate/wrong-type refs fail before staging.
+    Staging rewrites caller refs to canonical `evidence_candidate_ids` exactly like person-ref rewriting, so callers
+    never need preallocated candidate ids or an append-to-batch API. Rewritten candidate ids resolve through the
+    M18.1 live-entity mapping whether evidence was committed in a prior invocation or earlier in the current one;
+    only active supported durable evidence types are legal. An observation must belong to the trait subject and an
+    interaction must include that subject; stable id ordering; accepted trait remains unresolved when required
+    evidence has no valid live mapping/cannot resolve/does not exist/resolves to another person's evidence.
+
+    Hard forget of a trait/evidence entity deletes affected evidence relations in the same transaction, includes
+    them in preview/replay affected state, redacts their audit/covered changelog history, and preserves links to
+    shared interaction evidence only when that interaction itself remains durable. M18.3 adds the trait-evidence
+    table to the transactional baseline-empty check for **v1, v2, and v3 restore**. Persisted-id, earlier-partial-
+    commit, same-invocation, ref-bound, record/person-forget, and baseline-version tests are required; retrieval
+    respects sensitivity and never exposes restricted evidence through a visible trait; `evidence_note` remains
+    additive human context. Existing interactions without `evidence_ref` remain unchanged. Export emits strict
+    sync-bundle v3 with trait-evidence relations **and inherits v2's all-commit-mapping/outcome rule**; restore accepts
     v1/v2/v3 and validates each version fail-closed.
   - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation,
     append-to-batch mutation or caller control of canonical candidate ids.
