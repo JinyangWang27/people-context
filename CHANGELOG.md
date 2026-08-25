@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/JinyangWang27/people-context/compare/v0.4.0...v1.0.0) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ci:** refresh uv.lock on release pull requests ([b0acf5f](https://github.com/JinyangWang27/people-context/commit/b0acf5ff200f0776dc6cbc2a61fe718e05a16de0))
+* resolve five review findings across tests, typing, CI, and graph traversal ([#86](https://github.com/JinyangWang27/people-context/issues/86)) ([8daf955](https://github.com/JinyangWang27/people-context/commit/8daf9552632f0664e1619520a464eb26a544f205))
+
+
+### Documentation
+
+* plan M16-M19 roadmap ([bb7db50](https://github.com/JinyangWang27/people-context/commit/bb7db504516b6dcb9c8ccc3c79943dc2d5c845cc))
+
+
+### Miscellaneous Chores
+
+* request the 1.0.0 milestone ([c9dde93](https://github.com/JinyangWang27/people-context/commit/c9dde93695ad42de8d2cc3e26adcd5b9105423cc))
+
 ## [0.4.0](https://github.com/JinyangWang27/people-context/compare/v0.3.0...v0.4.0) (2026-08-21)
 
 
