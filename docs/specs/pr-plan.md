@@ -1,4 +1,4 @@
-# M8–M15 pull-request plan
+# M8–M19 pull-request plan
 
 One checklist item is one independently mergeable pull request. Implementers must read the referenced milestone
 spec first; the bullets below are binding acceptance criteria and the out-of-scope bullets are hard boundaries.
@@ -19,8 +19,11 @@ Check the matching box only in the PR that delivers it.
   `O_TRUNC, 0o600` pattern.
 - Machine JSON explicitly documented for integrations is versioned and additive under the M12 promise.
 - New app behavior gets fake-port and real-SQLite tests; MCP tools get in-memory tests; CLI commands get CLI tests.
-- Every PR ends with `uv lock --check` where metadata/dependencies changed, `uv run ruff check .`, and
-  `uv run pytest -q`; plugin PRs also run locked Node install/test/build.
+- Raw import/transcript/document bodies never become staging metadata, logs, errors, audit/changelog payloads, or
+  provenance receipts unless an older importer contract explicitly permits a distilled field.
+- Every PR ends with `uv lock --check` where metadata/dependencies changed, `uv run ruff check .`, `uv run mypy`,
+  and `uv run pytest -q`; packaging/surface PRs also run `uv build`. Plugin PRs additionally run locked Node
+  install/test/build.
 
 | Milestone | Theme | PRs |
 |---|---|---:|
@@ -32,7 +35,11 @@ Check the matching box only in the PR that delivers it.
 | M13 | Daily utility | 4 |
 | M14 | Ecosystem interoperability | 4 |
 | M15 | Data quality & credibility | 4 |
-| **Total** | | **31** |
+| M16 | First-class CLI import | 1 |
+| M17 | Agent-assisted extraction | 2 |
+| M18 | Provenance, idempotency & evidence | 3 |
+| M19 | Consolidation & temporal views | 2 |
+| **Total** | | **39** |
 
 ## Cross-milestone dependencies
 
@@ -43,6 +50,13 @@ Check the matching box only in the PR that delivers it.
 - M12.1 → M12.2: the 1.0 release checklist references the compatibility promise.
 - M12.4 → M14.4: the plugin's encrypted toggle invokes the canonical encrypted CLI path.
 - M14.1 → M14.4: the plugin consumes `list --json` and `brief --json`.
+- M16.1 → M17.2: agent-side strict-candidate CLI staging reuses the `pctx import` group and stable stage/review/commit
+  machine surfaces rather than creating a second lifecycle.
+- M17.1 → M18.3: durable trait evidence links target observation/interaction records produced by the expanded
+  candidate vocabulary.
+- M18.1 → M18.2: durable source sessions and candidate→record mappings exist before source inspection consumes
+  them.
+- M18.1/M18.3 → M19.1/M19.2: timeline and consolidation can explain source provenance and evidence when present.
 
 ## M8 — Distribution & reach
 
@@ -165,7 +179,7 @@ Check the matching box only in the PR that delivers it.
     no invented deprecation window.
   - **Out:** release bump, encryption, threat comparison.
 
-- [x] **M12.2 — Synchronize 1.0 server metadata and lock**
+- [ ] **M12.2 — Synchronize 1.0 server metadata and lock**
   - **Scope:** Root project, Registry, MCPB, `uv.lock`, classifier, release docs.
   - **Acceptance:** five server semantic values equal `1.0.0`; MCPB schema independent; Registry entry by identifier;
     lock root version matches and `uv lock --check` passes. Shim/plugin version domains remain independent unless
@@ -265,3 +279,219 @@ Check the matching box only in the PR that delivers it.
   - **Acceptance:** prompts/model ids/harness version; environment-only keys; no real DB; network-free stub dry run;
     production package excludes eval assets.
   - **Out:** hosted telemetry benchmark.
+
+## M16 — First-class CLI import workflow
+
+- [ ] **M16.1 — Expose the existing import lifecycle through `pctx`**
+  - **Scope:** Add `pctx import stage SOURCE PATH`, `import review`, and `import commit --all|--accept`, all with
+    stable `--json`; support exactly the seven existing router sources; refactor shared vCard onboarding rendering /
+    selection only enough to avoid a second CLI implementation; bound file staging **and existing-batch review/commit
+    reads** at the new CLI process boundary.
+  - **Acceptance:** stage never commits; `--all` and repeatable canonical `--accept` are mutually exclusive and one
+    is required; no second confirmation prompt; stable v1 batch/review/commit JSON documents are deterministic.
+    `pctx import stage` rejects source files over **64 MiB**, more than **100,000 staged candidates**, or more than
+    **64 MiB persisted reviewable staging payload** (at minimum UTF-8 bytes of staged `source` + candidate JSON),
+    stopping before unbounded read/accumulation and before durable staging; path-only `mbox` obeys the byte budget
+    while processing. Before either `import review` or commit form calls any full-batch `list_batch` path, a narrow
+    SQLite preflight computes row count plus persisted reviewable payload bytes without loading candidate JSON and
+    rejects batches over **100,000 rows or 64 MiB** with a safe `batch_too_large_for_cli`-style error and no mutation.
+    This makes M16-created batches self-reviewable while safely refusing oversized legacy MCP batches at the new CLI
+    boundary only; released MCP `import_content`/`review_import`/`commit_import` and `pctx init` behavior is not
+    retroactively narrowed. Resource errors never echo payload text; installed CLI stage→review→commit→list E2E
+    passes; existing `pctx init` semantics remain unchanged.
+  - **Out:** new importers/candidate types, stdin/raw-content import, `stage_candidates` CLI, batch management,
+    embedded models/network, general CLI/MCP parity, retroactive global import-size/read caps.
+
+## M17 — Agent-assisted knowledge extraction
+
+- [ ] **M17.1 — Expand and bound strict candidates to observation, trait, and relationship**
+  - **Scope:** Add strict candidate models/staging dependency rewriting and `CommitImport` support through existing
+    `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases; bound the new MCP extraction forms in this
+    same PR.
+  - **Acceptance:** staged traits require explicit confidence and non-blank concise evidence note; relationship
+    candidates use batch-local person refs and exactly preserve `SetRelationship` semantics—known vocabulary/
+    synonyms canonicalize, normalized syntactically valid unknown types remain legal uncategorized edges, and only
+    blank/non-word values fail. Relationship candidates are **ordinary-disclosure only** because the current durable
+    `Relationship`/graph read contract has no enforceable sensitivity field: do not add a candidate-only sensitivity
+    value that is discarded at commit, and strict extra fields must fail rather than imply protection. New M17
+    candidate fields carry the binding string limits in the milestone spec. **Any MCP request containing at least one
+    M17 candidate** is capped at 500 total candidates, a normalized 128-character `source`, **1 MiB canonical UTF-8
+    serialization of the complete candidate array, and 8 KiB for every string field on every candidate—including
+    legacy person/fact/interaction/affiliation fields in a mixed request**. The tighter M17 field limits also apply.
+    Rejection occurs before staging and never echoes payload values. For the same M17-containing request, person
+    matching must preserve explicit **unmatched / matched / ambiguous** disposition across canonical-name + handle
+    identity tokens: zero distinct active matches is unmatched, exactly one is matched, and more than one is
+    ambiguous. An ambiguous person exposes bounded reviewable match state, has no authoritative
+    `matched_person_id`, **must not call `RememberPerson` as a new identity when accepted**, remains unresolved, and
+    leaves every accepted dependant unresolved until deterministic re-evaluation yields one active person or the
+    candidate is corrected/re-staged. A unique token must not short-circuit conflicting matches on another token.
+    A genuinely legacy-only MCP batch retains its released accepted shape **and pre-M17 matching behavior**. People
+    commit/resolve before dependants; unresolved refs remain unresolved; all durable writes retain normal
+    audit/changelog/provenance; existing candidate envelopes remain additive-compatible.
+  - **Out:** source receipts/evidence tables, raw-text parsing, LLM/runtime dependency, automatic commit/confidence,
+    elevated relationship storage/disclosure, retroactive global caps or ambiguity-semantics changes on genuinely
+    legacy-only MCP staging.
+
+- [ ] **M17.2 — Add bounded agent candidate CLI and unstructured-source workflow**
+  - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` and extend the packaged
+    agent skill for transcript/note extraction.
+  - **Acceptance:** input is candidate JSON, never raw transcript; reject >1 MiB input, >500 candidates, >8 KiB
+    generic CLI strings, >128-character source labels, and the tighter M17 field limits before staging;
+    malformed/extra fields fail closed and rejected payloads are never echoed. The MCP mixed/new-request count,
+    source, payload, all-string, new-field, and ambiguity-preserving identity rules already shipped in M17.1 remain
+    unchanged. Workflow distinguishes explicit fact vs observation vs inferred trait, uses candidate matching for
+    identities, discourages speculative sensitive inference/verbatim evidence, and **omits sensitive/restricted
+    relationship edges even when explicitly stated** rather than downgrading them to the ordinary graph. It stages
+    only and requires explicit later commit.
+  - **Out:** model invocation, prompt storage, transcript persistence, automatic review/commit, source idempotency,
+    relationship-sensitivity schema/read changes, retroactive global size/count/source narrowing of legacy-only MCP
+    staging.
+
+## M18 — Provenance, idempotency & evidence
+
+- [ ] **M18.1 — Add durable source claims, commit mappings, and bootstrap v2**
+  - **Scope:** Add the next-free migration and ports/app/SQLite support for source sessions plus durable candidate
+    commit-outcome mappings; ensure each file digest/extraction describes one verified stable snapshot; define
+    extraction-configuration fingerprints; add explicit `pctx import stage ... --force`; advance strict full
+    bootstrap export to v2 while retaining v1 restore support; integrate mapping state **and retained staged person
+    matches** with commit transaction grouping, person merge, hard forget/retained staging/receipt scrubbing, and
+    baseline-empty restore checks.
+  - **Acceptance:** byte-capable importers hash and parse the same immutable bytes under the existing M16 resource
+    budgets; path-only `mbox` verifies identity/metadata plus pre/post SHA-256 and discards/retries or fails safely if
+    the source changes; no durable receipt/batch/candidate appears for a mismatched pass and no raw temporary copy is
+    created. Structured duplicate identity is `(source_kind, content_digest, extraction_fingerprint)`, where the
+    fingerprint deterministically covers extraction-affecting normalized self inputs/`self_sender` and a per-source
+    extraction-contract revision without persisting raw self values. Agent sessions with a digest may participate in
+    a claim; if their optional fingerprint is absent, uniqueness uses an explicit internal absence state rather than
+    SQLite NULL-distinct behavior. A digestless agent session has **no canonical duplicate claim** and makes no
+    source-level idempotency promise. `source_kind` is a bounded non-personal machine category, while optional human
+    label/external source id are separately bounded caller metadata. Claim + source session + batch/candidate
+    publication are atomic under a uniqueness mechanism; `--force` creates a distinct non-default processing session
+    for an identical claim. If a default duplicate claim resolves to a terminal claim-backed `redacted` source with
+    no batch association, staging **refuses rather than fabricating/reusing a batch**: stable application code
+    `source_previously_redacted`, non-zero CLI exit, empty stdout even under `--json`, bounded safe stderr with
+    `--force` guidance, and no mutation. A forced retry may create the ordinary distinct batch/success document.
+
+    Every successful `CommitImport.execute` mints/propagates **one non-empty logical `transaction_id`** across every
+    child entity mutation, candidate mapping mutation, and source-session status mutation produced by that commit;
+    multiple accepted candidates share it, unresolved rows emit no durable effect, and any phase failure rolls the
+    whole commit back. Every committed candidate records a durable mapping/outcome with its mutation/status;
+    matched/reused entities are legal and committed retries use that mapping rather than heuristics.
+
+    Person merge updates mappings inside the existing merge transaction and **same merge transaction id**: duplicate
+    person mappings retarget to the survivor; reparented records keep surviving ids; deduped relationship mappings
+    retarget to the chosen keeper; a relationship removed as a merge-created self-loop becomes terminal
+    `merged_away` with no entity id and never recreates the edge on retry. **Every retained person staging row whose
+    `matched_person_id` is the duplicate is retargeted to the survivor in the same SQLite merge transaction**, so a
+    later dependent commit cannot resolve through an inactive duplicate. Operational staging retargeting mints no
+    audit/changelog row but rolls back atomically with the merge. Exported incomplete staging carries the survivor id;
+    source inspection/bootstrap understand terminal mappings without dangling ids.
+
+    Record/person hard forget previews and deletes mappings to entities actually erased, redacts their mapping audit
+    and covered changelog histories/replay state, and keeps mappings to shared interactions that remain durable.
+    In the **same forget transaction**, retained staging rows structurally linked through typed candidate/person/
+    endpoint/participant/evidence ids are deleted recursively to a fixed point (including pending `matched_person_id`
+    and explicit durable `evidence_ids`); no free-text/name guessing. Preview/result counts include removed staging
+    rows. **Whenever that forget removes any mapping or staging row belonging to an M18 source, scrub that source's
+    opaque caller-authored human label, external source id, and other optional inspection metadata plus their
+    audit/covered-changelog history even if unrelated mappings/reviewable rows survive.** Keep internal claim fields,
+    status, and any batch association still required for surviving review state. If the source is then left with no
+    live mapping and no reviewable staging, lifecycle depends on claim availability: a **claim-backed** session
+    becomes terminal `redacted`, additionally clears its batch/remaining optional inspection state, and retains only
+    internal id + canonical claim key + status; a **digestless** session is deleted entirely and its receipt history
+    redacted because `(source_kind,null,null)` is not a usable duplicate claim. Redacted inspection exposes no former
+    timestamps/batch/counts/mappings; claim-backed redaction remains non-restageable except through explicit
+    `--force`, while a later digestless source may stage anew.
+
+    Export emits strict sync-bundle v2; restore accepts v1/v2. V2 carries **all surviving source sessions and all
+    candidate commit mappings/outcomes, including fully committed sessions after staging cleanup**; staging rows are
+    carried only for staged/partially committed batches and any retained `matched_person_id` must reference the
+    active post-merge survivor. Live-entity mappings must reference bundled durable entities; terminal `merged_away`
+    mappings have no entity id and terminal `redacted` source rows must be claim-backed and satisfy the minimal-claim
+    invariant; fully forgotten digestless sessions are absent. M18.1 source-session/mapping tables are added to the
+    existing transactional baseline-empty check for **both v1 and v2 restore**, so an older incoming document cannot
+    merge into local M18 state. Unknown fields still fail per declared version.
+  - **Out:** semantic candidate dedup, trait evidence, source rollback, folder watch, incremental peer replication of
+    staging state, raw extraction-option persistence, heuristic free-text staging erasure.
+
+- [ ] **M18.2 — Expose bounded source provenance and inspection over commit mappings**
+  - **Scope:** Add local `sources` / `source show` inspection and any narrow app/read ports needed to traverse M18.1
+    candidate→entity→source-session mappings while preserving existing `Provenance.session` meanings.
+  - **Acceptance:** existing message/event-id `Provenance.session` semantics remain byte/semantically unchanged.
+    `pctx sources` uses default `limit=50`, accepted range `1..200`, deterministic `(created_at DESC, id DESC)` order,
+    and an opaque validated keyset cursor. The SQLite read itself applies the cursor predicate plus `LIMIT limit + 1`
+    and returns at most one bounded page with nullable `next_cursor`; rendering must never materialize the complete
+    source table first. **`pctx source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR]` independently pages the
+    source's candidate mappings with default 50/max 200, deterministic `candidate_id ASC` keyset order, validated
+    opaque cursor, and SQLite `LIMIT limit + 1`; aggregate candidate/status counts are computed in SQL rather than by
+    loading all mappings.** Non-redacted inspection returns metadata plus at most that bounded mapping page and
+    nullable mapping `next_cursor`; if an earlier hard forget affected that source, its caller-authored label/external
+    id/optional inspection metadata remain absent even while survivor mappings are shown. Terminal merge outcomes
+    contain no removed edge id. A terminal redacted source is always claim-backed and returns only internal id +
+    non-personal source kind + digest/fingerprint-or-absence claim state + status, never its cleared label/external
+    id/batch/timestamps/counts/mappings; a fully forgotten digestless source has no retained row. No raw
+    source/path/self-configuration leak; mappings remain usable after staging cleanup policy; completed-source
+    mappings survive bootstrap restore, while hard-forgotten mappings/staging/caller metadata are absent;
+    partial/idempotent commits are understandable. This PR does not change the strict v2 bootstrap shape introduced
+    by M18.1.
+  - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
+    second parallel record-source provenance table, offset/unbounded source or mapping scans.
+
+- [ ] **M18.3 — Ground traits in durable evidence records and bootstrap v3**
+  - **Scope:** Add the next-free additive trait-evidence relation plus a bounded caller-addressable same-batch
+    evidence-ref rewrite; support evidence committed in an earlier partial commit and explicit durable evidence ids;
+    advance strict bootstrap export to v3 while retaining v1/v2 restore support; integrate the new relation with
+    hard-forget lifecycle/redaction and the baseline-empty restore contract.
+  - **Acceptance:** observation/interaction candidates may add optional unique non-blank `evidence_ref` tokens of at
+    most **256 characters**. Traits may reference up to **32 combined** unique same-batch `evidence_refs` and durable
+    `evidence_ids`; each `evidence_id` is a **format-opaque non-blank identifier of at most 256 characters** and is
+    preserved exactly—do not require/canonicalize ULID shape, so valid restored/custom ids such as `obs-1` remain
+    addressable. Blank/overlong ids and unknown/duplicate/wrong-type refs fail before staging without echo. Staging
+    rewrites caller refs to canonical `evidence_candidate_ids` exactly like person-ref rewriting, so callers never
+    need preallocated candidate ids or an append-to-batch API. Rewritten candidate ids resolve through the M18.1
+    live-entity mapping whether evidence was committed in a prior invocation or earlier in the current one; explicit
+    durable ids use exact lookup semantics; only active supported evidence types are legal. An observation must belong
+    to the trait subject and an interaction must include that subject; stable id ordering; accepted trait remains
+    unresolved when required evidence has no valid live mapping/cannot resolve/does not exist/resolves to another
+    person's evidence.
+
+    Hard forget of a trait/evidence entity deletes affected evidence relations in the same transaction, includes
+    them in preview/replay affected state, redacts their audit/covered changelog history, and preserves links to
+    shared interaction evidence only when that interaction itself remains durable. M18.3 adds the trait-evidence
+    table to the transactional baseline-empty check for **v1, v2, and v3 restore**. Persisted-id (including non-ULID
+    restored ids), earlier-partial-commit, same-invocation, ref-bound, record/person-forget, and baseline-version tests
+    are required; retrieval respects sensitivity and never exposes restricted evidence through a visible trait;
+    `evidence_note` remains additive human context. Existing interactions without `evidence_ref` remain unchanged.
+    Export emits strict sync-bundle v3 with trait-evidence relations **and inherits v2's all-commit-mapping/outcome
+    and claim-backed terminal-redacted-source rules**; restore accepts v1/v2/v3 and validates each version fail-closed.
+  - **Out:** trait→trait evidence, automatic confidence formula, automatic evidence deletion/correction propagation,
+    append-to-batch mutation or caller control of canonical candidate ids.
+
+## M19 — Knowledge consolidation & temporal views
+
+- [ ] **M19.1 — Add bounded person timeline reads**
+  - **Scope:** Add a narrow timeline port/use case, bounded SQLite projection, local `pctx timeline` and ordinary-
+    disclosure MCP read over interactions/observations/dated state/traits plus M18 provenance/evidence where useful.
+  - **Acceptance:** deterministic effective-time ordering with stable tie-breaks; explicit undated behavior; app and
+    underlying traversal/query work bounded; ordinary MCP excludes restricted data; CLI sensitivity opt-in is
+    explicit; timeline is read-only projection, not a denormalized event store; stable JSON if documented.
+  - **Out:** audit-log dump, new timeline table, automatic history rewriting.
+
+- [ ] **M19.2 — Add consolidation context, atomic fact supersession, and review-only maintenance workflow**
+  - **Scope:** Provide a person-scoped read model exposing duplicate/superseding/reinforcing/contradictory knowledge;
+    add narrow atomic `SupersedeFact` + `supersede_fact` MCP mutation; extend the agent skill to propose structured
+    approved maintenance actions.
+  - **Acceptance:** deterministic bounds/order; M15 doctor remains unchanged; multiple observations can remain
+    distinct supporting evidence; `correct_record` remains for erroneous data and never overwrites an historically
+    correct fact merely because a newer value is true. `supersede_fact` preserves old person/predicate/value/
+    provenance, requires `effective_from` to remain inside any bounded old validity period, closes old inclusive
+    validity at `effective_from - 1 day`, and creates the new same-person/predicate fact at `effective_from` with the
+    old fact's **original `valid_to`** (open-ended stays open-ended; bounded stays bounded). It audits/changelogs both
+    rows atomically with rollback on either phase failure. Both row-level changelog effects share one non-empty
+    logical `transaction_id` passed through `audit_mutation`, and tests assert that grouping explicitly. Tests also
+    pin bounded-period endpoint inheritance including `effective_from == old.valid_to`. Agent explains proposals and
+    waits for explicit approval before supersession/correction/merge/other mutations; no report/read path writes
+    audit/changelog/domain state; scripted approval/correction-vs-supersession regression passes.
+  - **Out:** autonomous belief updater, confidence-by-count formula, background maintenance daemon, required semantic
+    vector clustering, generic consolidation/batch mutation, automatic merge/correction, independent replacement
+    `valid_to` editing, supersession for every record type.
