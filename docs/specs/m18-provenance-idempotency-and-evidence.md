@@ -27,8 +27,8 @@ In scope:
 - a durable candidate commit mapping that is also the canonical record-to-source-session association and can
   represent a merge-retired candidate whose durable relationship no longer has a surviving edge;
 - one logical transaction id across every audited/changelogged effect produced by one M18-tracked import commit;
-- merge integration that retargets candidate mappings to surviving people/relationships instead of leaving inactive
-  or deleted entity ids;
+- merge integration that retargets both durable candidate mappings and retained staged person matches to surviving
+  identities/relationships instead of leaving inactive or deleted ids;
 - duplicate-source detection before creating another staging batch plus an explicit non-default reprocessing escape
   hatch;
 - versioned bootstrap continuity for source sessions, **all** durable committed-candidate mappings, and the staging
@@ -39,7 +39,7 @@ In scope:
   erased records cannot remain addressable or reviewable through import state;
 - privacy-preserving terminal source claims for **claim-backed** sessions, while fully forgotten digestless sessions
   are removed rather than pretending they remain duplicate-detectable;
-- bounded, keyset-paginated CLI inspection of source sessions and their derived records/batches;
+- bounded, keyset-paginated CLI inspection of source sessions **and per-source candidate mappings**;
 - durable evidence links from traits to observations/interactions that support the same person;
 - explicit bounded batch-local evidence references so one staged trait can address observation/interaction
   candidates before People Context allocates canonical candidate ids;
@@ -253,7 +253,8 @@ The mapping has these invariants:
 ### Merge behavior
 
 `merge_people` already reparents person-owned records, removes relationship self-loops, and deduplicates overlapping
-relationships under one logical merge transaction. M18.1 extends that same transaction to candidate commit mappings:
+relationships under one logical merge transaction. M18.1 extends that **same SQLite transaction** to durable
+candidate mappings **and retained staging match state**:
 
 - a mapping to the duplicate person is retargeted to the surviving primary person;
 - mappings to facts/observations/traits/reminders/affiliations whose entity ids survive reparenting keep those entity
@@ -263,12 +264,18 @@ relationships under one logical merge transaction. M18.1 extends that same trans
 - a mapping to a relationship removed as a merge-created self-loop is changed to terminal `merged_away` with
   `entity_type="relationship"` and `entity_id=null` rather than dangling, being deleted, or being pointed at an
   unrelated entity;
+- every retained person staging row whose canonical `matched_person_id` equals the duplicate person is retargeted to
+  the surviving primary person in the merge transaction. Later dependent candidate resolution therefore cannot
+  recover the known duplicate id and fail the active-person check after the merge;
 - mapping retarget/terminal changes are emitted through the normal lifecycle audit/changelog seam using the **same
-  `transaction_id` as the person/record/relationship merge effects**.
+  `transaction_id` as the person/record/relationship merge effects**. `import_staging` remains operational state and
+  does not mint its own audit/changelog entry, but its match retarget must commit or roll back atomically with the
+  merge.
 
 Bootstrap validation and source inspection understand both mapping dispositions. An `entity` mapping must reference
 a durable entity present in the snapshot/store. A `merged_away` mapping must have no entity id and is displayed only
-as a terminal candidate outcome, not as a live record reference.
+as a terminal candidate outcome, not as a live record reference. Any incomplete staging rows exported after a merge
+carry the already-retargeted survivor `matched_person_id`; bootstrap restore must never reintroduce the retired match.
 
 ### Hard forget and retained staging
 
@@ -373,7 +380,8 @@ validates source-session → batch → staging/mapping references for incomplete
 atomically. A partially committed source must not arrive in a state where duplicate detection suppresses re-staging,
 `review_import` cannot find pending candidates, or a committed candidate has lost the durable entity id needed by a
 later dependency. A completed source must not arrive with its source session intact but its record associations
-missing.
+missing. Incomplete person staging rows must reference a currently active matched person; merge-retargeted survivor
+ids are preserved verbatim in the bundle.
 
 V1 bundles remain valid inputs and simply contain no M18 source-session state. Existing v1 readers continue to reject
 v2 as designed rather than accidentally accepting a document they do not understand.
@@ -487,7 +495,7 @@ browser. Conceptual CLI:
 
 ```text
 pctx sources [--limit N] [--cursor CURSOR] [--json]
-pctx source show SOURCE_SESSION_ID [--json]
+pctx source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]
 ```
 
 `pctx sources` is bounded at the read boundary:
@@ -501,19 +509,32 @@ pctx source show SOURCE_SESSION_ID [--json]
 - stable machine JSON includes the applied limit and nullable `next_cursor`; human rendering uses the same bounded
   application result.
 
+`pctx source show` applies the same numeric bounds to its **candidate-mapping detail page**:
+
+- default `limit` is **50**, accepted range is **1..200**;
+- candidate mappings/outcomes are ordered deterministically by `candidate_id ASC` and read with keyset pagination;
+- the opaque mapping cursor represents the last returned candidate id and is bounded/validated before query
+  execution;
+- the SQLite mapping reader applies `candidate_id > cursor` plus `LIMIT limit + 1` (or an equivalent keyset predicate)
+  for that source session and never materializes the complete mapping relation before slicing;
+- source-level candidate/status counts are SQL aggregates and do not require loading every mapping/staging row;
+- stable machine JSON contains the mapping-page `limit`, bounded `mappings`, and nullable `next_cursor`; human output
+  is rendered from the same bounded result. Repeated calls traverse a large source without one unbounded response.
+
 A non-redacted source detail may include:
 
 - id, kind, optional label, digest/extraction fingerprint, timestamps/status;
 - staging batch id;
-- candidate counts/status summaries;
-- committed candidate ids and live durable record ids/types from candidate mappings;
+- aggregate candidate counts/status summaries;
+- **one bounded page** of committed candidate ids and live durable record ids/types from candidate mappings;
 - a bounded terminal `merged_away` disposition for a committed relationship candidate whose edge disappeared during
   identity merge, without returning the removed edge id.
 
 A terminal `redacted` source is always claim-backed and deliberately narrower: list/show returns only its internal
 id, non-personal `source_kind`, content digest, optional extraction fingerprint/absence state, and `redacted` status.
 It does not expose the cleared human label, external source id, batch id, timestamps, candidate counts, mappings, or
-former optional metadata. A fully forgotten digestless source has no retained row to inspect.
+former optional metadata. A fully forgotten digestless source has no retained row to inspect; mapping pagination
+parameters do not widen redacted output.
 
 Inspection never returns raw source content or raw extraction self-identity configuration. Stable JSON is versioned
 from first release if documented for agents. Human output may render concise provenance paths. Hard-forgotten mapping
@@ -539,10 +560,11 @@ supported incoming bundle version, including v1, because freshness is a property
 than of the document being restored.
 
 The existing lifecycle paths are extended in the same PR that introduces each new durable relation. M18.1 integrates
-candidate mappings with person merge, record/person hard-forget preview/deletion/replay-history redaction, typed
-retained-staging cleanup, claim-backed terminal source-receipt metadata scrubbing, and deletion of fully forgotten
-digestless receipts. M18.3 applies the same hard-forget guarantees to trait-evidence relation rows. New relation or
-receipt history must not survive merely because its entity id differs from the record id being forgotten.
+candidate mappings **and retained staged person matches** with person merge, record/person hard-forget preview/
+deletion/replay-history redaction, typed retained-staging cleanup, claim-backed terminal source-receipt metadata
+scrubbing, and deletion of fully forgotten digestless receipts. M18.3 applies the same hard-forget guarantees to
+trait-evidence relation rows. New relation or receipt history must not survive merely because its entity id differs
+from the record id being forgotten.
 
 ## CLI / MCP surface changes
 
@@ -550,7 +572,7 @@ Expected additive changes:
 
 - M18.1 file staging reports duplicate-source state and source-session id and adds explicit `--force` reprocessing;
 - M17 candidate staging may optionally accept bounded source-session metadata/digest;
-- M18.2 adds bounded, cursor-paginated local source list/show inspection over candidate commit mappings;
+- M18.2 adds bounded, cursor-paginated local source listing **and bounded per-source candidate-mapping detail**;
 - M18.3 additively accepts bounded `evidence_ref` on observation/interaction candidates and bounded format-opaque
   `evidence_refs`/`evidence_ids` on trait candidates, rewriting batch-local refs to canonical candidate ids;
 - trait/context representations may gain additive evidence metadata in M18.3;
@@ -587,6 +609,8 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   candidate rows, scrubs/deletes terminal receipt metadata according to claim availability, and redacts durable
   relation/receipt audit/changelog history atomically, preventing import metadata from becoming a post-erasure
   identifier/content leak.
+- Source list/detail reads are bounded in SQLite; one source with an arbitrarily large legacy-derived mapping set
+  cannot force unbounded materialization or output.
 - No raw source text enters logs, audit payloads, changelog payloads, errors, source-session rows, or temporary
   persistent copies created solely for hashing/extraction consistency.
 - Duplicate detection happens locally without external lookups.
@@ -615,15 +639,18 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   mapping changelog effect from one successful `CommitImport.execute` shares one non-empty transaction id; a phase
   failure rolls back all of them.
 - Merge tests cover duplicate-person mapping retarget, unchanged ids for reparented records, relationship
-  removed→keeper retarget, terminal self-loop disposition, source inspection, and the shared merge transaction id.
+  removed→keeper retarget, terminal self-loop disposition, **retained person-candidate `matched_person_id` retarget
+  followed by successful later dependent commit**, source inspection, rollback atomicity, and the shared merge
+  transaction id for durable effects.
 - Bundle tests pin strict v1/v2 compatibility at M18.1, v1/v2/v3 compatibility at M18.3, reject unknown fields per
   declared version, and prove each exporter emits only its current version.
 - Bootstrap tests cover staged, partially committed, **and fully committed** source sessions. They preserve all
   durable candidate commit mappings for completed and incomplete sessions, carry staging rows only for incomplete
-  batches, and prove `source show` after restore still reports derived records for a completed source whose staging
-  rows were cleaned up. Baseline tests also prove any non-empty M18.1/M18.3 table rejects restore under the installed
-  schema for **every** accepted incoming version, including a v1 bundle. Terminal-redacted bundle fixtures prove
-  only claim-backed redacted rows are valid and cleared caller metadata cannot reappear after restore.
+  batches, preserve merge-retargeted active `matched_person_id` values, and prove `source show` after restore still
+  reports derived records for a completed source whose staging rows were cleaned up. Baseline tests also prove any
+  non-empty M18.1/M18.3 table rejects restore under the installed schema for **every** accepted incoming version,
+  including a v1 bundle. Terminal-redacted bundle fixtures prove only claim-backed redacted rows are valid and
+  cleared caller metadata cannot reappear after restore.
 - Provenance tests prove every committed M18-tracked candidate traces to the correct source session while existing
   message/event-derived `Provenance.session` values remain byte/semantically unchanged.
 - Hard-forget tests cover both record and person scope: preview counts include relation and structurally linked
@@ -644,7 +671,10 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   ordering, and sensitivity filtering.
 - Source list/show tests contain only bounded metadata/ids and never path/body/raw-self-configuration sentinels.
   Listing tests pin default `50`, range `1..200`, deterministic `(created_at DESC, id DESC)` order, opaque keyset
-  cursor behavior, `next_cursor`, and a SQLite `LIMIT limit + 1` query so large stores are never fully materialized.
+  cursor behavior, `next_cursor`, and a SQLite `LIMIT limit + 1` query. Detail tests create a source with more than
+  200 mappings and pin default/max mapping limits, deterministic `candidate_id ASC` keyset traversal, mapping
+  `next_cursor`, aggregate counts, and SQLite `LIMIT limit + 1`, proving neither source list nor one source detail
+  materializes an unbounded relation.
 - Sync/bootstrap/export tests explicitly account for the new durable state according to the versioned policy.
 - `uv run ruff check .`, `uv run mypy`, `uv run pytest -q`, and `uv build` are fully green.
 
@@ -662,9 +692,9 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
 - One import commit is one logical sync transaction: every audited/changelogged child entity, source-session status,
   and candidate mapping effect shares one transaction id and rolls back together.
 - Candidate commit mapping is durable from M18.1 and doubles as the record→source-session provenance seam, allowing
-  later partial commits to resolve already-committed dependencies without guessing. Person merge retargets it to
-  surviving identities/edges; relationship self-loops with no survivor become explicit terminal `merged_away`
-  outcomes rather than dangling references.
+  later partial commits to resolve already-committed dependencies without guessing. Person merge retargets both
+  durable mappings and retained staged person matches to the surviving identity; relationship self-loops with no
+  survivor become explicit terminal `merged_away` outcomes rather than dangling references.
 - Full bootstrap carries every durable candidate mapping, including completed source sessions and terminal merge
   outcomes; only incomplete staging rows are operationally scoped to staged/partially committed batches. Every new
   M18 mutable table participates in the destination baseline-empty check for all accepted bundle versions.
@@ -673,8 +703,9 @@ meaning. Existing interaction candidates remain valid without `evidence_ref`; th
   Once no live derived/reviewable state remains, a claim-backed receipt is reduced to a non-restageable canonical
   claim key/status, while a digestless receipt is deleted because no such claim exists; caller-authored history is
   scrubbed in either case.
-- Source inspection is bounded at the storage read: default 50/max 200 keyset-paginated rows, never an unbounded
-  source-session materialization followed by rendering-time truncation.
+- Source inspection is bounded at every storage read: source sessions use default 50/max 200 keyset pages and each
+  source-detail mapping relation independently uses default 50/max 200 `candidate_id` keyset pages; aggregate counts
+  do not require mapping materialization.
 - Same-batch evidence uses bounded caller `evidence_ref` tokens rewritten to canonical candidate ids during staging;
   explicit durable evidence ids are exact, format-opaque non-blank identifiers capped at 256 characters, so restored
   non-ULID ids remain usable without making the new field an unbounded raw-text side channel.
