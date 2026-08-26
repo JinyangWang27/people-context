@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 
@@ -20,6 +21,28 @@ from people_context.adapters.importers.bounded_source import (
 )
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.app.imports import MAX_CLI_SOURCE_BYTES, MAX_CLI_STAGED_CANDIDATES
+
+
+class _RecordingReader:
+    """A byte stream that records the size each read was actually asked for."""
+
+    def __init__(self, data: bytes) -> None:
+        self._stream = io.BytesIO(data)
+        self.requested: list[int] = []
+
+    def read(self, size: int = -1) -> bytes:
+        self.requested.append(size)
+        return self._stream.read(size)
+
+    def readline(self, size: int = -1) -> bytes:
+        self.requested.append(size)
+        return self._stream.readline(size)
+
+    def tell(self) -> int:
+        return self._stream.tell()
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        return self._stream.seek(offset, whence)
 
 
 def _sparse_file(path: Path, size: int) -> Path:
@@ -148,6 +171,45 @@ def test_a_metered_file_refuses_once_a_reader_passes_the_budget(tmp_path: Path) 
             metered.readline()
 
     assert refusal.value.code == SOURCE_TOO_LARGE
+
+
+def test_a_metered_file_caps_the_read_instead_of_allocating_the_whole_line() -> None:
+    """Metering after the read is too late to bound what that read already allocated."""
+    inner = _RecordingReader(b"x" * 4096)
+    metered = MeteredSourceFile(inner, SourceReadBudget(16))
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        metered.readline()
+
+    assert refusal.value.code == SOURCE_TOO_LARGE
+    # The remaining allowance plus one byte, never the unbounded `-1` the caller asked for.
+    assert inner.requested == [17]
+
+
+def test_a_metered_file_caps_an_explicit_read_size_too() -> None:
+    inner = _RecordingReader(b"x" * 4096)
+    metered = MeteredSourceFile(inner, SourceReadBudget(16))
+
+    with pytest.raises(ImportExtractionError):
+        metered.read(4096)
+
+    assert inner.requested == [17]
+
+
+def test_a_metered_file_leaves_a_read_inside_the_budget_untruncated() -> None:
+    inner = _RecordingReader(b"short line\n" + b"y" * 100)
+    metered = MeteredSourceFile(inner, SourceReadBudget(64))
+
+    assert metered.readline() == b"short line\n"
+    assert metered.read(4) == b"yyyy"
+
+
+def test_an_unbudgeted_metered_file_caps_nothing() -> None:
+    inner = _RecordingReader(b"x" * 4096)
+    metered = MeteredSourceFile(inner, SourceReadBudget(None))
+
+    assert metered.readline() == b"x" * 4096
+    assert inner.requested == [-1]
 
 
 def test_a_metered_file_measures_how_far_it_read_not_how_often(tmp_path: Path) -> None:

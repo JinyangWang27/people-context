@@ -83,6 +83,21 @@ class SourceReadBudget:
     def __init__(self, max_bytes: int | None) -> None:
         self._max_bytes = max_bytes
 
+    def cap(self, position: int, size: int) -> int:
+        """Return a read size that cannot take a reader more than one byte past the budget.
+
+        Metering a read after it returns is too late to bound the allocation it made: an
+        unterminated line is one `readline(-1)` that materializes the rest of the file before
+        anything can refuse it. Capping at the remaining allowance plus one byte keeps that
+        allocation finite while still overshooting the ceiling, so `observe` still refuses.
+        Truncating the returned bytes is harmless precisely because a read that hits the cap
+        is a read whose caller is about to be refused.
+        """
+        if self._max_bytes is None:
+            return size
+        allowed = self._max_bytes - position + 1
+        return allowed if size < 0 else min(size, allowed)
+
     def observe(self, position: int) -> None:
         """Record how far into the source a reader has now read, refusing past the budget."""
         if self._max_bytes is not None and position > self._max_bytes:
@@ -100,6 +115,10 @@ class MeteredSourceFile:
     The measure is the furthest offset reached, not a running total of bytes returned, because
     a reader that seeks back over bytes it already read — as `mailbox` does when it re-reads
     each message after the scan — has not read any more of the file.
+
+    Every read is also capped before it runs, so the budget bounds the allocation and not just
+    the verdict: a source that grew into one enormous unterminated line cannot be pulled into
+    memory in a single `readline` and refused afterwards.
     """
 
     def __init__(self, inner: IO[bytes], budget: SourceReadBudget) -> None:
@@ -107,12 +126,12 @@ class MeteredSourceFile:
         self._budget = budget
 
     def read(self, size: int = -1) -> bytes:
-        data = self._inner.read(size)
+        data = self._inner.read(self._budget.cap(self._inner.tell(), size))
         self._budget.observe(self._inner.tell())
         return data
 
     def readline(self, size: int = -1) -> bytes:
-        data = self._inner.readline(size)
+        data = self._inner.readline(self._budget.cap(self._inner.tell(), size))
         self._budget.observe(self._inner.tell())
         return data
 
