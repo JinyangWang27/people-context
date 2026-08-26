@@ -182,6 +182,20 @@ def test_vcard_ignores_self_card_and_its_dependents() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("version_lines", "case"),
+    [([], "absent"), (["VERSION:3.0", "VERSION:4.0"], "duplicated")],
+)
+def test_a_card_without_exactly_one_version_is_malformed(version_lines: list[str], case: str) -> None:
+    """`VERSION` decides how the rest of the card is read, so anything but one is unreadable."""
+    content = "\n".join(["BEGIN:VCARD", *version_lines, "FN:Amina Haddad", "END:VCARD"])
+
+    extracted = VCardImportExtractor().extract("vcard", content=content, path=None, self_addresses=set())
+
+    assert extracted.skipped_cards == [{"index": 1, "reason": "malformed_card"}], case
+    assert extracted.candidates == []
+
+
 def test_a_card_naming_an_unresolvable_charset_skips_without_blocking_its_neighbours() -> None:
     """A property can fail to decode long after the file itself decoded cleanly.
 
