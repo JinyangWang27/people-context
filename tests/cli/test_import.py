@@ -18,9 +18,11 @@ from people_context.app.imports import (
     IMPORT_COMMIT_VERSION,
     IMPORT_REVIEW_FORMAT,
     IMPORT_REVIEW_VERSION,
+    ImportReviewRow,
 )
 from people_context.cli import imports as cli_imports
 from people_context.cli.parser import build_parser
+from people_context.cli.rendering import print_import_review
 
 _LINKEDIN_HEADERS = "First Name,Last Name,URL,Email Address,Company,Position,Connected On,Notes"
 _URL_SENTINEL = "LINKEDIN-URL-MUST-NOT-LEAK-41d7"
@@ -395,6 +397,33 @@ def test_review_caps_the_participants_it_names_for_one_interaction(
     assert "+5 more" in interaction
     assert "Person 0" in interaction
     assert "Person 8" not in interaction
+
+
+def test_review_renders_an_interaction_that_names_no_participants(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`participant_refs` has no minimum length, so an agent batch can stage an empty one."""
+    print_import_review(
+        [
+            ImportReviewRow(
+                id="interaction-1",
+                source="import/agent:notes",
+                status="pending",
+                candidate={
+                    "type": "interaction",
+                    "summary": "Team retrospective",
+                    "participant_candidate_ids": [],
+                    "date": "2026-07-22T09:00:00Z",
+                    "channel": "in-person",
+                },
+            )
+        ]
+    )
+
+    assert (
+        "interaction-1  pending  interaction  Team retrospective · 2026-07-22 · in-person"
+        in capsys.readouterr().out
+    )
 
 
 def test_an_undecodable_source_is_a_concise_refusal_rather_than_a_traceback(
