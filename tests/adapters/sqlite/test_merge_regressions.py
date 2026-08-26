@@ -52,7 +52,7 @@ def test_migration_004_backfills_org_normalized_name(tmp_path: Path) -> None:
     legacy.close()
 
     conn = open_db(path)
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
     row = conn.execute("SELECT name_normalized FROM organizations WHERE id = 'org-1'").fetchone()
     assert row["name_normalized"] == "acme corp"
     indexes = {row[1] for row in conn.execute("PRAGMA index_list('changelog')").fetchall()}
@@ -192,7 +192,7 @@ def test_migration_005_indexes_the_replication_order_on_a_legacy_database(tmp_pa
 
     conn = open_db(path)
 
-    assert conn.execute("PRAGMA user_version").fetchone()[0] == 5
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 6
     indexes = {row[1] for row in conn.execute("PRAGMA index_list('changelog')").fetchall()}
     assert "idx_changelog_replication_order" in indexes
     # The earlier indexes are additive, not replaced.

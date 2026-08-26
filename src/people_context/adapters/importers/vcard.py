@@ -5,7 +5,7 @@ from __future__ import annotations
 import quopri
 from dataclasses import dataclass
 
-from people_context.adapters.importers.bounded_source import read_source_text
+from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -35,6 +35,7 @@ class VCardImportExtractor:
         self_names: set[str] | None = None,
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract cards; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "vcard":
@@ -50,6 +51,7 @@ class VCardImportExtractor:
         normalized_self_addresses = {normalize_name(address) for address in self_addresses if address.strip()}
         candidates: list[dict[str, object]] = []
         skipped: list[dict[str, int | str]] = []
+        budget = CandidateBudget(max_candidates)
         for index, (lines, structurally_valid) in enumerate(cards, start=1):
             if not structurally_valid:
                 skipped.append({"index": index, "reason": "malformed_card"})
@@ -81,6 +83,7 @@ class VCardImportExtractor:
             ):
                 continue
             candidates.extend(_card_candidates(index, name, by_name))
+            budget.account(len(candidates))
         return ExtractedImport(
             people=[],
             interactions=[],

@@ -53,6 +53,7 @@ class ImportExtractorRouter:
         self_names: set[str] | None = None,
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract candidates with the extractor registered for ``source_type``."""
         extractor: ImportExtractor
@@ -78,4 +79,5 @@ class ImportExtractorRouter:
             self_names=self_names,
             self_sender=self_sender,
             max_source_bytes=max_source_bytes,
+            max_candidates=max_candidates,
         )

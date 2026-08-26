@@ -1,15 +1,16 @@
-"""A finite read budget for the local files import extractors parse.
+"""Finite budgets for what an import extractor reads and produces.
 
-The extractors read a whole local file. That stays correct for the released MCP and
-onboarding surfaces, whose callers already chose the file, so every helper here takes
-``max_bytes=None`` to mean "unbounded, exactly as before". A newer process boundary — the
-M16 ``pctx import`` group — passes a real budget instead, because a mistyped or hostile
-path must never become an unbounded read.
+The extractors read a whole local file and accumulate every candidate they find. That stays
+correct for the released MCP and onboarding surfaces, whose callers already chose the file, so
+every budget here takes ``None`` to mean "unbounded, exactly as before". A newer process
+boundary — the M16 ``pctx import`` group — passes real budgets instead, because a mistyped or
+hostile path must never become an unbounded read, and a source inside the byte ceiling can
+still expand into far more candidates than the caller is willing to stage.
 
-The budget is enforced by *reading* at most one byte past the limit rather than by trusting
-``Path.stat()``: a size an extractor is told is not a size it has to consume, and a special
-file can understate its own. Nothing here retains more than the budget, and a refusal names
-only the limit — never a byte of the rejected source.
+The byte budget is enforced by *reading* rather than by trusting ``Path.stat()``: a size an
+extractor is told is not a size it has to consume, and a special file can understate its own.
+Nothing here retains more than the budget, and a refusal names only the limit — never a byte
+of the rejected source.
 """
 
 from __future__ import annotations
@@ -17,13 +18,15 @@ from __future__ import annotations
 import io
 import os
 from pathlib import Path
+from typing import IO, Any
 
 from people_context.adapters.importers.errors import ImportExtractionError
 
 #: Stable failure code for every source rejected by a read budget.
 SOURCE_TOO_LARGE = "source_too_large"
 
-_CHUNK_BYTES = 1 << 20
+#: Stable failure code for a source that expands past the caller's candidate ceiling.
+TOO_MANY_CANDIDATES = "too_many_candidates"
 
 
 def read_source_bytes(path: str, *, max_bytes: int | None) -> bytes:
@@ -49,32 +52,12 @@ def read_source_text(path: str, *, encoding: str, max_bytes: int | None) -> str:
         return stream.read()
 
 
-def verify_source_size(path: str, *, max_bytes: int | None) -> None:
-    """Refuse a path-only source larger than ``max_bytes`` before anything iterates it.
+def refuse_oversized_file(path: str, *, max_bytes: int | None) -> None:
+    """Refuse a source whose reported size is already past the budget, before opening it.
 
-    Some sources — `mbox` — are handed to a reader that owns the file itself, so the budget
-    cannot be applied at the point of the read. It is applied here instead, by streaming the
-    file and discarding it: the check costs a bounded read and no proportional memory, and it
-    stops at the first byte past the limit.
-    """
-    if max_bytes is None:
-        return
-    remaining = max_bytes + 1
-    with Path(path).open("rb") as handle:
-        while remaining > 0:
-            chunk = handle.read(min(remaining, _CHUNK_BYTES))
-            if not chunk:
-                return
-            remaining -= len(chunk)
-    raise source_too_large(max_bytes)
-
-
-def refuse_grown_source(path: str, *, max_bytes: int | None) -> None:
-    """Refuse a path-only source that grew past the budget while it was being processed.
-
-    `verify_source_size` describes the file at one instant. A file that is still being
-    written can pass that check and then hand the reader far more, so the same budget is
-    re-asserted once processing finishes and before any candidate is staged.
+    This is only the cheap first answer, and it is deliberately not the guarantee: a file can
+    grow, and a special file can report nothing. `MeteredSourceFile` is what actually bounds
+    the read; this just avoids paying for any of that machinery on an obviously oversized file.
     """
     if max_bytes is None:
         return
@@ -82,20 +65,70 @@ def refuse_grown_source(path: str, *, max_bytes: int | None) -> None:
         raise source_too_large(max_bytes)
 
 
-class SourceByteBudget:
-    """Cumulative counter that refuses once a streamed source passes its budget."""
+class SourceReadBudget:
+    """Refuses once a reader has consumed past ``max_bytes`` of one source."""
 
     def __init__(self, max_bytes: int | None) -> None:
         self._max_bytes = max_bytes
-        self._consumed = 0
 
-    def consume(self, count: int) -> None:
-        """Record ``count`` consumed bytes, refusing as soon as the budget is exceeded."""
-        if self._max_bytes is None:
-            return
-        self._consumed += count
-        if self._consumed > self._max_bytes:
+    def observe(self, position: int) -> None:
+        """Record how far into the source a reader has now read, refusing past the budget."""
+        if self._max_bytes is not None and position > self._max_bytes:
             raise source_too_large(self._max_bytes)
+
+
+class MeteredSourceFile:
+    """A read-through view of a source file that refuses past the caller's budget.
+
+    Some readers own the file rather than being handed its bytes: `mailbox.mbox` opens the
+    path itself and scans the whole thing to build its table of contents before it yields a
+    single message. A budget applied at one call site would meter none of that, so it is
+    applied to the file object the reader actually reads through.
+
+    The measure is the furthest offset reached, not a running total of bytes returned, because
+    a reader that seeks back over bytes it already read — as `mailbox` does when it re-reads
+    each message after the scan — has not read any more of the file.
+    """
+
+    def __init__(self, inner: IO[bytes], budget: SourceReadBudget) -> None:
+        self._inner = inner
+        self._budget = budget
+
+    def read(self, size: int = -1) -> bytes:
+        data = self._inner.read(size)
+        self._budget.observe(self._inner.tell())
+        return data
+
+    def readline(self, size: int = -1) -> bytes:
+        data = self._inner.readline(size)
+        self._budget.observe(self._inner.tell())
+        return data
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate everything else — `seek`, `tell`, `close`, `fileno`, `name` — unchanged."""
+        return getattr(self._inner, name)
+
+
+class CandidateBudget:
+    """Refuses once extraction has produced more candidates than the caller will stage.
+
+    The byte ceiling on a source does not imply a ceiling on what it expands into: a dense
+    contacts export packs a candidate into a few dozen bytes, so a file well inside the read
+    budget can still yield millions of them. Extractors account as they accumulate, which is
+    what turns the staging ceiling into a bound on memory rather than a check applied to a
+    list that has already been built.
+    """
+
+    def __init__(self, max_candidates: int | None) -> None:
+        self._max_candidates = max_candidates
+
+    def account(self, count: int) -> None:
+        """Record the candidates accumulated so far, refusing as soon as they pass the limit."""
+        if self._max_candidates is not None and count > self._max_candidates:
+            raise ImportExtractionError(
+                TOO_MANY_CANDIDATES,
+                f"source produces more than the {self._max_candidates} candidates this command stages",
+            )
 
 
 def source_too_large(max_bytes: int) -> ImportExtractionError:

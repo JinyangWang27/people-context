@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 
-from people_context.adapters.importers.bounded_source import read_source_text
+from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import clean_text, normalize_email
 from people_context.domain.person import AliasKind
@@ -67,6 +67,7 @@ class LinkedInImportExtractor:
         self_names: set[str] | None = None,
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract connection rows; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "linkedin":
@@ -96,6 +97,7 @@ class LinkedInImportExtractor:
         seen_affiliations: set[tuple[str, str, str]] = set()
         seen_facts: set[tuple[str, str]] = set()
         skipped: list[dict[str, int | str]] = []
+        budget = CandidateBudget(max_candidates)
 
         try:
             for row_index, row in enumerate(reader, start=1):
@@ -154,6 +156,7 @@ class LinkedInImportExtractor:
                                 "value": connected_on.isoformat(),
                             }
                         )
+                budget.account(len(people) + len(affiliations) + len(facts))
         except csv.Error as exc:
             raise ImportExtractionError("invalid_csv", "linkedin CSV is malformed") from exc
 

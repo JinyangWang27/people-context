@@ -206,14 +206,20 @@ invocation.
 What the CLI does add is a process boundary that is bounded from its first release, because a path typed at a
 terminal is a much weaker promise than a file an MCP caller already chose:
 
-- a source file is read under a **64 MiB** budget — a real bounded read rather than a reported size, and, for
-  the path-only `mbox` reader that owns its own file, a pre-check, a metered scan, and a growth check around it;
+- a source file is read under a **64 MiB** budget — a real bounded read rather than a reported size. The
+  path-only `mbox` reader opens the file itself and scans all of it to build its table of contents before it
+  yields a message, so the budget wraps the file object it reads through: the furthest offset reached is what is
+  measured, which covers that scan and a mailbox still being appended to, not merely the headers parsed after it;
 - one staging invocation produces at most **100,000 candidates** and at most **64 MiB** of persisted reviewable
-  staging payload, measured as the UTF-8 bytes of the staged `source` plus candidate JSON, and it stops building
-  rows at that point rather than measuring an already-complete batch;
+  staging payload, measured as the UTF-8 bytes of the staged `source` plus candidate JSON. The candidate ceiling
+  reaches extraction itself — a dense export packs a candidate into a few dozen bytes, so a file well inside the
+  read budget can still expand into millions — and row building stops at the payload ceiling rather than
+  measuring an already-complete batch;
 - `review` and both `commit` forms first measure an existing batch in SQLite — `COUNT` plus byte-length
   aggregates, scanning one row past the ceiling and loading no candidate body — and refuse a batch beyond the
-  same 100,000-row/64 MiB envelope before any full-batch read or mutation.
+  same 100,000-row/64 MiB envelope before any full-batch read or mutation. An additive index on
+  `import_staging(batch_id, created_at, id)` makes that measurement a seek rather than a scan of every batch ever
+  staged, so the work does not grow with unrelated staging history.
 
 Because staging applies the same measurement and the same ceilings, the CLI never creates a batch that its own
 review or commit then refuses. The batches it can refuse are the ones an older uncapped `stage_candidates` call

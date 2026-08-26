@@ -12,7 +12,13 @@ from typing import Any
 import pytest
 
 from people_context import cli
-from people_context.adapters.importers.bounded_source import SOURCE_TOO_LARGE
+from people_context.adapters.importers.bounded_source import (
+    SOURCE_TOO_LARGE,
+)
+from people_context.adapters.importers.bounded_source import (
+    TOO_MANY_CANDIDATES as EXTRACTION_TOO_MANY_CANDIDATES,
+)
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.router import ImportExtractorRouter
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
@@ -117,67 +123,178 @@ def test_an_oversized_mbox_is_refused_before_a_single_message_is_read(
     assert _staging_rows(db_file) == []
 
 
-def test_an_mbox_that_grows_past_the_budget_while_it_is_read_is_refused(
+def test_the_mbox_budget_meters_the_scan_not_only_the_headers_it_parses(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The pre-check describes one instant; a file still being written must not slip past it."""
-    source = tmp_path / "growing.mbox"
-    source.write_bytes(
-        b"From sender@example.com Thu Jul 22 09:00:00 2026\n"
-        b"From: Amina <amina@example.com>\n"
-        b"To: me@example.com\n"
-        b"Date: Wed, 22 Jul 2026 09:00:00 +0000\n"
-        b"Message-ID: <one@example.com>\n"
-        b"\n"
-        b"body\n"
-    )
-    budget = source.stat().st_size
+    """`mailbox` reads the whole file to build its table of contents before any factory call.
 
-    def grow_after_check(path: str, *, max_bytes: int | None) -> None:
-        Path(path).write_bytes(b"x" * (budget + 1))
-
-    monkeypatch.setattr(
-        "people_context.adapters.importers.email.verify_source_size",
-        grow_after_check,
-    )
-
-    with open_db(":memory:") as conn:
-        import_content = _import_content(conn)
-        with pytest.raises(Exception) as refusal:
-            import_content.execute(
-                "mbox",
-                path=str(source),
-                budget=ImportBudget(max_source_bytes=budget),
-            )
-
-    assert getattr(refusal.value, "code", None) == SOURCE_TOO_LARGE
-
-
-def test_header_bytes_past_the_budget_stop_an_mbox_mid_scan(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = tmp_path / "headers.mbox"
+    A budget that metered only parsed headers would measure none of that, so the refusal has
+    to come from the scan itself. The reported-size pre-check is disabled here precisely so
+    that the metered read is the only thing left that can refuse.
+    """
+    source = tmp_path / "large.mbox"
     source.write_bytes(
         b"From sender@example.com Thu Jul 22 09:00:00 2026\n"
         b"From: Amina <amina@example.com>\n"
         b"Date: Wed, 22 Jul 2026 09:00:00 +0000\n"
-        b"\n"
+        b"\n" + b"B" * 4096 + b"\n"
     )
+    headers_only = 128
+    assert source.stat().st_size > headers_only
     monkeypatch.setattr(
-        "people_context.adapters.importers.email.verify_source_size",
+        "people_context.adapters.importers.email.refuse_oversized_file",
         lambda path, *, max_bytes: None,
     )
 
-    with open_db(":memory:") as conn, pytest.raises(Exception) as refusal:
+    with open_db(":memory:") as conn, pytest.raises(ImportExtractionError) as refusal:
         _import_content(conn).execute(
             "mbox",
             path=str(source),
-            budget=ImportBudget(max_source_bytes=8),
+            budget=ImportBudget(max_source_bytes=headers_only),
         )
 
-    assert getattr(refusal.value, "code", None) == SOURCE_TOO_LARGE
+    assert refusal.value.code == SOURCE_TOO_LARGE
+
+
+def test_an_mbox_exactly_at_the_budget_is_read_rather_than_refused(tmp_path: Path) -> None:
+    """The scan reaches the final byte and no further, so the ceiling itself must pass."""
+    source = tmp_path / "exact.mbox"
+    source.write_bytes(
+        b"From sender@example.com Thu Jul 22 09:00:00 2026\n"
+        b"From: Amina <amina@example.com>\n"
+        b"Date: Wed, 22 Jul 2026 09:00:00 +0000\n"
+        b"\n"
+        b"body\n"
+    )
+    exact = source.stat().st_size
+
+    with open_db(":memory:") as conn:
+        batch = _import_content(conn).execute(
+            "mbox",
+            path=str(source),
+            budget=ImportBudget(max_source_bytes=exact),
+        )
+
+        assert batch.candidate_count == 2
+
+        with pytest.raises(ImportExtractionError) as refusal:
+            _import_content(conn).execute(
+                "mbox",
+                path=str(source),
+                budget=ImportBudget(max_source_bytes=exact - 1),
+            )
+
+    assert refusal.value.code == SOURCE_TOO_LARGE
+
+
+def test_extraction_stops_instead_of_accumulating_past_the_candidate_ceiling(tmp_path: Path) -> None:
+    """A file inside the byte budget can still expand well past the candidate ceiling.
+
+    Refusing only after `ExtractedImport` is complete would let a dense export allocate
+    millions of candidates first, so the ceiling has to reach extraction itself.
+    """
+    source = tmp_path / "dense.csv"
+    rows = "\n".join(
+        f"Person{index},Surname{index},u,p{index}@example.com,,,," for index in range(200)
+    )
+    source.write_text(f"{_LINKEDIN_HEADERS}\n{rows}\n", encoding="utf-8")
+
+    with open_db(":memory:") as conn:
+        with pytest.raises(ImportExtractionError) as refusal:
+            _import_content(conn).execute(
+                "linkedin",
+                path=str(source),
+                budget=ImportBudget(max_candidates=20),
+            )
+
+        assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+    assert refusal.value.code == EXTRACTION_TOO_MANY_CANDIDATES
+    assert "20" in str(refusal.value)
+    assert "Person42" not in str(refusal.value)
+
+
+@pytest.mark.parametrize(
+    ("source_type", "filename", "body"),
+    [
+        (
+            "linkedin",
+            "connections.csv",
+            f"{_LINKEDIN_HEADERS}\n" + "".join(f"A{i},B{i},u,a{i}@e.com,Acme,Eng,22 Jul 2026,n\n" for i in range(40)),
+        ),
+        (
+            "outlook",
+            "contacts.csv",
+            "First Name,Middle Name,Last Name,E-mail Address,Company,Job Title,Birthday\n"
+            + "".join(f"A{i},,B{i},a{i}@e.com,Acme,Eng,\n" for i in range(40)),
+        ),
+        (
+            "vcard",
+            "contacts.vcf",
+            "".join(
+                f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Person {i}\r\nEMAIL:p{i}@e.com\r\nEND:VCARD\r\n"
+                for i in range(40)
+            ),
+        ),
+        (
+            "ics",
+            "calendar.ics",
+            "BEGIN:VCALENDAR\r\n"
+            + "".join(
+                f"BEGIN:VEVENT\r\nUID:e{i}\r\nDTSTART:2026072{i % 10}T090000Z\r\nSUMMARY:S\r\n"
+                f"ATTENDEE;CN=Person {i}:mailto:p{i}@e.com\r\nEND:VEVENT\r\n"
+                for i in range(40)
+            )
+            + "END:VCALENDAR\r\n",
+        ),
+        (
+            "whatsapp",
+            "chat.txt",
+            "".join(f"[2{i % 10}/07/2026, 09:00:00] Person {i}: hi\n" for i in range(40)),
+        ),
+        (
+            "mbox",
+            "archive.mbox",
+            "".join(
+                "From s@e.com Thu Jul 22 09:00:00 2026\n"
+                f"From: Person {i} <p{i}@e.com>\n"
+                "Date: Wed, 22 Jul 2026 09:00:00 +0000\n"
+                "\nbody\n\n"
+                for i in range(40)
+            ),
+        ),
+    ],
+)
+def test_every_extractor_honours_the_candidate_ceiling(
+    source_type: str,
+    filename: str,
+    body: str,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / filename
+    source.write_text(body, encoding="utf-8")
+
+    with open_db(":memory:") as conn:
+        with pytest.raises(ImportExtractionError) as refusal:
+            _import_content(conn).execute(
+                source_type,
+                path=str(source),
+                budget=ImportBudget(max_candidates=5),
+            )
+
+        assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+    assert refusal.value.code == EXTRACTION_TOO_MANY_CANDIDATES
+
+
+def test_an_unbudgeted_extraction_still_produces_every_candidate(tmp_path: Path) -> None:
+    source = tmp_path / "connections.csv"
+    rows = "".join(f"A{i},B{i},u,a{i}@e.com,Acme,Eng,22 Jul 2026,n\n" for i in range(40))
+    source.write_text(f"{_LINKEDIN_HEADERS}\n{rows}", encoding="utf-8")
+
+    with open_db(":memory:") as conn:
+        batch = _import_content(conn).execute("linkedin", path=str(source))
+
+    assert batch.candidate_count == 120
 
 
 def test_more_candidates_than_the_limit_are_refused_before_validation_or_staging() -> None:

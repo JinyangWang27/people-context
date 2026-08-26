@@ -9,13 +9,14 @@ from email import policy
 from email.message import Message
 from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
-from typing import Any
+from typing import IO, Any
 
 from people_context.adapters.importers.bounded_source import (
-    SourceByteBudget,
+    CandidateBudget,
+    MeteredSourceFile,
+    SourceReadBudget,
     read_source_bytes,
-    refuse_grown_source,
-    verify_source_size,
+    refuse_oversized_file,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.shared import normalize_name
@@ -32,6 +33,25 @@ __all__ = ["EmailImportExtractor", "ImportExtractionError"]
 _ADDRESS_HEADERS = ("From", "To", "Cc", "Reply-To")
 
 
+class _BoundedMbox(mailbox.mbox):
+    """An mbox whose table-of-contents scan and message reads are both metered.
+
+    `mailbox` exposes no seam for supplying the file it reads, so the one it opened is
+    replaced with a metered view of itself. That is the only way the budget can cover the
+    scan, which happens inside `_generate_toc` before any message reaches the factory — and
+    the scan, not the headers parsed afterwards, is where a growing mailbox would otherwise
+    read without limit.
+    """
+
+    def __init__(self, path: str, factory: Any, budget: SourceReadBudget) -> None:
+        super().__init__(path, factory=factory, create=False)
+        # `mailbox` leaves the file it opened unannotated, so the swap is spelled out here
+        # instead of inferred; the metered view delegates every other attribute to it, which
+        # is what keeps `close`, `tell`, and `seek` behaving exactly as the base class expects.
+        opened: IO[bytes] = self._file  # type: ignore[has-type]
+        self._file = MeteredSourceFile(opened, budget)
+
+
 class EmailImportExtractor:
     """Extract correspondents and dated interaction summaries without bodies."""
 
@@ -45,6 +65,7 @@ class EmailImportExtractor:
         self_names: set[str] | None = None,
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract correspondents; ``self_names`` and ``self_sender`` are unused by this source."""
         messages = self._messages(source_type, content, path, max_source_bytes)
@@ -54,6 +75,7 @@ class EmailImportExtractor:
         skipped_message_ids: list[str] = []
         skipped_without_id = 0
         normalized_self = {normalize_name(address) for address in self_addresses}
+        budget = CandidateBudget(max_candidates)
         for message in messages:
             correspondents = self._correspondents(message, normalized_self)
             occurred_at = _message_date(message)
@@ -83,6 +105,7 @@ class EmailImportExtractor:
                 skipped_message_ids.append(message_id)
             elif occurred_at is None and correspondents:
                 skipped_without_id += 1
+            budget.account(len(people) + len(interactions))
         candidates = [
             ImportPersonCandidate(
                 name=candidate.name,
@@ -121,11 +144,10 @@ class EmailImportExtractor:
             if path is None or content is not None:
                 raise ImportExtractionError("invalid_source", "mbox import requires path and does not accept content")
 
-            # `mailbox.mbox` owns the file, so the budget brackets it instead: an oversized
-            # mailbox is refused before the first message, the header bytes this factory
-            # actually consumes are metered, and growth during the scan is caught below.
-            verify_source_size(path, max_bytes=max_source_bytes)
-            budget = SourceByteBudget(max_source_bytes)
+            # `mailbox.mbox` opens the path itself and scans the whole file to build its
+            # table of contents before yielding a message, so the budget is applied to the
+            # file object it reads through. A reported size only saves the setup cost.
+            refuse_oversized_file(path, max_bytes=max_source_bytes)
 
             # `mailbox.mbox` types this parameter with a private typeshed alias, so the
             # annotation stays deliberately loose rather than importing a non-public name.
@@ -135,19 +157,16 @@ class EmailImportExtractor:
                     line = file_obj.readline()
                     if not line:
                         break
-                    budget.consume(len(line))
                     lines.append(line)
                     if line in (b"\n", b"\r\n"):
                         break
                 return mailbox.mboxMessage(parser.parsebytes(b"".join(lines), headersonly=True))
 
-            mbox = mailbox.mbox(path, factory=header_factory, create=False)
+            mbox = _BoundedMbox(path, header_factory, SourceReadBudget(max_source_bytes))
             try:
-                messages = list(mbox)
+                return list(mbox)
             finally:
                 mbox.close()
-            refuse_grown_source(path, max_bytes=max_source_bytes)
-            return messages
         raise ImportExtractionError("invalid_source_type", "source_type must be 'email' or 'mbox'")
 
     @staticmethod

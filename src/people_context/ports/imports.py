@@ -72,8 +72,9 @@ class ImportExtractor(Protocol):
     that identify participants by display label rather than by address. Extractors that cannot
     use them accept and ignore them; no source takes untyped keyword arguments.
 
-    ``max_source_bytes`` is the caller's read budget for a path-based source. ``None`` keeps
-    the released unbounded behavior, so only a boundary that chose a budget is bounded by one.
+    ``max_source_bytes`` is the caller's read budget for a path-based source and
+    ``max_candidates`` the ceiling on what that source may expand into. ``None`` keeps the
+    released unbounded behavior, so only a boundary that chose a budget is bounded by one.
     """
 
     def extract(
@@ -86,6 +87,7 @@ class ImportExtractor(Protocol):
         self_names: set[str] | None = None,
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport: ...
 
 

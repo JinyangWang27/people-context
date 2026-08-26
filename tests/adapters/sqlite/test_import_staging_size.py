@@ -12,6 +12,7 @@ import pytest
 
 from people_context import cli
 from people_context.adapters.sqlite import SqliteImportStagingStore, open_db
+from people_context.adapters.sqlite.import_staging import _MEASURE_BATCH_SQL
 from people_context.app.imports import (
     BATCH_TOO_LARGE_FOR_CLI,
     CLI_IMPORT_BUDGET,
@@ -56,6 +57,34 @@ def test_the_measurement_counts_rows_and_stored_utf8_payload_bytes() -> None:
     assert size.row_count == 3
     assert size.payload_bytes == expected
     assert size.truncated is False
+
+
+def test_the_batch_predicate_seeks_rather_than_scanning_every_staged_row() -> None:
+    """Without an index the inner LIMIT bounds the rows returned, not the rows visited.
+
+    That would make review and commit grow with unrelated staging history, which is exactly
+    the cost the bounded preflight exists to remove.
+    """
+    with open_db(":memory:") as conn:
+        _insert_rows(conn, "wanted", 2, _person_json())
+        _insert_rows(conn, "unrelated", 200, _person_json())
+
+        plan = " ".join(
+            str(row["detail"])
+            for row in conn.execute(f"EXPLAIN QUERY PLAN {_MEASURE_BATCH_SQL}", ("wanted", 10))
+        )
+        list_plan = " ".join(
+            str(row["detail"])
+            for row in conn.execute(
+                "EXPLAIN QUERY PLAN SELECT * FROM import_staging WHERE batch_id = ? ORDER BY created_at, id",
+                ("wanted",),
+            )
+        )
+
+    assert "SCAN import_staging" not in plan
+    assert "idx_import_staging_batch" in plan
+    # The same index also carries `list_batch`'s ordering, so the full read loses its sort.
+    assert "USE TEMP B-TREE FOR ORDER BY" not in list_plan
 
 
 def test_an_absent_batch_measures_as_empty() -> None:

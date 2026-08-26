@@ -66,6 +66,7 @@ class ImportContent:
             self_names=self_names,
             self_sender=self_sender,
             max_source_bytes=limits.max_source_bytes,
+            max_candidates=limits.max_candidates,
         )
         if not extracted.people and not extracted.interactions and not extracted.candidates:
             raise ImportPipelineError(

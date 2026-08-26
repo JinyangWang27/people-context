@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from people_context.adapters.importers.bounded_source import read_source_text
+from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -85,6 +85,7 @@ class WhatsAppImportExtractor:
         self_names: set[str] | None = None,
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract external participants and one neutral interaction per calendar day."""
         if source_type != "whatsapp":
@@ -107,6 +108,7 @@ class WhatsAppImportExtractor:
         people_by_identity: dict[str, _PersonAccumulator] = {}
         refs_by_day: dict[date, list[str]] = {}
         skipped: list[dict[str, int | str]] = []
+        budget = CandidateBudget(max_candidates)
 
         for message in messages:
             if message.occurred_on is None:
@@ -133,6 +135,7 @@ class WhatsAppImportExtractor:
             day_refs = refs_by_day.setdefault(message.occurred_on, [])
             if person.ref not in day_refs:
                 day_refs.append(person.ref)
+            budget.account(len(people) + len(refs_by_day))
 
         interactions = [
             {

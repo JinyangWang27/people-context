@@ -9,14 +9,16 @@ import pytest
 
 from people_context.adapters.importers.bounded_source import (
     SOURCE_TOO_LARGE,
-    SourceByteBudget,
+    TOO_MANY_CANDIDATES,
+    CandidateBudget,
+    MeteredSourceFile,
+    SourceReadBudget,
     read_source_bytes,
     read_source_text,
-    refuse_grown_source,
-    verify_source_size,
+    refuse_oversized_file,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
-from people_context.app.imports import MAX_CLI_SOURCE_BYTES
+from people_context.app.imports import MAX_CLI_SOURCE_BYTES, MAX_CLI_STAGED_CANDIDATES
 
 
 def _sparse_file(path: Path, size: int) -> Path:
@@ -49,17 +51,16 @@ def test_one_byte_past_the_limit_is_refused_without_naming_the_source(tmp_path: 
     assert str(source) not in str(refusal.value)
 
 
-def test_the_budget_is_a_read_rather_than_a_reported_size(tmp_path: Path) -> None:
-    """A size an extractor is *told* is not the size it would have to consume."""
-    source = tmp_path / "understated"
+def test_an_obviously_oversized_file_is_refused_before_it_is_opened(tmp_path: Path) -> None:
+    source = tmp_path / "reported"
     source.write_bytes(b"x" * 64)
 
     with pytest.raises(ImportExtractionError) as refusal:
-        verify_source_size(str(source), max_bytes=8)
+        refuse_oversized_file(str(source), max_bytes=8)
 
     assert refusal.value.code == SOURCE_TOO_LARGE
-    verify_source_size(str(source), max_bytes=64)
-    verify_source_size(str(source), max_bytes=None)
+    refuse_oversized_file(str(source), max_bytes=64)
+    refuse_oversized_file(str(source), max_bytes=None)
 
 
 @pytest.mark.parametrize(
@@ -90,32 +91,71 @@ def test_bounded_text_refuses_before_decoding_an_oversized_source(tmp_path: Path
     assert refusal.value.code == SOURCE_TOO_LARGE
 
 
-def test_a_streaming_budget_refuses_at_the_first_byte_past_the_limit() -> None:
-    budget = SourceByteBudget(10)
-    budget.consume(6)
-    budget.consume(4)
+def test_a_read_budget_refuses_at_the_first_offset_past_the_limit() -> None:
+    budget = SourceReadBudget(10)
+    budget.observe(10)
 
     with pytest.raises(ImportExtractionError) as refusal:
-        budget.consume(1)
+        budget.observe(11)
 
     assert refusal.value.code == SOURCE_TOO_LARGE
 
 
-def test_an_absent_streaming_budget_never_refuses() -> None:
-    budget = SourceByteBudget(None)
-
-    budget.consume(MAX_CLI_SOURCE_BYTES * 4)
+def test_an_absent_read_budget_never_refuses() -> None:
+    SourceReadBudget(None).observe(MAX_CLI_SOURCE_BYTES * 4)
 
 
-def test_a_source_that_grew_while_it_was_processed_is_refused(tmp_path: Path) -> None:
-    source = tmp_path / "growing"
-    source.write_bytes(b"x" * 8)
-    verify_source_size(str(source), max_bytes=8)
+def test_a_metered_file_refuses_once_a_reader_passes_the_budget(tmp_path: Path) -> None:
+    source = tmp_path / "scanned"
+    source.write_bytes(b"line\n" * 4)
 
-    source.write_bytes(b"x" * 9)
+    with source.open("rb") as handle:
+        metered = MeteredSourceFile(handle, SourceReadBudget(10))
+        assert metered.readline() == b"line\n"
+        assert metered.readline() == b"line\n"
 
-    with pytest.raises(ImportExtractionError) as refusal:
-        refuse_grown_source(str(source), max_bytes=8)
+        with pytest.raises(ImportExtractionError) as refusal:
+            metered.readline()
 
     assert refusal.value.code == SOURCE_TOO_LARGE
-    refuse_grown_source(str(source), max_bytes=None)
+
+
+def test_a_metered_file_measures_how_far_it_read_not_how_often(tmp_path: Path) -> None:
+    """Re-reading bytes already seen is not more of the file, so it must not refuse."""
+    source = tmp_path / "reread"
+    source.write_bytes(b"line\n" * 4)
+
+    with source.open("rb") as handle:
+        metered = MeteredSourceFile(handle, SourceReadBudget(20))
+        assert metered.read() == b"line\n" * 4
+        metered.seek(0)
+
+        assert metered.read() == b"line\n" * 4
+
+
+def test_a_metered_file_delegates_everything_it_does_not_meter(tmp_path: Path) -> None:
+    source = tmp_path / "delegated"
+    source.write_bytes(b"abc")
+
+    with source.open("rb") as handle:
+        metered = MeteredSourceFile(handle, SourceReadBudget(None))
+
+        assert metered.read(1) == b"a"
+        assert metered.tell() == 1
+        assert metered.seekable() is True
+        assert metered.fileno() == handle.fileno()
+
+
+def test_a_candidate_budget_refuses_past_the_staging_ceiling() -> None:
+    budget = CandidateBudget(MAX_CLI_STAGED_CANDIDATES)
+    budget.account(MAX_CLI_STAGED_CANDIDATES)
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        budget.account(MAX_CLI_STAGED_CANDIDATES + 1)
+
+    assert refusal.value.code == TOO_MANY_CANDIDATES
+    assert str(MAX_CLI_STAGED_CANDIDATES) in str(refusal.value)
+
+
+def test_an_absent_candidate_budget_never_refuses() -> None:
+    CandidateBudget(None).account(MAX_CLI_STAGED_CANDIDATES * 100)
