@@ -282,7 +282,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M16 — First-class CLI import workflow
 
-- [ ] **M16.1 — Expose the existing import lifecycle through `pctx`**
+- [x] **M16.1 — Expose the existing import lifecycle through `pctx`**
   - **Scope:** Add `pctx import stage SOURCE PATH`, `import review`, and `import commit --all|--accept`, all with
     stable `--json`; support exactly the seven existing router sources; refactor shared vCard onboarding rendering /
     selection only enough to avoid a second CLI implementation; bound file staging **and existing-batch review/commit

@@ -50,6 +50,7 @@ class _RecordingExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport:
         self.calls.append(
             {
@@ -57,6 +58,7 @@ class _RecordingExtractor:
                 "self_addresses": self_addresses,
                 "self_names": self_names,
                 "self_sender": self_sender,
+                "max_source_bytes": max_source_bytes,
             }
         )
         return ExtractedImport(
@@ -531,6 +533,8 @@ def test_import_content_forwards_normalized_self_names_and_the_sender_hint() -> 
                 "self_addresses": {"sam@example.com"},
                 "self_names": {"sam self", "sam@example.com", "sammy"},
                 "self_sender": "You",
+                # A caller that supplied no budget stays on the released unbounded contract.
+                "max_source_bytes": None,
             }
         ]
 

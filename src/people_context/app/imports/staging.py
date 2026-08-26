@@ -2,10 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
+from people_context.app.imports.limits import (
+    STAGED_PAYLOAD_TOO_LARGE,
+    TOO_MANY_CANDIDATES,
+    UNBOUNDED_IMPORT_BUDGET,
+    ImportBudget,
+    resource_limit_error,
+)
 from people_context.app.imports.models import (
     CANDIDATE_MODELS,
     AffiliationCandidateInput,
@@ -41,11 +49,20 @@ class CandidateStager:
         skipped_message_ids: list[str] | None = None,
         skipped_without_id: int = 0,
         skipped_cards: list[dict[str, int | str]] | None = None,
+        budget: ImportBudget | None = None,
     ) -> ImportBatchResult:
+        """Stage one batch, refusing an over-budget one before any row is persisted.
+
+        ``budget`` defaults to the released unbounded contract. When a caller supplies one the
+        count is checked before the batch is validated and the payload is measured while rows
+        are built, so an over-budget source stops the work instead of being discovered after it.
+        """
+        limits = budget or UNBOUNDED_IMPORT_BUDGET
+        self._reject_excess_candidates(len(candidates), limits)
         validated = self._validate(candidates)
         batch_id = new_id()
         references = self._references(validated)
-        rows = [self._row(batch_id, source, candidate, references) for candidate in validated]
+        rows = self._rows(batch_id, source, validated, references, limits)
         self._staging.stage_batch(rows)
         return ImportBatchResult(
             batch_id=batch_id,
@@ -54,6 +71,45 @@ class CandidateStager:
             skipped_without_id=skipped_without_id,
             skipped_cards=skipped_cards or [],
         )
+
+    @staticmethod
+    def _reject_excess_candidates(count: int, limits: ImportBudget) -> None:
+        if limits.max_candidates is not None and count > limits.max_candidates:
+            raise resource_limit_error(
+                TOO_MANY_CANDIDATES,
+                f"source produces more than the {limits.max_candidates} candidates this command stages",
+                limit=limits.max_candidates,
+            )
+
+    def _rows(
+        self,
+        batch_id: str,
+        source: str,
+        candidates: list[CandidateInput],
+        references: dict[str, str],
+        limits: ImportBudget,
+    ) -> list[StagedImportRow]:
+        """Build every staged row, stopping the moment the persisted payload exceeds budget.
+
+        The measurement is the same one the storage-level preflight computes later — staged
+        `source` plus the exact candidate JSON the store writes — so a batch this method
+        accepts is a batch review and commit can afford to read back.
+        """
+        source_bytes = len(source.encode("utf-8"))
+        payload_bytes = 0
+        rows: list[StagedImportRow] = []
+        for candidate in candidates:
+            row = self._row(batch_id, source, candidate, references)
+            payload_bytes += source_bytes + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
+            if limits.max_staged_payload_bytes is not None and payload_bytes > limits.max_staged_payload_bytes:
+                raise resource_limit_error(
+                    STAGED_PAYLOAD_TOO_LARGE,
+                    "staged candidates exceed the "
+                    f"{limits.max_staged_payload_bytes} byte reviewable payload limit for this command",
+                    limit=limits.max_staged_payload_bytes,
+                )
+            rows.append(row)
+        return rows
 
     def _validate(self, candidates: list[dict[str, Any]]) -> list[CandidateInput]:
         if not candidates:

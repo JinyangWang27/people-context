@@ -51,6 +51,19 @@ class StagedImportRow:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class StagedBatchSize:
+    """How large one staged batch is, measured without loading its candidate JSON.
+
+    ``truncated`` says the measurement stopped at the caller's scan limit, so the batch has
+    at least that many rows and ``payload_bytes`` covers only the rows that were scanned.
+    """
+
+    row_count: int
+    payload_bytes: int
+    truncated: bool
+
+
 @runtime_checkable
 class ImportExtractor(Protocol):
     """Extract narrow candidates from one supported source without retaining raw content.
@@ -58,6 +71,9 @@ class ImportExtractor(Protocol):
     ``self_names`` and ``self_sender`` are explicit optional self-resolution inputs for sources
     that identify participants by display label rather than by address. Extractors that cannot
     use them accept and ignore them; no source takes untyped keyword arguments.
+
+    ``max_source_bytes`` is the caller's read budget for a path-based source. ``None`` keeps
+    the released unbounded behavior, so only a boundary that chose a budget is bounded by one.
     """
 
     def extract(
@@ -69,6 +85,7 @@ class ImportExtractor(Protocol):
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport: ...
 
 
@@ -81,3 +98,15 @@ class ImportStagingStore(Protocol):
     def list_batch(self, batch_id: str) -> list[StagedImportRow]: ...
 
     def mark_committed(self, candidate_ids: list[str]) -> None: ...
+
+
+@runtime_checkable
+class ImportStagingSizeReader(Protocol):
+    """Measure one staged batch cheaply enough to decide whether it can be materialized.
+
+    This is deliberately separate from `ImportStagingStore`: a caller that only needs to know
+    whether a batch fits its budget must not gain the ability to read or commit it, and the
+    measurement must not load a single candidate body to answer.
+    """
+
+    def measure_batch(self, batch_id: str, *, row_scan_limit: int) -> StagedBatchSize: ...

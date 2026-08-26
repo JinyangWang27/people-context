@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.context import SetCommunicationPhilosophyInput
 from people_context.app.imports import ImportPipelineError
@@ -19,6 +19,7 @@ from people_context.app.people import (
 )
 from people_context.app.records import RecordFactInput, RecordInteractionInput, SetAffiliationInput
 from people_context.app.relationships import SetRelationshipInput
+from people_context.cli.imports import parse_candidate_selection, print_import_commit
 from people_context.cli.rendering import print_demo_instructions, print_import_review
 from people_context.demo_seed import (
     DEMO_AFFILIATIONS,
@@ -179,22 +180,18 @@ def _run_init_vcard_import(runtime: ApplicationRuntime, path: Path, self_person:
         print(f"vCard import failed: {exc}", file=sys.stderr)
         return 1
     print_import_review(review.candidates)
-    selected = [
-        candidate_id.strip()
-        for candidate_id in input("Candidate IDs to accept (comma-separated): ").split(",")
-    ]
-    accepted_ids = list(dict.fromkeys(candidate_id for candidate_id in selected if candidate_id))
-    known_ids = {row.id for row in review.candidates}
-    unknown_ids = sorted(set(accepted_ids) - known_ids)
-    if unknown_ids:
-        print("Unknown candidate IDs: " + ", ".join(unknown_ids), file=sys.stderr)
+    accepted_ids = parse_candidate_selection(
+        input("Candidate IDs to accept (comma-separated): "),
+        {row.id for row in review.candidates},
+    )
+    if accepted_ids is None:
         return 2
     try:
         result = runtime.use_cases.commit_import.execute(batch.batch_id, accepted_ids)
     except ImportPipelineError as exc:
         print(f"vCard commit failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Committed {len(result.committed_ids)} import candidates; {len(result.unresolved_ids)} unresolved.")
+    print_import_commit(result)
     return 0
 
 

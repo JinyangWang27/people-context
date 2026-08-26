@@ -248,7 +248,10 @@ automation, without inventing another import policy or adding model/network depe
 No new importer, candidate type, schema migration, live service integration, raw-text extraction, or general
 CLI/MCP parity is part of M16.
 
-**Status:** Planned.
+**Status:** Delivered — the `pctx import` group exposes the existing stage/review/commit lifecycle over all seven
+sources with stable v1 JSON documents, a bounded 64 MiB/100,000-candidate/64 MiB-payload staging budget, and a
+SQLite preflight that refuses an oversized legacy batch before any full-batch read; onboarding shares the same
+review rendering and candidate selection, and the released MCP and `pctx init` contracts are unchanged.
 
 ## M17 — Agent-assisted knowledge extraction
 

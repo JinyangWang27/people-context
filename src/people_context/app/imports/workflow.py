@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from people_context.app._mutation import transactional, unit_of_work_for
+from people_context.app.imports.limits import UNBOUNDED_IMPORT_BUDGET, ImportBudget
 from people_context.app.imports.models import (
     CommitImportResult,
     ImportBatchResult,
@@ -43,12 +44,18 @@ class ImportContent:
         content: str | None = None,
         path: str | None = None,
         self_sender: str | None = None,
+        budget: ImportBudget | None = None,
     ) -> ImportBatchResult:
         """Stage header-derived people followed by interaction candidates.
 
         ``self_sender`` is an optional explicit label — such as ``You`` or a bare phone number —
         for sources that identify the user by display label rather than by address.
+
+        ``budget`` is the calling boundary's resource ceiling and defaults to the released
+        unbounded contract. When one is supplied it bounds the source read and the staged
+        batch alike, so an over-budget import fails before it reaches durable staging.
         """
+        limits = budget or UNBOUNDED_IMPORT_BUDGET
         source = f"import/{source_type}"
         self_addresses, self_names = self._self_identity()
         extracted = self._extractor.extract(
@@ -58,6 +65,7 @@ class ImportContent:
             self_addresses=self_addresses,
             self_names=self_names,
             self_sender=self_sender,
+            max_source_bytes=limits.max_source_bytes,
         )
         if not extracted.people and not extracted.interactions and not extracted.candidates:
             raise ImportPipelineError(
@@ -97,6 +105,7 @@ class ImportContent:
             skipped_message_ids=extracted.skipped_message_ids,
             skipped_without_id=extracted.skipped_without_id,
             skipped_cards=extracted.skipped_cards,
+            budget=limits,
         )
 
     def _self_identity(self) -> tuple[set[str], set[str]]:

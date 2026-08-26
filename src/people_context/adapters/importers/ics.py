@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.bounded_source import read_source_text
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
@@ -54,13 +54,18 @@ class IcsImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport:
         """Extract attendees; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "ics":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'ics'")
         if (content is None) == (path is None):
             raise ImportExtractionError("invalid_source", "ics import requires exactly one of content or path")
-        text = content if content is not None else Path(path or "").read_text(encoding="utf-8")
+        text = (
+            content
+            if content is not None
+            else read_source_text(path or "", encoding="utf-8", max_bytes=max_source_bytes)
+        )
         normalized_self = {normalize_name(address) for address in self_addresses if address.strip()}
 
         people: dict[str, _PersonAccumulator] = {}

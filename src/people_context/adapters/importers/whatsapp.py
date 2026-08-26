@@ -10,9 +10,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from pathlib import Path
 
-from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.bounded_source import read_source_text
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
@@ -84,6 +84,7 @@ class WhatsAppImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport:
         """Extract external participants and one neutral interaction per calendar day."""
         if source_type != "whatsapp":
@@ -93,7 +94,11 @@ class WhatsAppImportExtractor:
                 "invalid_source",
                 "whatsapp import requires exactly one of content or path",
             )
-        text = content if content is not None else Path(path or "").read_text(encoding="utf-8")
+        text = (
+            content
+            if content is not None
+            else read_source_text(path or "", encoding="utf-8", max_bytes=max_source_bytes)
+        )
         messages = _detect_messages(text)
         _resolve_dates(messages)
 

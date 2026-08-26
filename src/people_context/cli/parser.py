@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 
+from people_context.adapters.importers.router import SUPPORTED_IMPORT_SOURCES
 from people_context.app.exports import DEFAULT_VCARD_VERSION
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
@@ -256,6 +257,54 @@ def build_parser() -> argparse.ArgumentParser:
         "--semantic",
         action="store_true",
         help="Explicitly download/cache the pinned multilingual model and atomically rebuild semantic vectors.",
+    )
+
+    import_cmd = subparsers.add_parser(
+        "import",
+        help="Stage a supported local export, review one batch, and commit accepted candidates.",
+    )
+    import_subcommands = import_cmd.add_subparsers(dest="import_command", required=True)
+
+    import_stage = import_subcommands.add_parser(
+        "stage",
+        help="Extract one local export into a reviewable staging batch; nothing is committed.",
+    )
+    import_stage.add_argument("source", choices=list(SUPPORTED_IMPORT_SOURCES), help="Source format to extract.")
+    import_stage.add_argument("path", help="Local export file to read.")
+    import_stage.add_argument(
+        "--self-sender",
+        default=None,
+        help="Explicit label identifying you in sources that name participants by display label.",
+    )
+    import_stage.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned staging JSON document instead of the human summary.",
+    )
+
+    import_review = import_subcommands.add_parser("review", help="Show every staged candidate in one batch.")
+    import_review.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
+    import_review.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned review JSON document instead of the human listing.",
+    )
+
+    import_commit = import_subcommands.add_parser("commit", help="Commit accepted candidates from one batch.")
+    import_commit.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
+    selection = import_commit.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--all", action="store_true", help="Accept every candidate in the batch.")
+    selection.add_argument(
+        "--accept",
+        action="append",
+        default=[],
+        metavar="CANDIDATE_ID",
+        help="Canonical candidate id to accept; repeat for multiple candidates.",
+    )
+    import_commit.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned commit JSON document instead of the human summary.",
     )
 
     subparsers.add_parser("init", help="Interactively seed self identity and optional contact data.")

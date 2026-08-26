@@ -363,8 +363,8 @@ def test_import_review_identifies_dependent_candidate_owners(
     print_import_review(rows)
 
     output = capsys.readouterr().out
-    assert "affiliation-alice  affiliation  Engineer at Acme — Alice (person-alice)" in output
-    assert "fact-bob  fact  birthday=1990-01-01 — Bob (person-bob)" in output
+    assert "affiliation-alice  pending  affiliation  Engineer at Acme — Alice (person-alice)" in output
+    assert "fact-bob  pending  fact  birthday=1990-01-01 — Bob (person-bob)" in output
 
 
 def test_init_rejects_unknown_candidate_ids_without_committing_contacts(

@@ -7,9 +7,9 @@ import io
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from pathlib import Path
 
-from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.bounded_source import read_source_text
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import clean_text, normalize_email
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -66,6 +66,7 @@ class LinkedInImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport:
         """Extract connection rows; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "linkedin":
@@ -75,7 +76,11 @@ class LinkedInImportExtractor:
                 "invalid_source",
                 "linkedin import requires exactly one of content or path",
             )
-        text = content.lstrip("\ufeff") if content is not None else Path(path or "").read_text(encoding="utf-8-sig")
+        text = (
+            content.lstrip("\ufeff")
+            if content is not None
+            else read_source_text(path or "", encoding="utf-8-sig", max_bytes=max_source_bytes)
+        )
         reader = csv.DictReader(io.StringIO(_csv_from_canonical_header(text)), strict=True)
         headers = reader.fieldnames
         if headers is None or not _EXPECTED_HEADERS.issubset(headers):

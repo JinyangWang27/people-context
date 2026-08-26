@@ -9,9 +9,15 @@ from email import policy
 from email.message import Message
 from email.parser import BytesParser
 from email.utils import getaddresses, parsedate_to_datetime
-from pathlib import Path
 from typing import Any
 
+from people_context.adapters.importers.bounded_source import (
+    SourceByteBudget,
+    read_source_bytes,
+    refuse_grown_source,
+    verify_source_size,
+)
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import (
     ExtractedImport,
@@ -19,15 +25,11 @@ from people_context.ports.imports import (
     ImportPersonCandidate,
 )
 
+#: `ImportExtractionError` moved to `errors` so the bounded loader can raise it without a
+#: cycle; it stays importable from here because every extractor and test already names it.
+__all__ = ["EmailImportExtractor", "ImportExtractionError"]
+
 _ADDRESS_HEADERS = ("From", "To", "Cc", "Reply-To")
-
-
-class ImportExtractionError(Exception):
-    """Raised when import source parameters or headers are invalid."""
-
-    def __init__(self, code: str, message: str) -> None:
-        self.code = code
-        super().__init__(message)
 
 
 class EmailImportExtractor:
@@ -42,9 +44,10 @@ class EmailImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport:
         """Extract correspondents; ``self_names`` and ``self_sender`` are unused by this source."""
-        messages = self._messages(source_type, content, path)
+        messages = self._messages(source_type, content, path, max_source_bytes)
         people: dict[str, ImportPersonCandidate] = {}
         alternate_names: dict[str, list[str]] = {}
         interactions: list[ImportInteractionCandidate] = []
@@ -97,16 +100,32 @@ class EmailImportExtractor:
             skipped_without_id=skipped_without_id,
         )
 
-    def _messages(self, source_type: str, content: str | None, path: str | None) -> Iterable[Message]:
+    def _messages(
+        self,
+        source_type: str,
+        content: str | None,
+        path: str | None,
+        max_source_bytes: int | None,
+    ) -> Iterable[Message]:
         parser = BytesParser(policy=policy.default)
         if source_type == "email":
             if (content is None) == (path is None):
                 raise ImportExtractionError("invalid_source", "email import requires exactly one of content or path")
-            raw = content.encode("utf-8") if content is not None else Path(path or "").read_bytes()
+            raw = (
+                content.encode("utf-8")
+                if content is not None
+                else read_source_bytes(path or "", max_bytes=max_source_bytes)
+            )
             return [parser.parsebytes(_header_bytes(raw), headersonly=True)]
         if source_type == "mbox":
             if path is None or content is not None:
                 raise ImportExtractionError("invalid_source", "mbox import requires path and does not accept content")
+
+            # `mailbox.mbox` owns the file, so the budget brackets it instead: an oversized
+            # mailbox is refused before the first message, the header bytes this factory
+            # actually consumes are metered, and growth during the scan is caught below.
+            verify_source_size(path, max_bytes=max_source_bytes)
+            budget = SourceByteBudget(max_source_bytes)
 
             # `mailbox.mbox` types this parameter with a private typeshed alias, so the
             # annotation stays deliberately loose rather than importing a non-public name.
@@ -116,6 +135,7 @@ class EmailImportExtractor:
                     line = file_obj.readline()
                     if not line:
                         break
+                    budget.consume(len(line))
                     lines.append(line)
                     if line in (b"\n", b"\r\n"):
                         break
@@ -123,9 +143,11 @@ class EmailImportExtractor:
 
             mbox = mailbox.mbox(path, factory=header_factory, create=False)
             try:
-                return list(mbox)
+                messages = list(mbox)
             finally:
                 mbox.close()
+            refuse_grown_source(path, max_bytes=max_source_bytes)
+            return messages
         raise ImportExtractionError("invalid_source_type", "source_type must be 'email' or 'mbox'")
 
     @staticmethod

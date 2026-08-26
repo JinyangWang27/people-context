@@ -2,13 +2,34 @@
 
 from __future__ import annotations
 
-from people_context.adapters.importers.email import EmailImportExtractor, ImportExtractionError
+from typing import Final
+
+from people_context.adapters.importers.email import EmailImportExtractor
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.ics import IcsImportExtractor
 from people_context.adapters.importers.linkedin import LinkedInImportExtractor
 from people_context.adapters.importers.outlook import OutlookImportExtractor
 from people_context.adapters.importers.vcard import VCardImportExtractor
 from people_context.adapters.importers.whatsapp import WhatsAppImportExtractor
 from people_context.ports.imports import ExtractedImport, ImportExtractor
+
+#: The accepted `source_type` values, declared once beside the dispatch that implements them
+#: so a caller that has to offer the choice — the `pctx import` group — cannot drift from it.
+SUPPORTED_IMPORT_SOURCES: Final[tuple[str, ...]] = (
+    "email",
+    "mbox",
+    "vcard",
+    "ics",
+    "linkedin",
+    "outlook",
+    "whatsapp",
+)
+
+
+def _unsupported_source_type() -> ImportExtractionError:
+    quoted = [f"'{source}'" for source in SUPPORTED_IMPORT_SOURCES]
+    accepted = f"{', '.join(quoted[:-1])}, or {quoted[-1]}"
+    return ImportExtractionError("invalid_source_type", f"source_type must be {accepted}")
 
 
 class ImportExtractorRouter:
@@ -31,6 +52,7 @@ class ImportExtractorRouter:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
     ) -> ExtractedImport:
         """Extract candidates with the extractor registered for ``source_type``."""
         extractor: ImportExtractor
@@ -47,10 +69,7 @@ class ImportExtractorRouter:
         elif source_type == "whatsapp":
             extractor = self._whatsapp
         else:
-            raise ImportExtractionError(
-                "invalid_source_type",
-                "source_type must be 'email', 'mbox', 'vcard', 'ics', 'linkedin', 'outlook', or 'whatsapp'",
-            )
+            raise _unsupported_source_type()
         return extractor.extract(
             source_type,
             content=content,
@@ -58,4 +77,5 @@ class ImportExtractorRouter:
             self_addresses=self_addresses,
             self_names=self_names,
             self_sender=self_sender,
+            max_source_bytes=max_source_bytes,
         )

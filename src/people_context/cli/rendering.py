@@ -72,7 +72,14 @@ def _print_section(title: str, items: list[str]) -> None:
 
 
 def print_import_review(rows: list[ImportReviewRow]) -> None:
-    """Render review-safe candidate summaries."""
+    """Render review-safe candidate summaries in deterministic staging order.
+
+    Every line leads with the canonical candidate id, because that id is the durable selection
+    interface for `pctx import commit` and for onboarding alike — this renderer never mints a
+    numbered shorthand a later invocation could not resolve. The status is shown so an already
+    committed row is visibly not a pending decision, and a person candidate that the staging
+    step matched to somebody already known says so rather than looking like a new identity.
+    """
     print("Import candidates:")
     person_names = {
         row.id: str(row.candidate["name"])
@@ -83,14 +90,17 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         candidate = row.candidate
         candidate_type = candidate["type"]
         if candidate_type == "person":
-            detail = candidate["name"]
+            detail = str(candidate["name"])
+            matched_person_id = candidate.get("matched_person_id")
+            if matched_person_id:
+                detail += f" — matches existing person {matched_person_id}"
         elif candidate_type == "affiliation":
             detail = f"{candidate['role']} at {candidate['org']} — {_import_owner(candidate, person_names)}"
         elif candidate_type == "fact":
             detail = f"{candidate['predicate']}={candidate['value']} — {_import_owner(candidate, person_names)}"
         else:
             detail = "summary-only interaction"
-        print(f"  {row.id}  {candidate_type}  {detail}")
+        print(f"  {row.id}  {row.status}  {candidate_type}  {detail}")
 
 
 def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) -> str:
