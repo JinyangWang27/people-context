@@ -180,7 +180,9 @@ def _print_batch(batch: ImportBatchResult) -> None:
     if batch.skipped_without_id:
         print(f"Skipped undated messages without ids: {batch.skipped_without_id}")
     for card in batch.skipped_cards:
-        print(f"Skipped card {card.get('card', '?')}: {card.get('reason', 'unknown')}")
+        # `index` is the extractor's one-based position of the card it independently skipped;
+        # the reason is a fixed vocabulary, never a fragment of the card itself.
+        print(f"Skipped card {card.get('index', '?')}: {card.get('reason', 'unknown')}")
     print(f"Review with: pctx import review {batch.batch_id}")
 
 

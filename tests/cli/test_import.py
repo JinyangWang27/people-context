@@ -19,6 +19,7 @@ from people_context.app.imports import (
     IMPORT_REVIEW_FORMAT,
     IMPORT_REVIEW_VERSION,
 )
+from people_context.cli import imports as cli_imports
 from people_context.cli.parser import build_parser
 
 _LINKEDIN_HEADERS = "First Name,Last Name,URL,Email Address,Company,Position,Connected On,Notes"
@@ -209,6 +210,77 @@ def test_an_ics_stage_reaches_the_calendar_extractor(
     document = _staged_batch(db_file, _ics(tmp_path), capsys, "ics")
 
     assert document["candidate_count"] == 3
+
+
+def test_stage_reports_the_messages_and_cards_the_extractor_skipped(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Skip counts are the operator's only signal that a source was not fully understood."""
+    mailbox = tmp_path / "archive.mbox"
+    mailbox.write_bytes(
+        b"From sender@example.com Thu Jul 22 09:00:00 2026\n"
+        b"From: Amina <amina@example.com>\n"
+        b"Message-ID: <undated@example.com>\n"
+        b"\n"
+        b"body\n"
+        b"\n"
+        b"From sender@example.com Thu Jul 22 09:00:00 2026\n"
+        b"From: Sofia <sofia@example.com>\n"
+        b"\n"
+        b"body\n"
+    )
+
+    assert cli.main(["--db", str(tmp_path / "people.db"), "import", "stage", "mbox", str(mailbox)]) == 0
+
+    output = capsys.readouterr().out
+    assert "Skipped undated messages with ids: <undated@example.com>" in output
+    assert "Skipped undated messages without ids: 1" in output
+
+
+def test_stage_reports_each_independently_skipped_card_by_its_position(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cards = tmp_path / "contacts.vcf"
+    cards.write_text(
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Amina Haddad\r\nEMAIL:amina@example.com\r\nEND:VCARD\r\n"
+        "BEGIN:VCARD\r\nVERSION:2.1\r\nFN:Old Dialect\r\nEND:VCARD\r\n",
+        encoding="utf-8",
+    )
+
+    assert cli.main(["--db", str(tmp_path / "people.db"), "import", "stage", "vcard", str(cards)]) == 0
+
+    output = capsys.readouterr().out
+    assert "Skipped card 2: unsupported_version" in output
+    assert "Old Dialect" not in output
+
+
+def test_a_source_that_disappears_after_the_readable_check_is_refused_safely(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A path readable a moment ago is not a path the extractor is guaranteed to read."""
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    readable = cli_imports._readable_source
+
+    def vanish_after_check(raw_path: str) -> Path | None:
+        checked = readable(raw_path)
+        assert checked is not None
+        checked.unlink()
+        return checked
+
+    monkeypatch.setattr(cli_imports, "_readable_source", vanish_after_check)
+
+    code = cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(source)])
+
+    assert code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "cannot read source file" in captured.err
+    assert _staging_rows(db_file) == []
 
 
 def test_a_missing_source_path_is_refused_before_the_database_is_touched(
