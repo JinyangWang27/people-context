@@ -320,6 +320,31 @@ M19 does not automatically merge records, rewrite traits, recalculate confidence
 
 **Status:** Planned.
 
+## M20 — Streaming importer parsing
+
+**Goals:** close the one resource gap M16 left open — every extractor turns a whole in-budget source into
+intermediate Python objects before the first candidate exists, so the candidate ceiling cannot meter it — and
+do it across all seven sources and both surfaces at once rather than site by site.
+
+**Deliverables:**
+
+- a narrow parser-work budget bounding live retained parsed records, defaulting to unbounded so existing
+  callers are unaffected, alongside a bounded streaming line/record source reader;
+- streaming conversions for all seven sources: lazy unfold/split for vCard and iCalendar, streamed CSV input
+  for LinkedIn and Outlook, metered address expansion for email, a lazily consumed mailbox for `mbox`, and a
+  bounded resolution for WhatsApp;
+- the same bound extended to the released MCP `import_content` path **by streaming rather than by rejection**,
+  so no source accepted today stops being accepted;
+- a preserved-or-explicitly-renegotiated answer for WhatsApp's documented whole-file day/month ordering
+  inference, which is the only place a memory fix could otherwise change what is extracted;
+- table-driven equivalence tests proving byte-identical candidates, ordering, refs, skip reasons, and indexes
+  for every source, plus retention tests proving candidate-free input stays bounded.
+
+M20 adds no source type, candidate type, migration, or new user-visible limit, and does not change the M16
+source-byte, candidate, staged-payload, or batch-read ceilings.
+
+**Status:** Planned.
+
 ## Post-roadmap candidates
 
 The following remain candidates, not commitments:
@@ -334,5 +359,5 @@ The following remain candidates, not commitments:
 - watched-folder/background ingestion orchestration outside the core import transaction;
 - source-session rollback/retraction after safe lifecycle semantics are designed from real usage.
 
-See `docs/specs/` for one implementation spec per M8–M19 milestone, and
+See `docs/specs/` for one implementation spec per M8–M20 milestone, and
 [docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.
