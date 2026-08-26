@@ -99,8 +99,43 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         elif candidate_type == "fact":
             detail = f"{candidate['predicate']}={candidate['value']} — {_import_owner(candidate, person_names)}"
         else:
-            detail = "summary-only interaction"
+            detail = _import_interaction(candidate, person_names)
         print(f"  {row.id}  {row.status}  {candidate_type}  {detail}")
+
+
+#: Enough participants to tell two proposed interactions apart without wrapping the line.
+_REVIEWED_PARTICIPANTS = 4
+
+
+def _import_interaction(candidate: dict[str, object], person_names: dict[str, str]) -> str:
+    """Describe one proposed interaction well enough to choose it by id.
+
+    Every interaction in a batch would otherwise render identically, which would leave
+    selective `--accept` guessing. The fields shown are the distilled ones the importers
+    already staged — a neutral summary, the date, the channel, and who was present — never a
+    message body, a subject line, or anything else discarded at extraction.
+    """
+    parts = [str(candidate.get("summary") or "interaction")]
+    date = candidate.get("date")
+    if date:
+        parts.append(str(date)[:10])
+    channel = candidate.get("channel")
+    if channel:
+        parts.append(str(channel))
+    detail = " · ".join(parts)
+
+    raw_participants = candidate.get("participant_candidate_ids")
+    participants = [str(value) for value in raw_participants] if isinstance(raw_participants, list) else []
+    if not participants:
+        return detail
+    shown = [
+        f"{person_names.get(participant, 'unknown person')} ({participant})"
+        for participant in participants[:_REVIEWED_PARTICIPANTS]
+    ]
+    remaining = len(participants) - len(shown)
+    if remaining > 0:
+        shown.append(f"+{remaining} more")
+    return f"{detail} — {', '.join(shown)}"
 
 
 def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) -> str:

@@ -10,6 +10,7 @@ import pytest
 from people_context.adapters.importers.bounded_source import (
     SOURCE_TOO_LARGE,
     TOO_MANY_CANDIDATES,
+    UNDECODABLE_SOURCE,
     CandidateBudget,
     MeteredSourceFile,
     SourceReadBudget,
@@ -79,6 +80,35 @@ def test_bounded_text_decodes_exactly_like_the_unbounded_read(raw: bytes, encodi
     bounded = read_source_text(str(source), encoding=encoding, max_bytes=MAX_CLI_SOURCE_BYTES)
 
     assert bounded == source.read_text(encoding=encoding)
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig"])
+def test_a_source_in_another_encoding_refuses_instead_of_raising_a_decode_error(
+    encoding: str,
+    tmp_path: Path,
+) -> None:
+    """An undecodable file is a source this importer cannot read, not an unhandled crash."""
+    source = tmp_path / "latin1.vcf"
+    source.write_bytes("BEGIN:VCARD\r\nFN:Café Owner\r\nEND:VCARD\r\n".encode("latin-1"))
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        read_source_text(str(source), encoding=encoding, max_bytes=MAX_CLI_SOURCE_BYTES)
+
+    assert refusal.value.code == UNDECODABLE_SOURCE
+    assert encoding in str(refusal.value)
+    # The offending byte and its offset are still content from an untrusted source.
+    assert "0xe9" not in str(refusal.value)
+    assert "position" not in str(refusal.value)
+
+
+def test_an_unbudgeted_read_refuses_an_undecodable_source_the_same_way(tmp_path: Path) -> None:
+    source = tmp_path / "latin1.txt"
+    source.write_bytes("Café".encode("latin-1"))
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        read_source_text(str(source), encoding="utf-8", max_bytes=None)
+
+    assert refusal.value.code == UNDECODABLE_SOURCE
 
 
 def test_bounded_text_refuses_before_decoding_an_oversized_source(tmp_path: Path) -> None:

@@ -344,6 +344,77 @@ def test_review_lists_every_candidate_with_its_id_status_and_type(
     assert "personal data" in captured.err
 
 
+def test_review_tells_two_proposed_interactions_apart(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Selective `--accept` is unusable if every interaction row renders identically."""
+    db_file = tmp_path / "people.db"
+    chat = tmp_path / "chat.txt"
+    chat.write_text(
+        f"[22/07/2026, 09:00:00] Amina Haddad: {_WHATSAPP_BODY_SENTINEL}\n"
+        f"[23/07/2026, 09:00:00] Sofia Rossi: {_WHATSAPP_BODY_SENTINEL}\n",
+        encoding="utf-8",
+    )
+    batch = _staged_batch(db_file, chat, capsys, "whatsapp")
+
+    assert cli.main(["--db", str(db_file), "import", "review", str(batch["batch_id"])]) == 0
+
+    captured = capsys.readouterr()
+    interactions = [line for line in captured.out.splitlines() if "  interaction  " in line]
+    assert len(interactions) == 2
+    assert len(set(interactions)) == 2
+    assert "2026-07-22" in captured.out
+    assert "2026-07-23" in captured.out
+    assert "whatsapp" in captured.out
+    assert "Amina Haddad" in captured.out
+    assert _WHATSAPP_BODY_SENTINEL not in captured.out + captured.err
+
+
+def test_review_caps_the_participants_it_names_for_one_interaction(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    attendees = "".join(
+        f"ATTENDEE;CN=Person {index}:mailto:p{index}@example.com\r\n" for index in range(9)
+    )
+    event = tmp_path / "big.ics"
+    event.write_text(
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTART:20260722T090000Z\r\n"
+        f"SUMMARY:Planning\r\n{attendees}END:VEVENT\r\nEND:VCALENDAR\r\n",
+        encoding="utf-8",
+    )
+    batch = _staged_batch(db_file, event, capsys, "ics")
+
+    assert cli.main(["--db", str(db_file), "import", "review", str(batch["batch_id"])]) == 0
+
+    interaction = next(
+        line for line in capsys.readouterr().out.splitlines() if "  interaction  " in line
+    )
+    assert "+5 more" in interaction
+    assert "Person 0" in interaction
+    assert "Person 8" not in interaction
+
+
+def test_an_undecodable_source_is_a_concise_refusal_rather_than_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    card = tmp_path / "latin1.vcf"
+    card.write_bytes("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Café Owner\r\nEND:VCARD\r\n".encode("latin-1"))
+
+    code = cli.main(["--db", str(db_file), "import", "stage", "vcard", str(card)])
+
+    assert code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not valid utf-8 text" in captured.err
+    assert "Traceback" not in captured.err
+    assert _staging_rows(db_file) == []
+
+
 def test_review_shows_a_matched_existing_person(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(_linkedin(tmp_path))]) == 0

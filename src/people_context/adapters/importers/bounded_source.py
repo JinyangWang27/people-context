@@ -28,6 +28,9 @@ SOURCE_TOO_LARGE = "source_too_large"
 #: Stable failure code for a source that expands past the caller's candidate ceiling.
 TOO_MANY_CANDIDATES = "too_many_candidates"
 
+#: Stable failure code for a source that is not text in the encoding its format declares.
+UNDECODABLE_SOURCE = "undecodable_source"
+
 
 def read_source_bytes(path: str, *, max_bytes: int | None) -> bytes:
     """Return the file's bytes, refusing a source larger than ``max_bytes``."""
@@ -49,7 +52,16 @@ def read_source_text(path: str, *, encoding: str, max_bytes: int | None) -> str:
     """
     raw = read_source_bytes(path, max_bytes=max_bytes)
     with io.TextIOWrapper(io.BytesIO(raw), encoding=encoding, newline=None) as stream:
-        return stream.read()
+        try:
+            return stream.read()
+        except UnicodeDecodeError as exc:
+            # A file in another encoding is a source this importer cannot read, not a crash.
+            # The refusal names the encoding it expected and nothing about the bytes it got:
+            # the offending byte and its offset are still content from an untrusted source.
+            raise ImportExtractionError(
+                UNDECODABLE_SOURCE,
+                f"source is not valid {encoding} text",
+            ) from exc
 
 
 def refuse_oversized_file(path: str, *, max_bytes: int | None) -> None:
