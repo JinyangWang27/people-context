@@ -286,6 +286,59 @@ def test_every_extractor_honours_the_candidate_ceiling(
     assert refusal.value.code == EXTRACTION_TOO_MANY_CANDIDATES
 
 
+def test_one_calendar_event_cannot_fan_out_past_the_candidate_ceiling(tmp_path: Path) -> None:
+    """A single VEVENT carries as many ATTENDEE lines as the source budget allows.
+
+    Accounting only once the event is complete would let that one event expand unbounded,
+    so the ceiling has to apply inside the attendee fan-out.
+    """
+    attendees = "".join(
+        f"ATTENDEE;CN=Person {index}:mailto:p{index}@example.com\r\n" for index in range(200)
+    )
+    source = tmp_path / "one-big-event.ics"
+    source.write_text(
+        "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTART:20260722T090000Z\r\n"
+        f"SUMMARY:All hands\r\n{attendees}END:VEVENT\r\nEND:VCALENDAR\r\n",
+        encoding="utf-8",
+    )
+
+    with open_db(":memory:") as conn:
+        with pytest.raises(ImportExtractionError) as refusal:
+            _import_content(conn).execute(
+                "ics",
+                path=str(source),
+                budget=ImportBudget(max_candidates=20),
+            )
+
+        assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+    assert refusal.value.code == EXTRACTION_TOO_MANY_CANDIDATES
+
+
+def test_one_email_message_cannot_fan_out_past_the_candidate_ceiling(tmp_path: Path) -> None:
+    """One message's recipient headers are the same unbounded fan-out as a calendar event."""
+    recipients = ", ".join(f"Person {index} <p{index}@example.com>" for index in range(200))
+    source = tmp_path / "wide.eml"
+    source.write_text(
+        "From: Amina <amina@example.com>\n"
+        f"To: {recipients}\n"
+        "Date: Wed, 22 Jul 2026 09:00:00 +0000\n"
+        "Message-ID: <wide@example.com>\n"
+        "\nbody\n",
+        encoding="utf-8",
+    )
+
+    with open_db(":memory:") as conn:
+        with pytest.raises(ImportExtractionError) as refusal:
+            _import_content(conn).execute(
+                "email",
+                path=str(source),
+                budget=ImportBudget(max_candidates=20),
+            )
+
+        assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+    assert refusal.value.code == EXTRACTION_TOO_MANY_CANDIDATES
+
+
 def test_an_unbudgeted_extraction_still_produces_every_candidate(tmp_path: Path) -> None:
     source = tmp_path / "connections.csv"
     rows = "".join(f"A{i},B{i},u,a{i}@e.com,Acme,Eng,22 Jul 2026,n\n" for i in range(40))

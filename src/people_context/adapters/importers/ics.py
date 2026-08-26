@@ -85,7 +85,7 @@ class IcsImportExtractor:
             if occurred_at is None:
                 skipped.append({"index": index, "reason": reason or "invalid_dtstart"})
                 continue
-            refs = self._collect_attendees(event, normalized_self, people)
+            refs = self._collect_attendees(event, normalized_self, people, budget)
             if not refs:
                 skipped.append({"index": index, "reason": "no_external_attendee"})
                 continue
@@ -113,7 +113,14 @@ class IcsImportExtractor:
         event: _Event,
         normalized_self: set[str],
         people: dict[str, _PersonAccumulator],
+        budget: CandidateBudget,
     ) -> list[str]:
+        """Collect one event's external attendees, accounting as each new person appears.
+
+        A single `VEVENT` can carry as many `ATTENDEE` lines as the source budget allows, so
+        the ceiling has to apply inside this fan-out too: checking only once the event is
+        complete would let one event expand unbounded before anything refused it.
+        """
         refs: list[str] = []
         for address in event.attendees:
             normalized = normalize_name(address)
@@ -123,6 +130,7 @@ class IcsImportExtractor:
             accumulator = people.get(normalized)
             if accumulator is None:
                 people[normalized] = _PersonAccumulator(ref=normalized, name=display)
+                budget.account(len(people))
             elif normalize_name(display) != normalize_name(accumulator.name):
                 known = {normalize_name(value) for value in accumulator.alternates}
                 if normalize_name(display) not in known:

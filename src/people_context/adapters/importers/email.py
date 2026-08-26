@@ -89,6 +89,10 @@ class EmailImportExtractor:
                         date=occurred_at,
                     )
                     alternate_names[address] = []
+                    # One message's recipient headers can name as many correspondents as the
+                    # source budget allows, so the ceiling applies inside this fan-out too
+                    # rather than only once the message is finished.
+                    budget.account(len(people))
                 elif normalize_name(name) != normalize_name(people[address].name):
                     known = {normalize_name(value) for value in alternate_names[address]}
                     if normalize_name(name) not in known:
