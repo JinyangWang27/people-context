@@ -444,6 +444,49 @@ def test_an_undecodable_source_is_a_concise_refusal_rather_than_a_traceback(
     assert _staging_rows(db_file) == []
 
 
+def test_a_card_with_an_unresolvable_charset_never_reaches_the_operator_as_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Property-level decoding fails after the file decoded, so it needs its own guard."""
+    db_file = tmp_path / "people.db"
+    cards = tmp_path / "mixed.vcf"
+    cards.write_text(
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN;ENCODING=QUOTED-PRINTABLE;CHARSET=x-invalid:Alice\r\nEND:VCARD\r\n"
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Sofia Rossi\r\nEMAIL:sofia@example.com\r\nEND:VCARD\r\n",
+        encoding="utf-8",
+    )
+
+    code = cli.main(["--db", str(db_file), "import", "stage", "vcard", str(cards)])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err
+    assert "Skipped card 1: malformed_card" in captured.out
+    assert len(_staging_rows(db_file)) == 1
+
+
+def test_a_vcard_file_of_only_undecodable_cards_refuses_concisely(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    cards = tmp_path / "all-bad.vcf"
+    cards.write_text(
+        "BEGIN:VCARD\r\nVERSION:3.0\r\nFN;ENCODING=QUOTED-PRINTABLE;CHARSET=x-invalid:Alice\r\nEND:VCARD\r\n",
+        encoding="utf-8",
+    )
+
+    code = cli.main(["--db", str(db_file), "import", "stage", "vcard", str(cards)])
+
+    assert code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert "no external import candidates" in captured.err
+    assert _staging_rows(db_file) == []
+
+
 def test_review_shows_a_matched_existing_person(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(_linkedin(tmp_path))]) == 0
