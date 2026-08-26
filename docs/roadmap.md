@@ -173,8 +173,12 @@ and cloud-memory comparisons.
 - a dated, primary-source threat-model comparison with cloud memory tools;
 - README demo polish based on the packaged M9 demo.
 
-**Status:** Partially delivered — compatibility, threat comparison/demo, and SQLCipher are delivered; synchronized
-`1.0.0` primary server metadata remains pending.
+**Status:** Delivered. The synchronized `1.0.0` primary server metadata landed through the release automation
+rather than a dedicated pull request: the `chore(main): release 1.0.0` release-please change set the root
+project, Registry server version and `--from` pin, MCPB manifest version and dependency pin, and the `uv.lock`
+root entry together, and `tests/test_packaging_metadata.py` pins all five to one another. The MCPB
+`manifest_version` stays tooling metadata at `0.4`, and the integration plugin/shim versions remain the
+independent domains described in [compatibility.md](compatibility.md#scope-and-versioning).
 
 ## M13 — Daily utility & proactive signals
 
