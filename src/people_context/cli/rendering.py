@@ -72,7 +72,14 @@ def _print_section(title: str, items: list[str]) -> None:
 
 
 def print_import_review(rows: list[ImportReviewRow]) -> None:
-    """Render review-safe candidate summaries."""
+    """Render review-safe candidate summaries in deterministic staging order.
+
+    Every line leads with the canonical candidate id, because that id is the durable selection
+    interface for `pctx import commit` and for onboarding alike — this renderer never mints a
+    numbered shorthand a later invocation could not resolve. The status is shown so an already
+    committed row is visibly not a pending decision, and a person candidate that the staging
+    step matched to somebody already known says so rather than looking like a new identity.
+    """
     print("Import candidates:")
     person_names = {
         row.id: str(row.candidate["name"])
@@ -83,14 +90,52 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         candidate = row.candidate
         candidate_type = candidate["type"]
         if candidate_type == "person":
-            detail = candidate["name"]
+            detail = str(candidate["name"])
+            matched_person_id = candidate.get("matched_person_id")
+            if matched_person_id:
+                detail += f" — matches existing person {matched_person_id}"
         elif candidate_type == "affiliation":
             detail = f"{candidate['role']} at {candidate['org']} — {_import_owner(candidate, person_names)}"
         elif candidate_type == "fact":
             detail = f"{candidate['predicate']}={candidate['value']} — {_import_owner(candidate, person_names)}"
         else:
-            detail = "summary-only interaction"
-        print(f"  {row.id}  {candidate_type}  {detail}")
+            detail = _import_interaction(candidate, person_names)
+        print(f"  {row.id}  {row.status}  {candidate_type}  {detail}")
+
+
+#: Enough participants to tell two proposed interactions apart without wrapping the line.
+_REVIEWED_PARTICIPANTS = 4
+
+
+def _import_interaction(candidate: dict[str, object], person_names: dict[str, str]) -> str:
+    """Describe one proposed interaction well enough to choose it by id.
+
+    Every interaction in a batch would otherwise render identically, which would leave
+    selective `--accept` guessing. The fields shown are the distilled ones the importers
+    already staged — a neutral summary, the date, the channel, and who was present — never a
+    message body, a subject line, or anything else discarded at extraction.
+    """
+    parts = [str(candidate.get("summary") or "interaction")]
+    date = candidate.get("date")
+    if date:
+        parts.append(str(date)[:10])
+    channel = candidate.get("channel")
+    if channel:
+        parts.append(str(channel))
+    detail = " · ".join(parts)
+
+    raw_participants = candidate.get("participant_candidate_ids")
+    participants = [str(value) for value in raw_participants] if isinstance(raw_participants, list) else []
+    if not participants:
+        return detail
+    shown = [
+        f"{person_names.get(participant, 'unknown person')} ({participant})"
+        for participant in participants[:_REVIEWED_PARTICIPANTS]
+    ]
+    remaining = len(participants) - len(shown)
+    if remaining > 0:
+        shown.append(f"+{remaining} more")
+    return f"{detail} — {', '.join(shown)}"
 
 
 def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) -> str:

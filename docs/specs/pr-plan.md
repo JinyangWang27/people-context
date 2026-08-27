@@ -1,4 +1,4 @@
-# M8–M19 pull-request plan
+# M8–M20 pull-request plan
 
 One checklist item is one independently mergeable pull request. Implementers must read the referenced milestone
 spec first; the bullets below are binding acceptance criteria and the out-of-scope bullets are hard boundaries.
@@ -39,7 +39,8 @@ Check the matching box only in the PR that delivers it.
 | M17 | Agent-assisted extraction | 2 |
 | M18 | Provenance, idempotency & evidence | 3 |
 | M19 | Consolidation & temporal views | 2 |
-| **Total** | | **39** |
+| M20 | Streaming importer parsing | 3 |
+| **Total** | | **42** |
 
 ## Cross-milestone dependencies
 
@@ -57,6 +58,10 @@ Check the matching box only in the PR that delivers it.
 - M18.1 → M18.2: durable source sessions and candidate→record mappings exist before source inspection consumes
   them.
 - M18.1/M18.3 → M19.1/M19.2: timeline and consolidation can explain source provenance and evidence when present.
+- M16.1 → M20.1: the streaming reader and parser-work budget extend the `ImportBudget` seam M16 introduced,
+  and must not change the ceilings or the values it already carries.
+- M20.1 → M20.2/M20.3: the shared streaming reader and budget exist before the mbox and WhatsApp conversions
+  consume them.
 
 ## M8 — Distribution & reach
 
@@ -179,7 +184,7 @@ Check the matching box only in the PR that delivers it.
     no invented deprecation window.
   - **Out:** release bump, encryption, threat comparison.
 
-- [ ] **M12.2 — Synchronize 1.0 server metadata and lock**
+- [x] **M12.2 — Synchronize 1.0 server metadata and lock**
   - **Scope:** Root project, Registry, MCPB, `uv.lock`, classifier, release docs.
   - **Acceptance:** five server semantic values equal `1.0.0`; MCPB schema independent; Registry entry by identifier;
     lock root version matches and `uv lock --check` passes. Shim/plugin version domains remain independent unless
@@ -282,7 +287,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M16 — First-class CLI import workflow
 
-- [ ] **M16.1 — Expose the existing import lifecycle through `pctx`**
+- [x] **M16.1 — Expose the existing import lifecycle through `pctx`**
   - **Scope:** Add `pctx import stage SOURCE PATH`, `import review`, and `import commit --all|--accept`, all with
     stable `--json`; support exactly the seven existing router sources; refactor shared vCard onboarding rendering /
     selection only enough to avoid a second CLI implementation; bound file staging **and existing-batch review/commit
@@ -495,3 +500,51 @@ Check the matching box only in the PR that delivers it.
   - **Out:** autonomous belief updater, confidence-by-count formula, background maintenance daemon, required semantic
     vector clustering, generic consolidation/batch mutation, automatic merge/correction, independent replacement
     `valid_to` editing, supersession for every record type.
+
+## M20 — Streaming importer parsing
+
+- [ ] **M20.1 — Add the streaming source reader and parser-work budget**
+  - **Scope:** Add a bounded line/record-oriented streaming counterpart to `read_source_text` and a narrow
+    parser-work budget bounding **live retained parsed records**, both defaulting to unbounded exactly as
+    `max_source_bytes` and `max_candidates` do; convert the sources with no cross-file state — `vcard`, `ics`,
+    `linkedin`, `outlook` — to consume them.
+  - **Acceptance:** the streaming reader reproduces `read_source_text` decoding byte for byte, including
+    universal-newline handling, `utf-8-sig` BOM stripping, and an `undecodable_source` refusal raised for the
+    same inputs at the same point regardless of chunk boundaries. Lazy unfold/split for vCard and iCalendar and
+    streamed CSV input for LinkedIn and Outlook produce **byte-identical** staged candidates, ordering, refs,
+    skip reasons, and one-based indexes to the current implementation, proven by a table-driven equivalence
+    corpus. `linkedin`'s whole-file `splitlines` is removed and its canonical-header preamble scan stays
+    bounded. A candidate-free source retains records bounded by the budget rather than by input size, asserted
+    against the budget seam. The M16 ceilings and their values are unchanged and no new user-visible limit is
+    added; an unbudgeted caller is byte-for-byte unaffected.
+  - **Out:** `mbox` and `email` conversion, WhatsApp, MCP-path work, new sources/candidate types, any change to
+    the M16 ceilings or to which candidates a source yields.
+
+- [ ] **M20.2 — Stream mbox messages and meter email address expansion**
+  - **Scope:** Stop materializing `list(mbox)`; move mailbox-handle ownership into the extractor's scope so the
+    mailbox is consumed lazily by the extraction loop, and pass the budget into `_correspondents` so one
+    message's address expansion is metered while it is built rather than after `getaddresses` returns.
+  - **Acceptance:** the mailbox stays open for the whole iteration and is closed exactly once on every path,
+    including extraction failure; `MeteredSourceFile` continues to meter every byte `mailbox` reads, so the
+    existing M16 scan-metering, growth, per-read cap, and exact-ceiling boundary tests pass unchanged. An mbox
+    of messages with no external correspondents completes with live retained records bounded rather than
+    proportional to message count. Staged candidates, ordering, refs, `skipped_message_ids`, and
+    `skipped_without_id` are byte-identical to the current implementation for the equivalence corpus.
+  - **Out:** WhatsApp, MCP-path work, changing `mbox`'s path-only contract or the 64 MiB source budget.
+
+- [ ] **M20.3 — Bound WhatsApp resolution and extend the bound to `import_content`**
+  - **Scope:** Replace WhatsApp's retain-every-`_Message` resolution with a bounded one, and extend the
+    milestone's bound to the released MCP `import_content` path.
+  - **Acceptance:** the chosen WhatsApp resolution is stated in the pull request with its reasoning. Preferred
+    is a **bounded two-pass scan** whose first pass retains only O(1) ordering evidence and whose second pass
+    re-applies the byte budget and refuses rather than mixing two versions if the source changed between passes;
+    the existing M14 ordering-inference and skip-reason tests then pass unchanged. If instead the whole-file
+    inference is narrowed to a documented bounded prefix, that is an explicit M14 behavior change and
+    `docs/import.md` plus the M14 spec are updated in this same pull request — never a silent consequence.
+    Candidate-free malformed input stays bounded. **The MCP bound comes from streaming, never from rejection:**
+    `import_content` accepts exactly the sources it accepts today, with identical staged candidates and
+    identical errors, proven by regression tests; no parameter is added, narrowed, or re-defaulted, so nothing
+    here is a compatibility event.
+  - **Out:** new rejection thresholds on any released MCP input, changes to the `pctx import` ceilings, new
+    sources or candidate types, and any change to what a source extracts beyond the explicitly renegotiated and
+    documented WhatsApp option.

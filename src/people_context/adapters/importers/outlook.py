@@ -7,9 +7,9 @@ import io
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from pathlib import Path
 
-from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import clean_text, normalize_email
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -57,6 +57,8 @@ class OutlookImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract contact rows; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "outlook":
@@ -66,7 +68,11 @@ class OutlookImportExtractor:
                 "invalid_source",
                 "outlook import requires exactly one of content or path",
             )
-        text = content.lstrip("\ufeff") if content is not None else Path(path or "").read_text(encoding="utf-8-sig")
+        text = (
+            content.lstrip("\ufeff")
+            if content is not None
+            else read_source_text(path or "", encoding="utf-8-sig", max_bytes=max_source_bytes)
+        )
         reader = csv.DictReader(io.StringIO(text), strict=True)
         try:
             # Reading the header row parses CSV too, so it belongs inside the error boundary.
@@ -86,6 +92,7 @@ class OutlookImportExtractor:
         seen_affiliations: set[tuple[str, str, str]] = set()
         seen_facts: set[tuple[str, str]] = set()
         skipped: list[dict[str, int | str]] = []
+        budget = CandidateBudget(max_candidates)
 
         try:
             for row_index, row in enumerate(reader, start=1):
@@ -146,6 +153,7 @@ class OutlookImportExtractor:
                                 "value": birthday.isoformat(),
                             }
                         )
+                budget.account(len(people) + len(affiliations) + len(facts))
         except csv.Error as exc:
             raise ImportExtractionError("invalid_csv", "outlook CSV is malformed") from exc
 

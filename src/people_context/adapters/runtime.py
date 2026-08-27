@@ -69,6 +69,7 @@ from people_context.app.imports import (
     CandidateStager,
     CommitImport,
     ImportContent,
+    PreflightImportBatch,
     ReviewImport,
     StageCandidates,
 )
@@ -156,6 +157,7 @@ class RuntimeUseCases:
     export_vault: ExportVault
     import_content: ImportContent
     review_import: ReviewImport
+    preflight_import_batch: PreflightImportBatch
     commit_import: CommitImport
     stage_candidates: StageCandidates
     reindex_people: ReindexPeople
@@ -335,6 +337,7 @@ def build_runtime(
             candidate_stager,
         ),
         review_import=ReviewImport(import_staging),
+        preflight_import_batch=PreflightImportBatch(import_staging),
         commit_import=CommitImport(
             repo,
             import_staging,

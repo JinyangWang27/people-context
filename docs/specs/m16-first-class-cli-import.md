@@ -1,6 +1,6 @@
 # M16 — First-class CLI import workflow
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m16--first-class-cli-import-workflow).
+Status: Delivered. See [docs/roadmap.md](../roadmap.md#m16--first-class-cli-import-workflow).
 
 ## Motivation
 

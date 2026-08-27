@@ -182,6 +182,69 @@ def test_vcard_ignores_self_card_and_its_dependents() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("version_lines", "case"),
+    [([], "absent"), (["VERSION:3.0", "VERSION:4.0"], "duplicated")],
+)
+def test_a_card_without_exactly_one_version_is_malformed(version_lines: list[str], case: str) -> None:
+    """`VERSION` decides how the rest of the card is read, so anything but one is unreadable."""
+    content = "\n".join(["BEGIN:VCARD", *version_lines, "FN:Amina Haddad", "END:VCARD"])
+
+    extracted = VCardImportExtractor().extract("vcard", content=content, path=None, self_addresses=set())
+
+    assert extracted.skipped_cards == [{"index": 1, "reason": "malformed_card"}], case
+    assert extracted.candidates == []
+
+
+def test_a_card_naming_an_unresolvable_charset_skips_without_blocking_its_neighbours() -> None:
+    """A property can fail to decode long after the file itself decoded cleanly.
+
+    An unresolvable `CHARSET` raises `LookupError` out of the codec rather than the
+    `UnicodeDecodeError`/`ValueError` the card guard already knew about, which escaped as an
+    unhandled traceback. Card independence is the vCard contract, so it must skip this card
+    only.
+    """
+    content = "\n".join(
+        [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "FN;ENCODING=QUOTED-PRINTABLE;CHARSET=x-invalid:Alice",
+            "END:VCARD",
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "FN:Sofia Rossi",
+            "EMAIL:sofia@example.com",
+            "END:VCARD",
+        ]
+    )
+
+    extracted = VCardImportExtractor().extract("vcard", content=content, path=None, self_addresses=set())
+
+    assert extracted.skipped_cards == [{"index": 1, "reason": "malformed_card"}]
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
+        "Sofia Rossi"
+    ]
+
+
+def test_an_unresolvable_charset_on_a_dependent_property_also_skips_the_card() -> None:
+    """The guard has to cover every decode for the card, not only its `FN`."""
+    content = "\n".join(
+        [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "FN:Amina Haddad",
+            "ORG;ENCODING=QUOTED-PRINTABLE;CHARSET=x-invalid:Acme",
+            "TITLE:Engineer",
+            "END:VCARD",
+        ]
+    )
+
+    extracted = VCardImportExtractor().extract("vcard", content=content, path=None, self_addresses=set())
+
+    assert extracted.skipped_cards == [{"index": 1, "reason": "malformed_card"}]
+    assert extracted.candidates == []
+
+
 def test_mixed_invalid_cards_report_stable_one_based_reasons_and_keep_valid_cards() -> None:
     content = "\n".join(
         [

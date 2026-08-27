@@ -13,6 +13,7 @@ from people_context.adapters.sqlite.db import (
     inspect_schema,
     latest_schema_version,
 )
+from people_context.cli.imports import cmd_import
 from people_context.cli.insights import cmd_stale, cmd_upcoming
 from people_context.cli.maintenance import cmd_doctor, cmd_reindex, cmd_stats, cmd_sync_log, cmd_watch
 from people_context.cli.onboarding import cmd_demo, cmd_init
@@ -73,6 +74,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "sync-log": cmd_sync_log,
     "watch": cmd_watch,
     "reindex": cmd_reindex,
+    "import": cmd_import,
 }
 
 

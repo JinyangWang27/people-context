@@ -87,14 +87,25 @@ repurposed, and new fields are additive.
 | Person index | `people-context-person-index` | `1` | `pctx list --json` |
 | Data-quality findings | `people-context-doctor` | `1` | `pctx doctor --json` |
 | Aggregate inventory | `people-context-stats` | `1` | `pctx stats --json` |
+| Import staging batch | `people-context-import-batch` | `1` | `pctx import stage --json` |
+| Import review | `people-context-import-review` | `1` | `pctx import review --json` |
+| Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
 
-- **Portable dataset export**, **person brief**, **person index**, **data-quality findings**, and **aggregate
-  inventory** are producer-only: nothing in this repository consumes them, and external readers are expected to
-  ignore unknown fields. A new field is additive and does not advance `version`; a removal or a repurposing does.
+- **Portable dataset export**, **person brief**, **person index**, **data-quality findings**, **aggregate
+  inventory**, and the three **import lifecycle** documents are producer-only: nothing in this repository
+  consumes them, and external readers are expected to ignore unknown fields. A new field is additive and does not
+  advance `version`; a removal or a repurposing does.
+
+  The import documents address candidates by their canonical staged id, and that id is the contract: it is what
+  `pctx import commit --accept` takes, and it stays stable for a batch's lifetime. The review document's
+  `candidate` object is the staged candidate as persisted, so it grows exactly when the staged candidate
+  vocabulary grows and a reader must tolerate a candidate `type` it does not recognize. Batch size limits belong
+  to the CLI adapter rather than to the format: a document produced today remains readable if those ceilings
+  change. These documents carry distilled personal data — a machine format, not a sanitized one.
 
   The doctor document's finding `code` values and the `surface` discriminator on a suggested action are part of
   its contract: an existing code is not removed or given a new meaning, and a later release may add codes and

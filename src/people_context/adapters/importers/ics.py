@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
+from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
@@ -54,18 +54,25 @@ class IcsImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        max_source_bytes: int | None = None,
+        max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract attendees; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "ics":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'ics'")
         if (content is None) == (path is None):
             raise ImportExtractionError("invalid_source", "ics import requires exactly one of content or path")
-        text = content if content is not None else Path(path or "").read_text(encoding="utf-8")
+        text = (
+            content
+            if content is not None
+            else read_source_text(path or "", encoding="utf-8", max_bytes=max_source_bytes)
+        )
         normalized_self = {normalize_name(address) for address in self_addresses if address.strip()}
 
         people: dict[str, _PersonAccumulator] = {}
         interactions: list[dict[str, object]] = []
         skipped: list[dict[str, int | str]] = []
+        budget = CandidateBudget(max_candidates)
 
         for index, event in enumerate(_iter_events(_unfold_lines(text)), start=1):
             if event.malformed:
@@ -78,7 +85,7 @@ class IcsImportExtractor:
             if occurred_at is None:
                 skipped.append({"index": index, "reason": reason or "invalid_dtstart"})
                 continue
-            refs = self._collect_attendees(event, normalized_self, people)
+            refs = self._collect_attendees(event, normalized_self, people, budget)
             if not refs:
                 skipped.append({"index": index, "reason": "no_external_attendee"})
                 continue
@@ -91,6 +98,7 @@ class IcsImportExtractor:
                 "message_id": event.uid,
             }
             interactions.append(interaction)
+            budget.account(len(people) + len(interactions))
 
         person_candidates = [_person_candidate(accumulator) for accumulator in people.values()]
         return ExtractedImport(
@@ -105,7 +113,14 @@ class IcsImportExtractor:
         event: _Event,
         normalized_self: set[str],
         people: dict[str, _PersonAccumulator],
+        budget: CandidateBudget,
     ) -> list[str]:
+        """Collect one event's external attendees, accounting as each new person appears.
+
+        A single `VEVENT` can carry as many `ATTENDEE` lines as the source budget allows, so
+        the ceiling has to apply inside this fan-out too: checking only once the event is
+        complete would let one event expand unbounded before anything refused it.
+        """
         refs: list[str] = []
         for address in event.attendees:
             normalized = normalize_name(address)
@@ -115,6 +130,7 @@ class IcsImportExtractor:
             accumulator = people.get(normalized)
             if accumulator is None:
                 people[normalized] = _PersonAccumulator(ref=normalized, name=display)
+                budget.account(len(people))
             elif normalize_name(display) != normalize_name(accumulator.name):
                 known = {normalize_name(value) for value in accumulator.alternates}
                 if normalize_name(display) not in known:

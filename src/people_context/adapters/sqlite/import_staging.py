@@ -7,7 +7,21 @@ import sqlite3
 from datetime import datetime
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
-from people_context.ports.imports import StagedImportRow
+from people_context.ports.imports import StagedBatchSize, StagedImportRow
+
+#: Measures the batch a bounded caller is about to read without loading a single candidate
+#: body. `LENGTH(CAST(... AS BLOB))` is the stored UTF-8 byte count, which is exactly what a
+#: reader has to materialize, and the inner `LIMIT` stops the scan one row past the caller's
+#: ceiling so an oversized batch costs a bounded query rather than a full one.
+_MEASURE_BATCH_SQL = """
+    SELECT COUNT(*) AS row_count, COALESCE(SUM(payload_bytes), 0) AS payload_bytes
+    FROM (
+        SELECT LENGTH(CAST(candidate_json AS BLOB)) + LENGTH(CAST(source AS BLOB)) AS payload_bytes
+        FROM import_staging
+        WHERE batch_id = ?
+        LIMIT ?
+    )
+"""
 
 
 class SqliteImportStagingStore:
@@ -55,6 +69,20 @@ class SqliteImportStagingStore:
             )
             for row in rows
         ]
+
+    def measure_batch(self, batch_id: str, *, row_scan_limit: int) -> StagedBatchSize:
+        """Return the batch's row count and persisted reviewable payload bytes.
+
+        A staging batch is append-closed once it is created, so this measurement cannot be
+        raced by later growth; marking rows committed changes status, never payload.
+        """
+        row = self._conn.execute(_MEASURE_BATCH_SQL, (batch_id, row_scan_limit)).fetchone()
+        row_count = int(row["row_count"])
+        return StagedBatchSize(
+            row_count=row_count,
+            payload_bytes=int(row["payload_bytes"]),
+            truncated=row_count >= row_scan_limit,
+        )
 
     def mark_committed(self, candidate_ids: list[str]) -> None:
         if not candidate_ids:

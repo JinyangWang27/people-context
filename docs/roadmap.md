@@ -173,8 +173,12 @@ and cloud-memory comparisons.
 - a dated, primary-source threat-model comparison with cloud memory tools;
 - README demo polish based on the packaged M9 demo.
 
-**Status:** Partially delivered — compatibility, threat comparison/demo, and SQLCipher are delivered; synchronized
-`1.0.0` primary server metadata remains pending.
+**Status:** Delivered. The synchronized `1.0.0` primary server metadata landed through the release automation
+rather than a dedicated pull request: the `chore(main): release 1.0.0` release-please change set the root
+project, Registry server version and `--from` pin, MCPB manifest version and dependency pin, and the `uv.lock`
+root entry together, and `tests/test_packaging_metadata.py` pins all five to one another. The MCPB
+`manifest_version` stays tooling metadata at `0.4`, and the integration plugin/shim versions remain the
+independent domains described in [compatibility.md](compatibility.md#scope-and-versioning).
 
 ## M13 — Daily utility & proactive signals
 
@@ -248,7 +252,10 @@ automation, without inventing another import policy or adding model/network depe
 No new importer, candidate type, schema migration, live service integration, raw-text extraction, or general
 CLI/MCP parity is part of M16.
 
-**Status:** Planned.
+**Status:** Delivered — the `pctx import` group exposes the existing stage/review/commit lifecycle over all seven
+sources with stable v1 JSON documents, a bounded 64 MiB/100,000-candidate/64 MiB-payload staging budget, and a
+SQLite preflight that refuses an oversized legacy batch before any full-batch read; onboarding shares the same
+review rendering and candidate selection, and the released MCP and `pctx init` contracts are unchanged.
 
 ## M17 — Agent-assisted knowledge extraction
 
@@ -313,6 +320,31 @@ M19 does not automatically merge records, rewrite traits, recalculate confidence
 
 **Status:** Planned.
 
+## M20 — Streaming importer parsing
+
+**Goals:** close the one resource gap M16 left open — every extractor turns a whole in-budget source into
+intermediate Python objects before the first candidate exists, so the candidate ceiling cannot meter it — and
+do it across all seven sources and both surfaces at once rather than site by site.
+
+**Deliverables:**
+
+- a narrow parser-work budget bounding live retained parsed records, defaulting to unbounded so existing
+  callers are unaffected, alongside a bounded streaming line/record source reader;
+- streaming conversions for all seven sources: lazy unfold/split for vCard and iCalendar, streamed CSV input
+  for LinkedIn and Outlook, metered address expansion for email, a lazily consumed mailbox for `mbox`, and a
+  bounded resolution for WhatsApp;
+- the same bound extended to the released MCP `import_content` path **by streaming rather than by rejection**,
+  so no source accepted today stops being accepted;
+- a preserved-or-explicitly-renegotiated answer for WhatsApp's documented whole-file day/month ordering
+  inference, which is the only place a memory fix could otherwise change what is extracted;
+- table-driven equivalence tests proving byte-identical candidates, ordering, refs, skip reasons, and indexes
+  for every source, plus retention tests proving candidate-free input stays bounded.
+
+M20 adds no source type, candidate type, migration, or new user-visible limit, and does not change the M16
+source-byte, candidate, staged-payload, or batch-read ceilings.
+
+**Status:** Planned.
+
 ## Post-roadmap candidates
 
 The following remain candidates, not commitments:
@@ -327,5 +359,5 @@ The following remain candidates, not commitments:
 - watched-folder/background ingestion orchestration outside the core import transaction;
 - source-session rollback/retraction after safe lifecycle semantics are designed from real usage.
 
-See `docs/specs/` for one implementation spec per M8–M19 milestone, and
+See `docs/specs/` for one implementation spec per M8–M20 milestone, and
 [docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.

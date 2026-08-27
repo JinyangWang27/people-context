@@ -45,6 +45,9 @@ what encryption does and does not protect.
 | `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
 | `export-vcard [--output FILE] [--include-sensitive] [--version V]` | Export active people as deterministic vCards. |
 | `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
+| `import stage SOURCE PATH [--self-sender TEXT] [--json]` | Extract one local export into a reviewable staging batch; nothing is committed. |
+| `import review BATCH_ID [--json]` | Show every staged candidate in one batch with its canonical id and status. |
+| `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
 
 `show`, `brief`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown
 references exit 1; ambiguous names exit 2 and print candidates rather than guessing.
@@ -61,6 +64,44 @@ additive onboarding; it keeps that person's id and canonical name. Optional vCar
 stage/review/commit gate and commits only the candidate ids entered at the prompt. The self identity exists before
 the file is parsed, so a card matching a self handle is excluded with all its dependent candidates. The optional
 one-line communication philosophy is prompted last.
+
+## Import
+
+```bash
+uv run pctx import stage linkedin ~/exports/Connections.csv
+uv run pctx import review 01J...BATCH
+uv run pctx import commit 01J...BATCH --accept 01J...CANDIDATE --accept 01J...OTHER
+uv run pctx import commit 01J...BATCH --all
+```
+
+`import` exposes the same stage → review → commit lifecycle as the MCP import tools (see
+[import.md](import.md)). `SOURCE` is one of `email`, `mbox`, `vcard`, `ics`, `linkedin`, `outlook`, or
+`whatsapp`. `--self-sender` is passed through for sources that identify you by display label rather than by
+address; sources that do not use it ignore it.
+
+Staging never commits. `commit` requires exactly one of `--all` or a repeatable `--accept CANDIDATE_ID`, and
+supplying either *is* the approval — there is no second prompt and no `--yes`. Canonical candidate ids from
+`import review` are the only selection interface; accepting a dependent candidate whose person was not accepted
+leaves it unresolved rather than guessing, and it can be committed later.
+
+All three commands support `--json`, which writes exactly one versioned document to stdout and keeps every
+diagnostic on stderr — `people-context-import-batch`, `people-context-import-review`, and
+`people-context-import-commit`, all documented in [compatibility.md](compatibility.md#machine-readable-json).
+Review output and those documents carry distilled personal data from your export; inspect them before
+redirecting or sharing them.
+
+Exit statuses: `2` for an unsupported source or a malformed selection, `0` for a successful stage, review, or
+commit, and non-zero for an unreadable path, an extraction failure, a source with no candidates, an unknown batch,
+a candidate outside the batch, or a source or batch outside the size ceilings below. Diagnostics never echo
+message bodies, chat text, or other discarded source content.
+
+This CLI boundary is bounded: `import stage` refuses a source file over 64 MiB, more than 100,000 staged
+candidates, or more than 64 MiB of persisted reviewable staging payload, and it stops before staging rather than
+after. `import review` and both `commit` forms measure an existing batch in SQLite against the same
+100,000-row/64 MiB envelope before reading it, so a batch staged through the older uncapped MCP path is refused
+safely instead of being materialized. Those ceilings are limits of this command only — the MCP
+`import_content`, `review_import`, and `commit_import` tools and `pctx init` keep their released behaviour. An
+export larger than a ceiling can be split and staged in parts.
 
 ## Packaged demo
 
