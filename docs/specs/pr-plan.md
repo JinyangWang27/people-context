@@ -309,7 +309,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M17 — Agent-assisted knowledge extraction
 
-- [ ] **M17.1 — Expand and bound strict candidates to observation, trait, and relationship**
+- [x] **M17.1 — Expand and bound strict candidates to observation, trait, and relationship**
   - **Scope:** Add strict candidate models/staging dependency rewriting and `CommitImport` support through existing
     `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases; bound the new MCP extraction forms in this
     same PR.

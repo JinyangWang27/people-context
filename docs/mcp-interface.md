@@ -255,9 +255,20 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 label for the user; both are additive and the response shape is unchanged. See
 [docs/import.md](import.md).
 
+`stage_candidates(source, candidates)` accepts `person`, `interaction`, `affiliation`, and `fact`, and — from
+M17 — the additive `observation`, `trait`, and `relationship` types. A request using one of the three new types
+opts into a bounded contract: at most 500 candidates, a normalized 128-character `source`, 1 MiB of serialized
+candidate JSON, and 8 KiB per string on every candidate including the legacy ones, plus tighter per-field
+limits. Such a request also stages an additive `match_disposition` of `unmatched`/`matched`/`ambiguous` on each
+person candidate, so ambiguity cannot be mistaken for a new identity. A request built only from the four
+released types keeps its pre-M17 accepted shape and matching behavior; the `review_import` and `commit_import`
+envelopes are unchanged. See [docs/import.md](import.md#agent-extracted-knowledge-m17).
+
 `set_relationship` accepts free-form type input. M7 snake-case normalizes it, resolves synonyms, canonicalizes
 inverse direction, orders symmetric endpoints, and updates an existing active canonical edge instead of
-inserting a duplicate. Unknown types remain legal.
+inserting a duplicate. Unknown types remain legal. Staged `relationship` candidates commit through this same
+contract, and are ordinary-disclosure only because the durable relationship model carries no sensitivity
+field.
 
 ## Destructive tools
 

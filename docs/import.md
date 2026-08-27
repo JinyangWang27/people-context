@@ -189,11 +189,77 @@ accept and ignore them, and no source takes untyped keyword arguments.
 ## Agent candidate staging
 
 `stage_candidates` uses extra-forbidden Pydantic discriminated models for person, interaction, affiliation,
-and fact. Person `ref` values must be unique in the batch; all `participant_refs`/`person_ref` values must
-resolve to one of them. Validation, matching, staging-id assignment, reference rewriting, and the SQLite
-batch insert happen before or within one atomic path, so invalid input leaves no partial rows. Dependencies
-on matched existing people can commit without accepting the person candidate; dependencies on new people
-remain pending until that person is accepted.
+fact, observation, trait, and relationship. Person `ref` values must be unique in the batch; all
+`participant_refs`/`person_ref`/`from_ref`/`to_ref` values must resolve to one of them. Validation, matching,
+staging-id assignment, reference rewriting, and the SQLite batch insert happen before or within one atomic
+path, so invalid input leaves no partial rows. Dependencies on matched existing people can commit without
+accepting the person candidate; dependencies on new people remain pending until that person is accepted.
+
+### Agent-extracted knowledge (M17)
+
+The three candidate types added in M17 exist so an agent reading a transcript, a call note, or an interview
+can distil it without flattening everything into facts. They keep the project's epistemic distinction: a
+**fact** is an explicit durable assertion, an **observation** is something that happened in this source, and a
+**trait** is a generalization inferred from evidence. Each commits through the use case that already owns it —
+`RecordObservation`, `RecordTrait`, `SetRelationship` — so an imported record carries the same validation,
+provenance, audit, and changelog behavior as a directly recorded one.
+
+- **Observation** — `person_ref`, `text`, optional `observed_at`, optional `sensitivity`. Omitting
+  `observed_at` is how an agent says the source established no event time; commit then follows the released
+  `RecordObservation` clock behavior rather than guessing one.
+- **Trait** — `person_ref`, `category` (the existing `TraitCategory` values; M17 invents no second taxonomy),
+  `value`, and — unlike a direct `record_trait` call — a **required** `evidence_note` and `confidence`. An
+  inference lifted out of unstructured material is a weaker claim than one a person states directly, so the
+  boundary refuses to let silence read as certainty or to accept an evidence-free generalization.
+- **Relationship** — `from_ref`, `to_ref`, free-form `relationship_type`, optional `confidence`. Commit goes
+  through `SetRelationship` unchanged: known vocabulary and synonyms canonicalize with inverse/symmetric
+  endpoint semantics, a normalized but unregistered type stays a legal `uncategorized` edge, and only blank or
+  non-word type text fails. Requiring registration would have made every currently legal uncategorized edge
+  unimportable.
+
+Relationship candidates are **ordinary-disclosure only**. The durable `Relationship` model and the graph reads
+carry no sensitivity field, so there is nothing to enforce an elevated level with. Rather than accept a
+candidate-only `sensitivity` that commit would discard — implying a protection that does not exist — the model
+forbids it: an attempt to stage a sensitive or restricted edge fails rather than entering the graph
+downgraded. Such a relationship stays out of People Context until relationship sensitivity exists as a durable
+contract. Sensitive information that *is* enforceable still has a home in facts, observations, traits, and
+interactions.
+
+### Identity in an extraction batch
+
+A staging request that uses one of the three new types also gets stronger identity handling, because the
+question "is this somebody we already know?" has three answers, not two. Matching takes the union of the
+active people that the candidate's canonical name and its handle aliases resolve to, and stages an explicit
+`match_disposition`:
+
+- `unmatched` — no active person matched; this is a genuinely new identity;
+- `matched` — exactly one did, and `matched_person_id` names it;
+- `ambiguous` — more than one did, so there is no authoritative id and a bounded `match_count` says how many.
+
+An accepted ambiguous candidate **never falls through to `RememberPerson`**: "several people this could be" is
+not evidence of a new one, and creating one would durably invent the duplicate the ambiguity warned about. It
+stays in `unresolved_ids`, and every accepted dependant that needs it stays unresolved too. A later commit
+resolves it only when the same deterministic match now yields exactly one active person — after a merge or a
+correction, say — or the corrected candidate is re-staged. A unique hit on one token never short-circuits a
+conflict on another.
+
+### Bounds on an extraction request
+
+An extraction request carries an agent's reading of unstructured material rather than rows out of a structured
+export, so it is bounded from its first release. Any `stage_candidates` request containing at least one
+observation, trait, or relationship candidate is limited to **500 candidates**, a normalized **128-character**
+`source` label, **1 MiB** of canonically serialized candidate JSON, and **8 KiB for every string on every
+candidate — including the legacy person, fact, interaction, and affiliation fields**, so a mixed batch cannot
+smuggle a transcript through a released field. The new fields are tighter still: observation `text` at 4 KiB,
+trait `value` and `evidence_note` at 2 KiB each, and relationship type and batch-local references at 256
+characters. `source` is bounded as a privacy invariant as much as a resource one — `StageCandidates` copies
+that label into every staged row and every later provenance record.
+
+Every one of these is checked before validation and before any staging row exists, and a refusal names only
+the limit: the rejected payload is untrusted extraction output and is never echoed back. The limits are
+**conditional on purpose**. A request built only from the four released candidate types keeps the accepted
+shape, source-label behavior, and pre-M17 matching it shipped with; adding candidate types does not
+retroactively narrow anybody's working import.
 
 ## The `pctx import` command group
 

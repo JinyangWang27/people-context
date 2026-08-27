@@ -92,6 +92,17 @@ Outlook contacts CSV, only the canonical name, email, company, job title, and bi
 narrow structured fields; agents must extract concise candidates from notes rather than submit or persist the
 notes themselves.
 
+That last rule is what the M17 extraction bounds enforce rather than merely ask for. A staging request using
+an `observation`, `trait`, or `relationship` candidate is capped at 500 candidates, a 128-character `source`
+label, 1 MiB of serialized candidate JSON, and 8 KiB per string — on legacy fields too, so a mixed batch cannot
+turn a `fact` value into a transcript archive, and `source` cannot become a side channel copied into hundreds
+of staging and provenance rows. Trait `evidence_note` is capped at 2 KiB because it is meant to be a distilled
+derivation, not a hidden excerpt. Rejection happens before validation and before any durable row, and names
+only the limit: rejected extraction output is untrusted and is never echoed back. Relationship candidates are
+ordinary-disclosure only — an explicitly sensitive or restricted edge fails strict validation rather than
+entering a graph that cannot enforce the level it claims. Ambiguous identity is kept explicit: several
+possible existing people never becomes a silently created new person.
+
 ## Audit of every mutation
 
 Every create, update, merge, and forget operation atomically writes primary state, an `audit_log` entry, and
