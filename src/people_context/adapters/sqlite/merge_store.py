@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from datetime import date
@@ -93,6 +94,13 @@ class SqliteMergeStore:
             counts["duplicate_relationships_removed"] = len(deduped)
             counts["interaction_participations"] = self._merge_participations(primary.id, duplicate_id)
             counts["self_loops_removed"] = self_loops
+            # An edge that touched the duplicate and is not among the moved ones was removed as a
+            # merge-created self-loop. Its ids are derived rather than captured inside the delete
+            # so the two sets provably partition the same pre-merge snapshot.
+            self_loop_ids = sorted({row["id"] for row in relationship_rows} - set(moved_edge_ids))
+            mapping_changes = self._retarget_mappings(primary.id, duplicate_id, deduped, self_loop_ids)
+            counts["candidate_mappings"] = len(mapping_changes)
+            self._retarget_staging_matches(primary.id, duplicate_id)
             self._conn.execute(
                 "UPDATE persons SET is_self = 0, deleted_at = ?, updated_at = ? WHERE id = ?",
                 (primary.updated_at.isoformat(), primary.updated_at.isoformat(), duplicate_id),
@@ -110,6 +118,7 @@ class SqliteMergeStore:
                 records,
                 deduped,
             )
+            changes.extend(mapping_changes)
             manifest = {
                 "primary_id": primary.id,
                 "duplicate_id": duplicate_id,
@@ -235,6 +244,120 @@ class SqliteMergeStore:
                 )
             )
         return changes
+
+    def _retarget_mappings(
+        self,
+        primary_id: str,
+        duplicate_id: str,
+        deduped: list[tuple[str, str]],
+        self_loop_ids: list[str],
+    ) -> list[LifecycleChange]:
+        """Point durable candidate mappings at what survived this merge.
+
+        A mapping is a record's provenance, so it has to follow the record rather than dangle at
+        an identity the merge retired. Three outcomes are possible: the duplicate person becomes
+        the survivor, a relationship removed as a duplicate becomes the keeper the merge policy
+        chose, and a relationship removed as a merge-created self-loop becomes the terminal
+        `merged_away` outcome — the one case with no surviving entity to point at. Deleting that
+        mapping instead would let a later retry of the same candidate recreate the edge the merge
+        deliberately removed.
+
+        Mappings to facts, observations, traits, reminders, and affiliations need no change: the
+        reparenting above keeps their entity ids.
+        """
+        changes = [
+            *self._retarget_entity_mappings("person", {duplicate_id: primary_id}),
+            *self._retarget_entity_mappings("relationship", dict(deduped)),
+        ]
+        for candidate_id in self._mapped_candidate_ids("relationship", self_loop_ids):
+            self._conn.execute(
+                """UPDATE import_candidate_mappings
+                   SET disposition = 'merged_away', entity_id = NULL
+                   WHERE candidate_id = ?""",
+                (candidate_id,),
+            )
+            changes.append(
+                LifecycleChange(
+                    entity_type="import_candidate_mapping",
+                    entity_id=candidate_id,
+                    op_kind="update",
+                    payload={
+                        "candidate_id": candidate_id,
+                        "disposition": "merged_away",
+                        "entity_type": "relationship",
+                        "entity_id": None,
+                    },
+                    changed_fields=["disposition", "entity_id"],
+                )
+            )
+        return changes
+
+    def _retarget_entity_mappings(self, entity_type: str, replacements: dict[str, str]) -> list[LifecycleChange]:
+        """Repoint every live mapping from a retired entity id to its survivor."""
+        changes: list[LifecycleChange] = []
+        for retired_id, survivor_id in replacements.items():
+            for candidate_id in self._mapped_candidate_ids(entity_type, [retired_id]):
+                self._conn.execute(
+                    "UPDATE import_candidate_mappings SET entity_id = ? WHERE candidate_id = ?",
+                    (survivor_id, candidate_id),
+                )
+                changes.append(
+                    LifecycleChange(
+                        entity_type="import_candidate_mapping",
+                        entity_id=candidate_id,
+                        op_kind="update",
+                        payload={
+                            "candidate_id": candidate_id,
+                            "disposition": "entity",
+                            "entity_type": entity_type,
+                            "entity_id": survivor_id,
+                        },
+                        changed_fields=["entity_id"],
+                    )
+                )
+        return changes
+
+    def _mapped_candidate_ids(self, entity_type: str, entity_ids: list[str]) -> list[str]:
+        """Return the candidates whose live mappings target any of these entity ids."""
+        if not entity_ids:
+            return []
+        placeholders = ", ".join("?" for _ in entity_ids)
+        rows = self._conn.execute(
+            f"""SELECT candidate_id FROM import_candidate_mappings
+                WHERE disposition = 'entity' AND entity_type = ? AND entity_id IN ({placeholders})
+                ORDER BY candidate_id""",  # noqa: S608 - bound placeholders only
+            (entity_type, *entity_ids),
+        ).fetchall()
+        return [row["candidate_id"] for row in rows]
+
+    def _retarget_staging_matches(self, primary_id: str, duplicate_id: str) -> int:
+        """Point every retained person staging row at the surviving identity.
+
+        A staged person candidate remembers which existing person it matched. Left pointing at
+        the duplicate, a later dependent commit would resolve through an identity this merge
+        retired and then fail the active-person check — the batch would look committable and
+        refuse every record that depended on it.
+
+        `import_staging` is operational state, so this mints no audit or changelog row. It still
+        commits or rolls back with the merge, because a batch that resolves through a retired id
+        is exactly the state the merge was supposed to remove.
+        """
+        rows = self._conn.execute(
+            "SELECT id, candidate_json FROM import_staging WHERE candidate_json LIKE ?",
+            (f"%{duplicate_id}%",),
+        ).fetchall()
+        updated = 0
+        for row in rows:
+            candidate = json.loads(row["candidate_json"])
+            if candidate.get("matched_person_id") != duplicate_id:
+                continue
+            candidate["matched_person_id"] = primary_id
+            self._conn.execute(
+                "UPDATE import_staging SET candidate_json = ? WHERE id = ?",
+                (json.dumps(candidate, ensure_ascii=False), row["id"]),
+            )
+            updated += 1
+        return updated
 
     def _save_primary(self, person: Person, duplicate_id: str) -> None:
         self._conn.execute(
