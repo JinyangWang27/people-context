@@ -58,8 +58,13 @@ _DECLARED_CANDIDATE_NAMES: frozenset[str] = frozenset(CANDIDATE_MODELS) | {
 }
 
 #: Pydantic error types whose `msg` is written from the schema rather than from the input.
-#: `value_error` is deliberately absent: the staging rules raise it carrying the person ref
-#: that failed, which is candidate content.
+#:
+#: Membership is decided by what a message actually contains, not by which layer produced it —
+#: `tests/cli/test_import_stage_candidates.py` probes every entry with a sentinel value and
+#: fails if one interpolates it. Two absences are deliberate. `value_error` covers the staging
+#: rules, which raise it carrying the person ref that failed. `union_tag_invalid` quotes the
+#: rejected discriminator back, so an unsupported `type` — private source text, for instance —
+#: would be echoed by the one error whose whole purpose is to report an unrecognized value.
 _SCHEMA_DERIVED_ERROR_TYPES: frozenset[str] = frozenset(
     {
         "missing",
@@ -74,9 +79,9 @@ _SCHEMA_DERIVED_ERROR_TYPES: frozenset[str] = frozenset(
         "dict_type",
         "datetime_type",
         "datetime_parsing",
+        "datetime_from_date_parsing",
         "enum",
         "literal_error",
-        "union_tag_invalid",
         "union_tag_not_found",
         "greater_than_equal",
         "less_than_equal",
@@ -327,6 +332,11 @@ def _read_candidate_json(raw_input: str) -> list[Any] | None:
         parsed = json.loads(text)
     except ValueError:
         return _refuse_candidates(f"{INVALID_CANDIDATE_JSON}: candidate input is not valid JSON")
+    except RecursionError:
+        # The decoder recurses per nesting level, so a few tens of kilobytes of nested arrays
+        # exhaust the stack long before the input ceiling is near. Depth is a property of the
+        # document, so the refusal is the same one any other unparseable input gets.
+        return _refuse_candidates(f"{INVALID_CANDIDATE_JSON}: candidate input is nested too deeply")
     if not isinstance(parsed, list) or not all(isinstance(entry, dict) for entry in parsed):
         return _refuse_candidates(
             f"{INVALID_CANDIDATE_JSON}: candidate input must be a JSON array of candidate objects"

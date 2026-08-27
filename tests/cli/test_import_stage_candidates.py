@@ -14,12 +14,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import TypeAdapter, ValidationError
 
 from people_context import cli
 from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite import open_db
 from people_context.app.imports import (
     CANDIDATE_INPUT_TOO_LARGE,
+    CANDIDATE_NESTING_TOO_DEEP,
     IMPORT_BATCH_FORMAT,
     IMPORT_BATCH_VERSION,
     INVALID_CANDIDATE_JSON,
@@ -27,8 +29,12 @@ from people_context.app.imports import (
     MAX_EXTRACTION_CANDIDATES,
     MAX_EXTRACTION_SOURCE_CHARS,
     MAX_EXTRACTION_STRING_BYTES,
+    ImportPipelineError,
+    enforce_extraction_request_limits,
 )
+from people_context.app.imports.models import CandidateInput
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
+from people_context.cli import imports as cli_imports
 from people_context.cli.parser import build_parser
 from people_context.domain.person import AliasKind
 
@@ -313,6 +319,126 @@ def test_an_unexpected_field_key_is_redacted_rather_than_printed(
     assert _TRANSCRIPT_SENTINEL not in message
     assert "(redacted)" in message
     assert "Extra inputs are not permitted" in message
+
+
+def test_an_unsupported_candidate_type_is_not_quoted_back(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The one error whose job is to report an unrecognized value must not repeat it.
+
+    Pydantic's `union_tag_invalid` message quotes the rejected discriminator, so a `type` field
+    holding private source text would be echoed by the very error that rejected it.
+    """
+    db_file = tmp_path / "people.db"
+    payload = [{"type": _TRANSCRIPT_SENTINEL, "person_ref": "a", "value": "v"}]
+
+    message = _refusal(db_file, ["--source", "sync", "--input", str(_input_file(tmp_path, payload))], capsys)
+
+    assert _TRANSCRIPT_SENTINEL not in message
+    assert "union_tag_invalid" in message
+
+
+def test_every_forwarded_validation_message_is_schema_derived() -> None:
+    """Pin the allowlist against Pydantic itself rather than against a reading of it.
+
+    Membership is a claim about what a message contains, and that claim is Pydantic's to change:
+    a release that starts interpolating the input into an allowlisted message would reintroduce
+    the echo silently. So every entry is probed with a sentinel and must not repeat it.
+    """
+    sentinel = "PROBE-SENTINEL-3d91"
+    probes: list[list[dict[str, Any]]] = [
+        [{"type": sentinel, "ref": "a"}],
+        [{"ref": "a", "name": "A"}],
+        [{"type": "person", "ref": "a"}],
+        [{"type": "person", "ref": "a", "name": "A", "aliases": [], sentinel: 1}],
+        [{"type": "person", "ref": "", "name": "A", "aliases": []}],
+        [{"type": "person", "ref": 5, "name": "A", "aliases": []}],
+        [{"type": "person", "ref": "a", "name": "A", "aliases": [{"value": "v", "kind": sentinel}]}],
+        [{"type": "interaction", "summary": "s", "participant_refs": [], "date": sentinel}],
+        [
+            {
+                "type": "trait",
+                "person_ref": "a",
+                "category": sentinel,
+                "value": "v",
+                "evidence_note": "n",
+                "confidence": 0.5,
+            }
+        ],
+        [
+            {
+                "type": "trait",
+                "person_ref": "a",
+                "category": "values",
+                "value": "v",
+                "evidence_note": "n",
+                "confidence": 99,
+            }
+        ],
+    ]
+
+    adapter = TypeAdapter(list[CandidateInput])
+    probed: set[str] = set()
+    for payload in probes:
+        try:
+            adapter.validate_python(payload)
+        except ValidationError as exc:
+            for entry in exc.errors(include_url=False, include_context=False, include_input=False):
+                probed.add(str(entry["type"]))
+                rendered = cli_imports._safe_message(dict(entry))
+                assert sentinel not in rendered, f"{entry['type']} echoed the input"
+
+    # The probes must actually exercise the allowlist, or this test proves nothing.
+    assert probed & cli_imports._SCHEMA_DERIVED_ERROR_TYPES
+    assert "union_tag_invalid" in probed
+    assert "union_tag_invalid" not in cli_imports._SCHEMA_DERIVED_ERROR_TYPES
+
+
+def test_deeply_nested_input_is_refused_without_a_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Depth exhausts the decoder's stack far below the input ceiling.
+
+    A few tens of kilobytes is enough, so the byte budget is no defence here and the parser's
+    own failure has to become the same bounded refusal any other unparseable input gets.
+    """
+    db_file = tmp_path / "people.db"
+    depth = 10_000
+    path = tmp_path / "deep.json"
+    path.write_text(
+        '[{"type":"person","ref":"a","name":"A","aliases":[],"x":' + "[" * depth + "]" * depth + "}]",
+        encoding="utf-8",
+    )
+    assert path.stat().st_size < MAX_CLI_CANDIDATE_JSON_BYTES
+
+    message = _refusal(db_file, ["--source", "sync", "--input", str(path)], capsys)
+
+    assert INVALID_CANDIDATE_JSON in message
+    assert _staging_rows(db_file) == []
+
+
+def test_the_shared_limit_check_refuses_unmeasurable_depth_rather_than_raising() -> None:
+    """A caller that hands over already-parsed candidates reaches the same recursion.
+
+    The CLI stops this at its decoder, but the limit check is shared with MCP staging, and a
+    size check must refuse what it cannot measure instead of failing on it.
+    """
+    nested: list[Any] = []
+    node = nested
+    for _ in range(10_000):
+        child: list[Any] = []
+        node.append(child)
+        node = child
+
+    with pytest.raises(ImportPipelineError) as refusal:
+        enforce_extraction_request_limits(
+            "sync",
+            [{"type": "observation", "person_ref": "a", "text": "t", "nested": nested}],
+        )
+
+    assert refusal.value.code == CANDIDATE_NESTING_TOO_DEEP
 
 
 def test_an_unpaired_surrogate_is_refused_instead_of_crashing(

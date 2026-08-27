@@ -25,6 +25,7 @@ from people_context.app.imports.identity import (
 from people_context.app.imports.limits import (
     BATCH_TOO_LARGE_FOR_CLI,
     CANDIDATE_INPUT_TOO_LARGE,
+    CANDIDATE_NESTING_TOO_DEEP,
     CANDIDATE_PAYLOAD_TOO_LARGE,
     CANDIDATE_STRING_NOT_ENCODABLE,
     CANDIDATE_STRING_TOO_LONG,
@@ -76,6 +77,7 @@ from people_context.app.imports.workflow import CommitImport, ImportContent, Rev
 __all__ = [
     "BATCH_TOO_LARGE_FOR_CLI",
     "CANDIDATE_INPUT_TOO_LARGE",
+    "CANDIDATE_NESTING_TOO_DEEP",
     "CANDIDATE_MODELS",
     "CANDIDATE_PAYLOAD_TOO_LARGE",
     "CANDIDATE_STRING_NOT_ENCODABLE",

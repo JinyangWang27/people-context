@@ -71,6 +71,7 @@ SOURCE_LABEL_TOO_LONG = "source_label_too_long"
 CANDIDATE_PAYLOAD_TOO_LARGE = "candidate_payload_too_large"
 CANDIDATE_STRING_TOO_LONG = "candidate_string_too_long"
 CANDIDATE_STRING_NOT_ENCODABLE = "candidate_string_not_encodable"
+CANDIDATE_NESTING_TOO_DEEP = "candidate_nesting_too_deep"
 CANDIDATE_INPUT_TOO_LARGE = "candidate_input_too_large"
 INVALID_CANDIDATE_JSON = "invalid_candidate_json"
 
@@ -137,8 +138,19 @@ def enforce_extraction_request_limits(source: str, candidates: list[Any]) -> Non
 
 
 def _canonical_payload(candidates: list[Any]) -> str:
-    """Serialize the complete candidate array deterministically for measurement only."""
-    return json.dumps(candidates, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    """Serialize the complete candidate array deterministically for measurement only.
+
+    The serializer recurses per nesting level, so a deeply nested request exhausts the stack
+    while still being far below the payload ceiling. A limit check exists to refuse input it
+    cannot accept, never to fail on it, so unmeasurable depth is itself the refusal.
+    """
+    try:
+        return json.dumps(candidates, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    except RecursionError:
+        raise resource_limit_error(
+            CANDIDATE_NESTING_TOO_DEEP,
+            "an extraction candidate is nested too deeply to measure",
+        ) from None
 
 
 def _reject_oversized_strings(candidate: Any) -> None:

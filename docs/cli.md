@@ -151,8 +151,14 @@ to correct its own JSON — reconstructed from the schema rather than forwarded.
 automatically safe to print: a rejected extra field carries its own untrusted key in the error's location, and
 an error raised by the staging rules carries the offending person reference in its message. So a location part
 is shown only when the candidate models declare it and is otherwise `(redacted)`, and a message is shown only
-when Pydantic derived it from the schema, degrading otherwise to the error's fixed type slug. The refusal line
-itself is always payload-independent.
+when Pydantic derived it from the schema, degrading otherwise to the error's fixed type slug. An unsupported
+candidate `type` is reported as `union_tag_invalid` for exactly this reason: the message Pydantic writes for it
+quotes the rejected discriminator back. The refusal line itself is always payload-independent.
+
+Input is refused for being unparseable in the ways bytes do not catch, too. A few tens of kilobytes of nested
+arrays exhaust the decoder's stack while sitting far below the 1 MiB ceiling, and a JSON escape can decode to an
+unpaired surrogate — a string with no UTF-8 encoding, and so nothing that could be stored. Both end in the same
+bounded refusal rather than a traceback.
 
 ## Packaged demo
 
