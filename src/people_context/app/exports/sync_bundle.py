@@ -7,12 +7,16 @@ import json
 from people_context.domain.sync_bundle import (
     SYNC_BUNDLE_FORMAT,
     SYNC_BUNDLE_VERSION,
+    BundleCandidateMapping,
     BundleChangelogEntry,
     BundleDevice,
+    BundleImportState,
     BundleRelationshipSynonym,
     BundleRelationshipType,
     BundleRelationshipVocabulary,
     BundleSnapshot,
+    BundleSourceSession,
+    BundleStagingRow,
     BundleWatermark,
     SyncBundleDocument,
 )
@@ -50,6 +54,13 @@ class ExportSyncBundle:
             changelog=[
                 BundleChangelogEntry.model_validate(entry.model_dump(mode="json")) for entry in source.changelog
             ],
+            imports=BundleImportState(
+                source_sessions=[BundleSourceSession.model_validate(row) for row in source.source_sessions],
+                candidate_mappings=[
+                    BundleCandidateMapping.model_validate(row) for row in source.candidate_mappings
+                ],
+                staging=[BundleStagingRow.model_validate(row) for row in source.staging],
+            ),
         )
 
 

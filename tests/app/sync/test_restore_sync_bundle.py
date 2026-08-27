@@ -67,6 +67,7 @@ def _payload() -> dict[str, Any]:
         },
         "relationship_vocabulary": {"types": [], "synonyms": []},
         "changelog": [],
+        "imports": {"source_sessions": [], "candidate_mappings": [], "staging": []},
     }
 
 

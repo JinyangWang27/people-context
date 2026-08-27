@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Any
 
@@ -36,6 +37,9 @@ class SqliteBundleReader:
             devices = self._device_rows(origin["id"])
             relationship_types = self._relationship_types()
             relationship_synonyms = self._relationship_synonyms()
+            source_sessions = self._source_sessions()
+            candidate_mappings = self._candidate_mappings()
+            staging = self._incomplete_staging()
         return BundleSource(
             origin_device_id=origin["id"],
             watermark=HlcTimestamp(origin["hlc_physical_ms"], origin["hlc_logical"]),
@@ -44,7 +48,57 @@ class SqliteBundleReader:
             relationship_types=relationship_types,
             relationship_synonyms=relationship_synonyms,
             changelog=changelog,
+            source_sessions=source_sessions,
+            candidate_mappings=candidate_mappings,
+            staging=staging,
         )
+
+    def _source_sessions(self) -> list[dict[str, Any]]:
+        """Return every surviving receipt, including minimal terminal redacted ones.
+
+        A fully forgotten digestless receipt was deleted rather than reduced, so there is nothing
+        here to exclude: what the table still holds is exactly what should travel.
+        """
+        rows = self._conn.execute(
+            """SELECT id, source_kind, label, external_source_id, content_digest, extraction_fingerprint,
+                      extraction_contract_revision, claim_key, batch_id, status, created_at
+               FROM import_source_sessions ORDER BY created_at, id"""
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _candidate_mappings(self) -> list[dict[str, Any]]:
+        """Return every durable commit outcome, completed sources included.
+
+        Mappings are primary provenance rather than operational state, so restricting them to
+        incomplete batches would silently drop the record associations of every source that was
+        fully committed and then cleaned up.
+        """
+        rows = self._conn.execute(
+            """SELECT candidate_id, batch_id, source_session_id, disposition, entity_type, entity_id, created_at
+               FROM import_candidate_mappings ORDER BY source_session_id, candidate_id"""
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _incomplete_staging(self) -> list[dict[str, Any]]:
+        """Return staging rows only for batches that still have something to review or commit."""
+        rows = self._conn.execute(
+            """SELECT s.id, s.batch_id, s.source, s.candidate_json, s.status, s.created_at
+               FROM import_staging s
+               JOIN import_source_sessions ss ON ss.batch_id = s.batch_id
+               WHERE ss.status IN ('staged', 'partially_committed')
+               ORDER BY s.batch_id, s.created_at, s.id"""
+        ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "batch_id": row["batch_id"],
+                "source": row["source"],
+                "candidate": json.loads(row["candidate_json"]),
+                "status": row["status"],
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ]
 
     def _origin_device_row(self) -> sqlite3.Row:
         row = self._conn.execute(

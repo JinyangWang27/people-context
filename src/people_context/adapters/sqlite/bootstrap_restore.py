@@ -51,6 +51,8 @@ _BASELINE_EMPTY_TABLES = (
     "reminders",
     "user_preferences",
     "import_staging",
+    "import_source_sessions",
+    "import_candidate_mappings",
     "audit_log",
     "changelog",
     "sync_conflicts",
@@ -92,6 +94,8 @@ class SqliteBootstrapRestorer:
             self._hook("devices")
             self._insert_domain(document)
             self._hook("domain")
+            self._insert_imports(document)
+            self._hook("imports")
             self._insert_changelog(document)
             self._hook("changelog")
             _, indexed_names = self._indexer.rebuild_person_search()
@@ -396,6 +400,43 @@ class SqliteBootstrapRestorer:
             ),
         )
 
+    def _insert_imports(self, document: SyncBundleDocument) -> None:
+        """Restore source receipts, commit mappings, and incomplete staging verbatim.
+
+        A version-1 bundle carries none of this and simply writes nothing here.
+        """
+        imports = document.imports
+        self._insert_many(
+            "import_source_sessions",
+            ("id", "source_kind", "label", "external_source_id", "content_digest", "extraction_fingerprint",
+             "extraction_contract_revision", "claim_key", "batch_id", "status", "created_at"),
+            (
+                (row.id, row.source_kind, row.label, row.external_source_id, row.content_digest,
+                 row.extraction_fingerprint, row.extraction_contract_revision, row.claim_key, row.batch_id,
+                 row.status, row.created_at.isoformat())
+                for row in imports.source_sessions
+            ),
+        )
+        self._insert_many(
+            "import_candidate_mappings",
+            ("candidate_id", "batch_id", "source_session_id", "disposition", "entity_type", "entity_id",
+             "created_at"),
+            (
+                (row.candidate_id, row.batch_id, row.source_session_id, row.disposition, row.entity_type,
+                 row.entity_id, row.created_at.isoformat())
+                for row in imports.candidate_mappings
+            ),
+        )
+        self._insert_many(
+            "import_staging",
+            ("id", "batch_id", "source", "candidate_json", "status", "created_at"),
+            (
+                (row.id, row.batch_id, row.source, json.dumps(row.candidate, ensure_ascii=False, sort_keys=True),
+                 row.status, row.created_at.isoformat())
+                for row in imports.staging
+            ),
+        )
+
     def _insert_changelog(self, document: SyncBundleDocument) -> None:
         self._insert_many(
             "changelog",
@@ -476,4 +517,7 @@ def _outcome(
         changelog_entries=len(document.changelog),
         indexed_names=indexed_names,
         local_watermark=watermark,
+        source_sessions=len(document.imports.source_sessions),
+        candidate_mappings=len(document.imports.candidate_mappings),
+        staged_candidates=len(document.imports.staging),
     )

@@ -36,6 +36,11 @@ class RestoreOutcome:
     changelog_entries: int
     indexed_names: int
     local_watermark: HlcTimestamp
+    #: M18 import provenance. These default to zero so a restore of a version-1 bundle,
+    #: which carries none of it, reports the same outcome it always did.
+    source_sessions: int = 0
+    candidate_mappings: int = 0
+    staged_candidates: int = 0
 
 
 @runtime_checkable

@@ -24,10 +24,13 @@ from people_context.domain.sync_bundle import (
 _DEVICE_ID = "01J00000000000000000000DEV"
 _OTHER_DEVICE_ID = "01J0000000000000000000DEV2"
 _PERSON_ID = "01J000000000000000000PERSON"
+_SOURCE_ID = "01J0000000000000000SOURCE1"
+_BATCH_ID = "01J00000000000000000BATCH1"
+_CANDIDATE_ID = "01J0000000000000000000CND1"
 
 
 def _document() -> dict[str, Any]:
-    """Return one complete, structurally valid version-1 bundle document."""
+    """Return one complete, structurally valid current-version bundle document."""
     return {
         "format": SYNC_BUNDLE_FORMAT,
         "version": SYNC_BUNDLE_VERSION,
@@ -134,6 +137,49 @@ def _document() -> dict[str, Any]:
                 "inserted_at": "2026-07-02T00:00:00Z",
             }
         ],
+        "imports": {
+            "source_sessions": [
+                {
+                    "id": _SOURCE_ID,
+                    "source_kind": "linkedin",
+                    "label": "Connections export",
+                    "external_source_id": None,
+                    "content_digest": "a" * 64,
+                    "extraction_fingerprint": "b" * 64,
+                    "extraction_contract_revision": "linkedin.1",
+                    "claim_key": f"linkedin\x1f{'a' * 64}\x1f{'b' * 64}",
+                    "batch_id": _BATCH_ID,
+                    "status": "partially_committed",
+                    "created_at": "2026-07-03T00:00:00Z",
+                }
+            ],
+            "candidate_mappings": [
+                {
+                    "candidate_id": _CANDIDATE_ID,
+                    "batch_id": _BATCH_ID,
+                    "source_session_id": _SOURCE_ID,
+                    "disposition": "entity",
+                    "entity_type": "person",
+                    "entity_id": _PERSON_ID,
+                    "created_at": "2026-07-03T00:00:00Z",
+                }
+            ],
+            "staging": [
+                {
+                    "id": "01J0000000000000000STAGE01",
+                    "batch_id": _BATCH_ID,
+                    "source": "import/linkedin",
+                    "candidate": {
+                        "type": "person",
+                        "name": "Alice",
+                        "aliases": [],
+                        "matched_person_id": _PERSON_ID,
+                    },
+                    "status": "pending",
+                    "created_at": "2026-07-03T00:00:00Z",
+                }
+            ],
+        },
     }
 
 
@@ -147,7 +193,7 @@ def _strict_models() -> list[type[BaseModel]]:
     ]
 
 
-def test_complete_version_one_document_parses() -> None:
+def test_complete_current_version_document_parses() -> None:
     document = SyncBundleDocument.model_validate(_document())
 
     assert document.format == SYNC_BUNDLE_FORMAT
@@ -169,7 +215,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 2, "1"])
+@pytest.mark.parametrize("version", [0, 3, "2"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version

@@ -90,7 +90,7 @@ repurposed, and new fields are additive.
 | Import staging batch | `people-context-import-batch` | `1` | `pctx import stage --json`, `pctx import stage-candidates --json` |
 | Import review | `people-context-import-review` | `1` | `pctx import review --json` |
 | Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `2` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -129,6 +129,12 @@ project:
   nested object — against an exact format and version with unknown fields forbidden. A reader from an older
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
+
+  `pctx sync push` emits **version 2**, which added durable import source receipts, candidate commit mappings,
+  and the staging rows an incomplete import batch still needs. `pctx sync pull` accepts **version 1 and version
+  2**, validating each against its own strict shape: a version-1 document carrying a version-2 collection is
+  refused as an unknown field rather than quietly upgraded. A released version stays readable; only which
+  version is emitted moves forward.
 
 That strictness is the point: a bundle a release does not fully understand fails closed before preview or writes
 rather than restoring partial state. A bundle is restorable by releases that implement its declared version.

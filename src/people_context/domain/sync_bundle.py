@@ -27,7 +27,15 @@ from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import TraitCategory
 
 SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
-SYNC_BUNDLE_VERSION = 1
+
+#: The version this release emits. M18.1 added durable source receipts, candidate commit
+#: mappings, and the staging rows an incomplete batch needs, and the bundle is deliberately not
+#: additively extensible within a version — a reader that accepts a field must understand it —
+#: so carrying that state required a new version rather than optional fields on version 1.
+SYNC_BUNDLE_VERSION = 2
+
+#: Versions restore accepts. A released version stays readable; only emission moves forward.
+SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2)
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -331,8 +339,97 @@ class BundleChangelogEntry(StrictBundleModel):
     inserted_at: UtcDatetime
 
 
-class SyncBundleDocument(StrictBundleModel):
-    """One complete, point-in-time bootstrap bundle."""
+class BundleSourceSession(StrictBundleModel):
+    """One bundled import receipt.
+
+    A terminal ``redacted`` receipt is what remains after hard forget emptied a source: it must
+    still be claim-backed, and it must carry none of the caller-authored or optional inspection
+    state that erasure cleared. Enforcing that here means a hand-edited bundle cannot smuggle a
+    scrubbed label back into a restored database.
+    """
+
+    id: Identifier
+    source_kind: str
+    label: str | None
+    external_source_id: str | None
+    content_digest: str | None
+    extraction_fingerprint: str | None
+    extraction_contract_revision: str | None
+    claim_key: str | None
+    batch_id: str | None
+    status: Literal["staged", "partially_committed", "committed", "redacted"]
+    created_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def _check_claim(self) -> BundleSourceSession:
+        if self.claim_key is not None and self.content_digest is None:
+            raise ValueError("a canonical claim requires a content_digest")
+        if self.status != "redacted":
+            return self
+        if self.content_digest is None:
+            raise ValueError("a redacted source session must be claim-backed")
+        cleared = (self.label, self.external_source_id, self.extraction_contract_revision, self.batch_id)
+        if any(value is not None for value in cleared):
+            raise ValueError("a redacted source session must carry no cleared caller or batch state")
+        return self
+
+
+class BundleCandidateMapping(StrictBundleModel):
+    """One bundled committed-candidate outcome.
+
+    ``merged_away`` is the terminal outcome of a committed relationship candidate whose edge a
+    person merge removed as a self-loop. It has no entity id by construction, which is what keeps
+    it history rather than a dangling reference.
+    """
+
+    candidate_id: Identifier
+    batch_id: Identifier
+    source_session_id: Identifier
+    disposition: Literal["entity", "merged_away"]
+    entity_type: str
+    entity_id: Identifier | None
+    created_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def _check_disposition(self) -> BundleCandidateMapping:
+        if self.disposition == "entity":
+            if self.entity_id is None:
+                raise ValueError("an entity mapping must name the durable entity it produced")
+            return self
+        if self.entity_id is not None:
+            raise ValueError("a merged_away mapping must not name an entity")
+        if self.entity_type != "relationship":
+            raise ValueError("merged_away is only a relationship outcome")
+        return self
+
+
+class BundleStagingRow(StrictBundleModel):
+    """One bundled reviewable staging row, carried only for an incomplete batch."""
+
+    id: Identifier
+    batch_id: Identifier
+    source: str
+    candidate: dict[str, Any]
+    status: str
+    created_at: UtcDatetime
+
+
+class BundleImportState(StrictBundleModel):
+    """Durable import provenance plus the operational staging an incomplete batch needs.
+
+    Mappings are primary state and are carried for **every** exported receipt, including fully
+    committed ones whose staging rows were cleaned up: without them a restored database would
+    keep the records but lose what produced them. Staging rows are the opposite — operational
+    state carried only where a batch still has something to review or commit.
+    """
+
+    source_sessions: list[BundleSourceSession]
+    candidate_mappings: list[BundleCandidateMapping]
+    staging: list[BundleStagingRow]
+
+
+class SyncBundleDocumentV1(StrictBundleModel):
+    """The released version-1 bundle, still accepted by restore and no longer emitted."""
 
     format: Literal["people-context-sync-bundle"]
     version: Literal[1]
@@ -343,6 +440,56 @@ class SyncBundleDocument(StrictBundleModel):
     snapshot: BundleSnapshot
     relationship_vocabulary: BundleRelationshipVocabulary
     changelog: list[BundleChangelogEntry]
+
+    def upgraded(self) -> SyncBundleDocument:
+        """Return this document in the current in-memory shape, carrying no import state.
+
+        A version-1 bundle genuinely contains no source receipts, so the empty collections are a
+        fact about it rather than a default filled in for a missing field. Restoring through one
+        shape keeps the writer from branching on version while the strict per-version parsing
+        above still refuses a v1 document that carries a v2 field.
+        """
+        return SyncBundleDocument(
+            format=self.format,
+            version=2,
+            created_at=self.created_at,
+            origin_device_id=self.origin_device_id,
+            watermark=self.watermark,
+            devices=self.devices,
+            snapshot=self.snapshot,
+            relationship_vocabulary=self.relationship_vocabulary,
+            changelog=self.changelog,
+            imports=BundleImportState(source_sessions=[], candidate_mappings=[], staging=[]),
+        )
+
+
+class SyncBundleDocument(StrictBundleModel):
+    """One complete, point-in-time bootstrap bundle."""
+
+    format: Literal["people-context-sync-bundle"]
+    version: Literal[2]
+    created_at: UtcDatetime
+    origin_device_id: Identifier
+    watermark: BundleWatermark
+    devices: list[BundleDevice]
+    snapshot: BundleSnapshot
+    relationship_vocabulary: BundleRelationshipVocabulary
+    changelog: list[BundleChangelogEntry]
+    imports: BundleImportState
+
+
+def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
+    """Validate one bundle against the shape its own declared version promises.
+
+    Version selects the model before anything is validated, so a version-1 document carrying a
+    version-2 collection is refused as an unknown field rather than quietly accepted. Anything
+    that does not declare version 1 is held to the current shape, which reports the versions this
+    release understands instead of guessing at a newer one.
+    """
+    declared = payload.get("version") if isinstance(payload, dict) else None
+    if declared == 1:
+        return SyncBundleDocumentV1.model_validate(payload).upgraded()
+    return SyncBundleDocument.model_validate(payload)
 
 
 class SyncBundleError(Exception):
@@ -394,9 +541,74 @@ def validate_bundle_document(document: SyncBundleDocument) -> None:
         *_changelog_device_details(document),
         *_watermark_details(document),
         *_reference_details(document),
+        *_import_details(document),
     ]
     if details:
         raise InvalidBundleError(details)
+
+
+#: Which snapshot collection each candidate mapping entity type must resolve against.
+_MAPPED_ENTITY_COLLECTIONS: dict[str, str] = {
+    "person": "people",
+    "affiliation": "affiliations",
+    "fact": "facts",
+    "observation": "observations",
+    "trait": "traits",
+    "interaction": "interactions",
+    "relationship": "relationships",
+}
+
+
+def _import_details(document: SyncBundleDocument) -> list[str]:
+    """Check that restored import provenance can still answer what it claims to answer.
+
+    A mapping that pointed at a record the bundle does not carry would restore a source whose
+    `source show` names an id nothing resolves. A staging row whose batch has no receipt would
+    restore a batch that duplicate detection cannot see. A retained person match pointing at an
+    inactive person would restore a batch that looks committable and then refuses every record
+    depending on it. Each of those is refused here rather than discovered after the restore.
+    """
+    imports = document.imports
+    snapshot = document.snapshot
+    sessions = {session.id: session for session in imports.source_sessions}
+    batches = {session.batch_id: session.id for session in imports.source_sessions if session.batch_id is not None}
+    active_people = {person.id for person in snapshot.people if person.deleted_at is None}
+    known: dict[str, set[str]] = {
+        "people": {person.id for person in snapshot.people},
+        "affiliations": {row.id for row in snapshot.affiliations},
+        "facts": {row.id for row in snapshot.facts},
+        "observations": {row.id for row in snapshot.observations},
+        "traits": {row.id for row in snapshot.traits},
+        "interactions": {row.id for row in snapshot.interactions},
+        "relationships": {row.id for row in snapshot.relationships},
+    }
+
+    details: list[str] = []
+    for mapping in imports.candidate_mappings:
+        if mapping.source_session_id not in sessions:
+            details.append(
+                f"candidate mapping {mapping.candidate_id} references an unbundled source session: "
+                f"{mapping.source_session_id}"
+            )
+        if mapping.disposition != "entity":
+            continue
+        collection = _MAPPED_ENTITY_COLLECTIONS.get(mapping.entity_type)
+        if collection is None:
+            details.append(
+                f"candidate mapping {mapping.candidate_id} names an unsupported entity type: {mapping.entity_type}"
+            )
+        elif mapping.entity_id not in known[collection]:
+            details.append(
+                f"candidate mapping {mapping.candidate_id} references an unbundled {mapping.entity_type}: "
+                f"{mapping.entity_id}"
+            )
+    for row in imports.staging:
+        if row.batch_id not in batches:
+            details.append(f"staging row {row.id} references a batch with no bundled source session: {row.batch_id}")
+        matched = row.candidate.get("matched_person_id")
+        if isinstance(matched, str) and matched not in active_people:
+            details.append(f"staging row {row.id} matches a person who is not active in the bundle: {matched}")
+    return details
 
 
 def _duplicate_details(document: SyncBundleDocument) -> list[str]:
@@ -418,6 +630,10 @@ def _duplicate_details(document: SyncBundleDocument) -> list[str]:
         ("audit entry id", (entry.id for entry in snapshot.audit_log)),
         ("relationship type", (row.type for row in document.relationship_vocabulary.types)),
         ("relationship synonym", (row.synonym for row in document.relationship_vocabulary.synonyms)),
+        ("source session id", (row.id for row in document.imports.source_sessions)),
+        ("source claim", (row.claim_key for row in document.imports.source_sessions if row.claim_key)),
+        ("candidate mapping id", (row.candidate_id for row in document.imports.candidate_mappings)),
+        ("staging row id", (row.id for row in document.imports.staging)),
     ]
     details = [detail for label, values in collections for detail in _repeated(label, values)]
     for interaction in snapshot.interactions:
