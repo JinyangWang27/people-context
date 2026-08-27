@@ -390,6 +390,27 @@ def test_extraction_batch_reports_two_people_sharing_one_token_as_ambiguous() ->
     assert person["match_count"] == 2
 
 
+def test_a_handle_that_normalizes_to_nothing_contributes_no_match_evidence() -> None:
+    """A degenerate token is skipped, not asked about.
+
+    `NonBlank` only rejects whitespace, so a handle of combining marks alone survives
+    validation and then normalizes away entirely. Querying on the empty string would match on
+    nothing meaningful, so the union must simply not count it — the candidate is still decided
+    by the tokens that do normalize.
+    """
+    conn = open_db(":memory:")
+    people, stage, review, _, _ = _use_cases(conn)
+    existing = Person(canonical_name="Alice Rivera")
+    people.save_person(existing)
+
+    batch = stage.execute("notes", [_person("alice", "Alice Rivera", "́"), _trait("alice")])
+    person = _rows_by_type(review, batch.batch_id)["person"].candidate
+
+    assert person["match_disposition"] == MatchDisposition.MATCHED.value
+    assert person["matched_person_id"] == existing.id
+    assert person["match_count"] == 1
+
+
 def test_a_unique_handle_does_not_short_circuit_a_conflicting_name() -> None:
     """The union is what decides. A first-token hit must not hide a conflict on a later one."""
     conn = open_db(":memory:")

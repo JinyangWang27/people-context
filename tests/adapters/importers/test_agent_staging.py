@@ -276,3 +276,33 @@ def test_agent_source_must_be_nonblank() -> None:
 
     assert exc_info.value.code == "invalid_candidates"
     assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_committed_legacy_person_stops_resolving_once_its_name_becomes_ambiguous() -> None:
+    """The released fallback re-derives a committed identity by name, and may find no answer.
+
+    A legacy batch stages no matched id for a new person, so a later commit of a dependant has
+    only the stored names to work from. When those no longer pick out exactly one person the
+    dependant stays unresolved rather than binding to an arbitrary match.
+    """
+    conn = open_db(":memory:")
+    people, stage, review, commit = _use_cases(conn)
+    result = stage.execute(
+        "notes",
+        [
+            _person("sam", "Sam Lee", "sam@example.com"),
+            {"type": "fact", "person_ref": "sam", "predicate": "location", "value": "Dubai"},
+        ],
+    )
+    rows = review.execute(result.batch_id).candidates
+    person = next(row for row in rows if row.candidate["type"] == "person")
+    fact = next(row for row in rows if row.candidate["type"] == "fact")
+    assert commit.execute(result.batch_id, [person.id]).committed_ids == [person.id]
+
+    # An unrelated person acquires both stored names, so neither token is unique any more.
+    people.save_person(
+        Person(canonical_name="Sam Lee", aliases=[Alias(value="sam@example.com", kind=AliasKind.HANDLE)])
+    )
+
+    assert commit.execute(result.batch_id, [fact.id]).unresolved_ids == [fact.id]
+    assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
