@@ -31,6 +31,7 @@ from people_context.adapters.sqlite.semantic import (
     open_sqlite_vector_index,
     read_semantic_metadata,
 )
+from people_context.adapters.sqlite.source_store import SqliteImportSourceStore
 from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
@@ -46,6 +47,7 @@ __all__ = [
     "SqliteExportReader",
     "SqliteGraphReader",
     "SqliteHybridLogicalClock",
+    "SqliteImportSourceStore",
     "SqliteImportStagingStore",
     "SqliteForgetStore",
     "SqliteMergeStore",
