@@ -51,7 +51,15 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_path", "message": str(exc), "path": path}
 
     @mcp.tool(annotations=_WRITE)
-    async def stage_candidates(source: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    async def stage_candidates(
+        source: str,
+        candidates: list[dict[str, Any]],
+        source_kind: str | None = None,
+        content_digest: str | None = None,
+        extraction_fingerprint: str | None = None,
+        label: str | None = None,
+        external_source_id: str | None = None,
+    ) -> dict[str, Any]:
         """Stage agent-extracted people, interactions, affiliations, facts, observations, traits, and relationships.
 
         Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
@@ -63,9 +71,25 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         References are batch-local; raw notes and source text must not be included in candidate fields. A
         request using `observation`, `trait`, or `relationship` is bounded to 500 candidates, a 128-character
         `source`, 1 MiB of candidate JSON, and 8 KiB per string.
+
+        `source_kind` optionally records an import receipt for this batch. It is a machine category such as
+        `meeting_transcript`, at most 128 characters of letters, digits, `.`, `_`, `-`, or `/` — never a person,
+        a title, or a description; put any human wording in `label` instead. If you can compute a SHA-256 over
+        the exact source artifact, pass it as `content_digest` (64 lowercase hex characters) so re-importing that
+        same source can be detected; without one, no duplicate detection is promised. `extraction_fingerprint`
+        is optional and should be omitted unless you have explicit, bounded configuration semantics for it.
+        None of these fields may carry source text.
         """
         try:
-            return deps.stage_candidates.execute(source, candidates).model_dump(mode="json")
+            return deps.stage_candidates.execute(
+                source,
+                candidates,
+                source_kind=source_kind,
+                content_digest=content_digest,
+                extraction_fingerprint=extraction_fingerprint,
+                label=label,
+                external_source_id=external_source_id,
+            ).model_dump(mode="json")
         except ImportPipelineError as exc:
             return _error(exc)
 

@@ -52,6 +52,7 @@ class ImportExtractorRouter:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
     ) -> ExtractedImport:
@@ -78,6 +79,7 @@ class ImportExtractorRouter:
             self_addresses=self_addresses,
             self_names=self_names,
             self_sender=self_sender,
+            content_bytes=content_bytes,
             max_source_bytes=max_source_bytes,
             max_candidates=max_candidates,
         )

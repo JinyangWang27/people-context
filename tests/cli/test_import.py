@@ -572,13 +572,15 @@ def test_a_vcard_file_of_only_undecodable_cards_refuses_concisely(
 
 def test_review_shows_a_matched_existing_person(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
-    assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(_linkedin(tmp_path))]) == 0
-    capsys.readouterr()
     first = _staged_batch(db_file, _linkedin(tmp_path), capsys)
     assert cli.main(["--db", str(db_file), "import", "commit", str(first["batch_id"]), "--all"]) == 0
     capsys.readouterr()
 
-    second = _staged_batch(db_file, _linkedin(tmp_path), capsys)
+    # Re-reading the same export is the same claim, so a second reviewable batch of it only
+    # exists on purpose. What that forced batch then shows is the point: its person candidates
+    # now match the people the first commit created.
+    second = _staged_batch(db_file, _linkedin(tmp_path), capsys, "linkedin", "--force")
+    assert second["batch_id"] != first["batch_id"]
     assert cli.main(["--db", str(db_file), "import", "review", str(second["batch_id"])]) == 0
 
     assert "matches existing person" in capsys.readouterr().out

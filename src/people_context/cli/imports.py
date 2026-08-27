@@ -32,6 +32,7 @@ from people_context.app.imports import (
     CLI_IMPORT_BUDGET,
     INVALID_CANDIDATE_JSON,
     MAX_CLI_CANDIDATE_JSON_BYTES,
+    SOURCE_PREVIOUSLY_REDACTED,
     CommitImportResult,
     ImportBatchResult,
     ImportPipelineError,
@@ -101,7 +102,12 @@ def cmd_import(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
 
 
 def cmd_import_stage(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
-    """Extract one local export into a reviewable staging batch."""
+    """Extract one local export into a reviewable staging batch.
+
+    Re-staging a source this database already imported reports that existing batch instead of
+    creating a second copy of the same records. `--force` is the explicit way to say the repeat
+    is intentional; it never weakens the duplicate rule, it opts one invocation out of it.
+    """
     path = _readable_source(args.path)
     if path is None:
         return 1
@@ -111,8 +117,19 @@ def cmd_import_stage(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
             path=str(path),
             self_sender=args.self_sender,
             budget=CLI_IMPORT_BUDGET,
+            label=args.label,
+            external_source_id=args.external_source_id,
+            forced=args.force,
         )
-    except (ImportPipelineError, ImportExtractionError) as exc:
+    except ImportPipelineError as exc:
+        if exc.code == SOURCE_PREVIOUSLY_REDACTED:
+            # There is deliberately no batch to report: this source's records were hard-forgotten,
+            # which removed the batch association along with them. stdout stays empty in both
+            # modes because a `--json` caller is promised a document only on success, and a
+            # fabricated batch id would be a document about nothing.
+            return _refuse(f"{exc.code}: {exc}")
+        return _refuse(f"import staging failed: {exc}")
+    except ImportExtractionError as exc:
         return _refuse(f"import staging failed: {exc}")
     except OSError as exc:
         return _refuse(f"cannot read source file: {exc}")
@@ -142,7 +159,16 @@ def cmd_import_stage_candidates(runtime: ApplicationRuntime, args: argparse.Name
         # Every batch here is agent-extracted, whichever candidate types it happens to use, so
         # this boundary demands ambiguity-preserving matching outright rather than inferring it
         # from the vocabulary — for the same reason it applies the extraction limits outright.
-        batch = runtime.use_cases.stage_candidates.execute(source, candidates, strict_identity=True)
+        batch = runtime.use_cases.stage_candidates.execute(
+            source,
+            candidates,
+            strict_identity=True,
+            source_kind=args.source_kind,
+            content_digest=args.content_digest,
+            extraction_fingerprint=args.extraction_fingerprint,
+            label=args.label,
+            external_source_id=args.external_source_id,
+        )
     except ImportPipelineError as exc:
         _refuse(f"candidate staging failed: {exc}")
         _print_validation_details(exc)
@@ -369,7 +395,17 @@ def _readable_source(raw_path: str) -> Path | None:
 
 
 def _print_batch(batch: ImportBatchResult) -> None:
+    if batch.duplicate:
+        print(
+            f"This source was already imported as batch {batch.batch_id} "
+            f"with {batch.candidate_count} candidates; nothing new was staged."
+        )
+        _print_source_session(batch)
+        print(f"Review it with: pctx import review {batch.batch_id}")
+        print("Import it again anyway with: pctx import stage ... --force")
+        return
     print(f"Staged batch {batch.batch_id} with {batch.candidate_count} candidates; nothing is committed yet.")
+    _print_source_session(batch)
     if batch.skipped_message_ids:
         print(f"Skipped undated messages with ids: {', '.join(batch.skipped_message_ids)}")
     if batch.skipped_without_id:
@@ -379,6 +415,12 @@ def _print_batch(batch: ImportBatchResult) -> None:
         # the reason is a fixed vocabulary, never a fragment of the card itself.
         print(f"Skipped card {card.get('index', '?')}: {card.get('reason', 'unknown')}")
     print(f"Review with: pctx import review {batch.batch_id}")
+
+
+def _print_source_session(batch: ImportBatchResult) -> None:
+    """Name the durable receipt this batch belongs to, when it has one."""
+    if batch.source_session_id is not None:
+        print(f"Source session: {batch.source_session_id}")
 
 
 def _print_ids(label: str, ids: list[str]) -> None:

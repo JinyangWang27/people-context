@@ -59,10 +59,10 @@ class SetAffiliation:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: SetAffiliationInput) -> Affiliation:
+    def execute(self, data: SetAffiliationInput, *, transaction_id: str | None = None) -> Affiliation:
         """Create and audit an affiliation, auditing organization creation separately."""
         require_active_person(self._people, data.person_id)
-        transaction_id = new_id()
+        transaction_id = transaction_id or new_id()
         organization = self._organizations.get(data.org)
         if organization is None and _ULID_PATTERN.fullmatch(data.org):
             raise OrganizationNotFoundError(data.org)

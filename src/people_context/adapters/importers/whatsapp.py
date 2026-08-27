@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
+from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -84,26 +84,25 @@ class WhatsAppImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract external participants and one neutral interaction per calendar day."""
         if source_type != "whatsapp":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'whatsapp'")
-        if (content is None) == (path is None):
-            raise ImportExtractionError(
-                "invalid_source",
-                "whatsapp import requires exactly one of content or path",
-            )
-        text = (
-            content
-            if content is not None
-            else read_source_text(path or "", encoding="utf-8", max_bytes=max_source_bytes)
+        text = resolve_source_text(
+            content=content,
+            content_bytes=content_bytes,
+            path=path,
+            encoding="utf-8",
+            max_bytes=max_source_bytes,
+            source_label="whatsapp",
         )
         messages = _detect_messages(text)
         _resolve_dates(messages)
 
-        self_identities = _self_identities(self_addresses, self_names, self_sender)
+        self_identities = self_identity_keys(self_addresses, self_names, self_sender)
         people: list[_PersonAccumulator] = []
         people_by_identity: dict[str, _PersonAccumulator] = {}
         refs_by_day: dict[date, list[str]] = {}
@@ -269,11 +268,17 @@ def _sender_label(rest: str) -> tuple[str | None, str | None]:
     return label, None
 
 
-def _self_identities(
+def self_identity_keys(
     self_addresses: set[str],
     self_names: set[str] | None,
     self_sender: str | None,
 ) -> set[str]:
+    """Return the comparison keys this source treats as the user's own sender labels.
+
+    Public because the extraction fingerprint has to be derived from exactly the identities this
+    extractor resolves against: a self hint written ``+1 555 0100`` and one written ``15550100``
+    change nothing about what is extracted, so they must not split one source into two claims.
+    """
     values = {*self_addresses, *(self_names or set())}
     if self_sender is not None:
         values.add(self_sender)

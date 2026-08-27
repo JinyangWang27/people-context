@@ -24,13 +24,23 @@ class ImportPipelineError(Exception):
 
 
 class ImportBatchResult(BaseModel):
-    """Summary of one atomically staged extraction batch."""
+    """Summary of one atomically staged extraction batch.
+
+    ``source_session_id`` names the durable receipt this batch belongs to, and is absent for a
+    batch that is not source-tracked — an inline-content import, or one staged before M18.
+
+    ``duplicate`` says the canonical claim for this source was already owned, so nothing new was
+    staged and every field above describes the batch that already exists. It is not an error:
+    re-reading the same export is the ordinary way someone discovers they already imported it.
+    """
 
     batch_id: str
     candidate_count: int
     skipped_message_ids: list[str] = Field(default_factory=list)
     skipped_without_id: int = 0
     skipped_cards: list[dict[str, int | str]] = Field(default_factory=list)
+    source_session_id: str | None = None
+    duplicate: bool = False
 
 
 class ImportReviewRow(BaseModel):

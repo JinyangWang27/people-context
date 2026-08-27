@@ -5,7 +5,7 @@ from __future__ import annotations
 import quopri
 from dataclasses import dataclass
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
+from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -34,18 +34,20 @@ class VCardImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract cards; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "vcard":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'vcard'")
-        if (content is None) == (path is None):
-            raise ImportExtractionError("invalid_source", "vcard import requires exactly one of content or path")
-        text = (
-            content
-            if content is not None
-            else read_source_text(path or "", encoding="utf-8", max_bytes=max_source_bytes)
+        text = resolve_source_text(
+            content=content,
+            content_bytes=content_bytes,
+            path=path,
+            encoding="utf-8",
+            max_bytes=max_source_bytes,
+            source_label="vcard",
         )
         cards = _split_cards(_unfold_lines(text))
         normalized_self_addresses = {normalize_name(address) for address in self_addresses if address.strip()}

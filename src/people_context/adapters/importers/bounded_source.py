@@ -43,14 +43,13 @@ def read_source_bytes(path: str, *, max_bytes: int | None) -> bytes:
     return raw
 
 
-def read_source_text(path: str, *, encoding: str, max_bytes: int | None) -> str:
-    """Return the file's decoded text under the same read budget as `read_source_bytes`.
+def decode_source_bytes(raw: bytes, *, encoding: str) -> str:
+    """Decode one in-memory source snapshot exactly as a path read would decode it.
 
     Decoding goes through a text wrapper with the default universal-newline handling, so a
-    source inside the budget decodes to exactly what ``Path.read_text(encoding=...)`` returns
-    and no extractor sees a different string because its caller supplied a budget.
+    source decodes to exactly what ``Path.read_text(encoding=...)`` returns and no extractor
+    sees a different string because its caller handed it bytes rather than a path.
     """
-    raw = read_source_bytes(path, max_bytes=max_bytes)
     with io.TextIOWrapper(io.BytesIO(raw), encoding=encoding, newline=None) as stream:
         try:
             return stream.read()
@@ -62,6 +61,43 @@ def read_source_text(path: str, *, encoding: str, max_bytes: int | None) -> str:
                 UNDECODABLE_SOURCE,
                 f"source is not valid {encoding} text",
             ) from exc
+
+
+def read_source_text(path: str, *, encoding: str, max_bytes: int | None) -> str:
+    """Return the file's decoded text under the same read budget as `read_source_bytes`."""
+    return decode_source_bytes(read_source_bytes(path, max_bytes=max_bytes), encoding=encoding)
+
+
+def resolve_source_text(
+    *,
+    content: str | None,
+    content_bytes: bytes | None,
+    path: str | None,
+    encoding: str,
+    max_bytes: int | None,
+    source_label: str,
+    strip_content_bom: bool = False,
+) -> str:
+    """Return one source's text from exactly one of the three accepted inputs.
+
+    ``content_bytes`` decodes through the same helper a path read uses, which is what lets a
+    caller hash a snapshot and still be certain the candidates came out of those exact bytes.
+
+    ``strip_content_bom`` covers the formats whose path encoding is ``utf-8-sig``: a decoded byte
+    snapshot has already lost its byte-order mark, so only an in-memory string handed straight to
+    the extractor still needs one removed.
+    """
+    supplied = [value is not None for value in (content, content_bytes, path)]
+    if sum(supplied) != 1:
+        raise ImportExtractionError(
+            "invalid_source",
+            f"{source_label} import requires exactly one of content, content_bytes, or path",
+        )
+    if content is not None:
+        return content.lstrip("\ufeff") if strip_content_bom else content
+    if content_bytes is not None:
+        return decode_source_bytes(content_bytes, encoding=encoding)
+    return read_source_text(path or "", encoding=encoding, max_bytes=max_bytes)
 
 
 def refuse_oversized_file(path: str, *, max_bytes: int | None) -> None:

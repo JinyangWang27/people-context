@@ -46,7 +46,7 @@ class RecordInteraction:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: RecordInteractionInput) -> Interaction:
+    def execute(self, data: RecordInteractionInput, *, transaction_id: str | None = None) -> Interaction:
         """Persist and audit a deduplicated-participant interaction."""
         participant_ids = list(dict.fromkeys(data.participant_ids))
         for person_id in participant_ids:
@@ -70,5 +70,6 @@ class RecordInteraction:
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,
+            transaction_id=transaction_id,
         )
         return interaction

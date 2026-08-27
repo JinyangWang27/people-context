@@ -45,7 +45,7 @@ class RecordTrait:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: RecordTraitInput) -> Trait:
+    def execute(self, data: RecordTraitInput, *, transaction_id: str | None = None) -> Trait:
         """Persist and audit a validated trait category."""
         require_active_person(self._people, data.person_id)
         trait = Trait(
@@ -69,5 +69,6 @@ class RecordTrait:
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,
+            transaction_id=transaction_id,
         )
         return trait

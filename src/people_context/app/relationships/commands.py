@@ -57,7 +57,7 @@ class SetRelationship:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: SetRelationshipInput) -> Relationship:
+    def execute(self, data: SetRelationshipInput, *, transaction_id: str | None = None) -> Relationship:
         """Create a canonical edge, or update the matching active edge in place."""
         for person_id in (data.subject_id, data.object_id):
             require_active_person(self._people, person_id)
@@ -90,6 +90,7 @@ class SetRelationship:
                 source=data.source,
                 session=data.session,
                 stated_by=data.stated_by,
+                transaction_id=transaction_id,
             )
             return updated
         period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
@@ -127,6 +128,7 @@ class SetRelationship:
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,
+            transaction_id=transaction_id,
         )
         return relationship
 
