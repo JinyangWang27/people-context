@@ -142,6 +142,23 @@ def test_a_redacted_receipt_cannot_keep_caller_metadata(tmp_path: Path) -> None:
         )
 
 
+def test_a_redacted_receipt_must_retain_its_claim_key(tmp_path: Path) -> None:
+    """A terminal receipt exists to make one claim non-restageable.
+
+    Duplicate detection finds it by that key alone, so a redacted row carrying only the digest is
+    invisible to the lookup and the forgotten source would stage fresh instead of being refused.
+    """
+    conn = open_db(tmp_path / "people.db")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(
+            """INSERT INTO import_source_sessions
+               (id, source_kind, content_digest, claim_key, status, created_at)
+               VALUES ('s1', 'linkedin', ?, NULL, 'redacted', '2026-07-20T12:00:00+00:00')""",
+            (_DIGEST,),
+        )
+
+
 def test_a_claim_without_a_digest_is_refused_by_the_schema(tmp_path: Path) -> None:
     conn = open_db(tmp_path / "people.db")
 

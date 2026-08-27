@@ -22,7 +22,7 @@ from people_context.adapters.sqlite import (
     open_db,
 )
 from people_context.app.imports import CandidateStager, CommitImport, ReviewImport, StageCandidates
-from people_context.app.people import Forget, PreviewForget, RememberPerson
+from people_context.app.people import AliasInput, Forget, PreviewForget, RememberPerson, RememberPersonInput
 from people_context.app.records import (
     RecordFact,
     RecordInteraction,
@@ -78,6 +78,7 @@ class _Harness:
             self.audit,
             clock,
         )
+        self.remember = RememberPerson(self.people, self.people, self.audit, clock)
         self.forget_store = SqliteForgetStore(conn)
         self.forget = Forget(self.people, self.forget_store, clock, self.audit)
         self.preview = PreviewForget(self.people, self.forget_store)
@@ -449,3 +450,37 @@ def test_mapping_history_is_redacted_rather_than_left_replayable(harness: _Harne
     assert surviving, "the mapping's replay history is expected to exist and be redacted, not deleted"
     assert all(json.loads(row["payload_json"]) == {"redacted": True} for row in surviving)
     assert alice not in harness.audit_payloads()
+
+
+def test_a_partial_commit_whose_pending_rows_are_all_forgotten_keeps_its_mappings(harness: _Harness) -> None:
+    """A live receipt may legitimately end up owning mappings and no reviewable row at all.
+
+    Forgetting a person erases the staged candidate that matched them. When that was the batch's
+    only reviewable row but other committed records survive, the receipt is not emptied: it keeps
+    its surviving mappings and stays `partially_committed` with nothing left to review. Restore
+    validation must keep accepting that shape, so this pins that a real database produces it.
+    """
+    existing = harness.remember.execute(
+        RememberPersonInput(name="Xavier Ng", aliases=[AliasInput(value="xavier@example.com", kind="handle")])
+    )
+    batch = _stage(
+        harness,
+        [
+            _person("a", "Alice Ahmed", "alice@example.com"),
+            _person("x", "Xavier Ng", "xavier@example.com"),
+        ],
+    )
+    rows = harness.review.execute(batch.batch_id).candidates
+    alice_row = next(row for row in rows if row.candidate.get("name") == "Alice Ahmed")
+    xavier_row = next(row for row in rows if row.candidate.get("name") == "Xavier Ng")
+    assert xavier_row.candidate.get("matched_person_id") == existing.person.id
+    harness.commit.execute(batch.batch_id, [alice_row.id])
+
+    harness.forget.execute(existing.person.id, "person")
+
+    session = harness.sessions()[0]
+    assert session["status"] == "partially_committed"
+    assert session["batch_id"] == batch.batch_id
+    assert set(harness.mappings()) == {alice_row.id}
+    reviewable = harness.conn.execute("SELECT id FROM import_staging WHERE status <> 'committed'").fetchall()
+    assert reviewable == []

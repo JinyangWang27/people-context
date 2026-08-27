@@ -396,6 +396,12 @@ class BundleSourceSession(StrictBundleModel):
             raise ValueError("claim_key must be the canonical composition of the receipt's own fields")
         if self.status != "redacted":
             return self
+        if self.claim_key is None:
+            # A terminal receipt exists for exactly one reason: to make its claim non-restageable.
+            # Duplicate detection finds it by that key, so a redacted row without one is invisible
+            # to the lookup and the forgotten source is staged fresh instead of being refused —
+            # which is the whole terminal-forget contract, undone by a null column.
+            raise ValueError("a redacted source session must retain its canonical claim key")
         if self.content_digest is None:
             raise ValueError("a redacted source session must be claim-backed")
         cleared = (self.label, self.external_source_id, self.extraction_contract_revision, self.batch_id)
@@ -697,6 +703,37 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
             f"staging row {row.id} references a candidate outside its batch: {reference}"
             for reference in sorted(unknown)
         )
+    details.extend(_emptied_session_details(imports))
+    return details
+
+
+def _emptied_session_details(imports: BundleImportState) -> list[str]:
+    """Refuse a live receipt the bundle leaves with nothing behind it.
+
+    A non-redacted receipt is one duplicate detection will report as an existing import, so the
+    caller is told their source is already here and pointed at that batch. If the bundle carries
+    neither a durable mapping nor a reviewable row for it, that report is a dead end: `review`
+    finds nothing, the count describes nothing, and the only way past it is to abandon the
+    duplicate rule. Hard forget never leaves that state — when its erasure empties a receipt it
+    reduces it to a terminal `redacted` claim or deletes it outright — so a bundle carrying one
+    was not produced by this installation.
+
+    A *partially committed* receipt whose reviewable rows were erased but whose other mappings
+    survived is an ordinary outcome of that same forget, and stays accepted: it still owns
+    something live. Only having nothing at all is the contradiction.
+    """
+    pending_batches = {row.batch_id for row in imports.staging if row.status != "committed"}
+    mapped_sessions = {mapping.source_session_id for mapping in imports.candidate_mappings}
+    details: list[str] = []
+    for session in imports.source_sessions:
+        if session.status == "redacted":
+            continue
+        has_pending = session.batch_id is not None and session.batch_id in pending_batches
+        if session.status == "staged" and not has_pending:
+            # `staged` means nothing has committed, so mappings cannot stand in for the rows.
+            details.append(f"source session {session.id} is staged but owns no reviewable staging row")
+        elif not has_pending and session.id not in mapped_sessions:
+            details.append(f"source session {session.id} is live but owns no mapping and no reviewable staging row")
     return details
 
 

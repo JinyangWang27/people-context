@@ -403,7 +403,17 @@ Import it again anyway with: pctx import stage ... --force
 The exit status is non-zero, stdout stays empty even under `--json` — the JSON promise covers successful commands,
 and there is no batch to describe — and nothing is created or changed.
 A digestless receipt has no claim worth keeping, so it is deleted outright and similar material may be staged
-fresh exactly as before.
+fresh exactly as before, and so is an explicit `--force` reprocessing session: it carries a digest but competes
+for no canonical key, so retaining it would leave the digest of an erased artifact behind while suppressing
+nothing.
+
+The claim key is what makes a terminal receipt do its job — duplicate detection finds it by that key, not by the
+digest — so both the schema and version-2 restore validation require a `redacted` row to carry one. A receipt
+that is still live must own something behind it for the same reason in reverse: a restored `staged` receipt with
+no reviewable row, or any non-redacted receipt with neither a mapping nor a reviewable row, would report a
+source as already imported and then point at a batch review cannot find. A *partially committed* receipt whose
+reviewable rows a forget erased while its other records survived keeps its mappings and stays live; that is an
+ordinary outcome and stays restorable.
 
 The refusal itself names no flag, because the route past it belongs to the entry point rather than to the rule.
 `pctx import stage` owns the file and carries `--force`; `pctx import stage-candidates` competes for a claim only

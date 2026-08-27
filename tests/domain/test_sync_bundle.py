@@ -412,6 +412,86 @@ def test_a_mapping_naming_a_person_who_is_not_active_is_rejected() -> None:
     assert any("not active in the bundle" in detail for detail in excinfo.value.details)
 
 
+def test_a_redacted_session_without_its_claim_key_is_rejected() -> None:
+    """Duplicate detection finds a terminal receipt by its key, not by its digest.
+
+    A redacted row carrying only the digest is invisible to that lookup, so the forgotten source
+    would stage fresh instead of being refused — the terminal-forget contract undone by a null.
+    """
+    payload = _document()
+    session = _imports(payload)["source_sessions"][0]
+    session.update(
+        {
+            "status": "redacted",
+            "claim_key": None,
+            "label": None,
+            "external_source_id": None,
+            "extraction_contract_revision": None,
+            "batch_id": None,
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_staged_session_owning_no_reviewable_row_is_rejected() -> None:
+    """A staged receipt reports its batch as an existing import, so review must be able to find it.
+
+    Nothing has committed, so mappings cannot stand in for the rows. Hard forget never leaves this
+    state either: emptying a staged receipt reduces it to a terminal claim or deletes it outright.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["source_sessions"][0]["status"] = "staged"
+    imports["candidate_mappings"] = []
+    imports["staging"] = []
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("owns no reviewable staging row" in detail for detail in excinfo.value.details)
+
+
+def test_a_live_session_with_nothing_behind_it_is_rejected() -> None:
+    payload = _document()
+    imports = _imports(payload)
+    imports["candidate_mappings"] = []
+    imports["staging"] = []
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("owns no mapping and no reviewable staging row" in detail for detail in excinfo.value.details)
+
+
+def test_a_committed_staging_row_alone_does_not_keep_a_session_live() -> None:
+    """A committed row is not reviewable, so it cannot be what a duplicate report points at."""
+    payload = _document()
+    imports = _imports(payload)
+    imports["candidate_mappings"] = []
+    imports["staging"][0]["status"] = "committed"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("owns no mapping and no reviewable staging row" in detail for detail in excinfo.value.details)
+
+
+def test_a_partially_committed_session_may_own_only_its_surviving_mappings() -> None:
+    """Exactly what hard forget produces when it erases a batch's reviewable rows but not its records.
+
+    `tests/adapters/sqlite/test_source_forget.py::
+    test_a_partial_commit_whose_pending_rows_are_all_forgotten_keeps_its_mappings` pins that this
+    state comes out of a real database, so the validator must keep accepting it.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["staging"] = []
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
 def test_a_pending_staging_row_that_already_has_an_outcome_is_rejected() -> None:
     """A mapping and its row's transition to committed are written in one unit of work.
 

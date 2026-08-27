@@ -34,11 +34,15 @@ CREATE TABLE import_source_sessions (
     -- A claim is only meaningful over real source bytes.
     CHECK (claim_key IS NULL OR content_digest IS NOT NULL),
     -- The minimal-claim invariant for a terminal redacted receipt: claim-backed, and stripped of
-    -- every caller-authored and optional inspection field.
+    -- every caller-authored and optional inspection field. The claim key is required, not merely
+    -- the digest: a terminal receipt exists to make its claim non-restageable, and duplicate
+    -- detection finds it by that key alone. A redacted row without one would be invisible to the
+    -- lookup, so the forgotten source would stage fresh instead of being refused.
     CHECK (
         status <> 'redacted'
         OR (
-            content_digest IS NOT NULL
+            claim_key IS NOT NULL
+            AND content_digest IS NOT NULL
             AND label IS NULL
             AND external_source_id IS NULL
             AND extraction_contract_revision IS NULL
