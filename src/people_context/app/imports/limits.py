@@ -70,6 +70,7 @@ BATCH_TOO_LARGE_FOR_CLI = "batch_too_large_for_cli"
 SOURCE_LABEL_TOO_LONG = "source_label_too_long"
 CANDIDATE_PAYLOAD_TOO_LARGE = "candidate_payload_too_large"
 CANDIDATE_STRING_TOO_LONG = "candidate_string_too_long"
+CANDIDATE_STRING_NOT_ENCODABLE = "candidate_string_not_encodable"
 CANDIDATE_INPUT_TOO_LARGE = "candidate_input_too_large"
 INVALID_CANDIDATE_JSON = "invalid_candidate_json"
 
@@ -152,7 +153,17 @@ def _reject_oversized_strings(candidate: Any) -> None:
     while pending:
         current = pending.pop()
         if isinstance(current, str):
-            if len(current.encode("utf-8")) > MAX_EXTRACTION_STRING_BYTES:
+            # A JSON escape may decode to an unpaired surrogate, which is a `str` that has no
+            # UTF-8 encoding at all. Measuring it would raise where a refusal belongs: the value
+            # cannot be stored, so it is rejected here rather than crashing the size check.
+            try:
+                measured = len(current.encode("utf-8"))
+            except UnicodeEncodeError:
+                raise resource_limit_error(
+                    CANDIDATE_STRING_NOT_ENCODABLE,
+                    "an extraction candidate string must be encodable as UTF-8",
+                ) from None
+            if measured > MAX_EXTRACTION_STRING_BYTES:
                 raise resource_limit_error(
                     CANDIDATE_STRING_TOO_LONG,
                     f"an extraction candidate string is at most {MAX_EXTRACTION_STRING_BYTES} bytes",

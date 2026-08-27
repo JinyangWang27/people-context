@@ -237,13 +237,27 @@ class StageCandidates:
     def __init__(self, stager: CandidateStager) -> None:
         self._stager = stager
 
-    def execute(self, source: str, candidates: list[dict[str, Any]]) -> ImportBatchResult:
+    def execute(
+        self,
+        source: str,
+        candidates: list[dict[str, Any]],
+        *,
+        strict_identity: bool = False,
+    ) -> ImportBatchResult:
         """Stage one agent request, bounding it first when it opts into an M17 candidate type.
 
         The extraction bounds and the ambiguity-preserving matcher are selected by the same
         condition, and it is read off the raw request rather than the validated one: a request
         that names an M17 type is an extraction request whether or not it turns out to be
         well-formed, and both decisions must be made before anything is parsed or staged.
+
+        `strict_identity` lets a caller demand the ambiguity-preserving matcher for every batch
+        regardless of its candidate types. The condition above exists to leave the released MCP
+        contract exactly as it shipped; a boundary introduced after M17 has no such history, and
+        every batch reaching it is agent-extracted whether or not it happens to use an M17 type.
+        Ambiguity there is a property of the *identities*, not of the candidate vocabulary: a
+        person plus a fact, distilled from a transcript, can name someone two existing people
+        could equally be, and resolving that to one of them would attach the fact to a guess.
         """
         normalized_source = source.strip()
         if not normalized_source:
@@ -254,7 +268,7 @@ class StageCandidates:
         return self._stager.execute(
             f"import/agent:{normalized_source}",
             candidates,
-            strict_identity=extraction,
+            strict_identity=strict_identity or extraction,
         )
 
 

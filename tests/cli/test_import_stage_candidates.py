@@ -101,6 +101,26 @@ def _staging_rows(db_file: Path) -> list[sqlite3.Row]:
         conn.close()
 
 
+def _existing_namesakes(db_file: Path) -> None:
+    """Seed two distinct people who share the handle a candidate will name.
+
+    The candidate's canonical name matches exactly one of them. That unique hit on one token
+    must not be allowed to settle a question the other token leaves open.
+    """
+    runtime = build_runtime(db_file)
+    try:
+        remember: RememberPerson = runtime.use_cases.remember_person
+        for name in ("Sarah Chen", "Sarah Chen-Okafor"):
+            remember.execute(
+                RememberPersonInput(
+                    name=name,
+                    aliases=[AliasInput(kind=AliasKind.HANDLE, value="sarah@example.com")],
+                )
+            )
+    finally:
+        runtime.close()
+
+
 def _refusal(db_file: Path, argv: list[str], capsys: pytest.CaptureFixture[str]) -> str:
     code = cli.main(["--db", str(db_file), "import", "stage-candidates", *argv])
     assert code != 0
@@ -206,20 +226,7 @@ def test_an_extraction_batch_keeps_its_ambiguity_rather_than_inventing_a_person(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_file = tmp_path / "people.db"
-    # Two distinct people already carry the handle the candidate names. Its canonical name
-    # matches exactly one of them, which must not be allowed to settle the question.
-    runtime = build_runtime(db_file)
-    try:
-        remember: RememberPerson = runtime.use_cases.remember_person
-        for name in ("Sarah Chen", "Sarah Chen-Okafor"):
-            remember.execute(
-                RememberPersonInput(
-                    name=name,
-                    aliases=[AliasInput(kind=AliasKind.HANDLE, value="sarah@example.com")],
-                )
-            )
-    finally:
-        runtime.close()
+    _existing_namesakes(db_file)
 
     document = _stage(db_file, _input_file(tmp_path, _candidates()), capsys)
     batch_id = str(document["batch_id"])
@@ -233,6 +240,98 @@ def test_an_extraction_batch_keeps_its_ambiguity_rather_than_inventing_a_person(
     assert cli.main(["--db", str(db_file), "import", "commit", batch_id, "--all", "--json"]) == 0
     commit = json.loads(capsys.readouterr().out)
     assert sarah["id"] in commit["unresolved_ids"]
+
+
+def test_a_legacy_only_batch_still_preserves_ambiguity_at_this_boundary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Ambiguity is a property of the identities, not of the candidate vocabulary.
+
+    MCP selects the ambiguity-preserving matcher by candidate type so that a batch predating
+    M17 keeps the matching it shipped with. This command has no such history: everything
+    reaching it is agent-extracted, so a person-plus-fact batch distilled from a transcript
+    gets the same protection an observation would have bought. Resolving two equally possible
+    people to one of them would attach the fact to a guess.
+    """
+    db_file = tmp_path / "people.db"
+    _existing_namesakes(db_file)
+    legacy_only = [
+        {
+            "type": "person",
+            "ref": "sarah",
+            "name": "Sarah Chen",
+            "aliases": [{"kind": "handle", "value": "sarah@example.com"}],
+        },
+        {"type": "fact", "person_ref": "sarah", "predicate": "role", "value": "Staff Engineer"},
+    ]
+
+    document = _stage(db_file, _input_file(tmp_path, legacy_only), capsys)
+    batch_id = str(document["batch_id"])
+
+    assert cli.main(["--db", str(db_file), "import", "review", batch_id, "--json"]) == 0
+    review = json.loads(capsys.readouterr().out)
+    person = next(entry for entry in review["candidates"] if entry["candidate"]["type"] == "person")
+    assert person["candidate"]["match_disposition"] == "ambiguous"
+    assert person["candidate"]["matched_person_id"] is None
+
+    assert cli.main(["--db", str(db_file), "import", "commit", batch_id, "--all", "--json"]) == 0
+    commit = json.loads(capsys.readouterr().out)
+    assert commit["committed_ids"] == []
+    assert len(commit["unresolved_ids"]) == 2
+
+
+def test_a_rejected_person_reference_is_not_echoed_back(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The staging rules raise `value_error` carrying the ref that failed; it is candidate text."""
+    db_file = tmp_path / "people.db"
+    payload = [
+        {"type": "person", "ref": "sarah", "name": "Sarah Chen", "aliases": []},
+        {"type": "fact", "person_ref": _TRANSCRIPT_SENTINEL, "predicate": "role", "value": "Staff Engineer"},
+    ]
+
+    message = _refusal(db_file, ["--source", "sync", "--input", str(_input_file(tmp_path, payload))], capsys)
+
+    assert _TRANSCRIPT_SENTINEL not in message
+    # The failure is still named and located: which rule broke, and which candidate broke it.
+    assert "unknown person reference" in message
+    assert "1" in message
+
+
+def test_an_unexpected_field_key_is_redacted_rather_than_printed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A forbidden extra field puts the caller's own key into the error location."""
+    db_file = tmp_path / "people.db"
+    payload = [{"type": "person", "ref": "s", "name": "S", "aliases": [], _TRANSCRIPT_SENTINEL: 1}]
+
+    message = _refusal(db_file, ["--source", "sync", "--input", str(_input_file(tmp_path, payload))], capsys)
+
+    assert _TRANSCRIPT_SENTINEL not in message
+    assert "(redacted)" in message
+    assert "Extra inputs are not permitted" in message
+
+
+def test_an_unpaired_surrogate_is_refused_instead_of_crashing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A JSON escape can decode to a `str` with no UTF-8 encoding at all.
+
+    Measuring it against the string limit would raise where a refusal belongs, so the value is
+    rejected as unstorable rather than taking the command down with a traceback.
+    """
+    db_file = tmp_path / "people.db"
+    path = tmp_path / "surrogate.json"
+    path.write_text('[{"type":"person","ref":"a","name":"\\ud800","aliases":[]}]', encoding="utf-8")
+
+    message = _refusal(db_file, ["--source", "sync", "--input", str(path)], capsys)
+
+    assert "UTF-8" in message
+    assert _staging_rows(db_file) == []
 
 
 def test_the_transcript_itself_never_reaches_output_or_storage(

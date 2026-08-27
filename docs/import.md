@@ -296,8 +296,7 @@ terminal is a much weaker promise than a file an MCP caller already chose:
 `pctx import stage-candidates` is the fourth command and the one that has no file format behind it: its
 `--input` is candidate JSON an agent produced by reading unstructured material — a meeting transcript, a call
 note — in its own environment, or `-` for the same JSON on stdin. It reaches `StageCandidates` unchanged, so
-what it stages, matches, and bounds is exactly what an MCP `stage_candidates` call stages, matches, and bounds.
-What it adds is its own read boundary: at most **1 MiB** of candidate JSON is read at all, spent while reading
+what it stages is exactly what an MCP `stage_candidates` call stages. What it adds is its own read boundary: at most **1 MiB** of candidate JSON is read at all, spent while reading
 rather than after buffering, and the request then carries at most 500 candidates, a 128-character `--source`,
 and 8 KiB per string.
 
@@ -305,6 +304,13 @@ Those last three numbers are the M17 extraction limits, applied here **unconditi
 request that opts into an M17 candidate type. The MCP condition exists to protect a contract that shipped before
 the limits did; this command shipped with them, so it has no such history to preserve, and a path or a pipe
 typed at a terminal is a much weaker promise about size than an array an in-process caller already built.
+
+The same reasoning governs identity, so `StageCandidates` takes an explicit `strict_identity` flag that this
+boundary sets for every batch. Ambiguity is a property of the identities a batch names, not of the candidate
+vocabulary it happens to use: a person plus a fact, distilled from a transcript, can name someone two existing
+people could equally be. Committing that under the pre-M17 matcher would attach the fact to whichever of them a
+single token happened to hit. The flag defaults to off, so an MCP request still selects the matcher by candidate
+type exactly as it did before.
 
 Because staging applies the same measurement and the same ceilings, the CLI never creates a batch that its own
 review or commit then refuses. The batches it can refuse are the ones an older uncapped `stage_candidates` call

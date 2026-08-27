@@ -26,6 +26,7 @@ from people_context.app.imports.limits import (
     BATCH_TOO_LARGE_FOR_CLI,
     CANDIDATE_INPUT_TOO_LARGE,
     CANDIDATE_PAYLOAD_TOO_LARGE,
+    CANDIDATE_STRING_NOT_ENCODABLE,
     CANDIDATE_STRING_TOO_LONG,
     CLI_IMPORT_BUDGET,
     INVALID_CANDIDATE_JSON,
@@ -46,6 +47,7 @@ from people_context.app.imports.limits import (
     enforce_extraction_request_limits,
 )
 from people_context.app.imports.models import (
+    CANDIDATE_MODELS,
     EXTRACTION_CANDIDATE_TYPES,
     MAX_CANDIDATE_REF_CHARS,
     MAX_OBSERVATION_TEXT_BYTES,
@@ -74,7 +76,9 @@ from people_context.app.imports.workflow import CommitImport, ImportContent, Rev
 __all__ = [
     "BATCH_TOO_LARGE_FOR_CLI",
     "CANDIDATE_INPUT_TOO_LARGE",
+    "CANDIDATE_MODELS",
     "CANDIDATE_PAYLOAD_TOO_LARGE",
+    "CANDIDATE_STRING_NOT_ENCODABLE",
     "CANDIDATE_STRING_TOO_LONG",
     "CLI_IMPORT_BUDGET",
     "EXTRACTION_CANDIDATE_TYPES",

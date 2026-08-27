@@ -245,8 +245,16 @@ unconditionally rather than only to a request that opts into an M17 candidate ty
 - no individual string value accepted by this CLI may exceed **8 KiB**;
 - the CLI `--source` label is capped at the same **128 characters**.
 
+The CLI also sets ambiguity-preserving person matching for every batch it stages rather than selecting it by
+candidate type. The conditional selection above exists to leave the released MCP contract as it shipped; the CLI
+has no such history, and ambiguity is a property of the identities a batch names rather than of its vocabulary.
+
 Reject CLI limit violations before durable staging and report only bounded diagnostics; never echo the rejected
-payload. Where practical, the byte limit is enforced while reading rather than after allocating an unbounded input
+payload. This binds validation diagnostics too: a rejected extra field carries its own key in the error location
+and a staging-rule failure carries the offending person reference in its message, so a CLI that reports where a
+batch failed must reconstruct that location from the declared schema rather than forward what the payload said.
+A candidate string that decodes to an unpaired surrogate has no UTF-8 encoding, and is refused as unstorable
+rather than being allowed to raise inside the size check. Where practical, the byte limit is enforced while reading rather than after allocating an unbounded input
 buffer. These are safety/resource limits, not suggested target sizes; normal distilled candidates should be far
 smaller.
 

@@ -129,9 +129,14 @@ running a model, or storing a word of the source.
 `import stage` source formats. It is stored on every staged row and every later provenance record, which is
 why it is bounded as tightly as it is.
 
-The command stages only. `import review` and `import commit` are the same gate they are for a file import,
-and a batch staged here is indistinguishable from one an agent staged over MCP — including the
-ambiguity-preserving person matching described above.
+The command stages only. `import review` and `import commit` are the same gate they are for a file import.
+
+Person matching here is **always** the ambiguity-preserving kind described above, whichever candidate types a
+batch happens to use. Over MCP that matcher is selected by the presence of an `observation`, `trait`, or
+`relationship`, so that a batch predating M17 keeps the matching it shipped with. This command has no released
+history to preserve, and everything reaching it is agent-extracted regardless of vocabulary: a person plus a
+fact, distilled from a transcript, can name someone two existing people could equally be, and resolving that to
+one of them would attach the fact to a guess.
 
 This surface is bounded from its first release, and unconditionally: at most **1 MiB** of candidate JSON is
 read at all, spent on the read itself rather than on a parsed result, and the request may then carry at most
@@ -139,9 +144,15 @@ read at all, spent on the read itself rather than on a parsed result, and the re
 caps apply only to a request that opts into an `observation`, `trait`, or `relationship` candidate, because
 that contract shipped before them and narrowing it would break working imports. This command has no such
 history: a path or a pipe typed at a terminal is a much weaker promise about size than an array an in-process
-caller already built. A refusal names the limit and never any part of the rejected payload. A batch that
-fails validation reports the candidate index and field that failed — the locations an agent needs to correct
-its own JSON — with the rejected values still withheld.
+caller already built. A refusal names the limit and never any part of the rejected payload.
+
+A batch that fails validation reports the candidate index and field that failed — the locations an agent needs
+to correct its own JSON — reconstructed from the schema rather than forwarded. A validation error is not
+automatically safe to print: a rejected extra field carries its own untrusted key in the error's location, and
+an error raised by the staging rules carries the offending person reference in its message. So a location part
+is shown only when the candidate models declare it and is otherwise `(redacted)`, and a message is shown only
+when Pydantic derived it from the schema, degrading otherwise to the error's fixed type slug. The refusal line
+itself is always payload-independent.
 
 ## Packaged demo
 

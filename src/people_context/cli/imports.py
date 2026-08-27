@@ -28,6 +28,7 @@ from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.imports import (
     CANDIDATE_INPUT_TOO_LARGE,
+    CANDIDATE_MODELS,
     CLI_IMPORT_BUDGET,
     INVALID_CANDIDATE_JSON,
     MAX_CLI_CANDIDATE_JSON_BYTES,
@@ -45,6 +46,42 @@ from people_context.cli.rendering import print_import_review
 
 #: Validation failures reported for one refused candidate batch before the listing is truncated.
 _MAX_REPORTED_VALIDATION_ERRORS = 10
+
+#: Stands in for a location part the candidate models never declared — an unexpected field key
+#: is the caller's own text, so it is named as redacted rather than echoed.
+_REDACTED_LOCATION_PART = "(redacted)"
+
+#: Every name the strict candidate models declare: the discriminator values and their fields.
+#: A location part outside this set did not come from the schema, so it came from the payload.
+_DECLARED_CANDIDATE_NAMES: frozenset[str] = frozenset(CANDIDATE_MODELS) | {
+    field for model in CANDIDATE_MODELS.values() for field in model.model_fields
+}
+
+#: Pydantic error types whose `msg` is written from the schema rather than from the input.
+#: `value_error` is deliberately absent: the staging rules raise it carrying the person ref
+#: that failed, which is candidate content.
+_SCHEMA_DERIVED_ERROR_TYPES: frozenset[str] = frozenset(
+    {
+        "missing",
+        "extra_forbidden",
+        "string_type",
+        "string_too_short",
+        "string_too_long",
+        "int_type",
+        "float_type",
+        "bool_type",
+        "list_type",
+        "dict_type",
+        "datetime_type",
+        "datetime_parsing",
+        "enum",
+        "literal_error",
+        "union_tag_invalid",
+        "union_tag_not_found",
+        "greater_than_equal",
+        "less_than_equal",
+    }
+)
 
 REVIEW_DISCLOSURE_WARNING = (
     "Review output and the import JSON documents carry distilled personal data from your "
@@ -97,7 +134,10 @@ def cmd_import_stage_candidates(runtime: ApplicationRuntime, args: argparse.Name
     source = args.source.strip()
     try:
         enforce_extraction_request_limits(source, candidates)
-        batch = runtime.use_cases.stage_candidates.execute(source, candidates)
+        # Every batch here is agent-extracted, whichever candidate types it happens to use, so
+        # this boundary demands ambiguity-preserving matching outright rather than inferring it
+        # from the vocabulary — for the same reason it applies the extraction limits outright.
+        batch = runtime.use_cases.stage_candidates.execute(source, candidates, strict_identity=True)
     except ImportPipelineError as exc:
         _refuse(f"candidate staging failed: {exc}")
         _print_validation_details(exc)
@@ -203,10 +243,16 @@ def _preflight(runtime: ApplicationRuntime, batch_id: str) -> int | None:
 def _print_validation_details(exc: ImportPipelineError) -> None:
     """Say which candidate and field failed, without repeating what was in it.
 
-    An agent that must correct its own candidate JSON needs the location of the failure, and
-    `StageCandidates` builds these entries with the rejected input deliberately excluded, so the
-    locations and messages can be shown while the payload still never reaches a diagnostic. The
-    listing is truncated because one malformed batch can fail in as many places as it has
+    An agent that must correct its own candidate JSON needs the location of a failure, but a
+    validation error is not automatically safe to print: a rejected extra field puts its own
+    untrusted key into `loc`, and an error raised by the staging rules themselves puts the
+    offending person ref into `msg`. Both are candidate content, so both are reconstructed here
+    from the schema rather than forwarded — a location part is shown only when the models
+    actually declare it, and a message only when Pydantic derived it from the schema. Anything
+    else degrades to a placeholder or to the error's own fixed type slug, which still names the
+    kind of failure. The refusal line above is always payload-independent.
+
+    The listing is truncated because one malformed batch can fail in as many places as it has
     candidates.
     """
     details = exc.details.get("details")
@@ -215,11 +261,36 @@ def _print_validation_details(exc: ImportPipelineError) -> None:
     for entry in details[:_MAX_REPORTED_VALIDATION_ERRORS]:
         if not isinstance(entry, dict):
             continue
-        location = ".".join(str(part) for part in entry.get("loc", ())) or "(candidate)"
-        print(f"  {location}: {entry.get('msg', 'invalid')}", file=sys.stderr)
+        print(f"  {_safe_location(entry.get('loc'))}: {_safe_message(entry)}", file=sys.stderr)
     remaining = len(details) - _MAX_REPORTED_VALIDATION_ERRORS
     if remaining > 0:
         print(f"  ... and {remaining} more", file=sys.stderr)
+
+
+def _safe_location(location: Any) -> str:
+    """Render a validation location from declared names and indexes only."""
+    if not isinstance(location, (list, tuple)) or not location:
+        return "(candidate)"
+    parts = []
+    for part in location:
+        if isinstance(part, int):
+            parts.append(str(part))
+        elif isinstance(part, str) and part in _DECLARED_CANDIDATE_NAMES:
+            parts.append(part)
+        else:
+            parts.append(_REDACTED_LOCATION_PART)
+    return ".".join(parts)
+
+
+def _safe_message(entry: dict[str, Any]) -> str:
+    """Return the entry's message only when Pydantic built it from the schema."""
+    error_type = entry.get("type")
+    if not isinstance(error_type, str):
+        return "invalid"
+    message = entry.get("msg")
+    if error_type in _SCHEMA_DERIVED_ERROR_TYPES and isinstance(message, str):
+        return message
+    return error_type
 
 
 def _read_candidate_json(raw_input: str) -> list[Any] | None:
