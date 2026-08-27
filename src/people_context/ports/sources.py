@@ -108,11 +108,6 @@ class SourceSessionRow:
     status: str
     created_at: datetime
 
-    @property
-    def claim_backed(self) -> bool:
-        """Whether this receipt has source bytes to be identified by."""
-        return self.content_digest is not None
-
 
 @dataclass(frozen=True)
 class CandidateMappingRow:
@@ -159,8 +154,6 @@ class ImportSourceStore(Protocol):
     ) -> SourceClaimOutcome:
         """Publish claim, receipt, and every staged candidate row in one transaction."""
         ...
-
-    def get_session(self, session_id: str) -> SourceSessionRow | None: ...
 
     def session_for_batch(self, batch_id: str) -> SourceSessionRow | None: ...
 

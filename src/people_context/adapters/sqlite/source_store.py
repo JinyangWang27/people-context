@@ -12,7 +12,6 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.imports import StagedImportRow
@@ -45,11 +44,6 @@ class SqliteImportSourceStore:
     def unit_of_work(self) -> SqliteUnitOfWork:
         """Return a write-reserving boundary, because every claim reads before it writes."""
         return SqliteUnitOfWork(self._conn, immediate=True)
-
-    @property
-    def audit_log(self) -> SqliteAuditLog:
-        """Expose the paired mutation journal for app construction."""
-        return SqliteAuditLog(self._conn)
 
     def claim_and_stage(
         self,
@@ -103,14 +97,6 @@ class SqliteImportSourceStore:
             )
             self._staging.stage_batch(rows)
         return SourceClaimOutcome(session=session, created=True, candidate_count=len(rows))
-
-    def get_session(self, session_id: str) -> SourceSessionRow | None:
-        """Return one receipt by id."""
-        row = self._conn.execute(
-            f"SELECT {_SESSION_COLUMNS} FROM import_source_sessions WHERE id = ?",  # noqa: S608
-            (session_id,),
-        ).fetchone()
-        return _session(row) if row is not None else None
 
     def session_for_batch(self, batch_id: str) -> SourceSessionRow | None:
         """Return the receipt one staged batch belongs to, if it is source-tracked."""

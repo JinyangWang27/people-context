@@ -183,6 +183,149 @@ def _document() -> dict[str, Any]:
     }
 
 
+def _imports(payload: dict[str, Any]) -> dict[str, Any]:
+    return payload["imports"]
+
+
+def test_a_claim_key_without_a_digest_is_rejected() -> None:
+    payload = _document()
+    _imports(payload)["source_sessions"][0]["content_digest"] = None
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_redacted_session_without_a_digest_is_rejected() -> None:
+    """A terminal receipt exists to preserve a claim; without one there is nothing to preserve."""
+    payload = _document()
+    session = _imports(payload)["source_sessions"][0]
+    session.update(
+        {
+            "status": "redacted",
+            "content_digest": None,
+            "claim_key": None,
+            "label": None,
+            "external_source_id": None,
+            "extraction_contract_revision": None,
+            "batch_id": None,
+        }
+    )
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("label", "Interview with Alice"),
+        ("external_source_id", "NOTES-1"),
+        ("extraction_contract_revision", "linkedin.1"),
+        ("batch_id", _BATCH_ID),
+    ],
+)
+def test_a_redacted_session_carrying_cleared_state_is_rejected(field: str, value: str) -> None:
+    payload = _document()
+    session = _imports(payload)["source_sessions"][0]
+    session.update(
+        {
+            "status": "redacted",
+            "claim_key": None,
+            "label": None,
+            "external_source_id": None,
+            "extraction_contract_revision": None,
+            "batch_id": None,
+        }
+    )
+    session[field] = value
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_an_entity_mapping_without_an_entity_id_is_rejected() -> None:
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0]["entity_id"] = None
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_merged_away_mapping_naming_an_entity_is_rejected() -> None:
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0].update(
+        {"disposition": "merged_away", "entity_type": "relationship"}
+    )
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_merged_away_mapping_of_another_entity_type_is_rejected() -> None:
+    """The terminal outcome exists only for a relationship edge a merge removed."""
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0].update(
+        {"disposition": "merged_away", "entity_type": "person", "entity_id": None}
+    )
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_merged_away_relationship_mapping_needs_no_entity() -> None:
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0].update(
+        {"disposition": "merged_away", "entity_type": "relationship", "entity_id": None}
+    )
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def test_a_mapping_referencing_an_unbundled_source_session_is_rejected() -> None:
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0]["source_session_id"] = "01J000000000000000MISSING1"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("unbundled source session" in detail for detail in excinfo.value.details)
+
+
+def test_a_mapping_of_an_unsupported_entity_type_is_rejected() -> None:
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0]["entity_type"] = "reminder"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("unsupported entity type" in detail for detail in excinfo.value.details)
+
+
+def test_duplicate_import_identifiers_are_rejected() -> None:
+    payload = _document()
+    imports = _imports(payload)
+    imports["candidate_mappings"].append(dict(imports["candidate_mappings"][0]))
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("duplicate candidate mapping id" in detail for detail in excinfo.value.details)
+
+
+def test_two_sessions_claiming_one_source_are_rejected() -> None:
+    payload = _document()
+    imports = _imports(payload)
+    twin = dict(imports["source_sessions"][0])
+    twin["id"] = "01J0000000000000000SOURCE2"
+    twin["batch_id"] = "01J00000000000000000BATCH2"
+    imports["source_sessions"].append(twin)
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("duplicate source claim" in detail for detail in excinfo.value.details)
+
+
 def _strict_models() -> list[type[BaseModel]]:
     return [
         value

@@ -244,6 +244,14 @@ def test_a_receipt_creation_is_journalled_through_the_ordinary_mutation_seam(har
     assert any(row["entity_type"] == "import_source_session" for row in harness.changelog())
 
 
+def test_a_source_tracked_stager_without_an_audit_log_is_refused(harness: _Harness) -> None:
+    """Provenance is primary state, so wiring it without a journal is a mistake, not a mode."""
+    with pytest.raises(RuntimeError) as excinfo:
+        CandidateStager(harness.people, harness.staging, _Clock(), harness.sources)
+
+    assert "audit log" in str(excinfo.value)
+
+
 def test_a_refused_source_kind_stages_nothing(harness: _Harness) -> None:
     with pytest.raises(ImportPipelineError):
         _stage(harness, source_kind="interview with alice")

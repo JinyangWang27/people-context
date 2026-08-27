@@ -111,6 +111,29 @@ def test_a_utf8_sig_source_decodes_the_same_through_a_snapshot(tmp_path: Path) -
     ]
 
 
+def test_a_single_email_is_hashed_and_parsed_from_the_same_bytes(tmp_path: Path) -> None:
+    source = tmp_path / "message.eml"
+    source.write_text(
+        "From: Alice Ahmed <alice@example.com>\n"
+        "To: You <you@example.com>\n"
+        "Subject: Weekly sync\n"
+        "Message-ID: <one@example.com>\n"
+        "Date: Mon, 20 Jul 2026 09:00:00 +0000\n"
+        "\n"
+        "body\n",
+        encoding="utf-8",
+    )
+
+    stable = VerifiedSnapshotExtractor().extract_stable(
+        "email",
+        path=str(source),
+        self_addresses={"you@example.com"},
+    )
+
+    assert stable.content_digest == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert [candidate.email for candidate in stable.extracted.people] == ["alice@example.com"]
+
+
 def test_an_oversized_source_is_refused_before_it_is_hashed(tmp_path: Path) -> None:
     source = _linkedin(tmp_path, _LINKEDIN_ROW * 50)
 

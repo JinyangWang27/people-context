@@ -249,6 +249,56 @@ def test_staging_deletion_never_guesses_by_name(harness: _Harness) -> None:
     assert unrelated_row.id in harness.staging_ids()
 
 
+def test_a_staged_candidate_citing_an_erased_record_as_evidence_is_removed(harness: _Harness) -> None:
+    """`evidence_ids` names a durable record, so forgetting that record erases the citation.
+
+    The field belongs to the M18.3 candidate vocabulary, which staging does not yet emit, so the
+    row is written directly. Erasure has to understand it from the relation that introduces it,
+    not from the release that starts producing it.
+    """
+    batch = _stage(
+        harness,
+        [
+            _person("a", "Alice Ahmed", "alice@example.com"),
+            {"type": "observation", "person_ref": "a", "text": "Chaired the review"},
+        ],
+    )
+    ids = _commit_all(harness, batch.batch_id)
+    observation_id = harness.mappings()[ids["observation"]]["entity_id"]
+    pending = _stage(
+        harness,
+        [_person("b", "Bob Byrne", "bob@example.com")],
+        source_kind="call_note",
+        content_digest=_OTHER_DIGEST,
+    )
+    citing_id = "01J000000000000000CITING01"
+    harness.conn.execute(
+        """INSERT INTO import_staging (id, batch_id, source, candidate_json, status, created_at)
+           VALUES (?, ?, 'import/agent:call-note', ?, 'pending', '2026-07-20T12:00:00+00:00')""",
+        (
+            citing_id,
+            pending.batch_id,
+            json.dumps(
+                {
+                    "type": "trait",
+                    "person_candidate_id": harness.review.execute(pending.batch_id).candidates[0].id,
+                    "category": "communication_style",
+                    "value": "Runs a tight meeting",
+                    "evidence_note": "chaired the review",
+                    "confidence": 0.8,
+                    "evidence_ids": [observation_id],
+                }
+            ),
+        ),
+    )
+    harness.conn.commit()
+    assert citing_id in harness.staging_ids()
+
+    harness.forget.execute(f"observation:{observation_id}", "record")
+
+    assert citing_id not in harness.staging_ids()
+
+
 def test_a_shared_interaction_keeps_its_mapping_when_one_participant_is_forgotten(harness: _Harness) -> None:
     batch = _stage(
         harness,

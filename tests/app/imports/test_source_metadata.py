@@ -105,6 +105,18 @@ def test_a_fingerprint_without_a_digest_is_refused() -> None:
     assert excinfo.value.details["field"] == "extraction_fingerprint"
 
 
+def test_blank_optional_identifiers_are_treated_as_absent() -> None:
+    claim = build_source_claim(
+        source_kind="linkedin",
+        content_digest="   ",
+        extraction_contract_revision="  ",
+    )
+
+    assert claim.content_digest is None
+    assert claim.extraction_contract_revision is None
+    assert claim.claim_key is None
+
+
 @pytest.mark.parametrize("revision", ["a" * (MAX_CONTRACT_REVISION_CHARS + 1), "rev/1", "rev 1", "rév"])
 def test_a_contract_revision_outside_its_alphabet_is_refused(revision: str) -> None:
     with pytest.raises(ImportPipelineError) as excinfo:
