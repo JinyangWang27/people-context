@@ -229,7 +229,12 @@ class CommitImport:
                 continue
             subject_id = resolution.get(row.candidate["from_candidate_id"])
             object_id = resolution.get(row.candidate["to_candidate_id"])
-            if subject_id is None or object_id is None:
+            # Staging refuses a candidate whose two refs are the same string, but two distinct
+            # refs can still resolve to one person — agents are told to stage a candidate for
+            # every participant, so a name and a matching handle routinely describe the same
+            # existing identity. Committing that would write the self-loop `merge_people` has
+            # to clean up, so the edge stays unresolved and a corrected batch can be re-staged.
+            if subject_id is None or object_id is None or subject_id == object_id:
                 unresolved.append(row.id)
                 continue
             self._set_relationship.execute(

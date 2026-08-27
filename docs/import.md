@@ -215,7 +215,12 @@ provenance, audit, and changelog behavior as a directly recorded one.
   through `SetRelationship` unchanged: known vocabulary and synonyms canonicalize with inverse/symmetric
   endpoint semantics, a normalized but unregistered type stays a legal `uncategorized` edge, and only blank or
   non-word type text fails. Requiring registration would have made every currently legal uncategorized edge
-  unimportable.
+  unimportable. An edge connects two *different* people, and that holds on the identities the refs resolve to,
+  not merely on the ref strings: staging refuses a candidate whose two refs are the same string, and commit
+  leaves the candidate in `unresolved_ids` when two distinct refs turn out to name one person. Agents are asked
+  to stage a candidate for every participant, so a name and a matching handle routinely describe the same
+  existing identity; committing that would write the self-loop `merge_people` exists to clean up. Re-staging a
+  corrected batch is the remedy.
 
 Relationship candidates are **ordinary-disclosure only**. The durable `Relationship` model and the graph reads
 carry no sensitivity field, so there is nothing to enforce an elevated level with. Rather than accept a

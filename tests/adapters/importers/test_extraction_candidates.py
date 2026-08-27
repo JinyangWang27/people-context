@@ -544,6 +544,42 @@ def test_a_relationship_commits_only_once_both_endpoints_resolve() -> None:
     assert conn.execute("SELECT COUNT(*) FROM relationships").fetchone()[0] == 1
 
 
+def test_two_refs_resolving_to_one_person_leave_the_relationship_unresolved() -> None:
+    """A self-loop is corruption `merge_people` cleans up; import must not create one.
+
+    Staging only sees ref strings, and agents are told to stage a candidate for every
+    participant, so a name and a matching handle routinely describe the same existing person.
+    The endpoints-differ rule therefore has to hold on the identities the refs resolve to.
+    """
+    conn = open_db(":memory:")
+    people, stage, review, commit, _ = _use_cases(conn)
+    existing = Person(canonical_name="Alice Rivera", aliases=[Alias(value="alice@example.com", kind=AliasKind.HANDLE)])
+    people.save_person(existing)
+
+    batch = stage.execute(
+        "notes",
+        [
+            _person("by_name", "Alice Rivera"),
+            _person("by_handle", "A. Rivera", "alice@example.com"),
+            {
+                "type": "relationship",
+                "from_ref": "by_name",
+                "to_ref": "by_handle",
+                "relationship_type": "colleague",
+            },
+        ],
+    )
+    rows = review.execute(batch.batch_id).candidates
+    relationship = next(row for row in rows if row.candidate["type"] == "relationship")
+
+    result = commit.execute(batch.batch_id, [row.id for row in rows])
+
+    assert result.unresolved_ids == [relationship.id]
+    assert relationship.id not in result.committed_ids
+    assert conn.execute("SELECT COUNT(*) FROM relationships").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 1
+
+
 def test_a_legacy_only_batch_keeps_its_released_matching_shape() -> None:
     """M17 is opt-in. A batch of the four released types is staged exactly as it was before."""
     conn = open_db(":memory:")
