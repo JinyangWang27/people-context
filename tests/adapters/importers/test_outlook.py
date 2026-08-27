@@ -15,11 +15,19 @@ from people_context.adapters.sqlite import (
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
+    SqliteRelationshipStore,
     open_db,
 )
 from people_context.app.imports import CommitImport, ImportContent, ImportPipelineError, ReviewImport
 from people_context.app.people import RememberPerson
-from people_context.app.records import RecordFact, RecordInteraction, SetAffiliation
+from people_context.app.records import (
+    RecordFact,
+    RecordInteraction,
+    RecordObservation,
+    RecordTrait,
+    SetAffiliation,
+)
+from people_context.app.relationships import SetRelationship
 
 _HEADERS = (
     "First Name,Middle Name,Last Name,Nickname,E-mail Address,Company,Department,Job Title,"
@@ -54,6 +62,9 @@ def _use_cases(conn):
             RecordInteraction(people, records, audit, _Clock()),
             SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, _Clock()),
             RecordFact(people, records, audit, _Clock()),
+            RecordObservation(people, records, audit, _Clock()),
+            RecordTrait(people, records, audit, _Clock()),
+            SetRelationship(people, SqliteRelationshipStore(conn), audit, _Clock()),
         ),
     )
 

@@ -15,6 +15,7 @@ from people_context.adapters.sqlite import (
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
+    SqliteRelationshipStore,
     open_db,
 )
 from people_context.app.imports import (
@@ -27,8 +28,11 @@ from people_context.app.people import RememberPerson
 from people_context.app.records import (
     RecordFact,
     RecordInteraction,
+    RecordObservation,
+    RecordTrait,
     SetAffiliation,
 )
+from people_context.app.relationships import SetRelationship
 from people_context.domain.person import Alias, AliasKind, Person
 
 _NOW = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
@@ -51,11 +55,24 @@ def _use_cases(conn):
     interactions = RecordInteraction(people, records, audit, _Clock())
     affiliations = SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, _Clock())
     facts = RecordFact(people, records, audit, _Clock())
+    observations = RecordObservation(people, records, audit, _Clock())
+    traits = RecordTrait(people, records, audit, _Clock())
+    relationships = SetRelationship(people, SqliteRelationshipStore(conn), audit, _Clock())
     return (
         people,
         ImportContent(people, ImportExtractorRouter(), staging, _Clock()),
         ReviewImport(staging),
-        CommitImport(people, staging, remember, interactions, affiliations, facts),
+        CommitImport(
+            people,
+            staging,
+            remember,
+            interactions,
+            affiliations,
+            facts,
+            observations,
+            traits,
+            relationships,
+        ),
     )
 
 

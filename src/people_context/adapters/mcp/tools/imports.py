@@ -52,10 +52,17 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_WRITE)
     async def stage_candidates(source: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
-        """Validate and atomically stage agent-extracted people, interactions, affiliations, and facts.
+        """Stage agent-extracted people, interactions, affiliations, facts, observations, traits, and relationships.
 
-        Use this after extracting concise candidates from user-provided notes or other agent-visible text.
-        References are batch-local; raw notes and source text must not be included in candidate fields.
+        Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
+        agent-visible text. Distinguish what was stated (`fact`), what happened in this source (`observation`),
+        and what you inferred (`trait`, which requires an explicit `confidence` and a concise `evidence_note`).
+        Relationship candidates carry batch-local `from_ref`/`to_ref` and are ordinary-disclosure only: omit a
+        relationship the user would consider sensitive or restricted rather than staging it.
+
+        References are batch-local; raw notes and source text must not be included in candidate fields. A
+        request using `observation`, `trait`, or `relationship` is bounded to 500 candidates, a 128-character
+        `source`, 1 MiB of candidate JSON, and 8 KiB per string.
         """
         try:
             return deps.stage_candidates.execute(source, candidates).model_dump(mode="json")

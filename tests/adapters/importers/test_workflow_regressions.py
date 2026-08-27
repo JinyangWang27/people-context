@@ -13,11 +13,19 @@ from people_context.adapters.sqlite import (
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
+    SqliteRelationshipStore,
     open_db,
 )
 from people_context.app.imports import CandidateStager, CommitImport
 from people_context.app.people import AmbiguousPersonError, RememberPerson
-from people_context.app.records import RecordFact, RecordInteraction, SetAffiliation
+from people_context.app.records import (
+    RecordFact,
+    RecordInteraction,
+    RecordObservation,
+    RecordTrait,
+    SetAffiliation,
+)
+from people_context.app.relationships import SetRelationship
 from people_context.domain.person import Person
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
@@ -51,6 +59,9 @@ def _commit_import(
         RecordInteraction(people, records, audit, clock),
         SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, clock),
         RecordFact(people, records, audit, clock),
+        RecordObservation(people, records, audit, clock),
+        RecordTrait(people, records, audit, clock),
+        SetRelationship(people, SqliteRelationshipStore(conn), audit, clock),
     )
     return people, staging, CandidateStager(people, staging, clock), commit
 

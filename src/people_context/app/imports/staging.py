@@ -7,11 +7,13 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
+from people_context.app.imports.identity import match_person_candidate
 from people_context.app.imports.limits import (
     STAGED_PAYLOAD_TOO_LARGE,
     TOO_MANY_CANDIDATES,
     UNBOUNDED_IMPORT_BUDGET,
     ImportBudget,
+    enforce_extraction_request_limits,
     resource_limit_error,
 )
 from people_context.app.imports.models import (
@@ -22,7 +24,11 @@ from people_context.app.imports.models import (
     ImportBatchResult,
     ImportPipelineError,
     InteractionCandidateInput,
+    ObservationCandidateInput,
     PersonCandidateInput,
+    RelationshipCandidateInput,
+    TraitCandidateInput,
+    contains_extraction_candidate,
 )
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.shared import new_id, normalize_name
@@ -50,19 +56,24 @@ class CandidateStager:
         skipped_without_id: int = 0,
         skipped_cards: list[dict[str, int | str]] | None = None,
         budget: ImportBudget | None = None,
+        strict_identity: bool = False,
     ) -> ImportBatchResult:
         """Stage one batch, refusing an over-budget one before any row is persisted.
 
         ``budget`` defaults to the released unbounded contract. When a caller supplies one the
         count is checked before the batch is validated and the payload is measured while rows
         are built, so an over-budget source stops the work instead of being discovered after it.
+
+        ``strict_identity`` selects the ambiguity-preserving matcher. It is off by default so
+        that every caller that predates M17 — the source importers and `pctx init` among them —
+        keeps staging the person rows it always staged.
         """
         limits = budget or UNBOUNDED_IMPORT_BUDGET
         self._reject_excess_candidates(len(candidates), limits)
         validated = self._validate(candidates)
         batch_id = new_id()
         references = self._references(validated)
-        rows = self._rows(batch_id, source, validated, references, limits)
+        rows = self._rows(batch_id, source, validated, references, limits, strict_identity)
         self._staging.stage_batch(rows)
         return ImportBatchResult(
             batch_id=batch_id,
@@ -88,6 +99,7 @@ class CandidateStager:
         candidates: list[CandidateInput],
         references: dict[str, str],
         limits: ImportBudget,
+        strict_identity: bool,
     ) -> list[StagedImportRow]:
         """Build every staged row, stopping the moment the persisted payload exceeds budget.
 
@@ -99,7 +111,7 @@ class CandidateStager:
         payload_bytes = 0
         rows: list[StagedImportRow] = []
         for candidate in candidates:
-            row = self._row(batch_id, source, candidate, references)
+            row = self._row(batch_id, source, candidate, references, strict_identity)
             payload_bytes += source_bytes + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
             if limits.max_staged_payload_bytes is not None and payload_bytes > limits.max_staged_payload_bytes:
                 raise resource_limit_error(
@@ -150,6 +162,17 @@ class CandidateStager:
                         }
                     ],
                 )
+            if isinstance(candidate, RelationshipCandidateInput) and candidate.from_ref == candidate.to_ref:
+                raise _invalid_candidates(
+                    "relationship endpoints must be different people",
+                    details=[
+                        {
+                            "type": "value_error",
+                            "loc": [index, "to_ref"],
+                            "msg": "from_ref and to_ref must name different batch-local people",
+                        }
+                    ],
+                )
         return validated
 
     @staticmethod
@@ -162,19 +185,32 @@ class CandidateStager:
         source: str,
         candidate: CandidateInput,
         references: dict[str, str],
+        strict_identity: bool,
     ) -> StagedImportRow:
         staged = candidate.model_dump(mode="json", exclude_none=True)
         if isinstance(candidate, PersonCandidateInput):
             row_id = references[candidate.ref]
             staged.pop("ref")
             handles = [alias.value for alias in candidate.aliases if alias.kind == AliasKind.HANDLE]
-            matched = self._match_existing([*handles, candidate.name])
-            staged["matched_person_id"] = matched.id if matched else None
+            tokens = [*handles, candidate.name]
+            if strict_identity:
+                match = match_person_candidate(self._people, tokens)
+                staged["matched_person_id"] = match.person_id
+                staged["match_disposition"] = match.disposition.value
+                staged["match_count"] = match.match_count
+            else:
+                matched = self._match_existing(tokens)
+                staged["matched_person_id"] = matched.id if matched else None
         else:
             row_id = new_id()
             if isinstance(candidate, InteractionCandidateInput):
                 staged.pop("participant_refs")
                 staged["participant_candidate_ids"] = [references[ref] for ref in candidate.participant_refs]
+            elif isinstance(candidate, RelationshipCandidateInput):
+                staged.pop("from_ref")
+                staged.pop("to_ref")
+                staged["from_candidate_id"] = references[candidate.from_ref]
+                staged["to_candidate_id"] = references[candidate.to_ref]
             else:
                 staged.pop("person_ref")
                 staged["person_candidate_id"] = references[candidate.person_ref]
@@ -202,16 +238,35 @@ class StageCandidates:
         self._stager = stager
 
     def execute(self, source: str, candidates: list[dict[str, Any]]) -> ImportBatchResult:
+        """Stage one agent request, bounding it first when it opts into an M17 candidate type.
+
+        The extraction bounds and the ambiguity-preserving matcher are selected by the same
+        condition, and it is read off the raw request rather than the validated one: a request
+        that names an M17 type is an extraction request whether or not it turns out to be
+        well-formed, and both decisions must be made before anything is parsed or staged.
+        """
         normalized_source = source.strip()
         if not normalized_source:
             raise _invalid_candidates("source must not be blank")
-        return self._stager.execute(f"import/agent:{normalized_source}", candidates)
+        extraction = contains_extraction_candidate(candidates)
+        if extraction:
+            enforce_extraction_request_limits(normalized_source, candidates)
+        return self._stager.execute(
+            f"import/agent:{normalized_source}",
+            candidates,
+            strict_identity=extraction,
+        )
 
 
 def _candidate_refs(candidate: CandidateInput) -> list[str]:
     if isinstance(candidate, InteractionCandidateInput):
         return candidate.participant_refs
-    if isinstance(candidate, (AffiliationCandidateInput, FactCandidateInput)):
+    if isinstance(candidate, RelationshipCandidateInput):
+        return [candidate.from_ref, candidate.to_ref]
+    if isinstance(
+        candidate,
+        (AffiliationCandidateInput, FactCandidateInput, ObservationCandidateInput, TraitCandidateInput),
+    ):
         return [candidate.person_ref]
     return []
 

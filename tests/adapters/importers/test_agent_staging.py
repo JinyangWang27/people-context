@@ -12,6 +12,8 @@ from people_context.adapters.sqlite import (
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
+    SqliteRelationshipStore,
+    SqliteRelationshipVocabularyStore,
     open_db,
 )
 from people_context.app.imports import (
@@ -25,11 +27,27 @@ from people_context.app.people import RememberPerson
 from people_context.app.records import (
     RecordFact,
     RecordInteraction,
+    RecordObservation,
+    RecordTrait,
     SetAffiliation,
 )
+from people_context.app.relationships import SetRelationship
 from people_context.domain.person import Alias, AliasKind, Person
 
 _NOW = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+
+#: The staging vocabulary a rejection reports back, in declaration order. It grows by addition
+#: only: the four released types keep their positions so an older client reading the list still
+#: finds what it shipped against.
+_ALLOWED_CANDIDATE_TYPES = [
+    "person",
+    "interaction",
+    "affiliation",
+    "fact",
+    "observation",
+    "trait",
+    "relationship",
+]
 
 
 class _Clock:
@@ -47,11 +65,30 @@ def _use_cases(conn):
     interactions = RecordInteraction(people, records, audit, _Clock())
     affiliations = SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, _Clock())
     facts = RecordFact(people, records, audit, _Clock())
+    observations = RecordObservation(people, records, audit, _Clock())
+    traits = RecordTrait(people, records, audit, _Clock())
+    relationships = SetRelationship(
+        people,
+        SqliteRelationshipStore(conn),
+        audit,
+        _Clock(),
+        SqliteRelationshipVocabularyStore(conn),
+    )
     return (
         people,
         stager,
         ReviewImport(staging_store),
-        CommitImport(people, staging_store, remember, interactions, affiliations, facts),
+        CommitImport(
+            people,
+            staging_store,
+            remember,
+            interactions,
+            affiliations,
+            facts,
+            observations,
+            traits,
+            relationships,
+        ),
     )
 
 
@@ -224,8 +261,8 @@ def test_invalid_agent_batches_are_strict_and_atomic(candidates: list[dict]) -> 
 
     error = exc_info.value
     assert error.code == "invalid_candidates"
-    assert error.details["allowed_types"] == ["person", "interaction", "affiliation", "fact"]
-    assert set(error.details["valid_fields"]) == {"person", "interaction", "affiliation", "fact"}
+    assert error.details["allowed_types"] == _ALLOWED_CANDIDATE_TYPES
+    assert set(error.details["valid_fields"]) == set(_ALLOWED_CANDIDATE_TYPES)
     assert error.details["details"]
     assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
 
