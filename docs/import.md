@@ -188,7 +188,8 @@ accept and ignore them, and no source takes untyped keyword arguments.
 
 ## Agent candidate staging
 
-`stage_candidates` uses extra-forbidden Pydantic discriminated models for person, interaction, affiliation,
+`stage_candidates` — and `pctx import stage-candidates`, which is the same use case behind a bounded process
+boundary — uses extra-forbidden Pydantic discriminated models for person, interaction, affiliation,
 fact, observation, trait, and relationship. Person `ref` values must be unique in the batch; all
 `participant_refs`/`person_ref`/`from_ref`/`to_ref` values must resolve to one of them. Validation, matching,
 staging-id assignment, reference rewriting, and the SQLite batch insert happen before or within one atomic
@@ -268,11 +269,11 @@ retroactively narrow anybody's working import.
 
 ## The `pctx import` command group
 
-The same lifecycle is available to a person at the terminal through `pctx import stage`, `pctx import review`,
-and `pctx import commit` (see [docs/cli.md](cli.md#import)). The CLI is a thin adapter over the use cases above:
-it adds no source type, no candidate type, and no matching or commit policy of its own, and it keeps the review
-gate as three separate commands because a staged batch is durable review state that may be inspected in a later
-invocation.
+The same lifecycle is available to a person at the terminal through `pctx import stage`,
+`pctx import stage-candidates`, `pctx import review`, and `pctx import commit` (see
+[docs/cli.md](cli.md#import)). The CLI is a thin adapter over the use cases above: it adds no source type, no
+candidate type, and no matching or commit policy of its own, and it keeps the review gate as separate commands
+because a staged batch is durable review state that may be inspected in a later invocation.
 
 What the CLI does add is a process boundary that is bounded from its first release, because a path typed at a
 terminal is a much weaker promise than a file an MCP caller already chose:
@@ -291,6 +292,25 @@ terminal is a much weaker promise than a file an MCP caller already chose:
   same 100,000-row/64 MiB envelope before any full-batch read or mutation. An additive index on
   `import_staging(batch_id, created_at, id)` makes that measurement a seek rather than a scan of every batch ever
   staged, so the work does not grow with unrelated staging history.
+
+`pctx import stage-candidates` is the fourth command and the one that has no file format behind it: its
+`--input` is candidate JSON an agent produced by reading unstructured material — a meeting transcript, a call
+note — in its own environment, or `-` for the same JSON on stdin. It reaches `StageCandidates` unchanged, so
+what it stages is exactly what an MCP `stage_candidates` call stages. What it adds is its own read boundary: at most **1 MiB** of candidate JSON is read at all, spent while reading
+rather than after buffering, and the request then carries at most 500 candidates, a 128-character `--source`,
+and 8 KiB per string.
+
+Those last three numbers are the M17 extraction limits, applied here **unconditionally** rather than only to a
+request that opts into an M17 candidate type. The MCP condition exists to protect a contract that shipped before
+the limits did; this command shipped with them, so it has no such history to preserve, and a path or a pipe
+typed at a terminal is a much weaker promise about size than an array an in-process caller already built.
+
+The same reasoning governs identity, so `StageCandidates` takes an explicit `strict_identity` flag that this
+boundary sets for every batch. Ambiguity is a property of the identities a batch names, not of the candidate
+vocabulary it happens to use: a person plus a fact, distilled from a transcript, can name someone two existing
+people could equally be. Committing that under the pre-M17 matcher would attach the fact to whichever of them a
+single token happened to hit. The flag defaults to off, so an MCP request still selects the matcher by candidate
+type exactly as it did before.
 
 Because staging applies the same measurement and the same ceilings, the CLI never creates a batch that its own
 review or commit then refuses. The batches it can refuse are the ones an older uncapped `stage_candidates` call
@@ -342,6 +362,11 @@ header; profile URLs, notes, and other free text are never staged.
 
 Outlook contacts CSV and WhatsApp chat-export imports arrived in **M14**, bringing the accepted source values to
 seven: `email`, `mbox`, `vcard`, `ics`, `linkedin`, `outlook`, and `whatsapp`.
+
+The agent-extracted `observation`, `trait`, and `relationship` candidate types arrived in **M17.1**, and
+`pctx import stage-candidates` — the CLI entry point for an agent that has only filesystem and process access —
+in **M17.2**. Neither adds a source format: unstructured material is read and distilled by the agent, and only
+the distillation is staged.
 
 Email extraction uses
 only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;

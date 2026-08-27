@@ -83,7 +83,7 @@ The staged flow has three distinct steps. Keep them distinct:
 
 ### Use only the strict candidate vocabulary
 
-`stage_candidates` accepts exactly four candidate `type`s. Nothing else validates:
+`stage_candidates` accepts exactly seven candidate `type`s. Nothing else validates:
 
 - `person` — `ref`, `name`, and strict `aliases`; optional `summary`, `message_id`,
   `date`.
@@ -93,11 +93,69 @@ The staged flow has three distinct steps. Keep them distinct:
   `confidence`.
 - `fact` — `person_ref`, `predicate`, `value`; optional `valid_from`, `valid_to`,
   `confidence`, `sensitivity`.
+- `observation` — `person_ref`, `text`; optional `observed_at`, `sensitivity`. Omit
+  `observed_at` when the source establishes no event time rather than guessing one.
+- `trait` — `person_ref`, `category`, `value`, and — unlike a direct `record_trait`
+  call — a **required** `evidence_note` and `confidence`.
+- `relationship` — `from_ref`, `to_ref`, `relationship_type`; optional `confidence`.
 
-References are **batch-local**: an `interaction`, `affiliation`, or `fact` points at a
-`person` candidate's `ref` within the same `stage_candidates` call. Extract concise,
-structured field values only. Never copy raw conversation, transcript, note, or email
-body text into any candidate field; summarise it into the strict fields above.
+References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
+`trait`, or `relationship` points at a `person` candidate's `ref` within the same
+`stage_candidates` call. Extract concise, structured field values only. Never copy raw
+conversation, transcript, note, or email body text into any candidate field; summarise
+it into the strict fields above.
+
+### Extracting from a transcript, note, or other unstructured source
+
+When the user points you at a meeting transcript, a call note, an interview, or a
+conversation log, you are the semantic layer. people-context does not read prose: it
+never parses, stores, or sees the source. You read it with your own file capability,
+distil it, and stage only the distillation.
+
+Keep three levels of knowledge distinct instead of flattening everything into facts:
+
+- **fact** — something explicitly and durably asserted. "I joined Acme in January."
+- **observation** — something that happened in *this* source. "Asked repeatedly for
+  quantitative evidence before agreeing."
+- **trait** — a generalisation you *inferred* from evidence. "Responds better to
+  proposals supported by quantitative evidence."
+
+The further a claim sits from what was explicitly said, the more it must carry. A trait
+therefore requires an explicit `confidence` and a concise `evidence_note` — a short
+derivation in your own words ("derived from the 24 Aug planning meeting"), never a
+quoted passage. One observed behaviour is not a high-confidence personality claim.
+
+Relationships stated in the source ("Sarah manages Bob", "Alice is John's sister") are
+`relationship` candidates rather than facts, so they reach the graph with its normal
+vocabulary and inverse semantics. Stage a `person` candidate for **every** participant
+you reference, even one who almost certainly already exists; matching will find them,
+and an ambiguous identity is reported as ambiguous rather than silently becoming a new
+duplicate person.
+
+Do not extract:
+
+- speculative health, political, religious, sexual, or demographic inference;
+- psychiatric or personality diagnosis;
+- gossip promoted to fact, or a passing mood promoted to temperament;
+- relationships you are guessing at rather than reading;
+- **any sensitive or restricted relationship**, even when the source states it plainly.
+  Relationship candidates are ordinary-disclosure only, because the graph has no
+  sensitivity field to enforce anything stronger. Leave such an edge out entirely
+  rather than downgrading it. Sensitive information that *is* enforceable still belongs
+  in a `fact`, `observation`, `trait`, or `interaction` at the right sensitivity.
+
+Then stage, and stop. The user reviews and commits, exactly as below.
+
+If you are working without MCP access and have only a shell, the same use case is a
+command:
+
+```bash
+pctx import stage-candidates --source "2026-08-27 planning sync" --input candidates.json
+pctx import stage-candidates --source "2026-08-27 planning sync" --input -   # or stdin
+```
+
+Its `--input` is candidate JSON — never the transcript. It stages only; `pctx import
+review BATCH_ID` and `pctx import commit BATCH_ID --accept ID` are the same gate.
 
 ## Disclosure gates are expected, not obstacles
 

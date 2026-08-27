@@ -28,6 +28,7 @@ from people_context.adapters.sqlite import (
 )
 from people_context.app.imports import (
     CLI_IMPORT_BUDGET,
+    MAX_CLI_CANDIDATE_JSON_BYTES,
     MAX_CLI_SOURCE_BYTES,
     MAX_CLI_STAGED_CANDIDATES,
     MAX_CLI_STAGED_PAYLOAD_BYTES,
@@ -68,6 +69,7 @@ def test_the_cli_budget_is_the_documented_ceiling() -> None:
     assert MAX_CLI_SOURCE_BYTES == 64 * 1024 * 1024
     assert MAX_CLI_STAGED_CANDIDATES == 100_000
     assert MAX_CLI_STAGED_PAYLOAD_BYTES == 64 * 1024 * 1024
+    assert MAX_CLI_CANDIDATE_JSON_BYTES == 1024 * 1024
     assert ImportBudget(
         max_source_bytes=MAX_CLI_SOURCE_BYTES,
         max_candidates=MAX_CLI_STAGED_CANDIDATES,

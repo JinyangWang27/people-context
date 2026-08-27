@@ -273,10 +273,13 @@ strict reviewable people-context candidates while keeping semantic reasoning out
 - explicit safeguards against raw-transcript persistence, unsupported sensitive inference, evidence-free traits,
   and an embedded LLM/model dependency.
 
-**Status:** In progress. M17.1 delivered the three additive strict candidate types, their commit support
+**Status:** Delivered. M17.1 delivered the three additive strict candidate types, their commit support
 through the existing `RecordObservation`/`RecordTrait`/`SetRelationship` use cases, the conditional resource
-bounds on any MCP request that uses one, and ambiguity-preserving person matching for those batches. The
-`pctx import stage-candidates` surface and the packaged extraction workflow remain for M17.2.
+bounds on any MCP request that uses one, and ambiguity-preserving person matching for those batches. M17.2
+added `pctx import stage-candidates` over that same use case — candidate JSON from a file or stdin, bounded
+unconditionally by a 1 MiB read budget plus the M17 count, source-label, and string limits — and extended the
+packaged usage skill with the fact/observation/trait extraction workflow. Semantic reasoning stays with the
+calling agent: no source text is read, parsed, or stored by People Context.
 
 ## M18 — Provenance, idempotency & evidence
 
