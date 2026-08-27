@@ -337,7 +337,7 @@ Check the matching box only in the PR that delivers it.
     elevated relationship storage/disclosure, retroactive global caps or ambiguity-semantics changes on genuinely
     legacy-only MCP staging.
 
-- [ ] **M17.2 — Add bounded agent candidate CLI and unstructured-source workflow**
+- [x] **M17.2 — Add bounded agent candidate CLI and unstructured-source workflow**
   - **Scope:** Add `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` and extend the packaged
     agent skill for transcript/note extraction.
   - **Acceptance:** input is candidate JSON, never raw transcript; reject >1 MiB input, >500 candidates, >8 KiB

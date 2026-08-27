@@ -46,6 +46,7 @@ what encryption does and does not protect.
 | `export-vcard [--output FILE] [--include-sensitive] [--version V]` | Export active people as deterministic vCards. |
 | `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
 | `import stage SOURCE PATH [--self-sender TEXT] [--json]` | Extract one local export into a reviewable staging batch; nothing is committed. |
+| `import stage-candidates --source LABEL --input PATH\|- [--json]` | Stage strict agent-extracted candidate JSON — not source text — into a reviewable staging batch. |
 | `import review BATCH_ID [--json]` | Show every staged candidate in one batch with its canonical id and status. |
 | `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
 
@@ -89,15 +90,16 @@ candidate vocabulary — including the `observation`, `trait`, and `relationship
 candidate in such a batch reports its match state in words: an ambiguous identity says how many existing people
 it could be, rather than looking like a new one because no id was attached.
 
-All three commands support `--json`, which writes exactly one versioned document to stdout and keeps every
+All four commands support `--json`, which writes exactly one versioned document to stdout and keeps every
 diagnostic on stderr — `people-context-import-batch`, `people-context-import-review`, and
 `people-context-import-commit`, all documented in [compatibility.md](compatibility.md#machine-readable-json).
 Review output and those documents carry distilled personal data from your export; inspect them before
 redirecting or sharing them.
 
 Exit statuses: `2` for an unsupported source or a malformed selection, `0` for a successful stage, review, or
-commit, and non-zero for an unreadable path, an extraction failure, a source with no candidates, an unknown batch,
-a candidate outside the batch, or a source or batch outside the size ceilings below. Diagnostics never echo
+commit, and non-zero for an unreadable path, an extraction failure, malformed or invalid candidate JSON, a source
+with no candidates, an unknown batch, a candidate outside the batch, or a source, request, or batch outside the
+size ceilings below. Diagnostics never echo
 message bodies, chat text, or other discarded source content.
 
 This CLI boundary is bounded: `import stage` refuses a source file over 64 MiB, more than 100,000 staged
@@ -106,7 +108,40 @@ after. `import review` and both `commit` forms measure an existing batch in SQLi
 100,000-row/64 MiB envelope before reading it, so a batch staged through the older uncapped MCP path is refused
 safely instead of being materialized. Those ceilings are limits of this command only — the MCP
 `import_content`, `review_import`, and `commit_import` tools and `pctx init` keep their released behaviour. An
-export larger than a ceiling can be split and staged in parts.
+export larger than a ceiling can be split and staged in parts. `import stage-candidates` carries its own, much
+smaller envelope, described below.
+
+### Agent-extracted candidates
+
+```bash
+uv run pctx import stage-candidates --source "2026-08-27 planning sync" --input candidates.json
+cat candidates.json | uv run pctx import stage-candidates --source "2026-08-27 planning sync" --input -
+```
+
+`stage-candidates` is the entry point for knowledge that has no structured export behind it — a meeting
+transcript, a call note, an interview, a conversation log. An agent reads that material in its own
+environment, distils it into the strict candidate vocabulary, and hands over the result; `--input` takes
+**candidate JSON, never the source text**, and `-` reads it from stdin. This is what lets a transcript's
+relationships, observations, and inferred traits reach the graph without People Context parsing prose,
+running a model, or storing a word of the source.
+
+`--source` is a free-form label naming what the candidates were distilled from, not one of the seven
+`import stage` source formats. It is stored on every staged row and every later provenance record, which is
+why it is bounded as tightly as it is.
+
+The command stages only. `import review` and `import commit` are the same gate they are for a file import,
+and a batch staged here is indistinguishable from one an agent staged over MCP — including the
+ambiguity-preserving person matching described above.
+
+This surface is bounded from its first release, and unconditionally: at most **1 MiB** of candidate JSON is
+read at all, spent on the read itself rather than on a parsed result, and the request may then carry at most
+**500 candidates**, a **128-character** `--source`, and **8 KiB** for any single string. The equivalent MCP
+caps apply only to a request that opts into an `observation`, `trait`, or `relationship` candidate, because
+that contract shipped before them and narrowing it would break working imports. This command has no such
+history: a path or a pipe typed at a terminal is a much weaker promise about size than an array an in-process
+caller already built. A refusal names the limit and never any part of the rejected payload. A batch that
+fails validation reports the candidate index and field that failed — the locations an agent needs to correct
+its own JSON — with the rejected values still withheld.
 
 ## Packaged demo
 

@@ -6,32 +6,45 @@ cases the MCP tools already drive; what is added here is the process boundary ar
 finite read budget for the file, a storage-level size check before any batch is materialized,
 deterministic human output, and the versioned JSON documents.
 
-The lifecycle stays three commands on purpose. A staged batch is durable review state, and the
-review gate is the product invariant that makes import safe — not a step to collapse into a
-one-shot command.
+The lifecycle keeps its review gate on purpose. A staged batch is durable review state, and that
+gate is the product invariant that makes import safe — not a step to collapse into a one-shot
+command. `stage-candidates` is a second way *in*, never a second way through: it is the entry
+point for an agent that has read unstructured material — a meeting transcript, a call note — in
+its own environment and distilled it into strict candidates. What it accepts is candidate JSON,
+never the source text, which is what keeps prose interpretation outside this process entirely.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
+from people_context.adapters.importers.bounded_source import SOURCE_TOO_LARGE, read_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.imports import (
+    CANDIDATE_INPUT_TOO_LARGE,
     CLI_IMPORT_BUDGET,
+    INVALID_CANDIDATE_JSON,
+    MAX_CLI_CANDIDATE_JSON_BYTES,
     CommitImportResult,
     ImportBatchResult,
     ImportPipelineError,
     ImportReviewResult,
+    enforce_extraction_request_limits,
     import_batch_document,
     import_commit_document,
     import_review_document,
     render_import_json,
 )
 from people_context.cli.rendering import print_import_review
+
+#: Validation failures reported for one refused candidate batch before the listing is truncated.
+_MAX_REPORTED_VALIDATION_ERRORS = 10
 
 REVIEW_DISCLOSURE_WARNING = (
     "Review output and the import JSON documents carry distilled personal data from your "
@@ -61,6 +74,34 @@ def cmd_import_stage(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
         return _refuse(f"import staging failed: {exc}")
     except OSError as exc:
         return _refuse(f"cannot read source file: {exc}")
+    if args.json:
+        print(render_import_json(import_batch_document(batch)), end="")
+        return 0
+    _print_batch(batch)
+    return 0
+
+
+def cmd_import_stage_candidates(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Stage one agent's strict candidate JSON into a reviewable batch.
+
+    The input is what an agent distilled, not what it read. That distinction is the whole design:
+    the transcript stays in the agent's environment, and this command never sees it. Everything
+    the batch then goes through — matching, the review gate, commit — is the same application
+    path `stage_candidates` drives over MCP.
+    """
+    candidates = _read_candidate_json(args.input)
+    if candidates is None:
+        return 1
+    # `StageCandidates` normalizes the label it stores, so the CLI bounds the same normalized
+    # form rather than a padded one that would measure differently here than it does in staging.
+    source = args.source.strip()
+    try:
+        enforce_extraction_request_limits(source, candidates)
+        batch = runtime.use_cases.stage_candidates.execute(source, candidates)
+    except ImportPipelineError as exc:
+        _refuse(f"candidate staging failed: {exc}")
+        _print_validation_details(exc)
+        return 1
     if args.json:
         print(render_import_json(import_batch_document(batch)), end="")
         return 0
@@ -159,6 +200,79 @@ def _preflight(runtime: ApplicationRuntime, batch_id: str) -> int | None:
     return None
 
 
+def _print_validation_details(exc: ImportPipelineError) -> None:
+    """Say which candidate and field failed, without repeating what was in it.
+
+    An agent that must correct its own candidate JSON needs the location of the failure, and
+    `StageCandidates` builds these entries with the rejected input deliberately excluded, so the
+    locations and messages can be shown while the payload still never reaches a diagnostic. The
+    listing is truncated because one malformed batch can fail in as many places as it has
+    candidates.
+    """
+    details = exc.details.get("details")
+    if not isinstance(details, list):
+        return
+    for entry in details[:_MAX_REPORTED_VALIDATION_ERRORS]:
+        if not isinstance(entry, dict):
+            continue
+        location = ".".join(str(part) for part in entry.get("loc", ())) or "(candidate)"
+        print(f"  {location}: {entry.get('msg', 'invalid')}", file=sys.stderr)
+    remaining = len(details) - _MAX_REPORTED_VALIDATION_ERRORS
+    if remaining > 0:
+        print(f"  ... and {remaining} more", file=sys.stderr)
+
+
+def _read_candidate_json(raw_input: str) -> list[Any] | None:
+    """Return the candidate array this invocation was given, or None once it has refused it.
+
+    The byte ceiling is spent on the read itself rather than on the parsed result, because the
+    point is to never hold an oversized input in the first place — a stdin pipe has no size to
+    stat, and a file could grow between the stat and the read. Both paths therefore ask for one
+    byte more than the budget and refuse when they get it.
+
+    Refusals name only the limit or the shape. Malformed candidate JSON is untrusted extraction
+    output, and a `JSONDecodeError` message quotes the document it failed on, so the decoder's
+    own text is deliberately dropped.
+    """
+    if raw_input == "-":
+        raw = sys.stdin.buffer.read(MAX_CLI_CANDIDATE_JSON_BYTES + 1)
+        if len(raw) > MAX_CLI_CANDIDATE_JSON_BYTES:
+            return _refuse_candidates(_input_too_large())
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return _refuse_candidates("candidate input is not valid UTF-8")
+    else:
+        path = _readable_source(raw_input)
+        if path is None:
+            return None
+        try:
+            text = read_source_text(str(path), encoding="utf-8", max_bytes=MAX_CLI_CANDIDATE_JSON_BYTES)
+        except ImportExtractionError as exc:
+            return _refuse_candidates(_input_too_large() if exc.code == SOURCE_TOO_LARGE else str(exc))
+        except OSError as exc:
+            return _refuse_candidates(f"cannot read candidate input: {exc}")
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        return _refuse_candidates(f"{INVALID_CANDIDATE_JSON}: candidate input is not valid JSON")
+    if not isinstance(parsed, list) or not all(isinstance(entry, dict) for entry in parsed):
+        return _refuse_candidates(
+            f"{INVALID_CANDIDATE_JSON}: candidate input must be a JSON array of candidate objects"
+        )
+    return parsed
+
+
+def _input_too_large() -> str:
+    return f"{CANDIDATE_INPUT_TOO_LARGE}: candidate input is at most {MAX_CLI_CANDIDATE_JSON_BYTES} bytes"
+
+
+def _refuse_candidates(message: str) -> list[Any] | None:
+    """Refuse the way every other command here does, for a caller that returns a value."""
+    _refuse(message)
+    return None
+
+
 def _readable_source(raw_path: str) -> Path | None:
     """Return the source path only when it is a readable file, refusing safely otherwise."""
     path = Path(raw_path).expanduser().absolute()
@@ -199,6 +313,7 @@ def _refuse(message: str) -> int:
 
 _IMPORT_SUBCOMMANDS: dict[str, Callable[[ApplicationRuntime, argparse.Namespace], int]] = {
     "stage": cmd_import_stage,
+    "stage-candidates": cmd_import_stage_candidates,
     "review": cmd_import_review,
     "commit": cmd_import_commit,
 }

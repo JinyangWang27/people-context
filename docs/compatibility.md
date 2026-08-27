@@ -87,7 +87,7 @@ repurposed, and new fields are additive.
 | Person index | `people-context-person-index` | `1` | `pctx list --json` |
 | Data-quality findings | `people-context-doctor` | `1` | `pctx doctor --json` |
 | Aggregate inventory | `people-context-stats` | `1` | `pctx stats --json` |
-| Import staging batch | `people-context-import-batch` | `1` | `pctx import stage --json` |
+| Import staging batch | `people-context-import-batch` | `1` | `pctx import stage --json`, `pctx import stage-candidates --json` |
 | Import review | `people-context-import-review` | `1` | `pctx import review --json` |
 | Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `1` | `pctx sync push` |

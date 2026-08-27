@@ -17,6 +17,12 @@ that request carries an agent's distillation of unstructured material rather tha
 a structured export. They are conditional on purpose: a request built only from the four
 released candidate types keeps the accepted shape it shipped with, so adding candidate types
 does not retroactively narrow anybody's working import.
+
+`pctx import stage-candidates` applies those same extraction numbers *unconditionally*, plus a
+bound on the bytes of candidate JSON it will read at all. A conditional cap is the right answer
+for a released MCP contract that predates it; it is the wrong answer for a brand-new process
+boundary, where a path or a pipe typed at a terminal is a much weaker promise about size than an
+array an in-process caller already built.
 """
 
 from __future__ import annotations
@@ -52,6 +58,11 @@ MAX_EXTRACTION_PAYLOAD_BYTES: Final = 1024 * 1024
 #: candidate types, so a mixed batch cannot smuggle a transcript through a `fact` value.
 MAX_EXTRACTION_STRING_BYTES: Final = 8 * 1024
 
+#: UTF-8 bytes of candidate JSON one `pctx import stage-candidates` invocation may read. This is
+#: a read bound rather than a request bound: it is spent before the input is decoded or parsed, so
+#: an oversized file or a stdin stream that never ends is refused instead of being buffered whole.
+MAX_CLI_CANDIDATE_JSON_BYTES: Final = 1024 * 1024
+
 SOURCE_TOO_LARGE = "source_too_large"
 TOO_MANY_CANDIDATES = "too_many_candidates"
 STAGED_PAYLOAD_TOO_LARGE = "staged_payload_too_large"
@@ -59,6 +70,8 @@ BATCH_TOO_LARGE_FOR_CLI = "batch_too_large_for_cli"
 SOURCE_LABEL_TOO_LONG = "source_label_too_long"
 CANDIDATE_PAYLOAD_TOO_LARGE = "candidate_payload_too_large"
 CANDIDATE_STRING_TOO_LONG = "candidate_string_too_long"
+CANDIDATE_INPUT_TOO_LARGE = "candidate_input_too_large"
+INVALID_CANDIDATE_JSON = "invalid_candidate_json"
 
 
 @dataclass(frozen=True)

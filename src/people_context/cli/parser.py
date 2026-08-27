@@ -282,6 +282,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the versioned staging JSON document instead of the human summary.",
     )
 
+    import_stage_candidates = import_subcommands.add_parser(
+        "stage-candidates",
+        help="Stage strict agent-extracted candidate JSON into a reviewable batch; nothing is committed.",
+    )
+    import_stage_candidates.add_argument(
+        "--source",
+        required=True,
+        help="Short label naming what the candidates were distilled from, such as a meeting or note.",
+    )
+    import_stage_candidates.add_argument(
+        "--input",
+        required=True,
+        metavar="PATH",
+        help="Candidate JSON file to read, or `-` to read candidate JSON from stdin.",
+    )
+    import_stage_candidates.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned staging JSON document instead of the human summary.",
+    )
+
     import_review = import_subcommands.add_parser("review", help="Show every staged candidate in one batch.")
     import_review.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
     import_review.add_argument(

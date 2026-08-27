@@ -1,6 +1,6 @@
 # M17 — Agent-assisted knowledge extraction
 
-Status: In progress — M17.1 delivered, M17.2 planned. See
+Status: Delivered — M17.1 and M17.2. See
 [docs/roadmap.md](../roadmap.md#m17--agent-assisted-knowledge-extraction).
 
 ## Motivation
@@ -237,7 +237,8 @@ batch. A genuinely legacy-only MCP request retains its released accepted shape.
 bounding the M17 source label is a privacy as well as a resource invariant: a caller must not be able to use `source`
 as a transcript-sized side channel.
 
-The later M17 CLI surface adds these additional process-boundary limits:
+The M17.2 CLI surface adds these additional process-boundary limits, and applies the request limits above
+unconditionally rather than only to a request that opts into an M17 candidate type:
 
 - at most **1 MiB** of UTF-8 JSON input before decoding/parsing;
 - at most **500 candidates** per CLI staging request;

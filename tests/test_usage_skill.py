@@ -76,12 +76,51 @@ class TestUsageSkill:
     def test_teaches_strict_candidate_vocabulary(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
 
-        for candidate_type in ("`person`", "`interaction`", "`affiliation`", "`fact`"):
+        for candidate_type in (
+            "`person`",
+            "`interaction`",
+            "`affiliation`",
+            "`fact`",
+            "`observation`",
+            "`trait`",
+            "`relationship`",
+        ):
             assert candidate_type in body
         # Concise fields only; raw source text is never copied into candidates.
         lowered = body.lower()
         assert "raw" in lowered and "transcript" in lowered
         assert "batch-local" in lowered
+
+    def test_teaches_the_fact_observation_trait_distinction_for_unstructured_sources(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        # The three epistemic levels are the point of the extraction workflow: an agent that
+        # flattens them writes a personality claim where the source only showed one behaviour.
+        assert "transcript" in lowered
+        assert "observation" in lowered and "trait" in lowered
+        assert "evidence_note" in body and "confidence" in body
+        # An inferred trait must never default to certainty or arrive without a derivation.
+        assert "required" in lowered
+        # Evidence notes are derivations, not copied passages.
+        assert "never a quoted passage" in lowered or "never a transcript excerpt" in lowered
+
+    def test_omits_elevated_relationships_rather_than_downgrading_them(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        # The durable relationship model has no sensitivity field, so an elevated edge stays
+        # out of the graph entirely instead of entering it stripped of its protection.
+        assert "ordinary-disclosure only" in lowered
+        assert "sensitive or restricted relationship" in lowered
+        assert "rather than downgrading it" in lowered
+
+    def test_names_the_cli_staging_path_for_agents_without_mcp(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "pctx import stage-candidates" in body
+        # What the command takes is the distillation, never the source it came from.
+        assert "candidate json — never the transcript" in lowered
 
     def test_treats_staging_as_proposal_and_never_auto_commits(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
