@@ -264,6 +264,17 @@ person candidate, so ambiguity cannot be mistaken for a new identity. A request 
 released types keeps its pre-M17 accepted shape and matching behavior; the `review_import` and `commit_import`
 envelopes are unchanged. See [docs/import.md](import.md#agent-extracted-knowledge-m17).
 
+M18.1 adds optional receipt metadata to both staging tools' responses and, on `stage_candidates`, to its
+arguments: `source_kind`, `content_digest`, `extraction_fingerprint`, `label`, and `external_source_id`. All are
+optional and omitting every one keeps the released behaviour exactly. `source_kind` is a bounded machine category
+— never a person or a title — and recording one creates an import receipt; a caller-computed `content_digest`
+additionally gives that receipt a duplicate claim, so re-staging the same artifact reports the existing batch
+instead of copying it. Without a digest the session deliberately asserts no claim, because People Context never
+hashes text it was not given. The staging response gains the additive `source_session_id` and `duplicate` fields;
+`import_content` gains the same two on a path-based import. A duplicate is reported, not raised: the response
+describes the batch that already exists. See
+[docs/import.md](import.md#source-receipts-and-repeat-imports-m181).
+
 `set_relationship` accepts free-form type input. M7 snake-case normalizes it, resolves synonyms, canonicalizes
 inverse direction, orders symmetric endpoints, and updates an existing active canonical edge instead of
 inserting a duplicate. Unknown types remain legal. Staged `relationship` candidates commit through this same

@@ -32,6 +32,8 @@ adapters.
 | `reminders` | Follow-up, occasion, and standing communication-note reminders. |
 | `user_preferences` | JSON values such as communication philosophy and semantic model metadata. |
 | `import_staging` | Reviewable distilled import candidates; raw source content is not stored. |
+| `import_source_sessions` | Bounded import receipts: machine source kind, content digest, extraction fingerprint, and status — never source content or paths. |
+| `import_candidate_mappings` | What each committed candidate durably produced, and the canonical record-to-source association. |
 | `audit_log` | Privacy-oriented accountability record for every mutation. |
 
 ### Persons and soft deletion

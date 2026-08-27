@@ -304,7 +304,13 @@ store, and ground inferred traits in durable evidence records.
 M18 deliberately does not perform semantic record deduplication, automatic confidence recomputation, source
 rollback, document storage, or incremental peer replication of incomplete staging state.
 
-**Status:** Planned.
+**Status:** In progress. M18.1 delivered the durable source-receipt and candidate-commit-mapping relations,
+stable-snapshot extraction for byte-capable and path-only sources, the concurrency-safe
+`(source_kind, content_digest, extraction_fingerprint)` claim with explicit `--force` reprocessing and the
+`source_previously_redacted` refusal, one logical transaction id across every effect of an import commit, merge
+and hard-forget integration for mappings, retained staging, and caller-authored receipt metadata, and bootstrap
+bundle version 2 carrying that state while restore keeps accepting version 1. Source inspection (M18.2) and
+trait evidence (M18.3) remain planned.
 
 ## M19 — Knowledge consolidation & temporal views
 

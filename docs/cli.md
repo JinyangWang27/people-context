@@ -45,8 +45,8 @@ what encryption does and does not protect.
 | `export-vault --output DIR [--include-sensitive]` | Generate a deterministic Obsidian relationship vault. |
 | `export-vcard [--output FILE] [--include-sensitive] [--version V]` | Export active people as deterministic vCards. |
 | `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
-| `import stage SOURCE PATH [--self-sender TEXT] [--json]` | Extract one local export into a reviewable staging batch; nothing is committed. |
-| `import stage-candidates --source LABEL --input PATH\|- [--json]` | Stage strict agent-extracted candidate JSON — not source text — into a reviewable staging batch. |
+| `import stage SOURCE PATH [--self-sender TEXT] [--label TEXT] [--external-source-id TEXT] [--force] [--json]` | Extract one local export into a reviewable staging batch; nothing is committed. |
+| `import stage-candidates --source LABEL --input PATH\|- [--source-kind KIND] [--content-digest SHA256] [--extraction-fingerprint SHA256] [--label TEXT] [--external-source-id TEXT] [--json]` | Stage strict agent-extracted candidate JSON — not source text — into a reviewable staging batch. |
 | `import review BATCH_ID [--json]` | Show every staged candidate in one batch with its canonical id and status. |
 | `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
 
@@ -98,9 +98,37 @@ redirecting or sharing them.
 
 Exit statuses: `2` for an unsupported source or a malformed selection, `0` for a successful stage, review, or
 commit, and non-zero for an unreadable path, an extraction failure, malformed or invalid candidate JSON, a source
-with no candidates, an unknown batch, a candidate outside the batch, or a source, request, or batch outside the
-size ceilings below. Diagnostics never echo
+with no candidates, an unknown batch, a candidate outside the batch, a previously forgotten source, or a source,
+request, or batch outside the size ceilings below. Diagnostics never echo
 message bodies, chat text, or other discarded source content.
+
+### Repeat imports
+
+```bash
+uv run pctx import stage linkedin ~/exports/Connections.csv --label "Work connections"
+uv run pctx import stage linkedin ~/exports/Connections.csv            # reports the existing batch
+uv run pctx import stage linkedin ~/exports/Connections.csv --force    # stages it again on purpose
+```
+
+`import stage` records a durable receipt for the source it read — its machine kind, a SHA-256 of the exact bytes
+parsed, a fingerprint of the extraction configuration, and the optional `--label` and `--external-source-id` you
+supply — and reports the receipt's id alongside the batch. Staging the same source again does not create a second
+copy of everything in it: the command reports the batch that already exists and stages nothing, and the `--json`
+document says so through additive `source_session_id` and `duplicate` fields.
+
+`--force` is the explicit way to say a repeat is intentional. It creates a separate staging batch for the same
+content and never weakens the duplicate rule for later invocations. What counts as the same source is content
+plus extraction configuration, so a copy of one file at another path is a duplicate, while the same chat export
+staged under a different `--self-sender` is not. See [import.md](import.md#source-receipts-and-repeat-imports-m181).
+
+If a source's records were all hard-forgotten, its receipt is reduced to a non-restageable claim and staging it
+again by default refuses with `source_previously_redacted`: exit status non-zero, stdout empty even under
+`--json` because there is no batch to describe, and a bounded diagnostic on stderr pointing at `--force`. Nothing
+is created or changed by that refusal, and it names none of the forgotten source's former metadata.
+
+`--label` and `--external-source-id` are opaque caller metadata for your own inspection. Any later hard forget
+that touches this source clears both, because wording like `Interview with Alice` cannot safely be attributed to
+one of the people a source mentioned.
 
 This CLI boundary is bounded: `import stage` refuses a source file over 64 MiB, more than 100,000 staged
 candidates, or more than 64 MiB of persisted reviewable staging payload, and it stops before staging rather than
@@ -128,6 +156,14 @@ running a model, or storing a word of the source.
 `--source` is a free-form label naming what the candidates were distilled from, not one of the seven
 `import stage` source formats. It is stored on every staged row and every later provenance record, which is
 why it is bounded as tightly as it is.
+
+`--source-kind` optionally records an import receipt for the batch, exactly as `import stage` does for a file. It
+is a machine category such as `meeting_transcript` — at most 128 characters of letters, digits, `.`, `_`, `-`, or
+`/` — and never a person or a title; human wording belongs in `--label`. If you can compute a SHA-256 over the
+source artifact yourself, `--content-digest` gives that receipt a duplicate claim so a repeat of the same material
+is reported rather than staged twice. Without one the workflow is still valid but makes no idempotency promise:
+People Context never hashes text it was not given. `--extraction-fingerprint` is optional and should be omitted
+unless you have explicit, bounded semantics for it.
 
 The command stages only. `import review` and `import commit` are the same gate they are for a file import.
 

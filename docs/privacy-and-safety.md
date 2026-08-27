@@ -129,6 +129,31 @@ Two distinct deletion mechanisms exist, and they are not interchangeable:
 
 See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-level detail.
 
+## Import receipts and what forget does to them
+
+An import records a receipt saying *that* material was processed: a bounded machine kind, the SHA-256 of the
+bytes that were parsed, a fingerprint of the extraction configuration, and optional caller-authored wording. It
+holds no source body, no excerpt, no attachment, no absolute path, and none of the raw self-identity values the
+fingerprint was derived from. A digest is an idempotency key and not an anonymization: the file it identifies is
+still someone's mailbox or chat export, and a receipt is sensitive local state like anything else here.
+
+Hard forget therefore reaches import state too, in the same transaction as the records themselves:
+
+- provenance mappings to entities it actually erases are deleted, and their audit and covered changelog history
+  is redacted, so a mapping cannot become a replayable pointer to a record that is gone;
+- retained staging rows structurally linked to those entities are deleted recursively — through canonical typed
+  references, never by scanning candidate text for a name — so an incomplete batch cannot keep the erased name
+  reviewable after the record itself is gone. Their counts appear in the forget preview and result;
+- the caller-authored label and external source id of **every** source the forget touched are cleared, along with
+  the history containing them, even when unrelated mappings on that source survive. Wording like
+  `Interview with Alice` cannot safely be attributed to one of the people a source mentioned, so it is not kept
+  on the guess that it referred to someone else;
+- a source left with no live record and nothing reviewable is reduced to a non-identifying claim key with a
+  terminal `redacted` status, or deleted outright when it never had a claim to keep.
+
+Re-staging a reduced source by default refuses with `source_previously_redacted` rather than fabricating a batch,
+and that refusal names none of the former metadata — not the label, not the batch, not when any of it happened.
+
 ## Optional at-rest encryption
 
 By default the database is plain SQLite, readable by any process running as the user and by anyone who can read
@@ -390,6 +415,11 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   without minting new audit or changelog entries. Forgotten-record redaction therefore stays redacted, and
   nothing is reconstructed or enriched.
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
+- Since M18.1 the bundle is **version 2** and carries import receipts, every durable candidate commit mapping,
+  and the staging rows of batches that are still reviewable. Restore still accepts version 1, validating each
+  document against its own strict shape, and the two new tables join the baseline-empty rule for both versions —
+  freshness is a property of the destination, not of the document. A terminal `redacted` receipt travels as the
+  minimal claim it was reduced to; a bundle that tried to reattach cleared caller metadata to one is refused.
 
 ## Writes and destructive operations are annotated for client-side gating
 
