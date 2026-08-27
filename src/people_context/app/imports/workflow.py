@@ -99,7 +99,8 @@ class ImportContent:
         processing session and never weakens the default uniqueness rule.
 
         Inline ``content`` has no source artifact to identify, so it stays untracked and behaves
-        exactly as it did before source receipts existed.
+        exactly as it did before source receipts existed. Supplying both remains the refusal it
+        always was: source tracking narrows what a path import promises, never what one accepts.
         """
         limits = budget or UNBOUNDED_IMPORT_BUDGET
         source = f"import/{source_type}"
@@ -178,8 +179,15 @@ class ImportContent:
         describe bytes other than the ones these candidates were parsed from. Nothing durable is
         written here: an extraction that could not be pinned to a stable snapshot raises before
         any receipt, batch, or candidate row exists.
+
+        A request carrying inline content *and* a path is not a path import, so it never reaches
+        the stable route. The released contract is exactly one input, and the source adapters own
+        that rule and its `invalid_source` refusal; sending an ill-formed request down the ordinary
+        route lets the layer that owns the rule refuse it with the message it always did. Choosing
+        the path here instead would silently discard the caller's content and then persist a claim
+        for a file they may not have meant to import at all.
         """
-        if path is None or self._stable_extractor is None:
+        if path is None or content is not None or self._stable_extractor is None:
             extracted = self._extractor.extract(
                 source_type,
                 content=content,

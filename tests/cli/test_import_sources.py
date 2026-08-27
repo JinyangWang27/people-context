@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 
 from people_context import cli
+from people_context.adapters.importers.errors import ImportExtractionError
+from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite import open_db
 from people_context.app.imports import SOURCE_PREVIOUSLY_REDACTED, source_previously_redacted_error
 from people_context.cli.parser import build_parser
@@ -549,3 +551,27 @@ def test_a_fully_forgotten_forced_session_is_deleted_rather_than_retained(
     assert sessions[0]["status"] == "redacted"
     assert sessions[0]["claim_key"] is not None
     assert _rows(db_file, "import_candidate_mappings") == []
+
+
+def test_inline_content_alongside_a_path_is_refused_rather_than_silently_dropped(
+    tmp_path: Path,
+) -> None:
+    """The released contract is exactly one input, and source tracking must not have relaxed it.
+
+    Treating such a request as a path import would stage the file, discard the caller's content
+    without a word, and persist a claim for an artifact they may not have meant to import.
+    """
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    runtime = build_runtime(db_file)
+
+    with pytest.raises(ImportExtractionError) as excinfo:
+        runtime.use_cases.import_content.execute(
+            "linkedin",
+            content=source.read_text(encoding="utf-8"),
+            path=str(source),
+        )
+
+    assert excinfo.value.code == "invalid_source"
+    assert _rows(db_file, "import_source_sessions") == []
+    assert _rows(db_file, "import_staging") == []
