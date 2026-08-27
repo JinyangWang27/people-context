@@ -33,6 +33,7 @@ from people_context.app.imports.models import (
 )
 from people_context.app.imports.sources import (
     build_source_claim,
+    require_source_kind_for,
     source_previously_redacted_error,
 )
 from people_context.domain.person import AliasKind, Person
@@ -184,6 +185,7 @@ class CandidateStager:
                 "candidate_count": outcome.candidate_count,
                 "source_session_id": session.id,
                 "duplicate": True,
+                "reviewable": outcome.reviewable,
             }
         )
 
@@ -384,6 +386,16 @@ class StageCandidates:
         extraction = contains_extraction_candidate(candidates)
         if extraction:
             enforce_extraction_request_limits(normalized_source, candidates)
+        if source_kind is None:
+            # Receipt metadata without a kind to record it would be accepted and then dropped,
+            # so a caller who asked for duplicate protection by supplying a digest would be told
+            # the staging succeeded while quietly not getting it.
+            require_source_kind_for(
+                content_digest=content_digest,
+                extraction_fingerprint=extraction_fingerprint,
+                label=label,
+                external_source_id=external_source_id,
+            )
         claim = (
             None
             if source_kind is None

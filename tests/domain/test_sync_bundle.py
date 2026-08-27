@@ -326,6 +326,118 @@ def test_two_sessions_claiming_one_source_are_rejected() -> None:
     assert any("duplicate source claim" in detail for detail in excinfo.value.details)
 
 
+def test_a_mapping_filed_under_another_batch_is_rejected() -> None:
+    """Commit reads mappings by the receipt's batch, so a mismatched one would be invisible."""
+    payload = _document()
+    _imports(payload)["candidate_mappings"][0]["batch_id"] = "01J00000000000000000BATCH9"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("does not own" in detail for detail in excinfo.value.details)
+
+
+@pytest.mark.parametrize("kind", ["Interview with Alice", "", "a" * 129, "réunion"])
+def test_a_restored_source_kind_is_held_to_the_machine_alphabet(kind: str) -> None:
+    """Forget keeps the kind on a terminal receipt, so it must never hold a name."""
+    payload = _document()
+    _imports(payload)["source_sessions"][0]["source_kind"] = kind
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("label", "x" * 257),
+        ("external_source_id", "x" * 257),
+        ("content_digest", "NOT-A-DIGEST"),
+        ("extraction_fingerprint", "A" * 64),
+        ("extraction_contract_revision", "rev 1"),
+    ],
+)
+def test_restored_receipt_metadata_is_held_to_its_declared_bounds(field: str, value: str) -> None:
+    payload = _document()
+    _imports(payload)["source_sessions"][0][field] = value
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+@pytest.mark.parametrize("status", ["reviewed", "", "PENDING"])
+def test_a_staging_row_with_an_unknown_status_is_rejected(status: str) -> None:
+    payload = _document()
+    _imports(payload)["staging"][0]["status"] = status
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_staged_candidate_of_an_unknown_type_is_rejected() -> None:
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"] = {"type": "invoice", "body": "raw source text"}
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_staged_candidate_missing_a_reference_commit_indexes_is_rejected() -> None:
+    """`{"type": "fact"}` would restore fine and then raise KeyError mid-commit."""
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"] = {"type": "fact", "predicate": "city", "value": "Berlin"}
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_staged_candidate_referencing_a_row_outside_its_batch_is_rejected() -> None:
+    payload = _document()
+    imports = _imports(payload)
+    imports["staging"].append(
+        {
+            "id": "01J0000000000000000STAGE02",
+            "batch_id": _BATCH_ID,
+            "source": "import/linkedin",
+            "candidate": {
+                "type": "fact",
+                "person_candidate_id": "01J000000000000000MISSING1",
+                "predicate": "city",
+                "value": "Berlin",
+            },
+            "status": "pending",
+            "created_at": "2026-07-03T00:00:00Z",
+        }
+    )
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("outside its batch" in detail for detail in excinfo.value.details)
+
+
+def test_a_staged_candidate_referencing_a_row_in_its_batch_is_accepted() -> None:
+    payload = _document()
+    imports = _imports(payload)
+    imports["staging"].append(
+        {
+            "id": "01J0000000000000000STAGE02",
+            "batch_id": _BATCH_ID,
+            "source": "import/linkedin",
+            "candidate": {
+                "type": "fact",
+                "person_candidate_id": "01J0000000000000000STAGE01",
+                "predicate": "city",
+                "value": "Berlin",
+            },
+            "status": "pending",
+            "created_at": "2026-07-03T00:00:00Z",
+        }
+    )
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
 def _strict_models() -> list[type[BaseModel]]:
     return [
         value

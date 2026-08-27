@@ -32,10 +32,10 @@ IMPORT_COMMIT_VERSION: Final = 1
 class ImportBatchDocument(BaseModel):
     """What one `pctx import stage` invocation staged, and what it independently skipped.
 
-    `source_session_id` and `duplicate` are additive M18 fields: they carry the durable receipt
-    this batch belongs to and whether the canonical claim for the source was already owned. A
-    reader that predates them sees the same batch fields it always did, so the document stays at
-    version 1 under the additive rule.
+    `source_session_id`, `duplicate`, and `reviewable` are additive M18 fields: they carry the
+    durable receipt this batch belongs to, whether the canonical claim for the source was already
+    owned, and whether the batch still has staged rows to review. A reader that predates them sees
+    the same batch fields it always did, so the document stays at version 1 under the additive rule.
     """
 
     format: str = IMPORT_BATCH_FORMAT
@@ -47,6 +47,7 @@ class ImportBatchDocument(BaseModel):
     skipped_cards: list[dict[str, int | str]] = Field(default_factory=list)
     source_session_id: str | None = None
     duplicate: bool = False
+    reviewable: bool = True
 
 
 class ImportReviewCandidateEntry(BaseModel):
@@ -88,6 +89,7 @@ def import_batch_document(result: ImportBatchResult) -> ImportBatchDocument:
         skipped_cards=list(result.skipped_cards),
         source_session_id=result.source_session_id,
         duplicate=result.duplicate,
+        reviewable=result.reviewable,
     )
 
 

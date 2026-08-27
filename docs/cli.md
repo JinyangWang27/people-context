@@ -114,7 +114,10 @@ uv run pctx import stage linkedin ~/exports/Connections.csv --force    # stages 
 parsed, a fingerprint of the extraction configuration, and the optional `--label` and `--external-source-id` you
 supply — and reports the receipt's id alongside the batch. Staging the same source again does not create a second
 copy of everything in it: the command reports the batch that already exists and stages nothing, and the `--json`
-document says so through additive `source_session_id` and `duplicate` fields.
+document says so through additive `source_session_id`, `duplicate`, and `reviewable` fields. When that batch is
+already fully committed — its reviewable rows cleaned up, or restored from a bundle that carries only its durable
+outcomes — the report counts the committed candidates and says there is nothing left to review, rather than
+pointing at a batch `import review` can no longer find.
 
 `--force` is the explicit way to say a repeat is intentional. It creates a separate staging batch for the same
 content and never weakens the duplicate rule for later invocations. What counts as the same source is content
@@ -159,7 +162,8 @@ why it is bounded as tightly as it is.
 
 `--source-kind` optionally records an import receipt for the batch, exactly as `import stage` does for a file. It
 is a machine category such as `meeting_transcript` — at most 128 characters of letters, digits, `.`, `_`, `-`, or
-`/` — and never a person or a title; human wording belongs in `--label`. If you can compute a SHA-256 over the
+`/` — and never a person or a title; human wording belongs in `--label`. It is required whenever any other
+receipt flag is given: a digest supplied without it is refused rather than silently ignored. If you can compute a SHA-256 over the
 source artifact yourself, `--content-digest` gives that receipt a duplicate claim so a repeat of the same material
 is reported rather than staged twice. Without one the workflow is still valid but makes no idempotency promise:
 People Context never hashes text it was not given. `--extraction-fingerprint` is optional and should be omitted

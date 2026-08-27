@@ -260,6 +260,48 @@ def test_a_refused_source_kind_stages_nothing(harness: _Harness) -> None:
     assert harness.conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
 
 
+def test_receipt_metadata_without_a_source_kind_is_refused(harness: _Harness) -> None:
+    """A digest supplied without a kind was a request for duplicate protection, not decoration."""
+    with pytest.raises(ImportPipelineError) as excinfo:
+        harness.stage_candidates.execute(
+            "weekly-sync",
+            [_person("alice", "Alice Ahmed", "alice@example.com")],
+            content_digest=_DIGEST,
+        )
+
+    assert excinfo.value.code == "invalid_source_metadata"
+    assert excinfo.value.details["field"] == "source_kind"
+    assert harness.sessions() == []
+    assert harness.conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["content_digest", "extraction_fingerprint", "label", "external_source_id"],
+)
+def test_every_receipt_field_requires_a_source_kind(harness: _Harness, field: str) -> None:
+    value = _DIGEST if field.endswith(("digest", "fingerprint")) else "Weekly sync"
+
+    with pytest.raises(ImportPipelineError) as excinfo:
+        harness.stage_candidates.execute(
+            "weekly-sync",
+            [_person("alice", "Alice Ahmed", "alice@example.com")],
+            **{field: value},
+        )
+
+    assert excinfo.value.details["field"] == "source_kind"
+
+
+def test_staging_without_any_receipt_metadata_stays_the_released_contract(harness: _Harness) -> None:
+    batch = harness.stage_candidates.execute(
+        "weekly-sync",
+        [_person("alice", "Alice Ahmed", "alice@example.com")],
+    )
+
+    assert batch.source_session_id is None
+    assert batch.reviewable is True
+
+
 # -- commit mappings ---------------------------------------------------
 
 

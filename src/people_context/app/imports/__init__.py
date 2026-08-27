@@ -73,15 +73,17 @@ from people_context.app.imports.models import (
 from people_context.app.imports.preflight import PreflightImportBatch
 from people_context.app.imports.sources import (
     INVALID_SOURCE_METADATA,
-    MAX_CONTRACT_REVISION_CHARS,
-    MAX_SOURCE_KIND_CHARS,
-    MAX_SOURCE_LABEL_CHARS,
     SOURCE_PREVIOUSLY_REDACTED,
     build_source_claim,
     source_previously_redacted_error,
 )
 from people_context.app.imports.staging import CandidateStager, StageCandidates
 from people_context.app.imports.workflow import CommitImport, ImportContent, ReviewImport
+from people_context.domain.import_provenance import (
+    MAX_CONTRACT_REVISION_CHARS,
+    MAX_SOURCE_KIND_CHARS,
+    MAX_SOURCE_LABEL_CHARS,
+)
 
 __all__ = [
     "BATCH_TOO_LARGE_FOR_CLI",

@@ -270,8 +270,9 @@ optional and omitting every one keeps the released behaviour exactly. `source_ki
 — never a person or a title — and recording one creates an import receipt; a caller-computed `content_digest`
 additionally gives that receipt a duplicate claim, so re-staging the same artifact reports the existing batch
 instead of copying it. Without a digest the session deliberately asserts no claim, because People Context never
-hashes text it was not given. The staging response gains the additive `source_session_id` and `duplicate` fields;
-`import_content` gains the same two on a path-based import. A duplicate is reported, not raised: the response
+hashes text it was not given. Supplying any of the other four without `source_kind` is refused rather than
+silently ignored. The staging response gains the additive `source_session_id`, `duplicate`, and `reviewable`
+fields; `import_content` gains the same three on a path-based import. A duplicate is reported, not raised: the response
 describes the batch that already exists. See
 [docs/import.md](import.md#source-receipts-and-repeat-imports-m181).
 

@@ -13,29 +13,17 @@ scrubs every caller-authored field around it. A kind that carried a name would s
 
 from __future__ import annotations
 
-import re
+from collections.abc import Callable
 from typing import Final
 
 from people_context.app.imports.models import ImportPipelineError
+from people_context.domain.import_provenance import (
+    check_contract_revision,
+    check_hex64,
+    check_opaque_label,
+    check_source_kind,
+)
 from people_context.ports.sources import SourceSessionClaim
-
-#: Characters a bounded machine source category may carry.
-MAX_SOURCE_KIND_CHARS: Final = 128
-
-#: Characters an optional caller-authored label or external source id may carry.
-MAX_SOURCE_LABEL_CHARS: Final = 256
-
-#: Characters an optional extraction-contract revision identifier may carry.
-MAX_CONTRACT_REVISION_CHARS: Final = 64
-
-#: A conservative machine-identifier alphabet: a source class or adapter name, not a title.
-_SOURCE_KIND_RE: Final = re.compile(r"\A[A-Za-z0-9._/-]+\Z")
-
-#: The same idea one character narrower — a revision identifier names no hierarchy.
-_CONTRACT_REVISION_RE: Final = re.compile(r"\A[A-Za-z0-9._-]+\Z")
-
-#: A SHA-256 digest or extraction fingerprint, in exactly one accepted spelling.
-_HEX64_RE: Final = re.compile(r"\A[0-9a-f]{64}\Z")
 
 #: Stable refusal for receipt metadata outside its declared bounds or alphabet.
 INVALID_SOURCE_METADATA: Final = "invalid_source_metadata"
@@ -57,65 +45,56 @@ def _reject(field: str, reason: str) -> ImportPipelineError:
     )
 
 
+def _checked(field: str, value: str | None, rule: Callable[[str], str]) -> str | None:
+    """Apply one domain rule to an optional field, refusing by field name rather than by value.
+
+    A field left blank is absent rather than invalid: it carries no claim and no wording, so
+    there is nothing to refuse.
+    """
+    if value is None or not value.strip():
+        return None
+    try:
+        return rule(value)
+    except ValueError as exc:
+        raise _reject(field, str(exc)) from None
+
+
 def validate_source_kind(value: str) -> str:
     """Return the accepted machine category, or refuse it."""
-    kind = value.strip()
-    if not kind:
-        raise _reject("source_kind", "must not be blank")
-    if len(kind) > MAX_SOURCE_KIND_CHARS:
-        raise _reject("source_kind", f"is at most {MAX_SOURCE_KIND_CHARS} characters")
-    if not _SOURCE_KIND_RE.match(kind):
-        raise _reject(
-            "source_kind",
-            "must be a machine category of ASCII letters, digits, '.', '_', '-', or '/'",
-        )
-    return kind
+    try:
+        return check_source_kind(value)
+    except ValueError as exc:
+        raise _reject("source_kind", str(exc)) from None
 
 
 def validate_opaque_label(field: str, value: str | None) -> str | None:
-    """Return one bounded opaque caller string, or refuse it.
-
-    Opaque means opaque: an external source id is not case-folded or otherwise rewritten, because
-    normalizing an identifier whose semantics belong to another system would silently change what
-    it refers to. Only surrounding whitespace, which no identifier depends on, is removed.
-    """
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    if len(text) > MAX_SOURCE_LABEL_CHARS:
-        raise _reject(field, f"is at most {MAX_SOURCE_LABEL_CHARS} characters")
-    return text
+    """Return one bounded opaque caller string, or refuse it."""
+    return _checked(field, value, check_opaque_label)
 
 
 def validate_digest(field: str, value: str | None) -> str | None:
     """Return one accepted SHA-256 digest or extraction fingerprint, or refuse it."""
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    if not _HEX64_RE.match(text):
-        raise _reject(field, "must be exactly 64 lowercase hexadecimal characters")
-    return text
+    return _checked(field, value, check_hex64)
 
 
 def validate_contract_revision(value: str | None) -> str | None:
     """Return one accepted extraction-contract revision identifier, or refuse it."""
-    if value is None:
-        return None
-    text = value.strip()
-    if not text:
-        return None
-    if len(text) > MAX_CONTRACT_REVISION_CHARS:
-        raise _reject("extraction_contract_revision", f"is at most {MAX_CONTRACT_REVISION_CHARS} characters")
-    if not _CONTRACT_REVISION_RE.match(text):
+    return _checked("extraction_contract_revision", value, check_contract_revision)
+
+
+def require_source_kind_for(**metadata: str | None) -> None:
+    """Refuse receipt metadata offered without the kind that would record it.
+
+    A caller who passes a digest is asking for duplicate protection. Silently dropping it because
+    no `source_kind` accompanied it would report an untracked staging run as an ordinary success
+    while quietly withholding the very guarantee the argument requested.
+    """
+    supplied = sorted(name for name, value in metadata.items() if value is not None and value.strip())
+    if supplied:
         raise _reject(
-            "extraction_contract_revision",
-            "must be ASCII letters, digits, '.', '_', or '-'",
+            "source_kind",
+            f"is required when supplying receipt metadata ({', '.join(supplied)})",
         )
-    return text
 
 
 def build_source_claim(

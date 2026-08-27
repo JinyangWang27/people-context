@@ -32,6 +32,11 @@ class ImportBatchResult(BaseModel):
     ``duplicate`` says the canonical claim for this source was already owned, so nothing new was
     staged and every field above describes the batch that already exists. It is not an error:
     re-reading the same export is the ordinary way someone discovers they already imported it.
+
+    ``reviewable`` says the batch still has staged rows to review and commit. A fully committed
+    batch may have had them cleaned up, or may have arrived from a bundle that carries only its
+    durable outcomes, and pointing someone at review for one of those would name a batch review
+    can no longer find. It is ``True`` for every freshly staged batch.
     """
 
     batch_id: str
@@ -41,6 +46,7 @@ class ImportBatchResult(BaseModel):
     skipped_cards: list[dict[str, int | str]] = Field(default_factory=list)
     source_session_id: str | None = None
     duplicate: bool = False
+    reviewable: bool = True
 
 
 class ImportReviewRow(BaseModel):

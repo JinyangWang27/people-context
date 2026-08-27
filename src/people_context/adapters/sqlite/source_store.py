@@ -60,10 +60,12 @@ class SqliteImportSourceStore:
             if claim_key is not None:
                 owner = self._session_by_claim(claim_key)
                 if owner is not None:
+                    staged = self._staged_count(owner.batch_id)
                     return SourceClaimOutcome(
                         session=owner,
                         created=False,
-                        candidate_count=self._batch_count(owner.batch_id),
+                        candidate_count=staged or self._mapped_count(owner.batch_id),
+                        reviewable=staged > 0,
                     )
             session = SourceSessionRow(
                 id=session_id,
@@ -160,12 +162,20 @@ class SqliteImportSourceStore:
         ).fetchone()
         return _session(row) if row is not None else None
 
-    def _batch_count(self, batch_id: str | None) -> int:
-        if batch_id is None:
+    def _staged_count(self, batch_id: str | None) -> int:
+        """Count the batch's reviewable rows, which a completed batch may no longer have."""
+        return self._count("import_staging", "batch_id", batch_id)
+
+    def _mapped_count(self, batch_id: str | None) -> int:
+        """Count what the batch durably produced, which outlives its staging rows."""
+        return self._count("import_candidate_mappings", "batch_id", batch_id)
+
+    def _count(self, table: str, column: str, value: str | None) -> int:
+        if value is None:
             return 0
         row = self._conn.execute(
-            "SELECT COUNT(*) AS total FROM import_staging WHERE batch_id = ?",
-            (batch_id,),
+            f"SELECT COUNT(*) AS total FROM {table} WHERE {column} = ?",  # noqa: S608 - fixed constants
+            (value,),
         ).fetchone()
         return int(row["total"])
 

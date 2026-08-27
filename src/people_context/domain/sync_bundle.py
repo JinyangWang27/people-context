@@ -20,6 +20,16 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
+from people_context.domain.import_provenance import (
+    REQUIRED_STAGED_REFERENCES,
+    STAGED_CANDIDATE_TYPES,
+    check_contract_revision,
+    check_hex64,
+    check_opaque_label,
+    check_source_kind,
+    identifier_list,
+    staged_candidate_references,
+)
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
 from people_context.domain.reminder import ReminderKind, ReminderStatus
@@ -67,6 +77,11 @@ def _require_utc(value: datetime) -> datetime:
 SQLITE_MAX_INTEGER = 2**63 - 1
 
 Identifier = Annotated[str, AfterValidator(_require_non_blank)]
+#: Receipt metadata is held to the rules the staging boundary applies, so a restored receipt is
+#: exactly as bounded as one this installation created.
+BundleOpaqueLabel = Annotated[str, AfterValidator(check_opaque_label)]
+BundleDigest = Annotated[str, AfterValidator(check_hex64)]
+BundleContractRevision = Annotated[str, AfterValidator(check_contract_revision)]
 UtcDatetime = Annotated[datetime, BeforeValidator(_reject_numeric_timestamp), AfterValidator(_require_utc)]
 StoredInteger = Annotated[int, Field(ge=0, le=SQLITE_MAX_INTEGER)]
 #: One below the storable maximum: restore advances the local clock past the bundle watermark
@@ -342,6 +357,13 @@ class BundleChangelogEntry(StrictBundleModel):
 class BundleSourceSession(StrictBundleModel):
     """One bundled import receipt.
 
+    Every field is held to the same rule the staging boundary applies, because a receipt restored
+    from a bundle is as durable as one this installation created. ``source_kind`` matters most:
+    hard forget deliberately keeps it on a terminal redacted row while scrubbing the caller-authored
+    fields around it, and that is only safe while the kind cannot hold a person or a title. A
+    restore that accepted ``Interview with Alice`` as a kind would let erased wording survive — and
+    be re-exported — through the one field erasure is designed to preserve.
+
     A terminal ``redacted`` receipt is what remains after hard forget emptied a source: it must
     still be claim-backed, and it must carry none of the caller-authored or optional inspection
     state that erasure cleared. Enforcing that here means a hand-edited bundle cannot smuggle a
@@ -349,12 +371,12 @@ class BundleSourceSession(StrictBundleModel):
     """
 
     id: Identifier
-    source_kind: str
-    label: str | None
-    external_source_id: str | None
-    content_digest: str | None
-    extraction_fingerprint: str | None
-    extraction_contract_revision: str | None
+    source_kind: Annotated[str, AfterValidator(check_source_kind)]
+    label: BundleOpaqueLabel | None
+    external_source_id: BundleOpaqueLabel | None
+    content_digest: BundleDigest | None
+    extraction_fingerprint: BundleDigest | None
+    extraction_contract_revision: BundleContractRevision | None
     claim_key: str | None
     batch_id: str | None
     status: Literal["staged", "partially_committed", "committed", "redacted"]
@@ -404,14 +426,32 @@ class BundleCandidateMapping(StrictBundleModel):
 
 
 class BundleStagingRow(StrictBundleModel):
-    """One bundled reviewable staging row, carried only for an incomplete batch."""
+    """One bundled reviewable staging row, carried only for an incomplete batch.
+
+    The candidate is checked for the shape commit actually depends on: a known type, and the
+    canonical reference fields that type requires. Commit indexes those directly, so a row missing
+    one is not a candidate commit can decline — it is a row that would raise mid-transaction, on a
+    batch a restore had already accepted.
+    """
 
     id: Identifier
     batch_id: Identifier
     source: str
     candidate: dict[str, Any]
-    status: str
+    status: Literal["pending", "committed"]
     created_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def _check_candidate(self) -> BundleStagingRow:
+        candidate_type = self.candidate.get("type")
+        if candidate_type not in STAGED_CANDIDATE_TYPES:
+            raise ValueError("staged candidate must carry a supported type")
+        for field_name in REQUIRED_STAGED_REFERENCES[str(candidate_type)]:
+            value = self.candidate.get(field_name)
+            resolved = {value} if isinstance(value, str) and value else identifier_list(value)
+            if not resolved:
+                raise ValueError(f"staged {candidate_type} candidate must carry {field_name}")
+        return self
 
 
 class BundleImportState(StrictBundleModel):
@@ -584,11 +624,24 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
     }
 
     details: list[str] = []
+    staged_by_batch: dict[str, set[str]] = {}
+    for row in imports.staging:
+        staged_by_batch.setdefault(row.batch_id, set()).add(row.id)
+
     for mapping in imports.candidate_mappings:
-        if mapping.source_session_id not in sessions:
+        session = sessions.get(mapping.source_session_id)
+        if session is None:
             details.append(
                 f"candidate mapping {mapping.candidate_id} references an unbundled source session: "
                 f"{mapping.source_session_id}"
+            )
+        elif mapping.batch_id != session.batch_id:
+            # Commit reads a batch's mappings by the receipt's own batch id, so a mapping filed
+            # under a different one is invisible to it: an already-committed dependency would
+            # silently fall back to name matching instead of resolving through its outcome.
+            details.append(
+                f"candidate mapping {mapping.candidate_id} belongs to a batch its source session "
+                f"does not own: {mapping.batch_id}"
             )
         if mapping.disposition != "entity":
             continue
@@ -608,6 +661,13 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         matched = row.candidate.get("matched_person_id")
         if isinstance(matched, str) and matched not in active_people:
             details.append(f"staging row {row.id} matches a person who is not active in the bundle: {matched}")
+        # References are batch-local, so a dependant naming a candidate the bundle does not carry
+        # would restore a batch whose commit can never resolve it.
+        unknown = staged_candidate_references(row.candidate) - staged_by_batch.get(row.batch_id, set())
+        details.extend(
+            f"staging row {row.id} references a candidate outside its batch: {reference}"
+            for reference in sorted(unknown)
+        )
     return details
 
 

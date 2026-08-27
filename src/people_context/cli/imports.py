@@ -396,12 +396,20 @@ def _readable_source(raw_path: str) -> Path | None:
 
 def _print_batch(batch: ImportBatchResult) -> None:
     if batch.duplicate:
+        # A committed batch may have had its reviewable rows cleaned up, or may have arrived from
+        # a bundle carrying only its durable outcomes. Pointing at review for one of those would
+        # name a batch review can no longer find, so the count and the next step follow what the
+        # batch still holds.
+        held = "candidates" if batch.reviewable else "committed candidates"
         print(
             f"This source was already imported as batch {batch.batch_id} "
-            f"with {batch.candidate_count} candidates; nothing new was staged."
+            f"with {batch.candidate_count} {held}; nothing new was staged."
         )
         _print_source_session(batch)
-        print(f"Review it with: pctx import review {batch.batch_id}")
+        if batch.reviewable:
+            print(f"Review it with: pctx import review {batch.batch_id}")
+        else:
+            print("Its candidates are already committed; there is nothing left to review.")
         print("Import it again anyway with: pctx import stage ... --force")
         return
     print(f"Staged batch {batch.batch_id} with {batch.candidate_count} candidates; nothing is committed yet.")

@@ -225,6 +225,75 @@ def test_a_refused_label_stages_nothing(tmp_path: Path, capsys: pytest.CaptureFi
     assert _rows(db_file, "import_staging") == []
 
 
+def test_a_duplicate_of_a_committed_batch_reports_what_it_still_holds(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A completed batch may have lost its staging rows — to cleanup, or to a v2 restore.
+
+    Its durable mappings are what remain, so the report counts those and stops recommending a
+    review of a batch that review can no longer find.
+    """
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    first = _stage(db_file, source, capsys)
+    _commit_all(db_file, first["batch_id"], capsys)
+    conn = open_db(db_file)
+    try:
+        conn.execute("DELETE FROM import_staging WHERE batch_id = ?", (first["batch_id"],))
+        conn.commit()
+    finally:
+        conn.close()
+
+    document = _stage(db_file, source, capsys)
+
+    assert document["duplicate"] is True
+    assert document["batch_id"] == first["batch_id"]
+    assert document["reviewable"] is False
+    assert document["candidate_count"] == len(_rows(db_file, "import_candidate_mappings"))
+    assert document["candidate_count"] > 0
+
+
+def test_the_summary_for_a_committed_duplicate_does_not_point_at_review(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    first = _stage(db_file, source, capsys)
+    _commit_all(db_file, first["batch_id"], capsys)
+    conn = open_db(db_file)
+    try:
+        conn.execute("DELETE FROM import_staging WHERE batch_id = ?", (first["batch_id"],))
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(source)]) == 0
+
+    output = capsys.readouterr().out
+    assert "already imported" in output
+    assert "already committed" in output
+    assert "pctx import review" not in output
+    assert "--force" in output
+
+
+def test_a_still_reviewable_duplicate_keeps_pointing_at_review(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    first = _stage(db_file, source, capsys)
+
+    document = _stage(db_file, source, capsys)
+
+    assert document["reviewable"] is True
+    assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(source)]) == 0
+    output = capsys.readouterr().out
+    assert f"pctx import review {first['batch_id']}" in output
+
+
 # -- the redacted-claim refusal contract -------------------------------
 
 

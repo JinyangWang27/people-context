@@ -365,12 +365,19 @@ batch that already exists:
 This source was already imported as batch 01J... with 42 candidates; nothing new was staged.
 ```
 
+A batch whose candidates are all committed may no longer have reviewable rows — cleanup can drop them, and a
+version-2 restore carries a completed source's durable mappings without them. The duplicate report follows what
+the batch still holds: it counts the committed candidates rather than reporting nought, and says there is nothing
+left to review instead of naming a batch `pctx import review` can no longer find.
+
 `pctx import stage ... --force` is the explicit escape hatch for intentional reprocessing. It keeps the same
 digest and fingerprint but asserts no canonical claim, so it creates a separate processing session and never
 weakens the default rule for later invocations.
 
 An agent staging through `stage_candidates` may supply the same metadata: a `source_kind` records a receipt, and a
-`content_digest` the agent computed over the artifact gives that receipt a claim. Without a digest the workflow
+`content_digest` the agent computed over the artifact gives that receipt a claim. `source_kind` is required for
+any of it: a digest offered without one is refused rather than accepted and dropped, because a caller supplying a
+digest is asking for duplicate protection and would otherwise be told the staging succeeded without getting it. Without a digest the workflow
 stays valid but **makes no source-level idempotency promise** — People Context never hashes text it was not given,
 and will not imply it verified bytes it never saw. An `extraction_fingerprint` stays optional there, because
 People Context did not perform that extraction; when it is absent, uniqueness uses an explicit internal

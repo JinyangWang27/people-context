@@ -7,10 +7,12 @@ import pytest
 from people_context.app.imports import ImportPipelineError
 from people_context.app.imports.sources import (
     INVALID_SOURCE_METADATA,
+    build_source_claim,
+)
+from people_context.domain.import_provenance import (
     MAX_CONTRACT_REVISION_CHARS,
     MAX_SOURCE_KIND_CHARS,
     MAX_SOURCE_LABEL_CHARS,
-    build_source_claim,
 )
 from people_context.ports.sources import (
     EXTRACTION_FINGERPRINT_ABSENT,

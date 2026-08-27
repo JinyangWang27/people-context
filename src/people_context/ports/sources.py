@@ -130,13 +130,20 @@ class SourceClaimOutcome:
     writes no durable row at all and reports the winner's session, so two concurrent processes
     can never both publish a default batch for one claim.
 
-    ``candidate_count`` counts the staged rows of the session's batch — the ones this attempt
-    wrote, or the ones the winner had already written.
+    ``candidate_count`` counts what the session's batch holds: its staged rows while they exist,
+    and otherwise its durable commit mappings. A fully committed batch may have had its staging
+    cleaned up, or arrived from a bundle that carries mappings but no reviewable rows, and
+    reporting nought candidates for it would misdescribe an import that produced records.
+
+    ``reviewable`` says whether staged rows remain, so a caller can tell "already imported, still
+    awaiting review" from "already imported and committed" instead of pointing someone at a batch
+    that review can no longer find.
     """
 
     session: SourceSessionRow
     created: bool
     candidate_count: int
+    reviewable: bool = True
 
 
 @runtime_checkable
