@@ -1,6 +1,7 @@
 # M17 — Agent-assisted knowledge extraction
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m17--agent-assisted-knowledge-extraction).
+Status: In progress — M17.1 delivered, M17.2 planned. See
+[docs/roadmap.md](../roadmap.md#m17--agent-assisted-knowledge-extraction).
 
 ## Motivation
 

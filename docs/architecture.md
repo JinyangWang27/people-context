@@ -145,7 +145,10 @@ Because `app` only depends on `ports`, adding a new way to reach the core is pur
 - **New importers (delivered pattern).** Email/mbox and vCard adapters parse source formats into the same
   strict person/interaction/affiliation/fact candidate shapes. `stage_candidates` exposes that same path to
   agents extracting concise facts from notes; format parsing differs, while validation, matching, local-ref
-  rewriting, atomic staging, review, and commit remain shared.
+  rewriting, atomic staging, review, and commit remain shared. M17 added `observation`, `trait`, and
+  `relationship` to that vocabulary the same way: new strict models and reference rewriting, with commit
+  delegating to the injected `RecordObservation`, `RecordTrait`, and `SetRelationship` use cases rather than
+  reaching for a repository — import gains candidate types, never a privileged write path.
 - **New repository backends.** Anything implementing `PersonReader`/`PersonWriter` (an in-memory fake for
   tests, a different embedded database) is a drop-in substitute for `SqlitePeopleRepository` — this is the
   Liskov Substitution Principle applied to the repository port, and it is what makes `app`-level tests

@@ -6,7 +6,7 @@ import shlex
 from pathlib import Path
 
 from people_context.app.context import PersonContextResult
-from people_context.app.imports import ImportReviewRow
+from people_context.app.imports import ImportReviewRow, MatchDisposition
 from people_context.domain.person import Person
 
 
@@ -90,14 +90,20 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         candidate = row.candidate
         candidate_type = candidate["type"]
         if candidate_type == "person":
-            detail = str(candidate["name"])
-            matched_person_id = candidate.get("matched_person_id")
-            if matched_person_id:
-                detail += f" — matches existing person {matched_person_id}"
+            detail = _import_person(candidate)
         elif candidate_type == "affiliation":
             detail = f"{candidate['role']} at {candidate['org']} — {_import_owner(candidate, person_names)}"
         elif candidate_type == "fact":
             detail = f"{candidate['predicate']}={candidate['value']} — {_import_owner(candidate, person_names)}"
+        elif candidate_type == "observation":
+            detail = f"{candidate['text']} — {_import_owner(candidate, person_names)}"
+        elif candidate_type == "trait":
+            detail = (
+                f"{candidate['category']}={candidate['value']} "
+                f"(confidence {candidate['confidence']}) — {_import_owner(candidate, person_names)}"
+            )
+        elif candidate_type == "relationship":
+            detail = _import_relationship(candidate, person_names)
         else:
             detail = _import_interaction(candidate, person_names)
         print(f"  {row.id}  {row.status}  {candidate_type}  {detail}")
@@ -136,6 +142,32 @@ def _import_interaction(candidate: dict[str, object], person_names: dict[str, st
     if remaining > 0:
         shown.append(f"+{remaining} more")
     return f"{detail} — {', '.join(shown)}"
+
+
+def _import_person(candidate: dict[str, object]) -> str:
+    """Say what staging concluded about one proposed identity, ambiguity included.
+
+    An extraction batch distinguishes "nobody matched" from "several people matched", and only
+    the first is a new identity. A reviewer who cannot see that difference cannot make the
+    decision the ambiguity is waiting on, so it is said in words rather than left implicit in a
+    missing id.
+    """
+    detail = str(candidate["name"])
+    matched_person_id = candidate.get("matched_person_id")
+    if candidate.get("match_disposition") == MatchDisposition.AMBIGUOUS.value:
+        return f"{detail} — matches {candidate.get('match_count', 'several')} existing people; identity unresolved"
+    if matched_person_id:
+        detail += f" — matches existing person {matched_person_id}"
+    return detail
+
+
+def _import_relationship(candidate: dict[str, object], person_names: dict[str, str]) -> str:
+    """Describe one proposed edge by both endpoints, since neither alone identifies it."""
+    from_id = str(candidate["from_candidate_id"])
+    to_id = str(candidate["to_candidate_id"])
+    subject = f"{person_names.get(from_id, 'unknown person')} ({from_id})"
+    obj = f"{person_names.get(to_id, 'unknown person')} ({to_id})"
+    return f"{subject} —{candidate['relationship_type']}→ {obj}"
 
 
 def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) -> str:

@@ -17,12 +17,20 @@ from people_context.adapters.sqlite import (
     SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqliteRecordStore,
+    SqliteRelationshipStore,
     open_db,
 )
 from people_context.app.imports import CommitImport, ImportContent, ImportPipelineError, ReviewImport
 from people_context.app.people import RememberPerson, RememberPersonInput
 from people_context.app.people.remember import AliasInput
-from people_context.app.records import RecordFact, RecordInteraction, SetAffiliation
+from people_context.app.records import (
+    RecordFact,
+    RecordInteraction,
+    RecordObservation,
+    RecordTrait,
+    SetAffiliation,
+)
+from people_context.app.relationships import SetRelationship
 from people_context.domain.person import AliasKind
 from people_context.ports.imports import ExtractedImport
 
@@ -94,6 +102,9 @@ def _use_cases(conn, extractor: Any | None = None):
             RecordInteraction(people, records, audit, _Clock()),
             SetAffiliation(people, SqliteOrganizationStore(conn), records, audit, _Clock()),
             RecordFact(people, records, audit, _Clock()),
+            RecordObservation(people, records, audit, _Clock()),
+            RecordTrait(people, records, audit, _Clock()),
+            SetRelationship(people, SqliteRelationshipStore(conn), audit, _Clock()),
         ),
     )
 

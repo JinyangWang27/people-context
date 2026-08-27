@@ -84,6 +84,11 @@ supplying either *is* the approval — there is no second prompt and no `--yes`.
 `import review` are the only selection interface; accepting a dependent candidate whose person was not accepted
 leaves it unresolved rather than guessing, and it can be committed later.
 
+`import review` and `import commit` also read a batch an agent staged over MCP, so they render the full
+candidate vocabulary — including the `observation`, `trait`, and `relationship` types M17 added. A person
+candidate in such a batch reports its match state in words: an ambiguous identity says how many existing people
+it could be, rather than looking like a new one because no id was attached.
+
 All three commands support `--json`, which writes exactly one versioned document to stdout and keeps every
 diagnostic on stderr — `people-context-import-batch`, `people-context-import-review`, and
 `people-context-import-commit`, all documented in [compatibility.md](compatibility.md#machine-readable-json).

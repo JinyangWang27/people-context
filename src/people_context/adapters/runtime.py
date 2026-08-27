@@ -256,6 +256,9 @@ def build_runtime(
     record_interaction = RecordInteraction(repo, records, audit, runtime_clock)
     set_affiliation = SetAffiliation(repo, organizations, records, audit, runtime_clock)
     record_fact = RecordFact(repo, records, audit, runtime_clock)
+    record_observation = RecordObservation(repo, records, audit, runtime_clock)
+    record_trait = RecordTrait(repo, records, audit, runtime_clock)
+    set_relationship = SetRelationship(repo, relationship_store, audit, runtime_clock, relationship_vocabulary)
     candidate_stager = CandidateStager(repo, import_staging, runtime_clock)
     list_reminders = ListReminders(records)
     get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
@@ -283,13 +286,7 @@ def build_runtime(
         remember_person=remember_person,
         edit_person=EditPerson(repo, repo, audit, runtime_clock),
         add_alias=AddAlias(repo, repo, audit, runtime_clock),
-        set_relationship=SetRelationship(
-            repo,
-            relationship_store,
-            audit,
-            runtime_clock,
-            relationship_vocabulary,
-        ),
+        set_relationship=set_relationship,
         add_relationship_type=AddRelationshipType(
             relationship_vocabulary,
             relationship_vocabulary,
@@ -304,8 +301,8 @@ def build_runtime(
         ),
         set_affiliation=set_affiliation,
         record_fact=record_fact,
-        record_observation=RecordObservation(repo, records, audit, runtime_clock),
-        record_trait=RecordTrait(repo, records, audit, runtime_clock),
+        record_observation=record_observation,
+        record_trait=record_trait,
         record_interaction=record_interaction,
         correct_record=CorrectRecord(records, records, audit, runtime_clock, people=repo),
         set_reminder=SetReminder(repo, records, audit, runtime_clock),
@@ -345,6 +342,9 @@ def build_runtime(
             record_interaction,
             set_affiliation,
             record_fact,
+            record_observation,
+            record_trait,
+            set_relationship,
         ),
         stage_candidates=StageCandidates(candidate_stager),
         reindex_people=ReindexPeople(repo),

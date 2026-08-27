@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from people_context.app._mutation import transactional, unit_of_work_for
+from people_context.app.imports.identity import (
+    MatchDisposition,
+    candidate_identity_tokens,
+    match_person_candidate,
+)
 from people_context.app.imports.limits import UNBOUNDED_IMPORT_BUDGET, ImportBudget
 from people_context.app.imports.models import (
     CommitImportResult,
@@ -16,11 +23,17 @@ from people_context.app.people.remember import AliasInput, RememberPerson, Remem
 from people_context.app.records.affiliations import SetAffiliation, SetAffiliationInput
 from people_context.app.records.facts import RecordFact, RecordFactInput
 from people_context.app.records.interactions import RecordInteraction, RecordInteractionInput
+from people_context.app.records.observations import RecordObservation, RecordObservationInput
+from people_context.app.records.traits import RecordTrait, RecordTraitInput
+from people_context.app.relationships.commands import SetRelationship, SetRelationshipInput
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.clock import Clock
 from people_context.ports.imports import ImportExtractor, ImportStagingStore, StagedImportRow
 from people_context.ports.repository import PersonReader
+
+#: Candidate types that commit against exactly one batch-local person.
+_PERSON_SCOPED_TYPES = ("affiliation", "fact", "observation", "trait")
 
 
 class ImportContent:
@@ -140,7 +153,12 @@ class ReviewImport:
 
 
 class CommitImport:
-    """Commit accepted people first, then all resolvable accepted interactions."""
+    """Commit accepted people first, then every accepted candidate whose people resolved.
+
+    Each candidate type is written through the use case that already owns it, so an imported
+    record is indistinguishable from a directly recorded one: the same validation, the same
+    provenance, and the same audit and changelog seam. Import has no privileged write path.
+    """
 
     def __init__(
         self,
@@ -150,6 +168,9 @@ class CommitImport:
         record_interaction: RecordInteraction,
         set_affiliation: SetAffiliation,
         record_fact: RecordFact,
+        record_observation: RecordObservation,
+        record_trait: RecordTrait,
+        set_relationship: SetRelationship,
     ) -> None:
         self._people = people
         self._staging = staging
@@ -157,6 +178,9 @@ class CommitImport:
         self._record_interaction = record_interaction
         self._set_affiliation = set_affiliation
         self._record_fact = record_fact
+        self._record_observation = record_observation
+        self._record_trait = record_trait
+        self._set_relationship = set_relationship
         self._uow = unit_of_work_for(staging)
 
     @transactional
@@ -175,52 +199,53 @@ class CommitImport:
             )
         accepted = set(accepted_ids)
         committed: list[str] = []
+        unresolved: list[str] = []
         skipped = [row.id for row in rows if row.id in accepted and row.status == "committed"]
         resolution = self._existing_resolution(rows)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "person":
                 continue
-            resolution[row.id] = self._commit_person(row)
+            person_id = self._commit_person(row)
+            if person_id is None:
+                unresolved.append(row.id)
+                continue
+            resolution[row.id] = person_id
             committed.append(row.id)
-        unresolved: list[str] = []
         for row in rows:
             if row.id not in accepted or row.status == "committed":
                 continue
             candidate_type = row.candidate.get("type")
-            if candidate_type not in {"affiliation", "fact"}:
+            if candidate_type not in _PERSON_SCOPED_TYPES:
                 continue
             person_candidate_id = row.candidate["person_candidate_id"]
             person_id = resolution.get(person_candidate_id)
             if person_id is None:
                 unresolved.append(row.id)
                 continue
-            if candidate_type == "affiliation":
-                self._set_affiliation.execute(
-                    SetAffiliationInput(
-                        person_id=person_id,
-                        org=row.candidate["org"],
-                        role=row.candidate["role"],
-                        valid_from=row.candidate.get("valid_from"),
-                        valid_to=row.candidate.get("valid_to"),
-                        confidence=row.candidate.get("confidence"),
-                        source=row.source,
-                        session=row.candidate.get("message_id"),
-                    )
+            self._commit_person_scoped(str(candidate_type), person_id, row)
+            committed.append(row.id)
+        for row in rows:
+            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "relationship":
+                continue
+            subject_id = resolution.get(row.candidate["from_candidate_id"])
+            object_id = resolution.get(row.candidate["to_candidate_id"])
+            # Staging refuses a candidate whose two refs are the same string, but two distinct
+            # refs can still resolve to one person — agents are told to stage a candidate for
+            # every participant, so a name and a matching handle routinely describe the same
+            # existing identity. Committing that would write the self-loop `merge_people` has
+            # to clean up, so the edge stays unresolved and a corrected batch can be re-staged.
+            if subject_id is None or object_id is None or subject_id == object_id:
+                unresolved.append(row.id)
+                continue
+            self._set_relationship.execute(
+                SetRelationshipInput(
+                    subject_id=subject_id,
+                    object_id=object_id,
+                    type=row.candidate["relationship_type"],
+                    confidence=row.candidate.get("confidence"),
+                    source=row.source,
                 )
-            else:
-                self._record_fact.execute(
-                    RecordFactInput(
-                        person_id=person_id,
-                        predicate=row.candidate["predicate"],
-                        value=row.candidate["value"],
-                        valid_from=row.candidate.get("valid_from"),
-                        valid_to=row.candidate.get("valid_to"),
-                        confidence=row.candidate.get("confidence"),
-                        sensitivity=row.candidate.get("sensitivity", "personal"),
-                        source=row.source,
-                        session=row.candidate.get("message_id"),
-                    )
-                )
+            )
             committed.append(row.id)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "interaction":
@@ -250,6 +275,61 @@ class CommitImport:
             skipped_ids=skipped,
         )
 
+    def _commit_person_scoped(self, candidate_type: str, person_id: str, row: StagedImportRow) -> None:
+        """Write one resolved person-scoped candidate through its own audited use case."""
+        candidate = row.candidate
+        if candidate_type == "affiliation":
+            self._set_affiliation.execute(
+                SetAffiliationInput(
+                    person_id=person_id,
+                    org=candidate["org"],
+                    role=candidate["role"],
+                    valid_from=candidate.get("valid_from"),
+                    valid_to=candidate.get("valid_to"),
+                    confidence=candidate.get("confidence"),
+                    source=row.source,
+                    session=candidate.get("message_id"),
+                )
+            )
+        elif candidate_type == "fact":
+            self._record_fact.execute(
+                RecordFactInput(
+                    person_id=person_id,
+                    predicate=candidate["predicate"],
+                    value=candidate["value"],
+                    valid_from=candidate.get("valid_from"),
+                    valid_to=candidate.get("valid_to"),
+                    confidence=candidate.get("confidence"),
+                    sensitivity=candidate.get("sensitivity", "personal"),
+                    source=row.source,
+                    session=candidate.get("message_id"),
+                )
+            )
+        elif candidate_type == "observation":
+            # `observed_at` is absent when the source established no event time; the released
+            # `RecordObservation` clock behavior is what fills it in, not a guess made here.
+            self._record_observation.execute(
+                RecordObservationInput(
+                    person_id=person_id,
+                    text=candidate["text"],
+                    observed_at=candidate.get("observed_at"),
+                    sensitivity=candidate.get("sensitivity", "personal"),
+                    source=row.source,
+                )
+            )
+        else:
+            self._record_trait.execute(
+                RecordTraitInput(
+                    person_id=person_id,
+                    category=candidate["category"],
+                    value=candidate["value"],
+                    evidence_note=candidate["evidence_note"],
+                    confidence=candidate["confidence"],
+                    sensitivity=candidate.get("sensitivity", "personal"),
+                    source=row.source,
+                )
+            )
+
     def _existing_resolution(self, rows: list[StagedImportRow]) -> dict[str, str]:
         resolution: dict[str, str] = {}
         for row in rows:
@@ -260,18 +340,49 @@ class CommitImport:
                 resolution[row.id] = matched_id
                 continue
             if row.status == "committed":
-                values = [alias["value"] for alias in row.candidate.get("aliases", [])]
-                values.append(row.candidate["name"])
-                for value in values:
-                    matches = self._people.find_by_normalized_name(normalize_name(value))
-                    if len(matches) == 1:
-                        resolution[row.id] = matches[0].id
-                        break
+                resolved = self._rematch(row.candidate)
+                if resolved is not None:
+                    resolution[row.id] = resolved
         return resolution
 
-    def _commit_person(self, row: StagedImportRow) -> str:
+    def _rematch(self, candidate: dict[str, Any]) -> str | None:
+        """Re-derive one already-committed person candidate's identity from stored names.
+
+        A row staged by an extraction batch is re-derived with the matcher that staged it, so
+        the answer cannot change merely because it is being asked at commit time; anything
+        older keeps the released first-unique-token behavior it was staged under.
+        """
+        aliases = list(candidate.get("aliases", []))
+        name = str(candidate["name"])
+        if candidate.get("match_disposition") is not None:
+            match = match_person_candidate(self._people, candidate_identity_tokens(name, aliases))
+            return match.person_id
+        values = [str(alias["value"]) for alias in aliases]
+        values.append(name)
+        for value in values:
+            matches = self._people.find_by_normalized_name(normalize_name(value))
+            if len(matches) == 1:
+                return matches[0].id
+        return None
+
+    def _commit_person(self, row: StagedImportRow) -> str | None:
+        """Commit one accepted person candidate, or report that its identity is still open.
+
+        An ambiguous candidate is the one case that can decline to commit. It never falls
+        through to `RememberPerson`: "several people this could be" is not evidence of a new
+        person, and creating one would durably invent the duplicate the ambiguity warned about.
+        Re-running the same deterministic match is what can resolve it later — after a merge or
+        a correction leaves exactly one active person — and until then the candidate and every
+        accepted dependant that needs it stay unresolved, ready for a later commit.
+        """
         candidate = row.candidate
         matched_id = candidate.get("matched_person_id")
+        if candidate.get("match_disposition") == MatchDisposition.AMBIGUOUS.value:
+            tokens = candidate_identity_tokens(candidate["name"], candidate.get("aliases", []))
+            match = match_person_candidate(self._people, tokens)
+            if match.disposition is not MatchDisposition.MATCHED:
+                return None
+            matched_id = match.person_id
         matched = self._people.get(matched_id) if matched_id else None
         aliases = [AliasInput.model_validate(alias) for alias in candidate["aliases"]]
         if matched is not None:
