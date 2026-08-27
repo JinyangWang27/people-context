@@ -113,9 +113,21 @@ def _restore(document: Any, path: Path) -> tuple[sqlite3.Connection, Any]:
     return conn, outcome
 
 
+class _NullRestorer:
+    """Stands in for the port when only parsing and validation are under test."""
+
+    def restore(self, document: Any) -> Any:  # pragma: no cover - never reached
+        raise AssertionError("parsing tests do not restore")
+
+
+def _parse(text: str) -> Any:
+    """Parse and document-validate one rendered bundle without touching a destination."""
+    return RestoreSyncBundle(_NullRestorer()).parse(text)
+
+
 def _round_trip(document: Any) -> Any:
     """Re-parse a rendered bundle so restore sees exactly what a file would carry."""
-    return RestoreSyncBundle.parse(RestoreSyncBundle(None), render_bundle_json(document))  # type: ignore[arg-type]
+    return _parse(render_bundle_json(document))
 
 
 def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> None:
@@ -188,8 +200,7 @@ def test_a_partially_committed_source_restores_reviewable_and_committable(tmp_pa
     document = _round_trip(origin.export())
     conn, _outcome = _restore(document, tmp_path / "restored.db")
 
-    restored = _Origin.__new__(_Origin)
-    restored.__init__(tmp_path / "restored.db")  # type: ignore[misc]
+    restored = _Origin(tmp_path / "restored.db")
     review = restored.review.execute(batch.batch_id)
     assert {row.id for row in review.candidates} == {person_row.id, fact_row.id}
     result = restored.commit.execute(batch.batch_id, [fact_row.id])
@@ -280,7 +291,7 @@ def test_a_redacted_receipt_carrying_cleared_metadata_is_refused(tmp_path: Path)
     payload["imports"]["source_sessions"][0]["status"] = "redacted"
 
     with pytest.raises(InvalidBundleError):
-        RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+        _parse(json.dumps(payload))
 
 
 def test_a_mapping_to_an_unbundled_entity_is_refused(tmp_path: Path) -> None:
@@ -297,7 +308,7 @@ def test_a_mapping_to_an_unbundled_entity_is_refused(tmp_path: Path) -> None:
     payload["imports"]["candidate_mappings"][0]["entity_id"] = "01J0000000000000000MISSING"
 
     with pytest.raises(InvalidBundleError) as excinfo:
-        RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+        _parse(json.dumps(payload))
 
     assert any("unbundled person" in detail for detail in excinfo.value.details)
 
@@ -314,7 +325,7 @@ def test_a_staging_row_whose_match_is_not_active_is_refused(tmp_path: Path) -> N
     payload["imports"]["staging"][0]["candidate"]["matched_person_id"] = "01J0000000000000000MISSING"
 
     with pytest.raises(InvalidBundleError) as excinfo:
-        RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+        _parse(json.dumps(payload))
 
     assert any("not active in the bundle" in detail for detail in excinfo.value.details)
 
@@ -331,7 +342,7 @@ def test_a_staging_row_without_a_bundled_receipt_is_refused(tmp_path: Path) -> N
     payload["imports"]["source_sessions"] = []
 
     with pytest.raises(InvalidBundleError) as excinfo:
-        RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+        _parse(json.dumps(payload))
 
     assert any("no bundled source session" in detail for detail in excinfo.value.details)
 
@@ -383,7 +394,7 @@ def test_a_version_one_bundle_still_restores(tmp_path: Path) -> None:
     payload["version"] = 1
     payload.pop("imports")
 
-    document = RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+    document = _parse(json.dumps(payload))
     conn, outcome = _restore(document, tmp_path / "restored.db")
 
     assert outcome.source_sessions == 0
@@ -399,7 +410,7 @@ def test_a_version_one_bundle_carrying_version_two_state_is_refused(tmp_path: Pa
     payload["version"] = 1
 
     with pytest.raises(InvalidBundleError) as excinfo:
-        RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+        _parse(json.dumps(payload))
 
     assert any("imports" in detail for detail in excinfo.value.details)
 
@@ -412,7 +423,7 @@ def test_a_non_empty_import_table_refuses_every_accepted_version(tmp_path: Path,
     if version == 1:
         payload["version"] = 1
         payload.pop("imports")
-    document = RestoreSyncBundle(None).parse(json.dumps(payload))  # type: ignore[arg-type]
+    document = _parse(json.dumps(payload))
 
     destination = _Origin(tmp_path / "destination.db")
     destination.stage.execute(

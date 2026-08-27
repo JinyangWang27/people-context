@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
-from people_context.app._mutation import audit_mutation, transactional, unit_of_work_for
+from people_context.app._mutation import audit_mutation, unit_of_work_for
 from people_context.app.imports.identity import match_person_candidate
 from people_context.app.imports.limits import (
     STAGED_PAYLOAD_TOO_LARGE,
@@ -68,12 +68,15 @@ class CandidateStager:
         self._clock = clock
         self._sources = sources
         self._audit = audit
+        if sources is not None and audit is None:
+            # A receipt is replicable primary state, so writing one without journalling it would
+            # leave durable provenance outside the accountability record. That is always a wiring
+            # mistake rather than a configuration, so it is reported loudly here.
+            raise RuntimeError("a source-tracked candidate stager requires an audit log")
         # The source store's boundary reserves the write lock, because claiming a source means
-        # reading a uniqueness claim and then acting on what was read. Wrapping the whole method
-        # in it keeps the receipt, its claim, and every staged row in one transaction.
+        # reading a uniqueness claim and then acting on what was read.
         self._uow = unit_of_work_for(sources, staging, audit)
 
-    @transactional
     def execute(
         self,
         source: str,
@@ -96,10 +99,12 @@ class CandidateStager:
         that every caller that predates M17 — the source importers and `pctx init` among them —
         keeps staging the person rows it always staged.
 
-        ``claim`` opts this batch into M18 source tracking. Claim, receipt, and every candidate
-        row are then published in one transaction, so a canonical claim can never be visible
-        without the batch it promises or vice versa. A batch staged without one behaves exactly
-        as it did before source sessions existed.
+        ``claim`` opts this batch into M18 source tracking. Claim, receipt, its journal entry, and
+        every candidate row are then published in one write-reserving transaction, so a canonical
+        claim can never be visible without the batch it promises or vice versa. Validation and row
+        building happen before that reservation is taken: the race the reservation exists to close
+        is between two publications, not between two callers parsing their own input. A batch
+        staged without a claim behaves exactly as it did before source sessions existed.
         """
         limits = budget or UNBOUNDED_IMPORT_BUDGET
         self._reject_excess_candidates(len(candidates), limits)
@@ -117,16 +122,19 @@ class CandidateStager:
         if claim is None or self._sources is None:
             self._staging.stage_batch(rows)
             return result
-        outcome = self._sources.claim_and_stage(
-            claim,
-            rows,
-            session_id=new_id(),
-            batch_id=batch_id,
-            created_at=self._clock.now(),
-        )
-        if not outcome.created:
-            return self._duplicate_result(result, outcome)
-        self._audit_session(outcome.session)
+        with self._uow:
+            outcome = self._sources.claim_and_stage(
+                claim,
+                rows,
+                session_id=new_id(),
+                batch_id=batch_id,
+                created_at=self._clock.now(),
+            )
+            if not outcome.created:
+                # The claim was already owned, so nothing was written. Whether this reports the
+                # existing batch or refuses a terminal one, the reservation closes empty.
+                return self._duplicate_result(result, outcome)
+            self._audit_session(outcome.session)
         return result.model_copy(update={"source_session_id": outcome.session.id})
 
     def _audit_session(self, session: SourceSessionRow) -> None:

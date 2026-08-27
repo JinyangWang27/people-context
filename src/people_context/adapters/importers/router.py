@@ -26,7 +26,7 @@ SUPPORTED_IMPORT_SOURCES: Final[tuple[str, ...]] = (
 )
 
 
-def _unsupported_source_type() -> ImportExtractionError:
+def unsupported_source_type() -> ImportExtractionError:
     quoted = [f"'{source}'" for source in SUPPORTED_IMPORT_SOURCES]
     accepted = f"{', '.join(quoted[:-1])}, or {quoted[-1]}"
     return ImportExtractionError("invalid_source_type", f"source_type must be {accepted}")
@@ -71,7 +71,7 @@ class ImportExtractorRouter:
         elif source_type == "whatsapp":
             extractor = self._whatsapp
         else:
-            raise _unsupported_source_type()
+            raise unsupported_source_type()
         return extractor.extract(
             source_type,
             content=content,

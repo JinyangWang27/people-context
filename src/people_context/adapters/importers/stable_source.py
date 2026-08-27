@@ -36,7 +36,7 @@ from typing import Any, Final
 from people_context.adapters.importers.bounded_source import read_source_bytes, source_too_large
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import normalize_email
-from people_context.adapters.importers.router import ImportExtractorRouter
+from people_context.adapters.importers.router import ImportExtractorRouter, unsupported_source_type
 from people_context.adapters.importers.whatsapp import self_identity_keys
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractionIdentity, ImportExtractor, StableExtraction
@@ -175,9 +175,15 @@ class VerifiedSnapshotExtractor:
 
     @staticmethod
     def _contract(source_type: str) -> _SourceContract:
+        """Return the source's contract, refusing exactly as the router refuses.
+
+        Sharing the router's refusal keeps one answer to "which sources exist": a caller that
+        names an unsupported one gets the same code and the same list of accepted values whether
+        the mistake is caught here or one layer down.
+        """
         contract = _EXTRACTION_CONTRACTS.get(source_type)
         if contract is None:
-            raise ImportExtractionError("invalid_source_type", f"unsupported source type: {source_type}")
+            raise unsupported_source_type()
         return contract
 
     def _verified_path_pass(
