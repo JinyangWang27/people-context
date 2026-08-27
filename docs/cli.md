@@ -169,6 +169,11 @@ is reported rather than staged twice. Without one the workflow is still valid bu
 People Context never hashes text it was not given. `--extraction-fingerprint` is optional and should be omitted
 unless you have explicit, bounded semantics for it.
 
+This command has no `--force`: that flag belongs to `import stage`, which owns the file it reads. Here the claim
+exists only because you supplied `--content-digest`, so omitting that digest is how you say a repeat is
+intentional — and that, rather than a flag this command does not accept, is what its duplicate report and its
+`source_previously_redacted` refusal point you at.
+
 The command stages only. `import review` and `import commit` are the same gate they are for a file import.
 
 Person matching here is **always** the ambiguity-preserving kind described above, whichever candidate types a

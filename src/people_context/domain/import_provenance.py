@@ -41,6 +41,18 @@ CONTRACT_REVISION_PATTERN: Final = re.compile(r"\A[A-Za-z0-9._-]+\Z")
 #: A SHA-256 digest or extraction fingerprint, in exactly one accepted spelling.
 HEX64_PATTERN: Final = re.compile(r"\A[0-9a-f]{64}\Z")
 
+#: Separator inside a composed claim key. A unit separator cannot occur in a source kind, a hex
+#: digest, or the absence sentinel, so the composition is unambiguous.
+CLAIM_KEY_SEPARATOR: Final = "\x1f"
+
+#: Stands in for "the caller supplied no extraction fingerprint" inside a canonical claim key.
+#:
+#: SQLite treats NULLs in a UNIQUE index as distinct, so a nullable fingerprint column would let
+#: two "digest present, fingerprint absent" sessions each claim the same source. Composing the
+#: key with a fixed sentinel makes absence one stable state instead. The value is deliberately
+#: not 64 hexadecimal characters, so it cannot collide with any real fingerprint.
+EXTRACTION_FINGERPRINT_ABSENT: Final = "fingerprint-absent"
+
 #: Statuses a persisted staging row may carry.
 STAGING_STATUSES: Final[tuple[str, ...]] = ("pending", "committed")
 
@@ -137,3 +149,16 @@ def identifier_list(value: Any) -> set[str]:
     if not isinstance(value, list):
         return set()
     return {item for item in value if isinstance(item, str)}
+
+
+def compose_claim_key(source_kind: str, content_digest: str | None, extraction_fingerprint: str | None) -> str | None:
+    """Return the canonical duplicate claim key, or ``None`` when the source asserts none.
+
+    A digestless session deliberately has no canonical claim: People Context was never given
+    bytes it could identify the source by, so ``(source_kind, null, null)`` would be a fake
+    claim that suppressed later legitimate staging of similar material.
+    """
+    if content_digest is None:
+        return None
+    fingerprint = extraction_fingerprint or EXTRACTION_FINGERPRINT_ABSENT
+    return CLAIM_KEY_SEPARATOR.join((source_kind, content_digest, fingerprint))

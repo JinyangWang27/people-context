@@ -135,12 +135,17 @@ def source_previously_redacted_error(source_session_id: str) -> ImportPipelineEr
     The prior batch was hard-forgotten, so there is deliberately no batch association left to
     reuse. Fabricating one would hand the caller a batch id that reviews and commits nothing;
     reusing the old one would resurrect an association erasure removed. The refusal names the
-    stable code and the intentional route through explicit reprocessing, and nothing else — not
-    the former label, not the former batch, not when any of it happened.
+    stable code and the fact that only an explicit reprocessing gets past it, and nothing else —
+    not the former label, not the former batch, not when any of it happened.
+
+    How a caller *performs* that reprocessing differs per entry point, so the wording deliberately
+    stops short of naming one: this same refusal is raised for a CLI file import, for agent-staged
+    candidates, and over MCP, and each of those opts out of the duplicate rule differently. The
+    boundary that raised it appends its own route.
     """
     return ImportPipelineError(
         SOURCE_PREVIOUSLY_REDACTED,
         "this source was previously imported and then fully forgotten; "
-        "re-import it intentionally with --force",
+        "staging it again must be an explicit reprocessing",
         source_session_id=source_session_id,
     )

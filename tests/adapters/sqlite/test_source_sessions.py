@@ -450,3 +450,51 @@ def test_an_untracked_batch_records_no_mapping(harness: _Harness) -> None:
     harness.commit.execute(batch.batch_id, [row.id for row in rows])
 
     assert harness.mappings() == []
+
+
+def test_a_dependant_is_not_resolved_through_a_retired_identity(harness: _Harness) -> None:
+    """A soft-deleted person cannot receive records, so resolving through them fails the commit.
+
+    Declining to resolve leaves the dependant unresolved and committable later — what every other
+    unresolvable identity here does — rather than letting the child write's own active-person check
+    refuse mid-transaction and take the whole commit down with it.
+    """
+    batch = _stage(harness)
+    rows = harness.review.execute(batch.batch_id).candidates
+    person_row = next(row for row in rows if row.candidate["type"] == "person")
+    fact_row = next(row for row in rows if row.candidate["type"] == "fact")
+    harness.commit.execute(batch.batch_id, [person_row.id])
+    person_id = harness.mappings()[0]["entity_id"]
+    harness.conn.execute("UPDATE persons SET deleted_at = ? WHERE id = ?", (_NOW.isoformat(), person_id))
+    harness.conn.commit()
+
+    result = harness.commit.execute(batch.batch_id, [fact_row.id])
+
+    assert result.committed_ids == []
+    assert result.unresolved_ids == [fact_row.id]
+    assert [row["candidate_id"] for row in harness.mappings()] == [person_row.id]
+
+
+def test_a_retired_staged_match_is_not_resolved_through_either(harness: _Harness) -> None:
+    """The same rule on the other resolution route: a retained `matched_person_id`."""
+    batch = _stage(harness)
+    rows = harness.review.execute(batch.batch_id).candidates
+    person_row = next(row for row in rows if row.candidate["type"] == "person")
+    fact_row = next(row for row in rows if row.candidate["type"] == "fact")
+    harness.commit.execute(batch.batch_id, [person_row.id])
+    person_id = harness.mappings()[0]["entity_id"]
+    # Pin the retained staged match at the identity that is about to be retired, so the first
+    # resolution route is exercised rather than the mapping one.
+    candidate = dict(person_row.candidate)
+    candidate["matched_person_id"] = person_id
+    harness.conn.execute(
+        "UPDATE import_staging SET candidate_json = ? WHERE id = ?",
+        (json.dumps(candidate), person_row.id),
+    )
+    harness.conn.execute("UPDATE persons SET deleted_at = ? WHERE id = ?", (_NOW.isoformat(), person_id))
+    harness.conn.commit()
+
+    result = harness.commit.execute(batch.batch_id, [fact_row.id])
+
+    assert result.committed_ids == []
+    assert result.unresolved_ids == [fact_row.id]

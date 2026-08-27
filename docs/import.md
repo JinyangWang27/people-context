@@ -396,13 +396,20 @@ staging it again by default then refuses deterministically rather than fabricati
 
 ```text
 Error: source_previously_redacted: this source was previously imported and then fully forgotten;
-re-import it intentionally with --force
+staging it again must be an explicit reprocessing
+Import it again anyway with: pctx import stage ... --force
 ```
 
 The exit status is non-zero, stdout stays empty even under `--json` — the JSON promise covers successful commands,
-and there is no batch to describe — and nothing is created or changed. `--force` remains the intentional route.
+and there is no batch to describe — and nothing is created or changed.
 A digestless receipt has no claim worth keeping, so it is deleted outright and similar material may be staged
 fresh exactly as before.
+
+The refusal itself names no flag, because the route past it belongs to the entry point rather than to the rule.
+`pctx import stage` owns the file and carries `--force`; `pctx import stage-candidates` competes for a claim only
+because the caller chose to compute `--content-digest`, so withholding that digest is the same intent there, and
+that is the guidance each command prints. This applies to the duplicate report too: the "already imported" summary
+is shared, but the line that follows it names only a route the invoked command actually accepts.
 
 ### Where a committed candidate went
 

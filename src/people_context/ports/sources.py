@@ -15,19 +15,30 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Final, Protocol, runtime_checkable
 
+from people_context.domain.import_provenance import (
+    CLAIM_KEY_SEPARATOR,
+    EXTRACTION_FINGERPRINT_ABSENT,
+    compose_claim_key,
+)
 from people_context.ports.imports import StagedImportRow
 
-#: Separator inside a composed claim key. A unit separator cannot occur in a source kind, a
-#: hex digest, or the absence sentinel, so the composition is unambiguous.
-CLAIM_KEY_SEPARATOR: Final = "\x1f"
-
-#: Stands in for "the caller supplied no extraction fingerprint" inside a canonical claim key.
-#:
-#: SQLite treats NULLs in a UNIQUE index as distinct, so a nullable fingerprint column would let
-#: two "digest present, fingerprint absent" sessions each claim the same source. Composing the
-#: key with a fixed sentinel makes absence one stable state instead. The value is deliberately
-#: not 64 hexadecimal characters, so it cannot collide with any real fingerprint.
-EXTRACTION_FINGERPRINT_ABSENT: Final = "fingerprint-absent"
+__all__ = [
+    "CLAIM_KEY_SEPARATOR",
+    "DISPOSITION_ENTITY",
+    "DISPOSITION_MERGED_AWAY",
+    "EXTRACTION_FINGERPRINT_ABSENT",
+    "SOURCE_SESSION_STATUSES",
+    "STATUS_COMMITTED",
+    "STATUS_PARTIALLY_COMMITTED",
+    "STATUS_REDACTED",
+    "STATUS_STAGED",
+    "CandidateMappingRow",
+    "ImportSourceStore",
+    "SourceClaimOutcome",
+    "SourceSessionClaim",
+    "SourceSessionRow",
+    "compose_claim_key",
+]
 
 #: One staged batch is reviewable, none of it is committed yet.
 STATUS_STAGED: Final = "staged"
@@ -53,19 +64,6 @@ DISPOSITION_ENTITY: Final = "entity"
 
 #: A committed relationship candidate whose edge a later person merge removed as a self-loop.
 DISPOSITION_MERGED_AWAY: Final = "merged_away"
-
-
-def compose_claim_key(source_kind: str, content_digest: str | None, extraction_fingerprint: str | None) -> str | None:
-    """Return the canonical duplicate claim key, or ``None`` when the source asserts none.
-
-    A digestless session deliberately has no canonical claim: People Context was never given
-    bytes it could identify the source by, so ``(source_kind, null, null)`` would be a fake
-    claim that suppressed later legitimate staging of similar material.
-    """
-    if content_digest is None:
-        return None
-    fingerprint = extraction_fingerprint or EXTRACTION_FINGERPRINT_ABSENT
-    return CLAIM_KEY_SEPARATOR.join((source_kind, content_digest, fingerprint))
 
 
 @dataclass(frozen=True)

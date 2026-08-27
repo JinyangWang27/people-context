@@ -293,7 +293,7 @@ class ImportProvenanceCleaner:
         emptied: list[tuple[str, str | None, str | None]] = []
         for source_id in sorted(source_ids):
             row = self._conn.execute(
-                "SELECT id, content_digest, batch_id, status FROM import_source_sessions WHERE id = ?",
+                "SELECT id, claim_key, batch_id, status FROM import_source_sessions WHERE id = ?",
                 (source_id,),
             ).fetchone()
             if row is None or row["status"] == STATUS_REDACTED:
@@ -302,22 +302,26 @@ class ImportProvenanceCleaner:
                 continue
             if self._surviving_reviewable_staging(row["batch_id"], removed_staging_ids):
                 continue
-            emptied.append((source_id, row["batch_id"], row["content_digest"]))
+            emptied.append((source_id, row["batch_id"], row["claim_key"]))
         return emptied
 
     def _reduce(self, emptied: list[tuple[str, str | None, str | None]]) -> tuple[list[str], list[str]]:
         """Reduce each emptied source to its claim, or remove it entirely.
 
-        A claim-backed receipt keeps only what identifies the source it can never stage again by
-        default: its internal id, the non-personal machine kind, the digest, the fingerprint state,
-        and the terminal status. A digestless receipt has no such claim to keep — `(kind, null,
-        null)` would be a fake one that suppressed later legitimate staging of similar material —
-        so the row is deleted outright and that material may be staged fresh.
+        A receipt that owns a canonical claim keeps only what makes that claim non-restageable:
+        its internal id, the non-personal machine kind, the digest, the fingerprint state, and the
+        terminal status.
+
+        Retention is decided by the claim rather than by the digest, because the claim is the only
+        thing retention is *for*. A digestless session never had one. Neither did an explicit
+        `--force` reprocessing session: it carries a digest but competes for no canonical key, so
+        duplicate detection would never find it again. Keeping it would leave the digest of an
+        erased artifact in the database — and in every later bundle — while suppressing nothing.
         """
         redacted: list[str] = []
         deleted: list[str] = []
-        for source_id, _batch_id, content_digest in emptied:
-            if content_digest is None:
+        for source_id, _batch_id, claim_key in emptied:
+            if claim_key is None:
                 self._conn.execute("DELETE FROM import_source_sessions WHERE id = ?", (source_id,))
                 deleted.append(source_id)
                 continue

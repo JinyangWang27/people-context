@@ -337,6 +337,106 @@ def test_a_mapping_filed_under_another_batch_is_rejected() -> None:
     assert any("does not own" in detail for detail in excinfo.value.details)
 
 
+@pytest.mark.parametrize(
+    "claim_key",
+    [
+        f"linkedin\x1f{'a' * 64}\x1f{'c' * 64}",
+        f"whatsapp\x1f{'a' * 64}\x1f{'b' * 64}",
+        f"linkedin\x1f{'c' * 64}\x1f{'b' * 64}",
+        f"linkedin\x1f{'a' * 64}\x1ffingerprint-absent",
+    ],
+)
+def test_a_claim_key_that_is_not_the_composition_of_its_own_fields_is_rejected(claim_key: str) -> None:
+    """Duplicate detection looks a receipt up by the key composed from these very fields.
+
+    A key that disagrees with them would either miss its own receipt and stage the source a second
+    time, or sit on the key of an unrelated source and suppress that source's legitimate import.
+    """
+    payload = _document()
+    _imports(payload)["source_sessions"][0]["claim_key"] = claim_key
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_an_absent_fingerprint_composes_its_claim_through_the_explicit_sentinel() -> None:
+    """SQLite treats NULLs in a UNIQUE index as distinct, so absence is one named state."""
+    payload = _document()
+    session = _imports(payload)["source_sessions"][0]
+    session["extraction_fingerprint"] = None
+    session["extraction_contract_revision"] = None
+    session["claim_key"] = f"linkedin\x1f{'a' * 64}\x1ffingerprint-absent"
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def test_two_sessions_sharing_one_batch_are_rejected() -> None:
+    """One batch belongs to one receipt: the store's batch lookup returns a single session.
+
+    Two receipts on one batch would leave that lookup returning either row, so a later commit
+    could attribute its mappings and its status change to the receipt that does not own the batch.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    twin = dict(imports["source_sessions"][0])
+    twin.update(
+        {
+            "id": "01J0000000000000000SOURCE2",
+            "content_digest": "c" * 64,
+            "claim_key": f"linkedin\x1f{'c' * 64}\x1f{'b' * 64}",
+        }
+    )
+    imports["source_sessions"].append(twin)
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("duplicate source session batch" in detail for detail in excinfo.value.details)
+
+
+def test_a_mapping_naming_a_person_who_is_not_active_is_rejected() -> None:
+    """A merge retargets person mappings and a forget removes them, so none points at a retired id.
+
+    Restoring one that did would let a later commit resolve a dependant through that identity and
+    then fail the child write's own active-person check, taking the whole commit down with it.
+    """
+    payload = _document()
+    retired = copy.deepcopy(payload["snapshot"]["people"][0])
+    retired.update({"id": "01J00000000000000000GONE01", "aliases": [], "deleted_at": "2026-07-04T00:00:00Z"})
+    payload["snapshot"]["people"].append(retired)
+    _imports(payload)["candidate_mappings"][0]["entity_id"] = retired["id"]
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("not active in the bundle" in detail for detail in excinfo.value.details)
+
+
+def test_a_pending_staging_row_that_already_has_an_outcome_is_rejected() -> None:
+    """A mapping and its row's transition to committed are written in one unit of work.
+
+    Restoring a pending row that already carries an outcome would let commit produce a second
+    entity and overwrite the mapping, orphaning the first record from the source that produced it.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["candidate_mappings"][0]["candidate_id"] = imports["staging"][0]["id"]
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("already has a committed outcome" in detail for detail in excinfo.value.details)
+
+
+def test_a_committed_staging_row_may_carry_its_own_outcome() -> None:
+    payload = _document()
+    imports = _imports(payload)
+    imports["candidate_mappings"][0]["candidate_id"] = imports["staging"][0]["id"]
+    imports["staging"][0]["status"] = "committed"
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
 @pytest.mark.parametrize("kind", ["Interview with Alice", "", "a" * 129, "réunion"])
 def test_a_restored_source_kind_is_held_to_the_machine_alphabet(kind: str) -> None:
     """Forget keeps the kind on a terminal receipt, so it must never hold a name."""

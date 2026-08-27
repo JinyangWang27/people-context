@@ -27,6 +27,7 @@ from people_context.domain.import_provenance import (
     check_hex64,
     check_opaque_label,
     check_source_kind,
+    compose_claim_key,
     identifier_list,
     staged_candidate_references,
 )
@@ -386,6 +387,13 @@ class BundleSourceSession(StrictBundleModel):
     def _check_claim(self) -> BundleSourceSession:
         if self.claim_key is not None and self.content_digest is None:
             raise ValueError("a canonical claim requires a content_digest")
+        if self.claim_key is not None and self.claim_key != compose_claim_key(
+            self.source_kind, self.content_digest, self.extraction_fingerprint
+        ):
+            # Duplicate detection looks a source up by the key composed from these very fields.
+            # A key that does not match them would either miss its own receipt and stage the
+            # source twice, or occupy the key of an unrelated source and suppress that import.
+            raise ValueError("claim_key must be the canonical composition of the receipt's own fields")
         if self.status != "redacted":
             return self
         if self.content_digest is None:
@@ -612,6 +620,7 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
     snapshot = document.snapshot
     sessions = {session.id: session for session in imports.source_sessions}
     batches = {session.batch_id: session.id for session in imports.source_sessions if session.batch_id is not None}
+    mapped_candidates = {mapping.candidate_id for mapping in imports.candidate_mappings}
     active_people = {person.id for person in snapshot.people if person.deleted_at is None}
     known: dict[str, set[str]] = {
         "people": {person.id for person in snapshot.people},
@@ -623,7 +632,13 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         "relationships": {row.id for row in snapshot.relationships},
     }
 
-    details: list[str] = []
+    # One batch belongs to one receipt. Sharing a batch would leave the store's own
+    # batch-to-session lookup returning either row, so a later commit could attribute its
+    # mappings and status change to the receipt that does not own the batch.
+    details: list[str] = _repeated(
+        "source session batch",
+        (session.batch_id for session in imports.source_sessions if session.batch_id is not None),
+    )
     staged_by_batch: dict[str, set[str]] = {}
     for row in imports.staging:
         staged_by_batch.setdefault(row.batch_id, set()).add(row.id)
@@ -655,12 +670,26 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
                 f"candidate mapping {mapping.candidate_id} references an unbundled {mapping.entity_type}: "
                 f"{mapping.entity_id}"
             )
+        elif mapping.entity_type == "person" and mapping.entity_id not in active_people:
+            # A merge retargets person mappings to the survivor and a forget removes them, so a
+            # live mapping never points at a retired identity. Restoring one would let a later
+            # commit resolve a dependant through it and then fail its own active-person check.
+            details.append(
+                f"candidate mapping {mapping.candidate_id} references a person who is not active in the "
+                f"bundle: {mapping.entity_id}"
+            )
     for row in imports.staging:
         if row.batch_id not in batches:
             details.append(f"staging row {row.id} references a batch with no bundled source session: {row.batch_id}")
         matched = row.candidate.get("matched_person_id")
         if isinstance(matched, str) and matched not in active_people:
             details.append(f"staging row {row.id} matches a person who is not active in the bundle: {matched}")
+        if row.status != "committed" and row.id in mapped_candidates:
+            # A mapping is written in the same unit of work as the row's transition to committed,
+            # so the two never disagree in state this installation produced. Restoring a pending
+            # row that already has an outcome would let commit write a second entity and overwrite
+            # the mapping, orphaning the first from the source that produced it.
+            details.append(f"staging row {row.id} is pending but already has a committed outcome")
         # References are batch-local, so a dependant naming a candidate the bundle does not carry
         # would restore a batch whose commit can never resolve it.
         unknown = staged_candidate_references(row.candidate) - staged_by_batch.get(row.batch_id, set())

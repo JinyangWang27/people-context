@@ -89,6 +89,19 @@ _SCHEMA_DERIVED_ERROR_TYPES: frozenset[str] = frozenset(
     }
 )
 
+#: How each staging entry point says "yes, process this exact source again anyway".
+#:
+#: The two commands opt out of the duplicate rule differently, and naming the wrong one is not a
+#: cosmetic slip: `--force` is defined only on `import stage`, which owns the file, so offering it
+#: to `import stage-candidates` would point a caller at a flag that command does not accept and a
+#: workflow it cannot run. `stage-candidates` competes for a canonical claim only because the
+#: caller chose to compute `--content-digest` over the artifact themselves; withholding that digest
+#: asserts no claim, so that is the same intent expressed at that boundary.
+_STAGE_REPROCESS_HINT = "Import it again anyway with: pctx import stage ... --force"
+_STAGE_CANDIDATES_REPROCESS_HINT = (
+    "Stage these candidates anyway by omitting --content-digest, which asserts no duplicate claim."
+)
+
 REVIEW_DISCLOSURE_WARNING = (
     "Review output and the import JSON documents carry distilled personal data from your "
     "export. Inspect them before redirecting or sharing them anywhere."
@@ -127,7 +140,7 @@ def cmd_import_stage(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
             # which removed the batch association along with them. stdout stays empty in both
             # modes because a `--json` caller is promised a document only on success, and a
             # fabricated batch id would be a document about nothing.
-            return _refuse(f"{exc.code}: {exc}")
+            return _refuse(f"{exc.code}: {exc}", hint=_STAGE_REPROCESS_HINT)
         return _refuse(f"import staging failed: {exc}")
     except ImportExtractionError as exc:
         return _refuse(f"import staging failed: {exc}")
@@ -136,7 +149,7 @@ def cmd_import_stage(runtime: ApplicationRuntime, args: argparse.Namespace) -> i
     if args.json:
         print(render_import_json(import_batch_document(batch)), end="")
         return 0
-    _print_batch(batch)
+    _print_batch(batch, duplicate_hint=_STAGE_REPROCESS_HINT)
     return 0
 
 
@@ -170,13 +183,17 @@ def cmd_import_stage_candidates(runtime: ApplicationRuntime, args: argparse.Name
             external_source_id=args.external_source_id,
         )
     except ImportPipelineError as exc:
+        if exc.code == SOURCE_PREVIOUSLY_REDACTED:
+            # Same refusal as the file path, and the same silent stdout for the same reason; only
+            # the route past it belongs to this command rather than to `import stage`.
+            return _refuse(f"{exc.code}: {exc}", hint=_STAGE_CANDIDATES_REPROCESS_HINT)
         _refuse(f"candidate staging failed: {exc}")
         _print_validation_details(exc)
         return 1
     if args.json:
         print(render_import_json(import_batch_document(batch)), end="")
         return 0
-    _print_batch(batch)
+    _print_batch(batch, duplicate_hint=_STAGE_CANDIDATES_REPROCESS_HINT)
     return 0
 
 
@@ -394,7 +411,7 @@ def _readable_source(raw_path: str) -> Path | None:
     return path
 
 
-def _print_batch(batch: ImportBatchResult) -> None:
+def _print_batch(batch: ImportBatchResult, *, duplicate_hint: str) -> None:
     if batch.duplicate:
         # A committed batch may have had its reviewable rows cleaned up, or may have arrived from
         # a bundle carrying only its durable outcomes. Pointing at review for one of those would
@@ -410,7 +427,7 @@ def _print_batch(batch: ImportBatchResult) -> None:
             print(f"Review it with: pctx import review {batch.batch_id}")
         else:
             print("Its candidates are already committed; there is nothing left to review.")
-        print("Import it again anyway with: pctx import stage ... --force")
+        print(duplicate_hint)
         return
     print(f"Staged batch {batch.batch_id} with {batch.candidate_count} candidates; nothing is committed yet.")
     _print_source_session(batch)
@@ -436,9 +453,11 @@ def _print_ids(label: str, ids: list[str]) -> None:
         print(f"  {label}: {', '.join(ids)}")
 
 
-def _refuse(message: str) -> int:
+def _refuse(message: str, *, hint: str | None = None) -> int:
     """Report a bounded diagnostic on stderr, leaving stdout free of a partial document."""
     print(f"Error: {message}", file=sys.stderr)
+    if hint is not None:
+        print(hint, file=sys.stderr)
     return 1
 
 

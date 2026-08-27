@@ -551,19 +551,30 @@ class CommitImport:
             if row.candidate.get("type") != "person":
                 continue
             matched_id = row.candidate.get("matched_person_id")
-            if matched_id and self._people.get(matched_id) is not None:
+            if matched_id and self._is_active(matched_id):
                 resolution[row.id] = matched_id
                 continue
             if row.status != "committed":
                 continue
             mapped = _mapped_person_id(stored_mappings.get(row.id))
-            if mapped is not None and self._people.get(mapped) is not None:
+            if mapped is not None and self._is_active(mapped):
                 resolution[row.id] = mapped
                 continue
             resolved = self._rematch(row.candidate)
             if resolved is not None:
                 resolution[row.id] = resolved
         return resolution
+
+    def _is_active(self, person_id: str) -> bool:
+        """Whether a resolved identity can still receive records.
+
+        A dependant resolved through a retired identity would pass this stage and then be refused
+        by the child write's own active-person check, failing the whole commit. Declining to
+        resolve leaves it unresolved and committable later, which is what every other unresolvable
+        identity here does.
+        """
+        person = self._people.get(person_id)
+        return person is not None and person.deleted_at is None
 
     def _rematch(self, candidate: dict[str, Any]) -> str | None:
         """Re-derive one already-committed person candidate's identity from stored names.
