@@ -547,7 +547,15 @@ def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> N
 
     assert payload["error"] == "invalid_candidates"
     assert payload["details"][0]["type"] == "extra_forbidden"
-    assert payload["allowed_types"] == ["person", "interaction", "affiliation", "fact"]
+    assert payload["allowed_types"] == [
+        "person",
+        "interaction",
+        "affiliation",
+        "fact",
+        "observation",
+        "trait",
+        "relationship",
+    ]
     assert payload["valid_fields"]["person"] == [
         "type",
         "ref",
@@ -557,6 +565,66 @@ def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> N
         "message_id",
         "date",
     ]
+
+
+def test_stage_candidates_accepts_extraction_types_and_commits_through_the_review_gate(tmp_path: Path) -> None:
+    """The M17 vocabulary is reachable end to end over MCP without a second lifecycle."""
+    db_path = tmp_path / "extraction.db"
+    server = build_server(db_path=db_path)
+
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        staged = await client.call_tool(
+            "stage_candidates",
+            {
+                "source": "planning-meeting",
+                "candidates": [
+                    {"type": "person", "ref": "alice", "name": "Alice Rivera", "aliases": []},
+                    {"type": "person", "ref": "bob", "name": "Bob Chen", "aliases": []},
+                    {"type": "observation", "person_ref": "alice", "text": "Asked for metrics first"},
+                    {
+                        "type": "trait",
+                        "person_ref": "alice",
+                        "category": "communication_style",
+                        "value": "Responds to quantitative proposals",
+                        "evidence_note": "Asked for measurable evidence twice in one meeting.",
+                        "confidence": 0.6,
+                    },
+                    {
+                        "type": "relationship",
+                        "from_ref": "alice",
+                        "to_ref": "bob",
+                        "relationship_type": "colleague",
+                    },
+                ],
+            },
+        )
+        batch_id = staged.structured_content["batch_id"]
+        reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
+        accepted = [row["id"] for row in reviewed.structured_content["candidates"]]
+        committed = await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": accepted})
+        return staged.structured_content, reviewed.structured_content, committed.structured_content
+
+    staged, reviewed, committed = _run(server, flow)
+
+    assert staged["candidate_count"] == 5
+    assert {row["candidate"]["type"] for row in reviewed["candidates"]} == {
+        "person",
+        "observation",
+        "trait",
+        "relationship",
+    }
+    people = [row for row in reviewed["candidates"] if row["candidate"]["type"] == "person"]
+    assert all(row["candidate"]["match_disposition"] == "unmatched" for row in people)
+    assert committed["unresolved_ids"] == []
+    assert len(committed["committed_ids"]) == 5
+
+    conn = open_db(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM traits").fetchone()[0] == 1
+        assert conn.execute("SELECT type FROM relationships").fetchone()["type"] == "colleague_of"
+    finally:
+        conn.close()
 
 
 def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path) -> None:

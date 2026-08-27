@@ -426,6 +426,89 @@ def test_review_renders_an_interaction_that_names_no_participants(
     )
 
 
+def test_review_describes_extraction_candidates_well_enough_to_accept_them_by_id(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A batch staged over MCP is reviewable at the terminal; every type says what it proposes."""
+    print_import_review(
+        [
+            ImportReviewRow(
+                id="person-1",
+                source="import/agent:planning-meeting",
+                status="pending",
+                candidate={
+                    "type": "person",
+                    "name": "Alice Rivera",
+                    "aliases": [],
+                    "matched_person_id": None,
+                    "match_disposition": "ambiguous",
+                    "match_count": 3,
+                },
+            ),
+            ImportReviewRow(
+                id="person-2",
+                source="import/agent:planning-meeting",
+                status="pending",
+                candidate={
+                    "type": "person",
+                    "name": "Bob Chen",
+                    "aliases": [],
+                    "matched_person_id": None,
+                    "match_disposition": "unmatched",
+                    "match_count": 0,
+                },
+            ),
+            ImportReviewRow(
+                id="observation-1",
+                source="import/agent:planning-meeting",
+                status="pending",
+                candidate={
+                    "type": "observation",
+                    "text": "Asked for concrete metrics",
+                    "person_candidate_id": "person-1",
+                },
+            ),
+            ImportReviewRow(
+                id="trait-1",
+                source="import/agent:planning-meeting",
+                status="pending",
+                candidate={
+                    "type": "trait",
+                    "category": "communication_style",
+                    "value": "Prefers quantitative proposals",
+                    "evidence_note": "Asked for measurable evidence twice.",
+                    "confidence": 0.65,
+                    "person_candidate_id": "person-1",
+                },
+            ),
+            ImportReviewRow(
+                id="relationship-1",
+                source="import/agent:planning-meeting",
+                status="pending",
+                candidate={
+                    "type": "relationship",
+                    "relationship_type": "colleague",
+                    "from_candidate_id": "person-1",
+                    "to_candidate_id": "person-2",
+                },
+            ),
+        ]
+    )
+
+    out = capsys.readouterr().out
+    # Ambiguity is stated, not implied by a missing id: it is the decision the reviewer owes.
+    assert "person-1  pending  person  Alice Rivera — matches 3 existing people; identity unresolved" in out
+    assert "person-2  pending  person  Bob Chen\n" in out
+    assert "observation-1  pending  observation  Asked for concrete metrics — Alice Rivera (person-1)" in out
+    assert (
+        "trait-1  pending  trait  communication_style=Prefers quantitative proposals "
+        "(confidence 0.65) — Alice Rivera (person-1)"
+    ) in out
+    assert (
+        "relationship-1  pending  relationship  Alice Rivera (person-1) —colleague→ Bob Chen (person-2)"
+    ) in out
+
+
 def test_an_undecodable_source_is_a_concise_refusal_rather_than_a_traceback(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
