@@ -401,9 +401,11 @@ class BundleSourceSession(StrictBundleModel):
             # Duplicate detection finds it by that key, so a redacted row without one is invisible
             # to the lookup and the forgotten source is staged fresh instead of being refused —
             # which is the whole terminal-forget contract, undone by a null column.
+            #
+            # This subsumes "must be claim-backed": the first check above already refuses a key
+            # without a digest, so requiring the key here leaves no way to reach a digestless
+            # redacted receipt. There is deliberately no second digest check to fall through to.
             raise ValueError("a redacted source session must retain its canonical claim key")
-        if self.content_digest is None:
-            raise ValueError("a redacted source session must be claim-backed")
         cleared = (self.label, self.external_source_id, self.extraction_contract_revision, self.batch_id)
         if any(value is not None for value in cleared):
             raise ValueError("a redacted source session must carry no cleared caller or batch state")

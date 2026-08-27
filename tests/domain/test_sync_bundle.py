@@ -196,7 +196,11 @@ def test_a_claim_key_without_a_digest_is_rejected() -> None:
 
 
 def test_a_redacted_session_without_a_digest_is_rejected() -> None:
-    """A terminal receipt exists to preserve a claim; without one there is nothing to preserve."""
+    """A terminal receipt exists to preserve a claim; without one there is nothing to preserve.
+
+    The claim-key requirement is what refuses this: a digestless receipt can hold no key, and a
+    key is what duplicate detection would have to find. Both nulls are checked together here.
+    """
     payload = _document()
     session = _imports(payload)["source_sessions"][0]
     session.update(
