@@ -438,6 +438,94 @@ def test_human_output_renders_the_source_without_raw_material(
     assert "Import receipts are metadata about personal material" in captured.err
 
 
+def test_human_listing_renders_a_table_and_offers_the_next_page_command(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    first = _stage(db_file, _linkedin(tmp_path, "a.csv"), capsys, "--label", "Work connections")
+    _stage(db_file, _linkedin(tmp_path, "b.csv", rows=3), capsys)
+
+    assert cli.main(["--db", str(db_file), "sources", "--limit", "1"]) == 0
+
+    captured = capsys.readouterr()
+    assert "ID" in captured.out
+    assert "KIND" in captured.out
+    assert "linkedin" in captured.out
+    assert "pctx sources --cursor " in captured.out
+    # Only the first page is rendered, so the older source is not in this output.
+    assert first["source_session_id"] not in captured.out
+    assert "Import receipts are metadata about personal material" in captured.err
+
+
+def test_a_human_listing_shows_a_label_it_carries(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    _stage(db_file, _linkedin(tmp_path), capsys, "--label", "Work connections")
+
+    assert cli.main(["--db", str(db_file), "sources"]) == 0
+
+    assert "Work connections" in capsys.readouterr().out
+
+
+def test_human_output_for_a_redacted_source_stops_at_its_claim(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    batch = _stage(db_file, _linkedin(tmp_path, rows=1), capsys, "--label", "Interview notes")
+    _commit(db_file, batch["batch_id"], capsys)
+    assert cli.main(["--db", str(db_file), "delete", "Person0 Surname0", "--yes"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["--db", str(db_file), "source", "show", batch["source_session_id"]]) == 0
+
+    captured = capsys.readouterr()
+    assert "This source's records were all forgotten" in captured.out
+    assert "Interview notes" not in captured.out
+    assert "created:" not in captured.out
+    assert "batch:" not in captured.out
+    assert "CANDIDATE" not in captured.out
+
+
+def test_human_output_for_a_digestless_source_says_it_promises_no_deduplication(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    candidates = tmp_path / "candidates.json"
+    candidates.write_text(
+        json.dumps([{"type": "person", "ref": "p1", "name": "Priya Nair", "aliases": []}]),
+        encoding="utf-8",
+    )
+    assert cli.main(
+        [
+            "--db",
+            str(db_file),
+            "import",
+            "stage-candidates",
+            "--source",
+            "planning sync",
+            "--input",
+            str(candidates),
+            "--source-kind",
+            "meeting_transcript",
+            "--json",
+        ]
+    ) == 0
+    batch = _json(capsys)
+
+    assert cli.main(["--db", str(db_file), "source", "show", batch["source_session_id"]]) == 0
+
+    captured = capsys.readouterr()
+    assert "claim: none (this source makes no duplicate-import promise)" in captured.out
+    # Nothing is committed yet, so the mapping page is legitimately empty.
+    assert "No committed candidates on this page." in captured.out
+    assert "staged candidates: 1 (pending: 1)" in captured.out
+
+
 def test_human_output_offers_the_next_page_command(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

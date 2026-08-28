@@ -255,6 +255,25 @@ def test_an_unknown_source_session_is_refused() -> None:
     assert raised.value.code == UNKNOWN_SOURCE_SESSION
 
 
+@pytest.mark.parametrize("session_id", ["", "   ", "A" * 65])
+def test_a_session_id_outside_its_bounds_is_refused_before_any_query(session_id: str) -> None:
+    """An id is bounded at the boundary, and a refusal names no part of what was typed."""
+    reader = FakeSourceInspectionReader([_session(1)])
+
+    with pytest.raises(SourceInspectionError) as raised:
+        ShowImportSource(reader).execute(session_id)
+
+    assert raised.value.code == UNKNOWN_SOURCE_SESSION
+    typed = session_id.strip()
+    assert not typed or typed not in str(raised.value)
+
+
+def test_a_session_id_is_matched_after_surrounding_whitespace_is_trimmed() -> None:
+    reader = FakeSourceInspectionReader([_session(1)])
+
+    assert ShowImportSource(reader).execute("  S0001  ").source.id == "S0001"
+
+
 def test_a_redacted_source_discloses_only_its_id_kind_and_claim() -> None:
     redacted = SourceSessionRow(
         id="S0001",

@@ -10,6 +10,7 @@ import pytest
 from people_context.domain.source_cursor import (
     MAX_CURSOR_CHARS,
     MAX_CURSOR_ID_CHARS,
+    MAX_DECODED_CURSOR_CHARS,
     decode_mapping_cursor,
     decode_source_cursor,
     encode_mapping_cursor,
@@ -49,6 +50,15 @@ def test_mapping_cursor_round_trips_its_candidate_id() -> None:
 def test_an_oversized_cursor_is_refused_without_being_decoded() -> None:
     with pytest.raises(ValueError, match=f"at most {MAX_CURSOR_CHARS} characters"):
         decode_mapping_cursor("A" * (MAX_CURSOR_CHARS + 1))
+
+
+def test_a_cursor_whose_payload_is_oversized_is_refused_after_decoding() -> None:
+    """A well-formed cursor still cannot smuggle an unbounded key past the encoded length check."""
+    oversized = _cursor("A" * (MAX_DECODED_CURSOR_CHARS + 1))
+    assert len(oversized) <= MAX_CURSOR_CHARS
+
+    with pytest.raises(ValueError, match="not a valid pagination cursor"):
+        decode_mapping_cursor(oversized)
 
 
 def test_a_blank_cursor_is_refused() -> None:
