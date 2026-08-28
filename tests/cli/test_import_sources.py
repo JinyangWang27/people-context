@@ -575,3 +575,52 @@ def test_inline_content_alongside_a_path_is_refused_rather_than_silently_dropped
     assert excinfo.value.code == "invalid_source"
     assert _rows(db_file, "import_source_sessions") == []
     assert _rows(db_file, "import_staging") == []
+
+
+def test_an_ordinary_committed_batch_is_not_reported_as_awaiting_review(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Committing does not delete a batch's rows, it marks them committed.
+
+    Counting rows rather than pending rows called a finished batch reviewable and sent the caller
+    to a review with nothing left to decide — the exact distinction the flag exists to draw.
+    """
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    first = _stage(db_file, source, capsys)
+    _commit_all(db_file, first["batch_id"], capsys)
+    assert _rows(db_file, "import_staging"), "this covers the case where cleanup has not run"
+
+    document = _stage(db_file, source, capsys)
+
+    assert document["duplicate"] is True
+    assert document["reviewable"] is False
+    # What the batch holds is still every row, which is the count worth reporting.
+    assert document["candidate_count"] == len(_rows(db_file, "import_staging"))
+    assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(source)]) == 0
+    output = capsys.readouterr().out
+    assert "already committed" in output
+    assert "pctx import review" not in output
+
+
+def test_a_partly_committed_batch_still_points_at_what_is_left_to_review(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The other side of the same rule: pending rows remain, so the batch is still reviewable."""
+    db_file = tmp_path / "people.db"
+    source = _linkedin(tmp_path)
+    first = _stage(db_file, source, capsys)
+    staged = _rows(db_file, "import_staging")
+    assert len(staged) > 1
+    commit = ["--db", str(db_file), "import", "commit", first["batch_id"], "--accept", staged[0]["id"]]
+    assert cli.main(commit) == 0
+    capsys.readouterr()
+
+    document = _stage(db_file, source, capsys)
+
+    assert document["duplicate"] is True
+    assert document["reviewable"] is True
+    assert cli.main(["--db", str(db_file), "import", "stage", "linkedin", str(source)]) == 0
+    assert f"pctx import review {first['batch_id']}" in capsys.readouterr().out

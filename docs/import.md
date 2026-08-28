@@ -370,6 +370,11 @@ version-2 restore carries a completed source's durable mappings without them. Th
 the batch still holds: it counts the committed candidates rather than reporting nought, and says there is nothing
 left to review instead of naming a batch `pctx import review` can no longer find.
 
+Committing does not delete a batch's rows, it marks them `committed`, so those two counts are separate questions.
+What the batch holds is every row it still has, or its durable mappings once cleanup has run; what is left to
+review is only its pending rows. A fully committed batch is therefore reported as committed even before any
+cleanup, while a partly committed one still points at the rows awaiting a decision.
+
 `pctx import stage ... --force` is the explicit escape hatch for intentional reprocessing. It keeps the same
 digest and fingerprint but asserts no canonical claim, so it creates a separate processing session and never
 weakens the default rule for later invocations.
@@ -406,6 +411,14 @@ A digestless receipt has no claim worth keeping, so it is deleted outright and s
 fresh exactly as before, and so is an explicit `--force` reprocessing session: it carries a digest but competes
 for no canonical key, so retaining it would leave the digest of an erased artifact behind while suppressing
 nothing.
+
+A restored staging row is held to the whole persisted candidate shape, not just the parts that make it findable:
+its type, the canonical reference fields that type requires, every field commit indexes directly, and nothing
+else. A row missing one of those does not go unresolved at commit — it raises mid-transaction, after earlier
+candidates in the same commit have already written — and a field the stager never writes is raw source text that
+review would display and every later bundle would carry. A row's status and its outcome must also agree in both
+directions, because the mapping and the transition to `committed` are written in one unit of work: a pending row
+may not already carry a mapping, and a committed one may not be missing it.
 
 The claim key is what makes a terminal receipt do its job — duplicate detection finds it by that key, not by the
 digest — so both the schema and version-2 restore validation require a `redacted` row to carry one. A receipt

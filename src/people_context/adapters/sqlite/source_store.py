@@ -65,7 +65,7 @@ class SqliteImportSourceStore:
                         session=owner,
                         created=False,
                         candidate_count=staged or self._mapped_count(owner.batch_id),
-                        reviewable=staged > 0,
+                        reviewable=self._pending_count(owner.batch_id) > 0,
                     )
             session = SourceSessionRow(
                 id=session_id,
@@ -163,8 +163,24 @@ class SqliteImportSourceStore:
         return _session(row) if row is not None else None
 
     def _staged_count(self, batch_id: str | None) -> int:
-        """Count the batch's reviewable rows, which a completed batch may no longer have."""
+        """Count the batch's staged rows, which a completed batch may no longer have."""
         return self._count("import_staging", "batch_id", batch_id)
+
+    def _pending_count(self, batch_id: str | None) -> int:
+        """Count what is actually left to review.
+
+        Committing a batch does not delete its rows, it marks them `committed`, so counting rows
+        would call a fully committed batch reviewable and point the caller at a review that has
+        nothing to decide. What the batch *holds* is still every row — that is the count worth
+        reporting — but what remains reviewable is only the pending ones.
+        """
+        if batch_id is None:
+            return 0
+        row = self._conn.execute(
+            "SELECT COUNT(*) AS total FROM import_staging WHERE batch_id = ? AND status <> 'committed'",
+            (batch_id,),
+        ).fetchone()
+        return int(row["total"])
 
     def _mapped_count(self, batch_id: str | None) -> int:
         """Count what the batch durably produced, which outlives its staging rows."""

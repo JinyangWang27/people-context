@@ -21,14 +21,12 @@ from typing import Annotated, Any, ClassVar, Literal
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from people_context.domain.import_provenance import (
-    REQUIRED_STAGED_REFERENCES,
-    STAGED_CANDIDATE_TYPES,
     check_contract_revision,
     check_hex64,
     check_opaque_label,
     check_source_kind,
+    check_staged_candidate,
     compose_claim_key,
-    identifier_list,
     staged_candidate_references,
 )
 from people_context.domain.person import AliasKind
@@ -444,10 +442,11 @@ class BundleCandidateMapping(StrictBundleModel):
 class BundleStagingRow(StrictBundleModel):
     """One bundled reviewable staging row, carried only for an incomplete batch.
 
-    The candidate is checked for the shape commit actually depends on: a known type, and the
-    canonical reference fields that type requires. Commit indexes those directly, so a row missing
-    one is not a candidate commit can decline — it is a row that would raise mid-transaction, on a
-    batch a restore had already accepted.
+    The candidate is held to the whole persisted shape, not just the parts that make it findable:
+    a known type, the canonical reference fields that type requires, every field commit indexes
+    directly, and nothing else. A row missing one of those fields does not go unresolved — it
+    raises mid-commit, on a batch the restore already accepted. A row carrying a field the stager
+    never writes is raw source text that review would display and every later bundle would carry.
     """
 
     id: Identifier
@@ -459,14 +458,7 @@ class BundleStagingRow(StrictBundleModel):
 
     @model_validator(mode="after")
     def _check_candidate(self) -> BundleStagingRow:
-        candidate_type = self.candidate.get("type")
-        if candidate_type not in STAGED_CANDIDATE_TYPES:
-            raise ValueError("staged candidate must carry a supported type")
-        for field_name in REQUIRED_STAGED_REFERENCES[str(candidate_type)]:
-            value = self.candidate.get(field_name)
-            resolved = {value} if isinstance(value, str) and value else identifier_list(value)
-            if not resolved:
-                raise ValueError(f"staged {candidate_type} candidate must carry {field_name}")
+        check_staged_candidate(self.candidate)
         return self
 
 
@@ -692,12 +684,20 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         matched = row.candidate.get("matched_person_id")
         if isinstance(matched, str) and matched not in active_people:
             details.append(f"staging row {row.id} matches a person who is not active in the bundle: {matched}")
+        # A mapping is written in the same unit of work as the row's transition to committed, so
+        # the two never disagree in state this installation produced, in either direction. The
+        # spec puts it as an invariant of the mapping: "a committed status can never become
+        # visible without its output mapping".
         if row.status != "committed" and row.id in mapped_candidates:
-            # A mapping is written in the same unit of work as the row's transition to committed,
-            # so the two never disagree in state this installation produced. Restoring a pending
-            # row that already has an outcome would let commit write a second entity and overwrite
-            # the mapping, orphaning the first from the source that produced it.
+            # Restoring a pending row that already has an outcome would let commit write a second
+            # entity and overwrite the mapping, orphaning the first from the source that made it.
             details.append(f"staging row {row.id} is pending but already has a committed outcome")
+        elif row.status == "committed" and row.id not in mapped_candidates:
+            # And a committed row without its outcome is a dependency commit cannot resolve
+            # through provenance, so it falls back to matching the stored name — which is the
+            # heuristic the mapping exists to replace, and which resolves to a different identity
+            # once names are ambiguous.
+            details.append(f"staging row {row.id} is committed but carries no outcome mapping")
         # References are batch-local, so a dependant naming a candidate the bundle does not carry
         # would restore a batch whose commit can never resolve it.
         unknown = staged_candidate_references(row.candidate) - staged_by_batch.get(row.batch_id, set())

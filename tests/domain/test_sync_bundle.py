@@ -496,6 +496,101 @@ def test_a_partially_committed_session_may_own_only_its_surviving_mappings() -> 
     validate_bundle_document(SyncBundleDocument.model_validate(payload))
 
 
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        {"type": "fact", "person_candidate_id": "01J0000000000000000STAGE01", "value": "Berlin"},
+        {"type": "fact", "person_candidate_id": "01J0000000000000000STAGE01", "predicate": "city"},
+        {"type": "observation", "person_candidate_id": "01J0000000000000000STAGE01"},
+        {"type": "person", "aliases": []},
+        {"type": "person", "name": "Alice"},
+        {
+            "type": "trait",
+            "person_candidate_id": "01J0000000000000000STAGE01",
+            "category": "communication_style",
+            "value": "Direct",
+            "confidence": 0.6,
+        },
+    ],
+)
+def test_a_restored_candidate_missing_a_field_commit_indexes_is_rejected(candidate: dict[str, Any]) -> None:
+    """These do not go unresolved at commit — they raise `KeyError` mid-transaction.
+
+    By then the restore has been accepted and earlier candidates in the same commit have written,
+    so the batch has to be refused here or not at all.
+    """
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"] = candidate
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("aliases", "alice@example.com"),
+        ("match_count", "two"),
+        ("match_count", True),
+    ],
+)
+def test_a_restored_candidate_holding_a_declared_field_as_the_wrong_primitive_is_rejected(
+    field: str,
+    value: object,
+) -> None:
+    """A present-but-wrongly-typed field reaches the durable write and fails it mid-commit.
+
+    A boolean is included on purpose: `bool` is an `int` in Python, and a boolean count is not a
+    count.
+    """
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"][field] = value
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_restored_candidate_carrying_an_undeclared_field_is_rejected() -> None:
+    """Staging is where extraction output stops being prose; an invented key is that prose.
+
+    Review would display it and every later bundle would carry it, so the accepted set is closed
+    exactly as the models that produce these rows forbid extras.
+    """
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"]["raw_body"] = "the whole transcript"
+
+    with pytest.raises(ValidationError) as excinfo:
+        SyncBundleDocument.model_validate(payload)
+
+    # The key is named because it is the caller's own invention; the value never is.
+    assert "raw_body" in str(excinfo.value)
+    assert "the whole transcript" not in str(excinfo.value)
+
+
+def test_a_restored_candidate_may_omit_every_optional_field() -> None:
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"] = {"type": "person", "name": "Alice", "aliases": []}
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def test_a_committed_staging_row_without_its_outcome_is_rejected() -> None:
+    """The mapping and the transition to committed are written in one unit of work.
+
+    Without the mapping, commit resolves a dependant by matching the stored name — the heuristic
+    the mapping exists to replace, and one that lands on a different identity once names are
+    ambiguous.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["staging"][0]["status"] = "committed"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("carries no outcome mapping" in detail for detail in excinfo.value.details)
+
+
 def test_a_pending_staging_row_that_already_has_an_outcome_is_rejected() -> None:
     """A mapping and its row's transition to committed are written in one unit of work.
 
