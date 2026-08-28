@@ -4,21 +4,28 @@ Inspection pages tables that can grow without limit, so continuation is a *key*,
 each page resumes from the last row it returned, which keeps the read cost of page 500 identical
 to the read cost of page one and never renumbers rows a concurrent staging run inserted.
 
-**A cursor carries an identifier and nothing else.** The encoding here is reversible base64, so a
+Three rules shape the encoding.
+
+**A cursor carries an identifier, never a sort key.** The encoding is reversible base64, so a
 cursor discloses whatever it holds — and one of the rows it can end a page on is a terminal
 `redacted` source, whose timestamps the hard-forget contract promises never to expose. A cursor
-built from a sort key would have leaked exactly that through the one field a caller is handed and
+built from a sort key would have leaked exactly that through the one value a caller is handed and
 told to pass back. So the key is the row's identifier, which inspection discloses for every source
 including a redacted one, and the store resolves that identifier to its own sort position.
 
-The cursor is still opaque to the caller: it encodes a position in an ordering this project is
-free to extend, and a caller that decoded one and started composing its own would be depending on
-a sort key that is not a contract.
+**A cursor names the listing that issued it.** Every cursor carries a scope, and a decode that
+expects a different one refuses. Without that, a cursor from one source's mapping page would be
+accepted by another source's as a bare `candidate_id >` boundary: the query would succeed and
+silently omit the provenance sorting below it, which is a wrong answer presented as a complete
+one. The scope is length-prefixed rather than delimited, so an identifier containing any byte at
+all still parses back unambiguously.
 
-Identifiers are **format-opaque**. A restored bundle preserves ids verbatim and requires only that
-they are non-blank, so anything narrower here — a ULID shape, an ASCII alphabet — would make
-restored provenance impossible to page through. They are bounded and never interpreted; every use
-is a bound SQL parameter.
+**Identifiers are format-opaque and unbounded in shape.** A bootstrap bundle preserves ids verbatim
+and requires only that they are non-blank, so inspection imposes no length or alphabet rule of its
+own: one would make restored provenance visible but impossible to look up or page through. The only
+limit is a resource bound on the encoded cursor this surface will parse at all, which is generous
+enough that no identifier a real store holds comes close. Identifiers are never parsed or compared
+by shape; every use is a bound SQL parameter.
 
 Everything here raises plain ``ValueError``; the process boundary wraps it in the refusal its own
 callers expect.
@@ -28,38 +35,42 @@ from __future__ import annotations
 
 import base64
 import binascii
+import re
 from typing import Final
 
-#: Characters an encoded cursor may carry. Large enough for any identifier below once base64
-#: expansion is allowed for, and small enough that a hostile value costs a length check rather
-#: than a decode.
-MAX_CURSOR_CHARS: Final = 512
-
-#: Characters an identifier inside a cursor may carry.
+#: Characters an encoded cursor may carry.
 #:
-#: This matches the bound the rest of the project puts on an opaque caller-supplied identifier.
-#: It is deliberately far wider than the 26-character ULIDs this installation mints: a bootstrap
-#: bundle preserves ids exactly and validates them only as non-blank, so a database restored from
-#: another implementation can legitimately hold longer ones, and refusing those would leave their
-#: provenance visible but untraversable.
-MAX_CURSOR_ID_CHARS: Final = 256
+#: This is the one bound, and it is a resource limit rather than a statement about identifiers: it
+#: stops a hostile value at a length check instead of a decode. It allows roughly 1.5 KB of scope
+#: plus identifier, which no id this project mints — 26-character ULIDs — approaches, and which
+#: leaves ample room for the format-opaque ids a bundle from another implementation may carry.
+MAX_CURSOR_CHARS: Final = 2048
+
+#: Scope of a cursor issued by the source listing.
+SOURCE_LIST_SCOPE: Final = "sources"
+
+#: Digits of the length prefix that separates a cursor's scope from its key.
+_LENGTH_PREFIX: Final = re.compile(r"\A([0-9]{1,4}):")
 
 
-def encode_cursor(identifier: str) -> str:
-    """Return the opaque cursor resuming a page after the row with this identifier."""
-    return base64.urlsafe_b64encode(identifier.encode("utf-8")).decode("ascii").rstrip("=")
+def mapping_scope(session_id: str) -> str:
+    """Return the cursor scope naming one source's own mapping page."""
+    return f"source:{session_id}"
 
 
-def decode_cursor(raw: str) -> str:
-    """Return the identifier one cursor names, or raise ``ValueError``.
+def encode_cursor(scope: str, key: str) -> str:
+    """Return the opaque cursor resuming `scope`'s page after the row with this key."""
+    return base64.urlsafe_b64encode(f"{len(scope)}:{scope}{key}".encode()).decode("ascii").rstrip("=")
 
-    The length check runs before the decode so an enormous value is refused without being
-    decoded, and the decoded identifier is bounded again because base64 expands what it carries
-    by a known factor only when the input is well formed.
 
-    The identifier is returned exactly as it was encoded. Only the surrounding encoded text is
-    trimmed, never the payload: ids are preserved verbatim across a bootstrap restore, so
-    normalizing one here could stop it matching the row it names.
+def decode_cursor(raw: str, *, scope: str) -> str:
+    """Return the key one cursor names, or raise ``ValueError``.
+
+    The length check runs before the decode so an enormous value is refused without being decoded.
+
+    The key is returned exactly as it was encoded. Only the surrounding encoded text is trimmed,
+    never the payload: ids are preserved verbatim across a bootstrap restore, so normalizing one
+    here could stop it matching the row it names.
     """
     text = raw.strip()
     if not text:
@@ -68,21 +79,29 @@ def decode_cursor(raw: str) -> str:
         raise ValueError(f"cursor is at most {MAX_CURSOR_CHARS} characters")
     padding = "=" * (-len(text) % 4)
     try:
-        identifier = base64.urlsafe_b64decode(text + padding).decode("utf-8")
+        payload = base64.urlsafe_b64decode(text + padding).decode("utf-8")
     except (binascii.Error, UnicodeDecodeError, ValueError):
         raise ValueError("cursor is not a valid pagination cursor") from None
-    return check_cursor_identifier(identifier)
+    found_scope, key = _split(payload)
+    if found_scope != scope:
+        raise ValueError("cursor was issued for a different listing")
+    if not key.strip():
+        raise ValueError("cursor is not a valid pagination cursor")
+    return key
 
 
-def check_cursor_identifier(value: str) -> str:
-    """Return one accepted format-opaque identifier, or raise ``ValueError``.
+def _split(payload: str) -> tuple[str, str]:
+    """Split one decoded payload into its scope and key by the declared scope length.
 
-    Bounded and non-blank is the whole rule. The value is never parsed, compared by shape, or
-    interpolated — it reaches SQLite only as a bound parameter — so a narrower alphabet would
-    refuse legitimate restored ids without buying anything.
+    A length prefix rather than a delimiter, because both halves are format-opaque: a separator
+    byte could legitimately occur inside a restored identifier and would then split the payload in
+    the wrong place, silently addressing a different row.
     """
-    if not value.strip():
+    match = _LENGTH_PREFIX.match(payload)
+    if match is None:
         raise ValueError("cursor is not a valid pagination cursor")
-    if len(value) > MAX_CURSOR_ID_CHARS:
+    length = int(match.group(1))
+    rest = payload[match.end() :]
+    if length > len(rest):
         raise ValueError("cursor is not a valid pagination cursor")
-    return value
+    return rest[:length], rest[length:]

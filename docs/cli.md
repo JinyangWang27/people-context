@@ -239,10 +239,12 @@ against a different database — creating and migrating the default one, or fail
 
 A cursor encodes the identifier of the last row a page returned, and nothing else. The store resolves that
 identifier to its own sort position, so a redacted source's withheld timestamp never travels in a value you hold.
-Identifiers are format-opaque and bounded at 256 characters rather than assumed to be ULIDs, because a bootstrap
-restore preserves them verbatim — a restored source keeps its provenance traversable. A cursor this surface did
-not issue, or one naming a source that has since been forgotten, is refused rather than guessed at
-(`invalid_source_cursor`, exit 2), as is a `--limit` outside its range (`invalid_source_page_limit`, exit 2). An id that names no receipt exits 1 with
+It also names the listing that issued it: a cursor from `sources`, or from another source's `source show`, is
+refused rather than silently used as a boundary that would omit part of this source's provenance. Identifiers are
+format-opaque — no length or alphabet rule, because a bootstrap restore preserves them verbatim, so a restored
+source keeps its provenance traversable. A cursor this surface did not issue, one from a different listing, or
+one naming a source that has since been forgotten is refused rather than guessed at (`invalid_source_cursor`,
+exit 2), as is a `--limit` outside its range (`invalid_source_page_limit`, exit 2). An id that names no receipt exits 1 with
 `unknown_source_session`. Under `--json` a refusal leaves stdout empty and puts a bounded diagnostic on stderr,
 naming the rule rather than repeating what was supplied.
 
@@ -252,8 +254,10 @@ non-personal kind, digest/fingerprint claim state, and `redacted` status — no 
 mappings, and pagination arguments do not widen that. A fully forgotten digestless source has no row at all. A
 `merged_away` outcome names no record id, because the relationship it produced was removed during a person merge.
 
-Both commands print a short reminder to stderr that receipts are metadata about personal material: your labels are
-your own wording, and a digest identifies a file rather than anonymizing it.
+Both commands print a short reminder to stderr whenever a result actually carries receipt metadata: your labels
+are your own wording, and a digest identifies a file rather than anonymizing it. It is printed under `--json`
+too, because that mode discloses the same fields; stderr is not the document, so stdout still holds exactly one
+JSON object. An empty listing discloses nothing and warns about nothing.
 
 ## Packaged demo
 

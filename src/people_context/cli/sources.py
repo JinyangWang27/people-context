@@ -5,9 +5,9 @@ They are not a document browser: there is no raw source, no path, no extraction 
 no way to retrieve the material a receipt describes, because People Context never stored it.
 
 Both commands are pages rather than dumps. A source with a hundred thousand mappings is traversed
-by repeated calls carrying `--cursor`, and no invocation ever holds more than one page. The cursor
-is what this surface issued and nothing else: an unrecognized one is refused rather than guessed
-at, so a caller cannot fabricate a scan by editing one.
+by repeated calls carrying `--cursor`, and no invocation ever holds more than one page. A cursor is
+accepted only by the listing that issued it: one from elsewhere is refused rather than reinterpreted
+as a boundary here, which would return a page silently missing part of this source's provenance.
 """
 
 from __future__ import annotations
@@ -49,6 +49,10 @@ def cmd_sources(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         result = runtime.use_cases.list_import_sources.execute(limit=args.limit, cursor=args.cursor)
     except SourceInspectionError as exc:
         return _refuse(exc)
+    # The reminder belongs to the disclosure, not to one rendering of it: `--json` carries the
+    # same labels, external ids, and file-identifying digests. It goes to stderr, so the promise
+    # that stdout holds exactly one document is untouched.
+    _warn_if_disclosing(bool(result.sources))
     if args.json:
         print(render_import_json(import_sources_document(result)), end="")
         return 0
@@ -72,6 +76,7 @@ def cmd_source_show(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
         )
     except SourceInspectionError as exc:
         return _refuse(exc)
+    _warn_if_disclosing(True)
     if args.json:
         print(render_import_json(import_source_document(result)), end="")
         return 0
@@ -79,12 +84,20 @@ def cmd_source_show(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
     return 0
 
 
+def _warn_if_disclosing(disclosing: bool) -> None:
+    """Remind once, on stderr, whenever a result actually carries receipt metadata.
+
+    An empty listing discloses nothing, so it warns about nothing.
+    """
+    if disclosing:
+        print(f"Warning: {SOURCES_DISCLOSURE_WARNING}", file=sys.stderr)
+
+
 def _print_sources(result: SourceListResult) -> None:
     """Render one listing page and how to continue it."""
     if not result.sources:
         print("No import sources.")
         return
-    print(f"Warning: {SOURCES_DISCLOSURE_WARNING}", file=sys.stderr)
     print_table(
         ["ID", "KIND", "STATUS", "CREATED", "LABEL"],
         [_source_row(source) for source in result.sources],
@@ -96,7 +109,6 @@ def _print_sources(result: SourceListResult) -> None:
 def _print_source(result: SourceDetailResult) -> None:
     """Render one receipt, its aggregate counts, and one page of its outcomes."""
     source = result.source
-    print(f"Warning: {SOURCES_DISCLOSURE_WARNING}", file=sys.stderr)
     print(f"{source.id} ({source.source_kind})")
     print(f"  status: {source.status}")
     print(f"  claim: {_claim_state(source)}")

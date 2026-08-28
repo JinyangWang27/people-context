@@ -23,7 +23,7 @@ from people_context.app.imports import (
     ShowImportSource,
     SourceInspectionError,
 )
-from people_context.domain.source_cursor import encode_cursor
+from people_context.domain.source_cursor import SOURCE_LIST_SCOPE, encode_cursor
 from people_context.ports.sources import (
     DISPOSITION_ENTITY,
     DISPOSITION_MERGED_AWAY,
@@ -264,17 +264,14 @@ def test_an_unknown_source_session_is_refused() -> None:
     assert raised.value.code == UNKNOWN_SOURCE_SESSION
 
 
-@pytest.mark.parametrize("session_id", ["", "   ", "A" * 65])
-def test_a_session_id_outside_its_bounds_is_refused_before_any_query(session_id: str) -> None:
-    """An id is bounded at the boundary, and a refusal names no part of what was typed."""
+@pytest.mark.parametrize("session_id", ["", "   "])
+def test_a_blank_session_id_is_refused_before_any_query(session_id: str) -> None:
     reader = FakeSourceInspectionReader([_session(1)])
 
     with pytest.raises(SourceInspectionError) as raised:
         ShowImportSource(reader).execute(session_id)
 
     assert raised.value.code == UNKNOWN_SOURCE_SESSION
-    typed = session_id.strip()
-    assert not typed or typed not in str(raised.value)
 
 
 def test_a_session_id_reaches_the_reader_exactly_as_given() -> None:
@@ -287,7 +284,7 @@ def test_a_session_id_reaches_the_reader_exactly_as_given() -> None:
 
 def test_a_session_id_a_bootstrap_restore_accepts_is_inspectable() -> None:
     """A restored id may be neither a ULID nor ASCII; its provenance must still be readable."""
-    restored = replace(_session(1), id="urn:uuid:9f8a/7b+6c источник " + "A" * 200)
+    restored = replace(_session(1), id="urn:uuid:9f8a/7b+6c источник " + "A" * 1000)
     reader = FakeSourceInspectionReader([restored])
 
     assert ShowImportSource(reader).execute(restored.id).source.id == restored.id
@@ -298,7 +295,7 @@ def test_a_listing_cursor_carries_only_the_identifier_of_its_last_row() -> None:
     redacted = replace(_session(1), status=STATUS_REDACTED)
     reader = FakeSourceInspectionReader([redacted, _session(2)])
 
-    page = ListImportSources(reader).execute(limit=1, cursor=encode_cursor("S0002"))
+    page = ListImportSources(reader).execute(limit=1, cursor=encode_cursor(SOURCE_LIST_SCOPE, "S0002"))
 
     assert [row.id for row in page.sources] == ["S0001"]
     assert page.next_cursor is None
@@ -314,9 +311,52 @@ def test_a_redacted_row_ending_a_page_leaks_no_timestamp_through_the_cursor() ->
     page = ListImportSources(reader).execute(limit=1)
 
     assert page.next_cursor is not None
-    decoded = base64.urlsafe_b64decode(page.next_cursor + "=" * (-len(page.next_cursor) % 4))
-    assert decoded.decode("utf-8") == "S0003"
-    assert "2026" not in decoded.decode("utf-8")
+    decoded = base64.urlsafe_b64decode(page.next_cursor + "=" * (-len(page.next_cursor) % 4)).decode("utf-8")
+    assert decoded.endswith("S0003")
+    assert "2026" not in decoded
+
+
+def test_another_sources_mapping_cursor_is_refused_rather_than_silently_skipping() -> None:
+    """The dangerous shape: a bare boundary would page A while omitting what sorts below B's key."""
+    reader = FakeSourceInspectionReader(
+        [_session(1), _session(2)],
+        [_mapping(index, session_id="S0001") for index in range(1, 6)]
+        + [_mapping(index, session_id="S0002") for index in range(1, 6)],
+    )
+    from_other_source = ShowImportSource(reader).execute("S0002", limit=2).next_cursor
+    assert from_other_source is not None
+
+    with pytest.raises(SourceInspectionError) as raised:
+        ShowImportSource(reader).execute("S0001", cursor=from_other_source)
+
+    assert raised.value.code == INVALID_SOURCE_CURSOR
+
+
+def test_a_listing_cursor_is_refused_by_a_mapping_page_and_the_reverse() -> None:
+    reader = FakeSourceInspectionReader(
+        [_session(1), _session(2)],
+        [_mapping(index) for index in range(1, 6)],
+    )
+    listing = ListImportSources(reader).execute(limit=1).next_cursor
+    mappings = ShowImportSource(reader).execute("S0001", limit=2).next_cursor
+    assert listing is not None and mappings is not None
+
+    with pytest.raises(SourceInspectionError):
+        ShowImportSource(reader).execute("S0001", cursor=listing)
+    with pytest.raises(SourceInspectionError):
+        ListImportSources(reader).execute(cursor=mappings)
+
+
+def test_a_mapping_cursor_is_accepted_by_the_source_that_issued_it() -> None:
+    reader = FakeSourceInspectionReader([_session(1)], [_mapping(index) for index in range(1, 6)])
+    use_case = ShowImportSource(reader)
+    own = use_case.execute("S0001", limit=2).next_cursor
+    assert own is not None
+
+    assert [row.candidate_id for row in use_case.execute("S0001", limit=2, cursor=own).mappings] == [
+        "C0003",
+        "C0004",
+    ]
 
 
 def test_a_cursor_naming_a_source_that_is_gone_is_refused() -> None:
@@ -324,7 +364,7 @@ def test_a_cursor_naming_a_source_that_is_gone_is_refused() -> None:
     reader = FakeSourceInspectionReader([_session(1)])
 
     with pytest.raises(SourceInspectionError) as raised:
-        ListImportSources(reader).execute(cursor=encode_cursor("S9999"))
+        ListImportSources(reader).execute(cursor=encode_cursor(SOURCE_LIST_SCOPE, "S9999"))
 
     assert raised.value.code == INVALID_SOURCE_CURSOR
     assert reader.session_requests == []

@@ -26,9 +26,10 @@ from typing import Final, TypeVar
 from pydantic import BaseModel, Field
 
 from people_context.domain.source_cursor import (
-    MAX_CURSOR_ID_CHARS,
+    SOURCE_LIST_SCOPE,
     decode_cursor,
     encode_cursor,
+    mapping_scope,
 )
 from people_context.ports.sources import (
     STATUS_REDACTED,
@@ -165,7 +166,7 @@ class ListImportSources:
         page_limit = _checked_limit(limit)
         after = None
         if cursor is not None:
-            after = self._reader.sort_key_for_session(_decoded(cursor))
+            after = self._reader.sort_key_for_session(_decoded(cursor, SOURCE_LIST_SCOPE))
             if after is None:
                 raise SourceInspectionError(
                     "this cursor no longer names a source", code=INVALID_SOURCE_CURSOR
@@ -177,7 +178,7 @@ class ListImportSources:
             sources=[_summary(row) for row in page],
             # The cursor names the last row *returned*, never the peeked one, so resuming from it
             # yields the row after the page rather than skipping it.
-            next_cursor=None if next_row is None else encode_cursor(page[-1].id),
+            next_cursor=None if next_row is None else encode_cursor(SOURCE_LIST_SCOPE, page[-1].id),
         )
 
 
@@ -201,10 +202,12 @@ class ShowImportSource:
         source's state, and a caller paging a list has no way to know which entry that is.
         """
         page_limit = _checked_limit(limit)
-        after = _decoded(cursor) if cursor is not None else None
         session = self._reader.get_session(_checked_session_id(session_id))
         if session is None:
             raise SourceInspectionError("no such source session", code=UNKNOWN_SOURCE_SESSION)
+        # The cursor is scoped to this source, so it is decoded once the source is known and
+        # still before the redaction return below: a terminal receipt refuses a bad cursor too.
+        after = _decoded(cursor, mapping_scope(session.id)) if cursor is not None else None
         summary = _summary(session)
         if summary.redacted:
             # Nothing below this line runs for a terminal receipt: not the counts, not the mapping
@@ -217,7 +220,9 @@ class ShowImportSource:
             counts=_counts(self._reader.count_source_candidates(session.id, session.batch_id)),
             limit=page_limit,
             mappings=[_mapping_entry(row) for row in page],
-            next_cursor=None if next_row is None else encode_cursor(page[-1].candidate_id),
+            next_cursor=(
+                None if next_row is None else encode_cursor(mapping_scope(session.id), page[-1].candidate_id)
+            ),
         )
 
 
@@ -230,21 +235,27 @@ def _checked_limit(limit: int) -> int:
 
 
 def _checked_session_id(session_id: str) -> str:
-    """Bound the id before it reaches a query, refusing without echoing what was typed.
+    """Refuse a blank id, and pass anything else through exactly as given.
 
-    The value is passed on exactly as given rather than normalized. A bootstrap restore preserves
-    identifiers verbatim and requires only that they are non-blank, so trimming one here could
-    stop it matching the very row it names.
+    There is deliberately no length or alphabet rule. A bootstrap restore preserves identifiers
+    verbatim and requires only that they are non-blank, so a narrower rule here would refuse a
+    restored source that this database genuinely holds — and the id reaches SQLite only as a bound
+    parameter of an exact lookup, so nothing is bought by narrowing it. Normalizing is out for the
+    same reason: trimming could stop an id matching the very row it names.
     """
-    if not session_id.strip() or len(session_id) > MAX_CURSOR_ID_CHARS:
+    if not session_id.strip():
         raise SourceInspectionError("no such source session", code=UNKNOWN_SOURCE_SESSION)
     return session_id
 
 
-def _decoded(cursor: str) -> str:
-    """Decode one opaque cursor, refusing it by rule rather than by value."""
+def _decoded(cursor: str, scope: str) -> str:
+    """Decode one opaque cursor for the listing that must have issued it.
+
+    Passing another listing's cursor is refused rather than treated as a boundary in this one,
+    which would silently omit the rows sorting below it and report success.
+    """
     try:
-        return decode_cursor(cursor)
+        return decode_cursor(cursor, scope=scope)
     except ValueError as exc:
         raise SourceInspectionError(str(exc), code=INVALID_SOURCE_CURSOR) from None
 

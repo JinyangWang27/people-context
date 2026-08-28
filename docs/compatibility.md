@@ -104,9 +104,10 @@ project:
 
   The source-inspection documents add one contract of their own: `next_cursor` is opaque. It encodes a position
   in an ordering this project is free to extend, so a caller passes it back verbatim and never composes or
-  parses one. A cursor is accepted only for the surface that issued it, and a `null` `next_cursor` is the only
-  documented way to know a traversal has ended — neither document carries a total, because counting the table
-  would be the unbounded read the paging exists to avoid.
+  parses one. A cursor is accepted only by the listing that issued it — the source listing, or one specific
+  source's mapping page — and is refused anywhere else rather than reinterpreted as a boundary there. A `null`
+  `next_cursor` is the only documented way to know a traversal has ended: neither document carries a total,
+  because counting the table would be the unbounded read the paging exists to avoid.
 
   The import documents address candidates by their canonical staged id, and that id is the contract: it is what
   `pctx import commit --accept` takes, and it stays stable for a batch's lifetime. The review document's

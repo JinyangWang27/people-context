@@ -371,6 +371,82 @@ def test_a_redacted_source_is_equally_narrow_in_the_listing(
     assert source["batch_id"] is None
 
 
+def test_json_output_still_carries_the_disclosure_reminder(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The reminder belongs to the disclosure, not to one rendering of it."""
+    db_file = tmp_path / "people.db"
+    batch = _stage(db_file, _linkedin(tmp_path), capsys, "--label", "Work connections")
+
+    assert cli.main(["--db", str(db_file), "sources", "--json"]) == 0
+    listing = capsys.readouterr()
+    assert "Import receipts are metadata about personal material" in listing.err
+    # stderr is not the document: stdout still holds exactly one parseable JSON object.
+    assert json.loads(listing.out)["sources"][0]["label"] == "Work connections"
+
+    assert cli.main(["--db", str(db_file), "source", "show", batch["source_session_id"], "--json"]) == 0
+    detail = capsys.readouterr()
+    assert "Import receipts are metadata about personal material" in detail.err
+    assert json.loads(detail.out)["source"]["label"] == "Work connections"
+
+
+def test_an_empty_listing_warns_about_nothing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+
+    assert cli.main(["--db", str(db_file), "sources", "--json"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Import receipts are metadata" not in captured.err
+    assert json.loads(captured.out)["sources"] == []
+
+
+def test_a_cursor_from_another_source_is_refused_rather_than_skipping_provenance(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    # Distinct content, or the duplicate claim would report one source twice and the cursor
+    # under test would legitimately belong to the source it is being replayed against.
+    first = _stage(db_file, _linkedin(tmp_path, "a.csv", rows=3), capsys)
+    second = _stage(db_file, _linkedin(tmp_path, "b.csv", rows=4), capsys)
+    assert first["source_session_id"] != second["source_session_id"]
+    _commit(db_file, first["batch_id"], capsys)
+    _commit(db_file, second["batch_id"], capsys)
+    borrowed = _show(db_file, second["source_session_id"], capsys, "--limit", "2")["next_cursor"]
+    assert borrowed is not None
+
+    code = cli.main(
+        ["--db", str(db_file), "source", "show", first["source_session_id"], "--cursor", borrowed]
+    )
+
+    assert code == 2
+    captured = capsys.readouterr()
+    assert "invalid_source_cursor" in captured.err
+    assert captured.out == ""
+
+
+def test_a_listing_cursor_is_refused_by_a_mapping_page(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    _stage(db_file, _linkedin(tmp_path, "a.csv"), capsys)
+    batch = _stage(db_file, _linkedin(tmp_path, "b.csv", rows=3), capsys)
+    listing_cursor = _sources(db_file, capsys, "--limit", "1")["next_cursor"]
+    assert listing_cursor is not None
+
+    code = cli.main(
+        ["--db", str(db_file), "source", "show", batch["source_session_id"], "--cursor", listing_cursor]
+    )
+
+    assert code == 2
+    assert "invalid_source_cursor" in capsys.readouterr().err
+
+
 def test_an_empty_database_lists_no_sources(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
 

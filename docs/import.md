@@ -496,10 +496,16 @@ rather than list:
   returned, and the store resolves that identifier to its own sort position. The encoding is reversible, so a
   cursor built from a sort key would have disclosed the `created_at` of a terminal redacted receipt that happened
   to end a page — exactly the field the erasure contract withholds. Cursors are bounded and validated *before*
-  reaching a query, and one this surface did not issue, or one naming a source since forgotten, is refused;
-- identifiers inside a cursor are **format-opaque**: non-blank and at most 256 characters, never held to a ULID
-  shape or an ASCII alphabet. A bootstrap restore preserves ids verbatim and validates them only as non-blank, so
-  a narrower rule here would leave a restored source's provenance visible but impossible to page through;
+  reaching a query, and one naming a source since forgotten is refused;
+- a cursor also names the listing that issued it, and one from anywhere else is refused. Without that, a cursor
+  from source B's mapping page would be accepted by source A's as a bare `candidate_id >` boundary: the query
+  would succeed while silently omitting everything of A's sorting below it, which is a wrong answer presented as
+  a complete page. The scope is length-prefixed rather than delimited, so an identifier containing any byte still
+  parses back unambiguously;
+- identifiers inside a cursor are **format-opaque**, with no length or alphabet rule of inspection's own. A
+  bootstrap restore preserves ids verbatim and validates them only as non-blank, so any narrower rule would leave
+  a restored source's provenance visible but impossible to look up or page through. The only limit is a resource
+  bound on the encoded cursor itself, generous enough that no identifier a real store holds approaches it;
 - the SQLite reader applies the cursor predicate and `LIMIT limit + 1` itself, so one query both fills a page and
   settles whether another exists. Nothing fetches a table and slices it;
 - the per-source candidate and status counts are `GROUP BY` aggregates, so a summary of a hundred-thousand-row
