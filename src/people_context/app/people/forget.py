@@ -103,6 +103,13 @@ class Forget:
             ],
             "covered_op_ids": store_result.covered_op_ids,
             "covered_transaction_ids": store_result.covered_transaction_ids,
+            # Receipts are replicated primary state, and emptying one is not the same instruction
+            # as removing a mapping. A redacted receipt survives with its caller-authored metadata
+            # scrubbed and a terminal status; a claimless one is gone entirely. A replica that
+            # already holds the source has to be told which, or it keeps wording this forget
+            # removed here. The two lists are omitted when empty so an ordinary forget of
+            # untracked records carries the tombstone it always did.
+            **_source_outcomes(store_result),
         }
         audit_mutation(
             self._audit,
@@ -118,6 +125,16 @@ class Forget:
             changelog_entity_id=target_id,
             source=source,
         )
+
+
+def _source_outcomes(store_result: ForgetStoreResult) -> dict[str, list[str]]:
+    """Return the receipt outcomes a replica must apply, leaving out the ones that did not occur."""
+    outcomes: dict[str, list[str]] = {}
+    if store_result.redacted_source_ids:
+        outcomes["redacted_source_sessions"] = store_result.redacted_source_ids
+    if store_result.deleted_source_ids:
+        outcomes["deleted_source_sessions"] = store_result.deleted_source_ids
+    return outcomes
 
 
 class ForgetPreview(BaseModel):

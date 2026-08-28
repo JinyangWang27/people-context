@@ -71,8 +71,19 @@ from people_context.app.imports.models import (
     contains_extraction_candidate,
 )
 from people_context.app.imports.preflight import PreflightImportBatch
+from people_context.app.imports.sources import (
+    INVALID_SOURCE_METADATA,
+    SOURCE_PREVIOUSLY_REDACTED,
+    build_source_claim,
+    source_previously_redacted_error,
+)
 from people_context.app.imports.staging import CandidateStager, StageCandidates
 from people_context.app.imports.workflow import CommitImport, ImportContent, ReviewImport
+from people_context.domain.import_provenance import (
+    MAX_CONTRACT_REVISION_CHARS,
+    MAX_SOURCE_KIND_CHARS,
+    MAX_SOURCE_LABEL_CHARS,
+)
 
 __all__ = [
     "BATCH_TOO_LARGE_FOR_CLI",
@@ -91,7 +102,9 @@ __all__ = [
     "IMPORT_REVIEW_FORMAT",
     "IMPORT_REVIEW_VERSION",
     "INVALID_CANDIDATE_JSON",
+    "INVALID_SOURCE_METADATA",
     "MAX_CANDIDATE_REF_CHARS",
+    "MAX_CONTRACT_REVISION_CHARS",
     "MAX_CLI_CANDIDATE_JSON_BYTES",
     "MAX_CLI_SOURCE_BYTES",
     "MAX_CLI_STAGED_CANDIDATES",
@@ -102,9 +115,12 @@ __all__ = [
     "MAX_EXTRACTION_STRING_BYTES",
     "MAX_OBSERVATION_TEXT_BYTES",
     "MAX_RELATIONSHIP_TYPE_CHARS",
+    "MAX_SOURCE_KIND_CHARS",
+    "MAX_SOURCE_LABEL_CHARS",
     "MAX_TRAIT_EVIDENCE_NOTE_BYTES",
     "MAX_TRAIT_VALUE_BYTES",
     "SOURCE_LABEL_TOO_LONG",
+    "SOURCE_PREVIOUSLY_REDACTED",
     "SOURCE_TOO_LARGE",
     "STAGED_PAYLOAD_TOO_LARGE",
     "TOO_MANY_CANDIDATES",
@@ -135,6 +151,7 @@ __all__ = [
     "ReviewImport",
     "StageCandidates",
     "TraitCandidateInput",
+    "build_source_claim",
     "candidate_identity_tokens",
     "contains_extraction_candidate",
     "enforce_extraction_request_limits",
@@ -143,4 +160,5 @@ __all__ = [
     "import_review_document",
     "match_person_candidate",
     "render_import_json",
+    "source_previously_redacted_error",
 ]

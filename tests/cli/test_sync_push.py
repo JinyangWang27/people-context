@@ -14,7 +14,7 @@ from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepositor
 from people_context.app.exports import SYNC_BUNDLE_FILENAME
 from people_context.app.people import RememberPerson, RememberPersonInput
 from people_context.cli import main
-from people_context.domain.sync_bundle import SYNC_BUNDLE_FORMAT, SyncBundleDocument
+from people_context.domain.sync_bundle import SYNC_BUNDLE_FORMAT, SYNC_BUNDLE_VERSION, SyncBundleDocument
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
 
@@ -42,7 +42,7 @@ def test_sync_push_writes_an_owner_only_bundle_and_reports_counts(tmp_path: Path
     assert stat.S_IMODE(os.stat(bundle).st_mode) == 0o600
     document = SyncBundleDocument.model_validate(json.loads(bundle.read_text(encoding="utf-8")))
     assert document.format == SYNC_BUNDLE_FORMAT
-    assert document.version == 1
+    assert document.version == SYNC_BUNDLE_VERSION
     assert [person.canonical_name for person in document.snapshot.people] == ["Alice"]
     assert len(document.changelog) == 1
     assert document.devices[0].id == document.origin_device_id

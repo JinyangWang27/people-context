@@ -68,7 +68,7 @@ class RememberPerson:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: RememberPersonInput) -> RememberPersonResult:
+    def execute(self, data: RememberPersonInput, *, transaction_id: str | None = None) -> RememberPersonResult:
         """Upsert a person by normalized name, recording an audit entry."""
         normalized = normalize_name(data.name)
         matches = self._reader.find_by_normalized_name(normalized)
@@ -79,8 +79,8 @@ class RememberPerson:
             self._guard_single_self(matches)
 
         if matches:
-            return self._update(matches[0], data)
-        return self._create(data)
+            return self._update(matches[0], data, transaction_id)
+        return self._create(data, transaction_id)
 
     def _guard_single_self(self, matches: list[Person]) -> None:
         existing_self = self._reader.get_self()
@@ -90,7 +90,12 @@ class RememberPerson:
         if existing_self.id != target_id:
             raise SelfAlreadyExistsError(existing_self)
 
-    def _update(self, person: Person, data: RememberPersonInput) -> RememberPersonResult:
+    def _update(
+        self,
+        person: Person,
+        data: RememberPersonInput,
+        transaction_id: str | None,
+    ) -> RememberPersonResult:
         before = snapshot(person)
         known = {normalize_name(name) for name in person.all_names()}
         added = 0
@@ -119,10 +124,11 @@ class RememberPerson:
             source=data.source,
             session=data.session,
             changed_fields=changed_fields,
+            transaction_id=transaction_id,
         )
         return RememberPersonResult(person=person, created=False)
 
-    def _create(self, data: RememberPersonInput) -> RememberPersonResult:
+    def _create(self, data: RememberPersonInput, transaction_id: str | None) -> RememberPersonResult:
         now = self._clock.now()
         aliases = [
             Alias(value=alias.value, kind=alias.kind, lang=alias.lang, script=alias.script) for alias in data.aliases
@@ -144,6 +150,7 @@ class RememberPerson:
             source=data.source,
             session=data.session,
             changed_fields=[],
+            transaction_id=transaction_id,
         )
         return RememberPersonResult(person=person, created=True)
 
@@ -157,6 +164,7 @@ class RememberPerson:
         source: str,
         session: str | None,
         changed_fields: list[str],
+        transaction_id: str | None,
     ) -> None:
         audit_mutation(
             self._audit,
@@ -169,4 +177,5 @@ class RememberPerson:
             changed_fields=changed_fields,
             source=source,
             session=session,
+            transaction_id=transaction_id,
         )

@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
 
+from people_context.app._mutation import audit_mutation, unit_of_work_for
 from people_context.app.imports.identity import match_person_candidate
 from people_context.app.imports.limits import (
     STAGED_PAYLOAD_TOO_LARGE,
@@ -30,11 +31,25 @@ from people_context.app.imports.models import (
     TraitCandidateInput,
     contains_extraction_candidate,
 )
+from people_context.app.imports.sources import (
+    build_source_claim,
+    require_source_kind_for,
+    source_previously_redacted_error,
+    source_session_snapshot,
+)
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.shared import new_id, normalize_name
+from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.imports import ImportStagingStore, StagedImportRow
 from people_context.ports.repository import PersonReader
+from people_context.ports.sources import (
+    STATUS_REDACTED,
+    ImportSourceStore,
+    SourceClaimOutcome,
+    SourceSessionClaim,
+    SourceSessionRow,
+)
 
 _CANDIDATES_ADAPTER = TypeAdapter(list[CandidateInput])
 
@@ -42,10 +57,27 @@ _CANDIDATES_ADAPTER = TypeAdapter(list[CandidateInput])
 class CandidateStager:
     """Validate, match, rewrite references, and atomically stage one candidate batch."""
 
-    def __init__(self, people: PersonReader, staging: ImportStagingStore, clock: Clock) -> None:
+    def __init__(
+        self,
+        people: PersonReader,
+        staging: ImportStagingStore,
+        clock: Clock,
+        sources: ImportSourceStore | None = None,
+        audit: AuditLog | None = None,
+    ) -> None:
         self._people = people
         self._staging = staging
         self._clock = clock
+        self._sources = sources
+        self._audit = audit
+        if sources is not None and audit is None:
+            # A receipt is replicable primary state, so writing one without journalling it would
+            # leave durable provenance outside the accountability record. That is always a wiring
+            # mistake rather than a configuration, so it is reported loudly here.
+            raise RuntimeError("a source-tracked candidate stager requires an audit log")
+        # The source store's boundary reserves the write lock, because claiming a source means
+        # reading a uniqueness claim and then acting on what was read.
+        self._uow = unit_of_work_for(sources, staging, audit)
 
     def execute(
         self,
@@ -57,6 +89,7 @@ class CandidateStager:
         skipped_cards: list[dict[str, int | str]] | None = None,
         budget: ImportBudget | None = None,
         strict_identity: bool = False,
+        claim: SourceSessionClaim | None = None,
     ) -> ImportBatchResult:
         """Stage one batch, refusing an over-budget one before any row is persisted.
 
@@ -67,6 +100,13 @@ class CandidateStager:
         ``strict_identity`` selects the ambiguity-preserving matcher. It is off by default so
         that every caller that predates M17 — the source importers and `pctx init` among them —
         keeps staging the person rows it always staged.
+
+        ``claim`` opts this batch into M18 source tracking. Claim, receipt, its journal entry, and
+        every candidate row are then published in one write-reserving transaction, so a canonical
+        claim can never be visible without the batch it promises or vice versa. Validation and row
+        building happen before that reservation is taken: the race the reservation exists to close
+        is between two publications, not between two callers parsing their own input. A batch
+        staged without a claim behaves exactly as it did before source sessions existed.
         """
         limits = budget or UNBOUNDED_IMPORT_BUDGET
         self._reject_excess_candidates(len(candidates), limits)
@@ -74,13 +114,86 @@ class CandidateStager:
         batch_id = new_id()
         references = self._references(validated)
         rows = self._rows(batch_id, source, validated, references, limits, strict_identity)
-        self._staging.stage_batch(rows)
-        return ImportBatchResult(
+        result = ImportBatchResult(
             batch_id=batch_id,
             candidate_count=len(rows),
             skipped_message_ids=skipped_message_ids or [],
             skipped_without_id=skipped_without_id,
             skipped_cards=skipped_cards or [],
+        )
+        if claim is None or self._sources is None:
+            self._staging.stage_batch(rows)
+            return result
+        with self._uow:
+            outcome = self._sources.claim_and_stage(
+                claim,
+                rows,
+                session_id=new_id(),
+                batch_id=batch_id,
+                created_at=self._clock.now(),
+            )
+            if not outcome.created:
+                # The claim was already owned, so nothing was written. Whether this reports the
+                # existing batch or refuses a terminal one, the reservation closes empty.
+                return self._duplicate_result(result, outcome)
+            self._audit_session(outcome.session)
+        return result.model_copy(update={"source_session_id": outcome.session.id})
+
+    def _audit_session(self, session: SourceSessionRow) -> None:
+        """Journal one new receipt through the ordinary mutation seam.
+
+        A receipt is replicable primary state, not operational staging, so it is accountable like
+        any other durable write. The payload carries the caller-authored label and external id
+        because that is what a faithful replay needs — and it is exactly what hard forget later
+        has to scrub from this history when it touches this source.
+
+        The replay image is the whole row, as it is for every other primary write here. The two
+        fields the accountability payload leaves out are the two a consumer could not put back:
+        `created_at` is required by the schema, and `claim_key` cannot be re-derived, because a
+        forced session deliberately carries a digest and no key at all.
+        """
+        if self._audit is None:
+            return
+        audit_mutation(
+            self._audit,
+            self._clock,
+            op="create",
+            entity_type="import_source_session",
+            entity_id=session.id,
+            payload={
+                "source_kind": session.source_kind,
+                "label": session.label,
+                "external_source_id": session.external_source_id,
+                "content_digest": session.content_digest,
+                "extraction_fingerprint": session.extraction_fingerprint,
+                "extraction_contract_revision": session.extraction_contract_revision,
+                "batch_id": session.batch_id,
+                "status": session.status,
+            },
+            replay_payload=source_session_snapshot(session),
+            changed_fields=["batch_id", "source_kind", "status"],
+            source="import",
+        )
+
+    @staticmethod
+    def _duplicate_result(result: ImportBatchResult, outcome: SourceClaimOutcome) -> ImportBatchResult:
+        """Report the batch the winning claim already owns, having staged nothing.
+
+        A claim that resolves to a terminal redacted receipt deliberately has no batch to report:
+        hard forget removed it. Fabricating or reusing one would hand back an id that reviews and
+        commits nothing, so this refuses with a stable code instead.
+        """
+        session = outcome.session
+        if session.status == STATUS_REDACTED or session.batch_id is None:
+            raise source_previously_redacted_error(session.id)
+        return result.model_copy(
+            update={
+                "batch_id": session.batch_id,
+                "candidate_count": outcome.candidate_count,
+                "source_session_id": session.id,
+                "duplicate": True,
+                "reviewable": outcome.reviewable,
+            }
         )
 
     @staticmethod
@@ -243,6 +356,11 @@ class StageCandidates:
         candidates: list[dict[str, Any]],
         *,
         strict_identity: bool = False,
+        source_kind: str | None = None,
+        content_digest: str | None = None,
+        extraction_fingerprint: str | None = None,
+        label: str | None = None,
+        external_source_id: str | None = None,
     ) -> ImportBatchResult:
         """Stage one agent request, bounding it first when it opts into an M17 candidate type.
 
@@ -258,6 +376,16 @@ class StageCandidates:
         Ambiguity there is a property of the *identities*, not of the candidate vocabulary: a
         person plus a fact, distilled from a transcript, can name someone two existing people
         could equally be, and resolving that to one of them would attach the fact to a guess.
+
+        `source_kind` opts the request into an M18 receipt. A caller that also supplies a
+        `content_digest` it computed over the source artifact gets a canonical duplicate claim;
+        one that does not gets a session that deliberately asserts none, because People Context
+        was never given bytes it could recognize the source by and must not imply otherwise. An
+        `extraction_fingerprint` stays optional either way: People Context did not perform this
+        extraction and will not invent a description of the caller's configuration.
+
+        People Context never hashes text it was not given. A supplied digest is provenance
+        metadata from the caller, not an independent verification of source bytes.
         """
         normalized_source = source.strip()
         if not normalized_source:
@@ -265,10 +393,32 @@ class StageCandidates:
         extraction = contains_extraction_candidate(candidates)
         if extraction:
             enforce_extraction_request_limits(normalized_source, candidates)
+        if source_kind is None:
+            # Receipt metadata without a kind to record it would be accepted and then dropped,
+            # so a caller who asked for duplicate protection by supplying a digest would be told
+            # the staging succeeded while quietly not getting it.
+            require_source_kind_for(
+                content_digest=content_digest,
+                extraction_fingerprint=extraction_fingerprint,
+                label=label,
+                external_source_id=external_source_id,
+            )
+        claim = (
+            None
+            if source_kind is None
+            else build_source_claim(
+                source_kind=source_kind,
+                content_digest=content_digest,
+                extraction_fingerprint=extraction_fingerprint,
+                label=label,
+                external_source_id=external_source_id,
+            )
+        )
         return self._stager.execute(
             f"import/agent:{normalized_source}",
             candidates,
             strict_identity=strict_identity or extraction,
+            claim=claim,
         )
 
 

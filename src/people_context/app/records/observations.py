@@ -45,7 +45,7 @@ class RecordObservation:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: RecordObservationInput) -> Observation:
+    def execute(self, data: RecordObservationInput, *, transaction_id: str | None = None) -> Observation:
         """Persist and audit an observation."""
         require_active_person(self._people, data.person_id)
         observation = Observation(
@@ -66,5 +66,6 @@ class RecordObservation:
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,
+            transaction_id=transaction_id,
         )
         return observation

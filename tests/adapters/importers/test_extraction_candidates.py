@@ -55,9 +55,9 @@ class _CountingRememberPerson(RememberPerson):
         super().__init__(*args, **kwargs)
         self.calls: list[str] = []
 
-    def execute(self, data: Any) -> Any:
+    def execute(self, data: Any, *, transaction_id: str | None = None) -> Any:
         self.calls.append(data.name)
-        return super().execute(data)
+        return super().execute(data, transaction_id=transaction_id)
 
 
 def _use_cases(conn: Any) -> tuple[Any, ...]:

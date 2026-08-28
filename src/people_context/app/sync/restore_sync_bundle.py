@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from pydantic import ValidationError
 from people_context.domain.sync_bundle import (
     InvalidBundleError,
     SyncBundleDocument,
+    parse_bundle_payload,
     validate_bundle_document,
 )
 from people_context.ports.bootstrap_restore import BootstrapRestorer, RestoreOutcome
@@ -37,9 +39,17 @@ class RestoreSyncBundle:
         self._restorer = restorer
 
     def parse(self, text: str) -> SyncBundleDocument:
-        """Return the fully validated document, or raise ``InvalidBundleError``."""
+        """Return the fully validated document, or raise ``InvalidBundleError``.
+
+        Each supported version is validated against its own strict shape before anything else
+        looks at it, so a document is only ever accepted as the version it declares itself to be.
+        """
         try:
-            document = SyncBundleDocument.model_validate_json(text)
+            payload = json.loads(text)
+        except ValueError as exc:
+            raise InvalidBundleError(["document: bundle is not valid JSON"]) from exc
+        try:
+            document = parse_bundle_payload(payload)
         except ValidationError as exc:
             raise InvalidBundleError(_structural_details(exc)) from exc
         validate_bundle_document(document)
@@ -69,6 +79,9 @@ class RestoreSyncBundle:
                 "relationship synonyms": len(vocabulary.synonyms),
                 "devices": len(document.devices),
                 "changelog entries": len(document.changelog),
+                "import sources": len(document.imports.source_sessions),
+                "candidate mappings": len(document.imports.candidate_mappings),
+                "staged candidates": len(document.imports.staging),
             },
         )
 

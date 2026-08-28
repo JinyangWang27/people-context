@@ -277,6 +277,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit label identifying you in sources that name participants by display label.",
     )
     import_stage.add_argument(
+        "--label",
+        default=None,
+        help="Optional short human label for this source, shown when inspecting import receipts.",
+    )
+    import_stage.add_argument(
+        "--external-source-id",
+        default=None,
+        help="Optional stable identifier for this source in the system it came from.",
+    )
+    import_stage.add_argument(
+        "--force",
+        action="store_true",
+        help="Reprocess this exact source again, creating a separate staging batch instead of "
+        "reporting the existing one.",
+    )
+    import_stage.add_argument(
         "--json",
         action="store_true",
         help="Print the versioned staging JSON document instead of the human summary.",
@@ -296,6 +312,37 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="PATH",
         help="Candidate JSON file to read, or `-` to read candidate JSON from stdin.",
+    )
+    import_stage_candidates.add_argument(
+        "--source-kind",
+        default=None,
+        help="Optional machine category of the material these candidates came from, such as "
+        "`meeting_transcript`. Recording one creates an import receipt; it is a source class, "
+        "never a person or a title.",
+    )
+    import_stage_candidates.add_argument(
+        "--content-digest",
+        default=None,
+        metavar="SHA256",
+        help="Optional SHA-256 you computed over the source artifact, as 64 lowercase hex "
+        "characters. Supplying one lets repeat imports of that exact source be detected.",
+    )
+    import_stage_candidates.add_argument(
+        "--extraction-fingerprint",
+        default=None,
+        metavar="SHA256",
+        help="Optional 64-hex fingerprint of your own extraction configuration; omit it rather "
+        "than inventing one.",
+    )
+    import_stage_candidates.add_argument(
+        "--label",
+        default=None,
+        help="Optional short human label for this source, shown when inspecting import receipts.",
+    )
+    import_stage_candidates.add_argument(
+        "--external-source-id",
+        default=None,
+        help="Optional stable identifier for this source in the system it came from.",
     )
     import_stage_candidates.add_argument(
         "--json",

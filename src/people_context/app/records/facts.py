@@ -48,7 +48,7 @@ class RecordFact:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: RecordFactInput) -> Fact:
+    def execute(self, data: RecordFactInput, *, transaction_id: str | None = None) -> Fact:
         """Persist and audit a fact."""
         require_active_person(self._people, data.person_id)
         fact = Fact(
@@ -72,5 +72,6 @@ class RecordFact:
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,
+            transaction_id=transaction_id,
         )
         return fact

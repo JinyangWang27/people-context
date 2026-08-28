@@ -10,6 +10,7 @@ from pathlib import Path
 from people_context.adapters.filesystem.vault_writer import FileSystemVaultWriter
 from people_context.adapters.filesystem.vcard_writer import CanonicalVCardWriter
 from people_context.adapters.importers.router import ImportExtractorRouter
+from people_context.adapters.importers.stable_source import VerifiedSnapshotExtractor
 from people_context.adapters.model2vec_embeddings import (
     MODEL_DIMENSION,
     MODEL_ID,
@@ -48,6 +49,7 @@ from people_context.adapters.sqlite.semantic import (
     SqliteSemanticMetadataReader,
     open_sqlite_vector_index,
 )
+from people_context.adapters.sqlite.source_store import SqliteImportSourceStore
 from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 from people_context.app.context import (
@@ -190,6 +192,7 @@ class ApplicationRuntime:
     bootstrap_restorer: SqliteBootstrapRestorer
     vault_reader: SqliteVaultReader
     import_staging: SqliteImportStagingStore
+    import_sources: SqliteImportSourceStore
     semantic_documents: SqliteSemanticDocumentReader
     use_cases: RuntimeUseCases
 
@@ -250,6 +253,7 @@ def build_runtime(
     bootstrap_restorer = SqliteBootstrapRestorer(conn, repo, SqliteHybridLogicalClock(conn))
     vault_reader = SqliteVaultReader(conn, runtime_clock)
     import_staging = SqliteImportStagingStore(conn)
+    import_sources = SqliteImportSourceStore(conn)
     semantic_documents = SqliteSemanticDocumentReader(conn)
 
     remember_person = RememberPerson(repo, repo, audit, runtime_clock)
@@ -259,7 +263,7 @@ def build_runtime(
     record_observation = RecordObservation(repo, records, audit, runtime_clock)
     record_trait = RecordTrait(repo, records, audit, runtime_clock)
     set_relationship = SetRelationship(repo, relationship_store, audit, runtime_clock, relationship_vocabulary)
-    candidate_stager = CandidateStager(repo, import_staging, runtime_clock)
+    candidate_stager = CandidateStager(repo, import_staging, runtime_clock, import_sources, audit)
     list_reminders = ListReminders(records)
     get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
     get_communication_guidance = GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock)
@@ -332,6 +336,7 @@ def build_runtime(
             import_staging,
             runtime_clock,
             candidate_stager,
+            VerifiedSnapshotExtractor(),
         ),
         review_import=ReviewImport(import_staging),
         preflight_import_batch=PreflightImportBatch(import_staging),
@@ -345,6 +350,9 @@ def build_runtime(
             record_observation,
             record_trait,
             set_relationship,
+            import_sources,
+            audit,
+            runtime_clock,
         ),
         stage_candidates=StageCandidates(candidate_stager),
         reindex_people=ReindexPeople(repo),
@@ -373,6 +381,7 @@ def build_runtime(
         bootstrap_restorer=bootstrap_restorer,
         vault_reader=vault_reader,
         import_staging=import_staging,
+        import_sources=import_sources,
         semantic_documents=semantic_documents,
         use_cases=use_cases,
     )

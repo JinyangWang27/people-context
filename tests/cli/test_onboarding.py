@@ -494,3 +494,77 @@ def test_demo_reset_replaces_symlink_without_touching_its_target(
         assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 4
     finally:
         conn.close()
+
+
+def test_init_reports_an_already_committed_vcard_instead_of_failing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Onboarding is additive, so re-offering an already-imported vCard is an ordinary outcome.
+
+    Once its candidates are committed and the reviewable rows are gone — cleanup, or a version-2
+    restore that carries the durable mappings without them — the duplicate batch has nothing to
+    review. Sending it to `review_import` would refuse a complete import as a missing batch and
+    abort the rest of onboarding.
+    """
+    db_path = tmp_path / "vcard.db"
+    vcard_path = tmp_path / "contacts.vcf"
+    vcard_path.write_text(
+        "\n".join(
+            [
+                "BEGIN:VCARD",
+                "VERSION:4.0",
+                "FN:Alice Example",
+                "EMAIL:alice@example.com",
+                "END:VCARD",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def first_run(prompt: str) -> str:
+        if prompt.startswith("Canonical"):
+            return "Maya Chen"
+        if prompt.startswith("Email"):
+            return "maya@example.com"
+        if prompt.startswith("vCard"):
+            return str(vcard_path)
+        if prompt.startswith("Candidate IDs"):
+            conn = open_db(db_path)
+            try:
+                return ",".join(row["id"] for row in conn.execute("SELECT id FROM import_staging"))
+            finally:
+                conn.close()
+        return ""
+
+    monkeypatch.setattr("builtins.input", first_run)
+    assert cli.main(["--db", str(db_path), "init"]) == 0
+    capsys.readouterr()
+    # Stand in for the cleanup a completed batch eventually gets, and for the v2 restore that
+    # carries a completed source's mappings without its reviewable rows.
+    conn = open_db(db_path)
+    try:
+        conn.execute("DELETE FROM import_staging")
+        conn.commit()
+    finally:
+        conn.close()
+
+    def second_run(prompt: str) -> str:
+        if prompt.startswith("Add onboarding data"):
+            return "y"
+        if prompt.startswith("Email"):
+            return "maya@example.com"
+        if prompt.startswith("vCard"):
+            return str(vcard_path)
+        if prompt.startswith("Candidate IDs"):
+            raise AssertionError("a batch with nothing to review must not reach the review prompt")
+        return ""
+
+    monkeypatch.setattr("builtins.input", second_run)
+    assert cli.main(["--db", str(db_path), "init"]) == 0
+
+    output = capsys.readouterr()
+    assert "already imported" in output.out
+    assert "Onboarding complete." in output.out
+    assert "vCard import failed" not in output.err

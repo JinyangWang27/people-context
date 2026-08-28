@@ -93,12 +93,15 @@ def _source(**overrides: Any) -> BundleSource:
                 inserted_at=_RECORDED,
             )
         ],
+        "source_sessions": [],
+        "candidate_mappings": [],
+        "staging": [],
     }
     defaults.update(overrides)
     return BundleSource(**defaults)
 
 
-def test_export_builds_a_strict_version_one_envelope() -> None:
+def test_export_builds_a_strict_current_version_envelope() -> None:
     reader = FakeBundleReader(_source())
 
     document = ExportSyncBundle(reader, FakeClock(_NOW)).execute()

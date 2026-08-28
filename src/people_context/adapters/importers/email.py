@@ -64,11 +64,12 @@ class EmailImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract correspondents; ``self_names`` and ``self_sender`` are unused by this source."""
-        messages = self._messages(source_type, content, path, max_source_bytes)
+        messages = self._messages(source_type, content, content_bytes, path, max_source_bytes)
         people: dict[str, ImportPersonCandidate] = {}
         alternate_names: dict[str, list[str]] = {}
         interactions: list[ImportInteractionCandidate] = []
@@ -131,21 +132,30 @@ class EmailImportExtractor:
         self,
         source_type: str,
         content: str | None,
+        content_bytes: bytes | None,
         path: str | None,
         max_source_bytes: int | None,
     ) -> Iterable[Message]:
         parser = BytesParser(policy=policy.default)
         if source_type == "email":
-            if (content is None) == (path is None):
-                raise ImportExtractionError("invalid_source", "email import requires exactly one of content or path")
-            raw = (
-                content.encode("utf-8")
-                if content is not None
-                else read_source_bytes(path or "", max_bytes=max_source_bytes)
-            )
+            supplied = [value is not None for value in (content, content_bytes, path)]
+            if sum(supplied) != 1:
+                raise ImportExtractionError(
+                    "invalid_source",
+                    "email import requires exactly one of content, content_bytes, or path",
+                )
+            if content is not None:
+                raw = content.encode("utf-8")
+            elif content_bytes is not None:
+                raw = content_bytes
+            else:
+                raw = read_source_bytes(path or "", max_bytes=max_source_bytes)
             return [parser.parsebytes(_header_bytes(raw), headersonly=True)]
         if source_type == "mbox":
-            if path is None or content is not None:
+            # `mbox` is the one path-only contract: `mailbox.mbox` opens the path itself, so
+            # there is no in-memory snapshot to hand it. Stable-snapshot verification for this
+            # source is the caller's pre/post rehash, not a byte snapshot taken here.
+            if path is None or content is not None or content_bytes is not None:
                 raise ImportExtractionError("invalid_source", "mbox import requires path and does not accept content")
 
             # `mailbox.mbox` opens the path itself and scans the whole file to build its

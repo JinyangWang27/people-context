@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, read_source_text
+from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import clean_text, normalize_email
 from people_context.domain.person import AliasKind
@@ -57,21 +57,21 @@ class OutlookImportExtractor:
         self_addresses: set[str],
         self_names: set[str] | None = None,
         self_sender: str | None = None,
+        content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
     ) -> ExtractedImport:
         """Extract contact rows; ``self_names`` and ``self_sender`` are unused by this source."""
         if source_type != "outlook":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'outlook'")
-        if (content is None) == (path is None):
-            raise ImportExtractionError(
-                "invalid_source",
-                "outlook import requires exactly one of content or path",
-            )
-        text = (
-            content.lstrip("\ufeff")
-            if content is not None
-            else read_source_text(path or "", encoding="utf-8-sig", max_bytes=max_source_bytes)
+        text = resolve_source_text(
+            content=content,
+            content_bytes=content_bytes,
+            path=path,
+            encoding="utf-8-sig",
+            max_bytes=max_source_bytes,
+            source_label="outlook",
+            strip_content_bom=True,
         )
         reader = csv.DictReader(io.StringIO(text), strict=True)
         try:

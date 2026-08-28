@@ -318,6 +318,154 @@ created. Those ceilings are properties of this command: `import_content`, `revie
 `pctx init` keep their released, unbounded input and read contracts, and a resource refusal names only the limit,
 never any part of the rejected source.
 
+## Source receipts and repeat imports (M18.1)
+
+Re-reading the same export should not quietly create a second copy of everything in it. Since M18.1 a
+path-based import records a **source receipt**: a small durable row saying *that* material was processed, never
+the material itself. It carries a bounded machine `source_kind` such as `linkedin` or `meeting_transcript`, the
+SHA-256 of the exact bytes that were parsed, a fingerprint of the extraction-affecting configuration, an optional
+human `--label`, an optional `--external-source-id`, and a status. It does not store the source body, an excerpt,
+an attachment, the file's path, or the raw self-identity values behind the fingerprint.
+
+A digest is an idempotency key, not an anonymization: the file it identifies is still someone's mailbox or chat
+export, and a receipt is sensitive local state like everything else here.
+
+### One snapshot, one digest
+
+A path is not a snapshot — a file can change between being hashed and being parsed — so the digest and the
+candidates always come from one verified pass:
+
+- a **byte-capable** source is read once into one bounded immutable snapshot; the digest is taken over those
+  bytes and the extractor parses those same bytes, so there is no second read to race;
+- the **path-only** `mbox` reader opens the file itself, so instead its identity, size, and high-resolution
+  modification time plus a SHA-256 are captured before extraction and again after it. A pass whose source moved
+  underneath it is discarded and retried a bounded number of times, then fails with `source_changed_during_import`.
+  Rehashing is mandatory rather than an optimization over the metadata check: a same-size in-place rewrite leaves
+  identity and length untouched.
+
+Neither route writes a temporary copy of the source. Verification pays a second read rather than leaving an
+unencrypted spare copy of personal material on disk, and it streams that read under the same 64 MiB budget.
+
+### What counts as the same source
+
+The duplicate claim is `(source_kind, content_digest, extraction_fingerprint)`, not the digest alone. The same
+bytes can legitimately produce different candidates when extraction-affecting configuration changes: re-importing
+a WhatsApp export with a corrected `--self-sender` changes which sender is omitted, and must be able to create the
+right batch rather than being mistaken for the earlier attempt. The fingerprint is derived from exactly the
+self-identity inputs that source's extractor consumes — so two spellings of one phone self hint stay one claim,
+while a LinkedIn CSV stays deduplicable across an unrelated change to your own aliases — plus a per-source
+extraction-contract revision, so a future change in parsing semantics can opt into a new identity instead of
+silently reusing an old batch. Only the derived fingerprint is stored.
+
+Claim, receipt, and staged rows become visible together under one write reservation backed by a uniqueness index,
+so two processes importing the same export cannot both publish a batch. The loser writes nothing and reports the
+batch that already exists:
+
+```text
+This source was already imported as batch 01J... with 42 candidates; nothing new was staged.
+```
+
+A batch whose candidates are all committed may no longer have reviewable rows — cleanup can drop them, and a
+version-2 restore carries a completed source's durable mappings without them. The duplicate report follows what
+the batch still holds: it counts the committed candidates rather than reporting nought, and says there is nothing
+left to review instead of naming a batch `pctx import review` can no longer find.
+
+Committing does not delete a batch's rows, it marks them `committed`, so those two counts are separate questions.
+What the batch holds is every row it still has, or its durable mappings once cleanup has run; what is left to
+review is only its pending rows. A fully committed batch is therefore reported as committed even before any
+cleanup, while a partly committed one still points at the rows awaiting a decision.
+
+`pctx import stage ... --force` is the explicit escape hatch for intentional reprocessing. It keeps the same
+digest and fingerprint but asserts no canonical claim, so it creates a separate processing session and never
+weakens the default rule for later invocations.
+
+An agent staging through `stage_candidates` may supply the same metadata: a `source_kind` records a receipt, and a
+`content_digest` the agent computed over the artifact gives that receipt a claim. `source_kind` is required for
+any of it: a digest offered without one is refused rather than accepted and dropped, because a caller supplying a
+digest is asking for duplicate protection and would otherwise be told the staging succeeded without getting it. Without a digest the workflow
+stays valid but **makes no source-level idempotency promise** — People Context never hashes text it was not given,
+and will not imply it verified bytes it never saw. An `extraction_fingerprint` stays optional there, because
+People Context did not perform that extraction; when it is absent, uniqueness uses an explicit internal
+absence state rather than relying on SQLite treating NULLs as distinct.
+
+### After a forget
+
+Hard forget removes the candidate mappings for records it actually erases, deletes retained staging rows that are
+structurally linked to them, and clears the caller-authored label and external source id of every source it
+touched — even when unrelated mappings on that source survive, because an opaque label like `Interview with Alice`
+cannot safely be attributed to one of the people a source mentioned.
+
+When a forget leaves a source with no live record and nothing reviewable, what remains depends on whether it ever
+had a claim. A claim-backed receipt is reduced to its canonical claim key and a terminal `redacted` status;
+staging it again by default then refuses deterministically rather than fabricating a batch to review:
+
+```text
+Error: source_previously_redacted: this source was previously imported and then fully forgotten;
+staging it again must be an explicit reprocessing
+Import it again anyway with: pctx import stage ... --force
+```
+
+The exit status is non-zero, stdout stays empty even under `--json` — the JSON promise covers successful commands,
+and there is no batch to describe — and nothing is created or changed.
+A digestless receipt has no claim worth keeping, so it is deleted outright and similar material may be staged
+fresh exactly as before, and so is an explicit `--force` reprocessing session: it carries a digest but competes
+for no canonical key, so retaining it would leave the digest of an erased artifact behind while suppressing
+nothing.
+
+A restored staging row is held to the whole persisted candidate shape — its type, the canonical reference fields
+that type requires, and then the strict models in `domain/staged_candidate.py`, which accept exactly the fields
+the stager writes and nothing else. Neither way of being wrong has a good report at commit time: a missing field
+raises mid-transaction, after earlier candidates in the same commit have already written, and a structurally
+wrong value (a bare string among the aliases, an unparseable date, a category outside the vocabulary) fails the
+same way at its durable write while review displays whatever it holds until then. The extraction boundary's byte
+budgets are deliberately not re-imposed: they bound one submitted request, the durable write applies none of
+them, and re-checking them would refuse a bundle whose rows this installation itself stored.
+
+Batch-local references must name a person row *in the same batch*. The stager mints candidate ids for person
+candidates alone and rewrites every reference through that one map, and commit builds its resolution map the same
+way, so a dependant pointing at any other row can never resolve — while the source's claim keeps suppressing the
+restage that would fix it.
+
+A row's status and its outcome must agree in both directions, because the mapping and the transition to
+`committed` are written in one unit of work: a pending row may not already carry a mapping, and a committed one
+may not be missing it. A mapping must also sit in the same batch as the staging row that shares its candidate id.
+Both halves can look internally consistent — each agreeing with its own source session — while disagreeing with
+each other, and a mapping filed under the wrong batch is invisible to the commit that would use it. A receipt's status must likewise agree with its rows. Export selects staging by that
+status rather than by the rows, so a restored `committed` receipt still holding a pending row would drop that
+candidate from the very next bundle — and the reduced bundle would validate, so nothing downstream would notice.
+Validation and export read the same declaration of which statuses carry staging, so the two cannot drift apart.
+
+The claim key is what makes a terminal receipt do its job — duplicate detection finds it by that key, not by the
+digest — so both the schema and version-2 restore validation require a `redacted` row to carry one. A receipt
+that is still live must own something behind it for the same reason in reverse: a restored `staged` receipt with
+no reviewable row, or any non-redacted receipt with neither a mapping nor a reviewable row, would report a
+source as already imported and then point at a batch review cannot find. A *partially committed* receipt whose
+reviewable rows a forget erased while its other records survived keeps its mappings and stays live; that is an
+ordinary outcome and stays restorable.
+
+The refusal itself names no flag, because the route past it belongs to the entry point rather than to the rule.
+`pctx import stage` owns the file and carries `--force`; `pctx import stage-candidates` competes for a claim only
+because the caller chose to compute `--content-digest`, so withholding that digest is the same intent there, and
+that is the guidance each command prints. This applies to the duplicate report too: the "already imported" summary
+is shared, but the line that follows it names only a route the invoked command actually accepts.
+
+### Where a committed candidate went
+
+Each committed candidate records a durable mapping to the entity it produced or reused. That mapping is the
+canonical record-to-source association as well as the commit outcome, so a later partial commit resolves an
+already-committed dependency through it rather than re-deriving an identity from names. One
+`commit_import` invocation is one logical transaction: every record it writes, every mapping, and the receipt's
+status change share a single transaction id and roll back together.
+
+A person merge follows those mappings: one pointing at the duplicate person is retargeted to the survivor, one
+pointing at a relationship removed as a duplicate follows the keeper, and one pointing at a relationship removed
+as a merge-created self-loop becomes the terminal `merged_away` outcome — history about a candidate rather than a
+dangling reference, and never recreated on a retry. Retained staged person matches are retargeted in the same
+transaction, so a later dependent commit cannot resolve through an identity the merge retired.
+
+Existing provenance is unchanged by all of this. `Provenance.session` keeps its per-message and per-event
+meaning, and pre-M18 batches are left alone rather than backfilled with a guessed receipt.
+
 ## Never persist raw content
 
 The single hard rule for every importer: **raw source content is never persisted.** Only distilled

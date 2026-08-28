@@ -25,6 +25,9 @@ class BundleSource:
     relationship_types: list[dict[str, Any]]
     relationship_synonyms: list[dict[str, Any]]
     changelog: list[ChangelogEntry]
+    source_sessions: list[dict[str, Any]]
+    candidate_mappings: list[dict[str, Any]]
+    staging: list[dict[str, Any]]
 
 
 @runtime_checkable

@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.changelog import SqliteChangelog
+from people_context.adapters.sqlite.import_cleanup import ImportCleanupResult, ImportProvenanceCleaner
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.lifecycle import (
     AffectedEntity,
@@ -31,6 +32,7 @@ class SqliteForgetStore:
         self._failure_hook = failure_hook
         self._audit_failure_hook = audit_failure_hook
         self._changelog_failure_hook = changelog_failure_hook
+        self._cleaner = ImportProvenanceCleaner(conn)
 
     @property
     def unit_of_work(self) -> SqliteUnitOfWork:
@@ -51,9 +53,13 @@ class SqliteForgetStore:
         with SqliteUnitOfWork(self._conn):
             counts = self.preview_person_forget(person_id)
             affected_entities, orphan_ids = self._person_forget_entities(person_id)
+            cleanup = self._cleaner.erase(_entity_targets(affected_entities), person_id)
+            affected_entities.extend(_mapping_entities(cleanup))
+            counts.update(cleanup.counts)
             target_ids = {entity.entity_id for entity in affected_entities}
             target_ids.add(person_id)
-            self._redact_audits(person_id, person_id)
+            target_ids |= cleanup.redaction_targets
+            self._redact_audits(target_ids, person_id)
             covered_ops, covered_transactions = SqliteChangelog(self._conn).redact_covered(target_ids)
             self._conn.execute("DELETE FROM person_search WHERE person_id = ?", (person_id,))
             self._conn.execute("DELETE FROM persons WHERE id = ?", (person_id,))
@@ -70,6 +76,8 @@ class SqliteForgetStore:
             affected_entities=affected_entities,
             covered_op_ids=covered_ops,
             covered_transaction_ids=covered_transactions,
+            redacted_source_ids=cleanup.redacted_source_ids,
+            deleted_source_ids=cleanup.deleted_source_ids,
         )
 
     def forget_record(self, entity_type: str, entity_id: str) -> ForgetStoreResult:
@@ -106,9 +114,13 @@ class SqliteForgetStore:
                     )
                     for participant in participant_rows
                 )
+            cleanup = self._cleaner.erase([(entity_type, entity_id)], None)
+            affected_entities.extend(_mapping_entities(cleanup))
+            deleted.update(cleanup.counts)
             target_ids = {entity.entity_id for entity in affected_entities}
             target_ids.add(entity_id)
-            self._redact_audits(entity_id, None)
+            target_ids |= cleanup.redaction_targets
+            self._redact_audits(target_ids, None)
             covered_ops, covered_transactions = SqliteChangelog(self._conn).redact_covered(target_ids)
             self._conn.execute(
                 f"DELETE FROM {table} WHERE id = ?",  # noqa: S608 - internal table map
@@ -120,10 +132,17 @@ class SqliteForgetStore:
             affected_entities=affected_entities,
             covered_op_ids=covered_ops,
             covered_transaction_ids=covered_transactions,
+            redacted_source_ids=cleanup.redacted_source_ids,
+            deleted_source_ids=cleanup.deleted_source_ids,
         )
 
     def preview_person_forget(self, person_id: str) -> dict[str, int]:
-        """Count rows a person-scope forget would delete without mutation."""
+        """Count rows a person-scope forget would delete without mutation.
+
+        Import provenance and structurally linked staging rows are part of that count: a
+        confirmation prompt that omitted them would understate what erasure removes, and a staged
+        candidate holding the forgotten name is exactly what someone confirming this wants gone.
+        """
         counts = {"persons": 1}
         for key, table in (
             ("aliases", "aliases"),
@@ -153,6 +172,8 @@ class SqliteForgetStore:
                       WHERE all_ip.interaction_id = ip.interaction_id) = 1""",
             (person_id,),
         ).fetchone()[0]
+        entities, _orphan_ids = self._person_forget_entities(person_id)
+        counts.update(self._cleaner.plan(_entity_targets(entities), person_id).counts)
         return counts
 
     def _person_forget_entities(self, person_id: str) -> tuple[list[AffectedEntity], list[str]]:
@@ -205,12 +226,19 @@ class SqliteForgetStore:
         entities.extend(AffectedEntity(entity_type="interaction", entity_id=entity_id) for entity_id in orphan_ids)
         return entities, orphan_ids
 
-    def _redact_audits(self, entity_id: str, forgotten_person_id: str | None) -> None:
+    def _redact_audits(self, entity_ids: set[str], forgotten_person_id: str | None) -> None:
+        """Redact accountability payloads covering anything this forget erased or scrubbed.
+
+        The id set now includes candidate mappings and the receipts whose caller-authored label
+        and external id were just cleared, because their audit payloads carry those values: a
+        provenance row that survived here would let the erased record — or the wording that named
+        it — be read back out of history.
+        """
         rows = self._conn.execute("SELECT id, entity_id, payload_json FROM audit_log").fetchall()
         for row in rows:
             payload = json.loads(row["payload_json"])
             contains_person = forgotten_person_id is not None and _contains_scalar(payload, forgotten_person_id)
-            if row["entity_id"] == entity_id or contains_person:
+            if row["entity_id"] in entity_ids or contains_person:
                 self._conn.execute(
                     "UPDATE audit_log SET payload_json = ? WHERE id = ?",
                     (json.dumps({"redacted": True}), row["id"]),
@@ -219,6 +247,23 @@ class SqliteForgetStore:
     def _checkpoint(self, name: str) -> None:
         if self._failure_hook is not None:
             self._failure_hook(name)
+
+
+def _entity_targets(entities: list[AffectedEntity]) -> list[tuple[str, str]]:
+    """Return the (type, id) pairs a candidate mapping could legitimately point at."""
+    return [(entity.entity_type, entity.entity_id) for entity in entities]
+
+
+def _mapping_entities(cleanup: ImportCleanupResult) -> list[AffectedEntity]:
+    """Return removed provenance as affected entities, so peer replay erases it too.
+
+    Staging rows are deliberately absent: `import_staging` is operational state that peers never
+    replicate, and its removal is reported through the deletion counts instead.
+    """
+    return [
+        AffectedEntity(entity_type="import_candidate_mapping", entity_id=candidate_id)
+        for candidate_id in cleanup.plan.mapping_candidate_ids
+    ]
 
 
 def _contains_scalar(value: object, target: str) -> bool:

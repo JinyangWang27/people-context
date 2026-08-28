@@ -354,7 +354,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M18 — Provenance, idempotency & evidence
 
-- [ ] **M18.1 — Add durable source claims, commit mappings, and bootstrap v2**
+- [x] **M18.1 — Add durable source claims, commit mappings, and bootstrap v2**
   - **Scope:** Add the next-free migration and ports/app/SQLite support for source sessions plus durable candidate
     commit-outcome mappings; ensure each file digest/extraction describes one verified stable snapshot; define
     extraction-configuration fingerprints; add explicit `pctx import stage ... --force`; advance strict full
