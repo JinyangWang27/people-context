@@ -84,6 +84,7 @@ actions in `records/doctor.py`, or the path redaction in `context/stats.py`) is 
 `HybridLogicalClock` (`ports/hlc.py`), `BundleReader` (`ports/sync_bundle.py`),
 `RecencyReader` (`ports/insights.py`), `CurationReader` (`ports/curation.py`),
 `StatsReader` (`ports/stats.py`),
+`ImportSourceStore` and the read-only `ImportSourceInspectionReader` (`ports/sources.py`),
 `UnitOfWork` (`ports/unit_of_work.py`), `Clock` (`ports/clock.py`), and
 `Sleeper` (`ports/sleep.py`).
 Splitting concerns means read, merge, forget, audit, and sync use cases depend only on capabilities they consume.

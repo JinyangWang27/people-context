@@ -6,6 +6,11 @@ import argparse
 
 from people_context.adapters.importers.router import SUPPORTED_IMPORT_SOURCES
 from people_context.app.exports import DEFAULT_VCARD_VERSION
+from people_context.app.imports import (
+    DEFAULT_SOURCE_PAGE_LIMIT,
+    MAX_SOURCE_PAGE_LIMIT,
+    MIN_SOURCE_PAGE_LIMIT,
+)
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
@@ -25,6 +30,25 @@ from people_context.app.sync import (
 )
 from people_context.domain.person import AliasKind
 from people_context.ports.vcard import SUPPORTED_VCARD_VERSIONS
+
+
+def _add_page_arguments(parser: argparse.ArgumentParser, subject: str) -> None:
+    """Add the shared bounded-page arguments to one inspection command.
+
+    Both source commands page the same way and are validated by the same application rules, so
+    they declare the same two flags rather than two spellings of one contract.
+    """
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_SOURCE_PAGE_LIMIT,
+        help=f"Maximum {subject} in one page ({MIN_SOURCE_PAGE_LIMIT}-{MAX_SOURCE_PAGE_LIMIT}).",
+    )
+    parser.add_argument(
+        "--cursor",
+        default=None,
+        help="Opaque cursor from a previous page's `next_cursor`; omit it to start from the first page.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -373,6 +397,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--json",
         action="store_true",
         help="Print the versioned commit JSON document instead of the human summary.",
+    )
+
+    sources = subparsers.add_parser(
+        "sources",
+        help="List local import receipts, newest first, one bounded page at a time.",
+    )
+    _add_page_arguments(sources, "sources")
+    sources.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned source listing JSON document instead of the human table.",
+    )
+
+    source_cmd = subparsers.add_parser(
+        "source",
+        help="Inspect one import receipt and what its candidates produced.",
+    )
+    source_subcommands = source_cmd.add_subparsers(dest="source_command", required=True)
+    source_show = source_subcommands.add_parser(
+        "show",
+        help="Show one receipt with a bounded page of its committed candidate outcomes.",
+    )
+    source_show.add_argument("source_session_id", help="Source session id reported by `pctx sources`.")
+    _add_page_arguments(source_show, "candidate outcomes")
+    source_show.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned source detail JSON document instead of the human summary.",
     )
 
     subparsers.add_parser("init", help="Interactively seed self identity and optional contact data.")

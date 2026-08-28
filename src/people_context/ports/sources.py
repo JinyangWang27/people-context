@@ -33,7 +33,9 @@ __all__ = [
     "STATUS_REDACTED",
     "STATUS_STAGED",
     "CandidateMappingRow",
+    "ImportSourceInspectionReader",
     "ImportSourceStore",
+    "SourceCandidateTotals",
     "SourceClaimOutcome",
     "SourceSessionClaim",
     "SourceSessionRow",
@@ -167,3 +169,65 @@ class ImportSourceStore(Protocol):
     def record_mappings(self, mappings: list[CandidateMappingRow]) -> None: ...
 
     def mappings_for_batch(self, batch_id: str) -> list[CandidateMappingRow]: ...
+
+
+@dataclass(frozen=True)
+class SourceCandidateTotals:
+    """SQL aggregates describing one source's candidates without reading any of them.
+
+    Both halves are needed because they answer different questions and neither subsumes the
+    other: staging rows say what is left to review and disappear under cleanup policy, while
+    mappings say what the source durably produced and outlive those rows entirely.
+
+    The pairs are ordered by key so a rendered summary is deterministic.
+    """
+
+    mappings_total: int
+    mappings_by_disposition: tuple[tuple[str, int], ...] = ()
+    staged_total: int = 0
+    staged_by_status: tuple[tuple[str, int], ...] = ()
+
+
+@runtime_checkable
+class ImportSourceInspectionReader(Protocol):
+    """Read source receipts and their commit outcomes in bounded keyset pages.
+
+    Every listing method takes the page size the application validated and returns at most
+    ``limit + 1`` rows, so one query both fills a page and settles whether another exists. The
+    extra row is the reader's whole contribution to that decision: truncation, cursors, and what
+    a redacted receipt may disclose are application policy.
+
+    A source listing resumes from an identifier rather than from a sort key, because a caller
+    holds the cursor and a cursor is reversible. Resolving that identifier to its own position is
+    the store's job, so the key never has to leave the database — which matters for a terminal
+    redacted receipt, whose timestamps inspection must not disclose.
+    """
+
+    def sort_key_for_session(self, session_id: str) -> tuple[datetime, str] | None:
+        """Return one receipt's `(created_at, id)` listing position, or None if it is gone."""
+        ...
+
+    def list_sessions(
+        self,
+        *,
+        limit: int,
+        after: tuple[datetime, str] | None = None,
+    ) -> list[SourceSessionRow]:
+        """Return one newest-first page after `after`, ordered by `(created_at DESC, id DESC)`."""
+        ...
+
+    def get_session(self, session_id: str) -> SourceSessionRow | None: ...
+
+    def count_source_candidates(self, session_id: str, batch_id: str | None) -> SourceCandidateTotals:
+        """Return aggregate candidate totals for one source, computed in the store."""
+        ...
+
+    def list_session_mappings(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        after: str | None = None,
+    ) -> list[CandidateMappingRow]:
+        """Return one page of the source's mappings after `after`, ordered by `candidate_id ASC`."""
+        ...

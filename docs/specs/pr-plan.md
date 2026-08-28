@@ -419,7 +419,7 @@ Check the matching box only in the PR that delivers it.
   - **Out:** semantic candidate dedup, trait evidence, source rollback, folder watch, incremental peer replication of
     staging state, raw extraction-option persistence, heuristic free-text staging erasure.
 
-- [ ] **M18.2 — Expose bounded source provenance and inspection over commit mappings**
+- [x] **M18.2 — Expose bounded source provenance and inspection over commit mappings**
   - **Scope:** Add local `sources` / `source show` inspection and any narrow app/read ports needed to traverse M18.1
     candidate→entity→source-session mappings while preserving existing `Provenance.session` meanings.
   - **Acceptance:** existing message/event-id `Provenance.session` semantics remain byte/semantically unchanged.

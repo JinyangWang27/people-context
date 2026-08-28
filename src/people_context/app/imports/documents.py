@@ -17,6 +17,13 @@ from typing import Any, Final
 from pydantic import BaseModel, Field
 
 from people_context.app.exports._document import render_json_document
+from people_context.app.imports.inspection import (
+    SourceCandidateCounts,
+    SourceDetailResult,
+    SourceListResult,
+    SourceMappingEntry,
+    SourceSummary,
+)
 from people_context.app.imports.models import CommitImportResult, ImportBatchResult, ImportReviewResult
 
 IMPORT_BATCH_FORMAT: Final = "people-context-import-batch"
@@ -27,6 +34,12 @@ IMPORT_REVIEW_VERSION: Final = 1
 
 IMPORT_COMMIT_FORMAT: Final = "people-context-import-commit"
 IMPORT_COMMIT_VERSION: Final = 1
+
+IMPORT_SOURCES_FORMAT: Final = "people-context-import-sources"
+IMPORT_SOURCES_VERSION: Final = 1
+
+IMPORT_SOURCE_FORMAT: Final = "people-context-import-source"
+IMPORT_SOURCE_VERSION: Final = 1
 
 
 class ImportBatchDocument(BaseModel):
@@ -79,6 +92,38 @@ class ImportCommitDocument(BaseModel):
     skipped_ids: list[str] = Field(default_factory=list)
 
 
+class ImportSourcesDocument(BaseModel):
+    """One bounded newest-first page of source receipts.
+
+    `next_cursor` is the whole pagination contract: non-null means another page exists and this
+    is the opaque position to resume from, null means the listing ended. There is no total, on
+    purpose — counting the table would be the unbounded read the paging exists to avoid.
+    """
+
+    format: str = IMPORT_SOURCES_FORMAT
+    version: int = IMPORT_SOURCES_VERSION
+    limit: int
+    sources: list[SourceSummary] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
+class ImportSourceDocument(BaseModel):
+    """One source receipt with a bounded page of its candidate outcomes.
+
+    `counts` are SQL aggregates over the whole source, so they describe more than the page in
+    `mappings`. A redacted source carries neither: its counts are zero and its mapping page is
+    empty because inspection withholds them, not because the source produced nothing.
+    """
+
+    format: str = IMPORT_SOURCE_FORMAT
+    version: int = IMPORT_SOURCE_VERSION
+    source: SourceSummary
+    counts: SourceCandidateCounts
+    limit: int
+    mappings: list[SourceMappingEntry] = Field(default_factory=list)
+    next_cursor: str | None = None
+
+
 def import_batch_document(result: ImportBatchResult) -> ImportBatchDocument:
     """Project one staging result into its versioned document."""
     return ImportBatchDocument(
@@ -119,8 +164,32 @@ def import_commit_document(result: CommitImportResult) -> ImportCommitDocument:
     )
 
 
+def import_sources_document(result: SourceListResult) -> ImportSourcesDocument:
+    """Project one source listing page into its versioned document."""
+    return ImportSourcesDocument(
+        limit=result.limit,
+        sources=list(result.sources),
+        next_cursor=result.next_cursor,
+    )
+
+
+def import_source_document(result: SourceDetailResult) -> ImportSourceDocument:
+    """Project one source detail page into its versioned document."""
+    return ImportSourceDocument(
+        source=result.source,
+        counts=result.counts,
+        limit=result.limit,
+        mappings=list(result.mappings),
+        next_cursor=result.next_cursor,
+    )
+
+
 def render_import_json(
-    document: ImportBatchDocument | ImportReviewDocument | ImportCommitDocument,
+    document: ImportBatchDocument
+    | ImportReviewDocument
+    | ImportCommitDocument
+    | ImportSourcesDocument
+    | ImportSourceDocument,
 ) -> str:
     """Render one import document as canonical JSON text."""
     return render_json_document(document)

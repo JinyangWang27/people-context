@@ -466,6 +466,79 @@ transaction, so a later dependent commit cannot resolve through an identity the 
 Existing provenance is unchanged by all of this. `Provenance.session` keeps its per-message and per-event
 meaning, and pre-M18 batches are left alone rather than backfilled with a guessed receipt.
 
+## Source inspection (M18.2)
+
+M18.2 makes those receipts and mappings readable locally, so *where did this come from?* has an answer that does
+not involve opening the database. Two commands, described in [cli.md](cli.md#import-sources), do all of it:
+
+```bash
+uv run pctx sources [--limit N] [--cursor CURSOR] [--json]
+uv run pctx source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]
+```
+
+Inspection reads exactly the two M18.1 relations that already exist. It does not add a second record-to-source
+table: a candidate mapping already names the source session that produced a durable entity, and a parallel
+provenance table would be a second truth to keep in step with merge, forget, and restore.
+
+It is deliberately not a document browser. There is no raw source, no path, no extraction configuration, and no
+retrieval of the material a receipt describes, because none of that was ever stored. What a non-redacted source
+shows is its id and machine kind, its claim state, its timestamps and status, the staging batch it created, SQL
+aggregates over its candidates, and one bounded page of committed candidate outcomes.
+
+### Every read is a page
+
+A database that imported a mailbox holds as many mappings as the mailbox held messages, so both commands page
+rather than list:
+
+- `--limit` defaults to **50** and accepts **1..200**;
+- sources are ordered newest-first by `(created_at DESC, id DESC)`, and a source's mappings by `candidate_id ASC`;
+- pagination is keyset-based. The opaque `--cursor` encodes only the **identifier** of the last row a page
+  returned, and the store resolves that identifier to its own sort position. The encoding is reversible, so a
+  cursor built from a sort key would have disclosed the `created_at` of a terminal redacted receipt that happened
+  to end a page — exactly the field the erasure contract withholds. Cursors are bounded and validated *before*
+  reaching a query, and one naming a source since forgotten is refused;
+- a cursor also names the listing that issued it, and one from anywhere else is refused. Without that, a cursor
+  from source B's mapping page would be accepted by source A's as a bare `candidate_id >` boundary: the query
+  would succeed while silently omitting everything of A's sorting below it, which is a wrong answer presented as
+  a complete page. The scope travels as a fixed-width digest, which parses unambiguously against any identifier
+  content and keeps a cursor's size independent of how long the scoping identifier is;
+- identifiers are **format-opaque and unbounded**. A bootstrap restore preserves ids verbatim and validates them
+  only as non-blank, so inspection imposes no length or alphabet rule — on the id or on the cursor carrying it.
+  Any such ceiling eventually refuses a cursor this same surface issued, leaving a restored source's provenance
+  visible but impossible to page through;
+- the SQLite continuation uses a **row-value** comparison, `(created_at, id) < (?, ?)`. The equivalent
+  `created_at < ? OR (created_at = ? AND id < ?)` spelling is logically identical but SQLite plans it as a
+  `SCAN`, so each later page would walk the index from its newest entry down to the cursor and the constant page
+  cost would be a fiction. The row-value form plans as a `SEARCH` range seek;
+- the SQLite reader applies the cursor predicate and `LIMIT limit + 1` itself, so one query both fills a page and
+  settles whether another exists. Nothing fetches a table and slices it;
+- the per-source candidate and status counts are `GROUP BY` aggregates, so a summary of a hundred-thousand-row
+  import costs the same as a summary of three. They describe the whole source, not the page in front of them.
+
+Repeated calls carrying `next_cursor` traverse a large source without any one response being unbounded.
+
+### What a forgotten source shows
+
+Inspection never undoes an erasure. A source that a hard forget merely touched keeps its surviving mappings
+visible while its caller-authored label and external source id stay absent — the scrubbing described above is
+permanent, not hidden from this view.
+
+A terminal `redacted` source is always claim-backed, and inspection returns only what makes that claim
+non-restageable: its internal id, its non-personal `source_kind`, its digest and fingerprint-or-absence claim
+state, and the `redacted` status. Its cleared label, external id, batch, timestamps, candidate counts, and
+mappings are all absent — including `created_at`, whose column survives redaction in storage and is withheld
+here rather than there. Pagination arguments do not widen any of that: the mapping page is never queried at all
+for a redacted source. A fully forgotten digestless source has no retained row to inspect.
+
+A malformed cursor is still refused for a redacted source. Refusing only when a source happens to have mappings
+would make the refusal itself a disclosure, and a caller paging a listing has no way to know which entry that is.
+
+### Terminal outcomes
+
+A `merged_away` mapping is shown as a terminal candidate outcome with no record id. The relationship it produced
+was removed as a self-loop during a person merge, so there is no live edge to name and naming the removed one
+would point at nothing.
+
 ## Never persist raw content
 
 The single hard rule for every importer: **raw source content is never persisted.** Only distilled
@@ -515,6 +588,9 @@ The agent-extracted `observation`, `trait`, and `relationship` candidate types a
 `pctx import stage-candidates` — the CLI entry point for an agent that has only filesystem and process access —
 in **M17.2**. Neither adds a source format: unstructured material is read and distilled by the agent, and only
 the distillation is staged.
+
+Durable source receipts, candidate commit mappings, and the duplicate claim arrived in **M18.1**; `pctx sources`
+and `pctx source show` read them back in **M18.2**. Neither adds a source format or a candidate type either.
 
 Email extraction uses
 only From/To/Cc/Reply-To, Subject, Date, and Message-ID headers;

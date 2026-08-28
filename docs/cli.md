@@ -49,6 +49,8 @@ what encryption does and does not protect.
 | `import stage-candidates --source LABEL --input PATH\|- [--source-kind KIND] [--content-digest SHA256] [--extraction-fingerprint SHA256] [--label TEXT] [--external-source-id TEXT] [--json]` | Stage strict agent-extracted candidate JSON — not source text — into a reviewable staging batch. |
 | `import review BATCH_ID [--json]` | Show every staged candidate in one batch with its canonical id and status. |
 | `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
+| `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
+| `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
 
 `show`, `brief`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown
 references exit 1; ambiguous names exit 2 and print candidates rather than guessing.
@@ -204,6 +206,60 @@ Input is refused for being unparseable in the ways bytes do not catch, too. A fe
 arrays exhaust the decoder's stack while sitting far below the 1 MiB ceiling, and a JSON escape can decode to an
 unpaired surrogate — a string with no UTF-8 encoding, and so nothing that could be stored. Both end in the same
 bounded refusal rather than a traceback.
+
+## Import sources
+
+```bash
+uv run pctx sources
+uv run pctx sources --limit 10 --json
+uv run pctx source show 01J8... --limit 25
+```
+
+`sources` and `source show` answer *where did this come from?* over the durable receipts and candidate mappings
+described in [import.md](import.md#source-inspection-m182). They are not a document browser: there is no raw
+source, no file path, no extraction configuration, and no way to retrieve the material a receipt describes,
+because none of it was ever stored. A non-redacted source shows its id and machine kind, its duplicate-claim
+state, timestamps and status, the batch it staged, aggregate candidate counts, and one page of committed
+candidate outcomes with the durable record each produced.
+
+Both commands are pages, not dumps. `--limit` defaults to **50** and accepts **1..200**; sources are ordered
+newest-first by `(created_at DESC, id DESC)` and a source's mappings by `candidate_id ASC`; and `--cursor` takes
+the opaque `next_cursor` a previous page reported. The cursor is a position in the ordering, not an offset, and
+the underlying query is a range seek rather than a scan, so paging cost does not grow with how far in you are and
+a concurrent import cannot renumber rows underneath you.
+Repeated calls traverse a source with a hundred thousand mappings without one unbounded response. The aggregate
+counts are computed in SQL and describe the whole source, so they stay the same on every page.
+
+```text
+More candidates; re-run this command with --cursor eyJ... to continue.
+```
+
+The hint names the argument that changes rather than a whole command line, because `--db` and `--encrypted` are
+global options that come *before* the subcommand: a printed `pctx sources --cursor ...` would silently continue
+against a different database — creating and migrating the default one, or failing to open an encrypted store.
+
+A cursor encodes the identifier of the last row a page returned, and nothing else. The store resolves that
+identifier to its own sort position, so a redacted source's withheld timestamp never travels in a value you hold.
+It also names the listing that issued it: a cursor from `sources`, or from another source's `source show`, is
+refused rather than silently used as a boundary that would omit part of this source's provenance. Identifiers are
+format-opaque and unbounded — no length or alphabet rule, because a bootstrap restore preserves them verbatim and
+any ceiling would eventually refuse a cursor this surface itself issued, so a restored source keeps its
+provenance traversable. A cursor this surface did not issue, one from a different listing, or
+one naming a source that has since been forgotten is refused rather than guessed at (`invalid_source_cursor`,
+exit 2), as is a `--limit` outside its range (`invalid_source_page_limit`, exit 2). An id that names no receipt exits 1 with
+`unknown_source_session`. Under `--json` a refusal leaves stdout empty and puts a bounded diagnostic on stderr,
+naming the rule rather than repeating what was supplied.
+
+A source that a hard forget merely touched keeps its surviving mappings visible while its `--label` and
+`--external-source-id` stay permanently absent. A fully forgotten claim-backed source shows only its internal id,
+non-personal kind, digest/fingerprint claim state, and `redacted` status — no label, batch, timestamps, counts, or
+mappings, and pagination arguments do not widen that. A fully forgotten digestless source has no row at all. A
+`merged_away` outcome names no record id, because the relationship it produced was removed during a person merge.
+
+Both commands print a short reminder to stderr whenever a result actually carries receipt metadata: your labels
+are your own wording, and a digest identifies a file rather than anonymizing it. It is printed under `--json`
+too, because that mode discloses the same fields; stderr is not the document, so stdout still holds exactly one
+JSON object. An empty listing discloses nothing and warns about nothing.
 
 ## Packaged demo
 

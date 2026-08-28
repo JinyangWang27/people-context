@@ -38,6 +38,7 @@ from people_context.cli.portability import (
     cmd_sync_push,
 )
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
+from people_context.cli.sources import cmd_source, cmd_sources
 from people_context.config import MissingDatabaseKeyError, resolve_db_key, resolve_db_path
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
@@ -75,6 +76,8 @@ _COMMANDS: dict[str, CommandHandler] = {
     "watch": cmd_watch,
     "reindex": cmd_reindex,
     "import": cmd_import,
+    "sources": cmd_sources,
+    "source": cmd_source,
 }
 
 

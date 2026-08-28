@@ -90,15 +90,24 @@ repurposed, and new fields are additive.
 | Import staging batch | `people-context-import-batch` | `1` | `pctx import stage --json`, `pctx import stage-candidates --json` |
 | Import review | `people-context-import-review` | `1` | `pctx import review --json` |
 | Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
+| Import source listing | `people-context-import-sources` | `1` | `pctx sources --json` |
+| Import source detail | `people-context-import-source` | `1` | `pctx source show --json` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `2` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
 
 - **Portable dataset export**, **person brief**, **person index**, **data-quality findings**, **aggregate
-  inventory**, and the three **import lifecycle** documents are producer-only: nothing in this repository
-  consumes them, and external readers are expected to ignore unknown fields. A new field is additive and does not
-  advance `version`; a removal or a repurposing does.
+  inventory**, and the **import lifecycle** and **import source inspection** documents are producer-only:
+  nothing in this repository consumes them, and external readers are expected to ignore unknown fields. A new
+  field is additive and does not advance `version`; a removal or a repurposing does.
+
+  The source-inspection documents add one contract of their own: `next_cursor` is opaque. It encodes a position
+  in an ordering this project is free to extend, so a caller passes it back verbatim and never composes or
+  parses one. A cursor is accepted only by the listing that issued it — the source listing, or one specific
+  source's mapping page — and is refused anywhere else rather than reinterpreted as a boundary there. A `null`
+  `next_cursor` is the only documented way to know a traversal has ended: neither document carries a total,
+  because counting the table would be the unbounded read the paging exists to avoid.
 
   The import documents address candidates by their canonical staged id, and that id is the contract: it is what
   `pctx import commit --accept` takes, and it stays stable for a batch's lifetime. The review document's

@@ -154,6 +154,14 @@ Hard forget therefore reaches import state too, in the same transaction as the r
 Re-staging a reduced source by default refuses with `source_previously_redacted` rather than fabricating a batch,
 and that refusal names none of the former metadata — not the label, not the batch, not when any of it happened.
 
+`pctx sources` and `pctx source show` read those receipts back and are held to the same erasure. A source a
+forget merely touched shows its surviving mappings while the scrubbed label and external id stay absent; a
+terminal `redacted` source discloses only its internal id, non-personal kind, digest and fingerprint-or-absence
+claim state, and status — its former timestamps, batch, counts, and mappings are withheld even where the column
+survived, and no page size or cursor widens that. A fully forgotten claimless source has no row to inspect at
+all. Inspection returns no raw source, no file path, and no extraction self-configuration, so provenance cannot
+resurrect an erased name through the metadata around it.
+
 ## Optional at-rest encryption
 
 By default the database is plain SQLite, readable by any process running as the user and by anyone who can read

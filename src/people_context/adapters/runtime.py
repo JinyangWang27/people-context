@@ -71,8 +71,10 @@ from people_context.app.imports import (
     CandidateStager,
     CommitImport,
     ImportContent,
+    ListImportSources,
     PreflightImportBatch,
     ReviewImport,
+    ShowImportSource,
     StageCandidates,
 )
 from people_context.app.insights import GetStaleRelationships, ListUpcomingDates
@@ -162,6 +164,8 @@ class RuntimeUseCases:
     preflight_import_batch: PreflightImportBatch
     commit_import: CommitImport
     stage_candidates: StageCandidates
+    list_import_sources: ListImportSources
+    show_import_source: ShowImportSource
     reindex_people: ReindexPeople
 
 
@@ -355,6 +359,8 @@ def build_runtime(
             runtime_clock,
         ),
         stage_candidates=StageCandidates(candidate_stager),
+        list_import_sources=ListImportSources(import_sources),
+        show_import_source=ShowImportSource(import_sources),
         reindex_people=ReindexPeople(repo),
     )
     return ApplicationRuntime(

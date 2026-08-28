@@ -309,8 +309,10 @@ stable-snapshot extraction for byte-capable and path-only sources, the concurren
 `(source_kind, content_digest, extraction_fingerprint)` claim with explicit `--force` reprocessing and the
 `source_previously_redacted` refusal, one logical transaction id across every effect of an import commit, merge
 and hard-forget integration for mappings, retained staging, and caller-authored receipt metadata, and bootstrap
-bundle version 2 carrying that state while restore keeps accepting version 1. Source inspection (M18.2) and
-trait evidence (M18.3) remain planned.
+bundle version 2 carrying that state while restore keeps accepting version 1. M18.2 added bounded local source
+inspection over those same mappings — `pctx sources` and `pctx source show`, keyset-paginated at the SQLite read
+with SQL aggregate counts, and held to the erasure rules so a redacted source discloses only its claim. Trait
+evidence (M18.3) remains planned.
 
 ## M19 — Knowledge consolidation & temporal views
 
