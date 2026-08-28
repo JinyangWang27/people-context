@@ -33,7 +33,9 @@ __all__ = [
     "STATUS_REDACTED",
     "STATUS_STAGED",
     "CandidateMappingRow",
+    "ImportSourceInspectionReader",
     "ImportSourceStore",
+    "SourceCandidateTotals",
     "SourceClaimOutcome",
     "SourceSessionClaim",
     "SourceSessionRow",
@@ -167,3 +169,56 @@ class ImportSourceStore(Protocol):
     def record_mappings(self, mappings: list[CandidateMappingRow]) -> None: ...
 
     def mappings_for_batch(self, batch_id: str) -> list[CandidateMappingRow]: ...
+
+
+@dataclass(frozen=True)
+class SourceCandidateTotals:
+    """SQL aggregates describing one source's candidates without reading any of them.
+
+    Both halves are needed because they answer different questions and neither subsumes the
+    other: staging rows say what is left to review and disappear under cleanup policy, while
+    mappings say what the source durably produced and outlive those rows entirely.
+
+    The pairs are ordered by key so a rendered summary is deterministic.
+    """
+
+    mappings_total: int
+    mappings_by_disposition: tuple[tuple[str, int], ...] = ()
+    staged_total: int = 0
+    staged_by_status: tuple[tuple[str, int], ...] = ()
+
+
+@runtime_checkable
+class ImportSourceInspectionReader(Protocol):
+    """Read source receipts and their commit outcomes in bounded keyset pages.
+
+    Every listing method takes the page size the application validated and returns at most
+    ``limit + 1`` rows, so one query both fills a page and settles whether another exists. The
+    extra row is the reader's whole contribution to that decision: truncation, cursors, and what
+    a redacted receipt may disclose are application policy.
+    """
+
+    def list_sessions(
+        self,
+        *,
+        limit: int,
+        after: tuple[datetime, str] | None = None,
+    ) -> list[SourceSessionRow]:
+        """Return one newest-first page after `after`, ordered by `(created_at DESC, id DESC)`."""
+        ...
+
+    def get_session(self, session_id: str) -> SourceSessionRow | None: ...
+
+    def count_source_candidates(self, session_id: str, batch_id: str | None) -> SourceCandidateTotals:
+        """Return aggregate candidate totals for one source, computed in the store."""
+        ...
+
+    def list_session_mappings(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        after: str | None = None,
+    ) -> list[CandidateMappingRow]:
+        """Return one page of the source's mappings after `after`, ordered by `candidate_id ASC`."""
+        ...

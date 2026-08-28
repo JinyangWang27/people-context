@@ -18,6 +18,7 @@ from people_context.ports.imports import StagedImportRow
 from people_context.ports.sources import (
     STATUS_STAGED,
     CandidateMappingRow,
+    SourceCandidateTotals,
     SourceClaimOutcome,
     SourceSessionClaim,
     SourceSessionRow,
@@ -154,6 +155,99 @@ class SqliteImportSourceStore:
             (batch_id,),
         ).fetchall()
         return [_mapping(row) for row in rows]
+
+    def list_sessions(
+        self,
+        *,
+        limit: int,
+        after: tuple[datetime, str] | None = None,
+    ) -> list[SourceSessionRow]:
+        """Return one newest-first page of receipts, reading one row past the caller's page.
+
+        The cursor predicate and the limit are both in the query, so the database returns a page
+        rather than a table someone else slices. `created_at` is stored as `datetime.isoformat()`
+        text, whose lexicographic order matches its chronological order for a fixed offset, and
+        `idx_import_source_sessions_recent` covers exactly this ordering.
+        """
+        if after is None:
+            rows = self._conn.execute(
+                f"SELECT {_SESSION_COLUMNS} FROM import_source_sessions "  # noqa: S608 - fixed constants
+                "ORDER BY created_at DESC, id DESC LIMIT ?",
+                (limit + 1,),
+            ).fetchall()
+            return [_session(row) for row in rows]
+        created_at, session_id = after
+        cursor_created_at = created_at.isoformat()
+        rows = self._conn.execute(
+            f"SELECT {_SESSION_COLUMNS} FROM import_source_sessions "  # noqa: S608 - fixed constants
+            "WHERE created_at < ? OR (created_at = ? AND id < ?) "
+            "ORDER BY created_at DESC, id DESC LIMIT ?",
+            (cursor_created_at, cursor_created_at, session_id, limit + 1),
+        ).fetchall()
+        return [_session(row) for row in rows]
+
+    def get_session(self, session_id: str) -> SourceSessionRow | None:
+        """Return one receipt by its internal id."""
+        row = self._conn.execute(
+            f"SELECT {_SESSION_COLUMNS} FROM import_source_sessions WHERE id = ?",  # noqa: S608
+            (session_id,),
+        ).fetchone()
+        return _session(row) if row is not None else None
+
+    def count_source_candidates(self, session_id: str, batch_id: str | None) -> SourceCandidateTotals:
+        """Return grouped candidate totals for one source without loading a candidate.
+
+        Both counts are `GROUP BY` aggregates over an index, which is what keeps a summary of a
+        hundred-thousand-row import the same cost as a summary of three.
+        """
+        dispositions = self._grouped(
+            "SELECT disposition AS key, COUNT(*) AS total FROM import_candidate_mappings "
+            "WHERE source_session_id = ? GROUP BY disposition ORDER BY disposition",
+            session_id,
+        )
+        statuses: tuple[tuple[str, int], ...] = ()
+        if batch_id is not None:
+            statuses = self._grouped(
+                "SELECT status AS key, COUNT(*) AS total FROM import_staging "
+                "WHERE batch_id = ? GROUP BY status ORDER BY status",
+                batch_id,
+            )
+        return SourceCandidateTotals(
+            mappings_total=sum(total for _key, total in dispositions),
+            mappings_by_disposition=dispositions,
+            staged_total=sum(total for _key, total in statuses),
+            staged_by_status=statuses,
+        )
+
+    def list_session_mappings(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        after: str | None = None,
+    ) -> list[CandidateMappingRow]:
+        """Return one page of a source's outcomes, reading one row past the caller's page.
+
+        `idx_import_candidate_mappings_source` covers `(source_session_id, candidate_id)`, so the
+        keyset predicate seeks straight to the page instead of scanning the source's mappings.
+        """
+        if after is None:
+            rows = self._conn.execute(
+                f"SELECT {_MAPPING_COLUMNS} FROM import_candidate_mappings "  # noqa: S608 - fixed constants
+                "WHERE source_session_id = ? ORDER BY candidate_id LIMIT ?",
+                (session_id, limit + 1),
+            ).fetchall()
+            return [_mapping(row) for row in rows]
+        rows = self._conn.execute(
+            f"SELECT {_MAPPING_COLUMNS} FROM import_candidate_mappings "  # noqa: S608 - fixed constants
+            "WHERE source_session_id = ? AND candidate_id > ? ORDER BY candidate_id LIMIT ?",
+            (session_id, after, limit + 1),
+        ).fetchall()
+        return [_mapping(row) for row in rows]
+
+    def _grouped(self, sql: str, parameter: str) -> tuple[tuple[str, int], ...]:
+        """Return one `GROUP BY key` aggregate as deterministically ordered pairs."""
+        return tuple((row["key"], int(row["total"])) for row in self._conn.execute(sql, (parameter,)).fetchall())
 
     def _session_by_claim(self, claim_key: str) -> SourceSessionRow | None:
         row = self._conn.execute(
