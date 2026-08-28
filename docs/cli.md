@@ -224,8 +224,9 @@ candidate outcomes with the durable record each produced.
 
 Both commands are pages, not dumps. `--limit` defaults to **50** and accepts **1..200**; sources are ordered
 newest-first by `(created_at DESC, id DESC)` and a source's mappings by `candidate_id ASC`; and `--cursor` takes
-the opaque `next_cursor` a previous page reported. The cursor is a position in the ordering, not an offset, so
-paging cost does not grow with how far in you are and a concurrent import cannot renumber rows underneath you.
+the opaque `next_cursor` a previous page reported. The cursor is a position in the ordering, not an offset, and
+the underlying query is a range seek rather than a scan, so paging cost does not grow with how far in you are and
+a concurrent import cannot renumber rows underneath you.
 Repeated calls traverse a source with a hundred thousand mappings without one unbounded response. The aggregate
 counts are computed in SQL and describe the whole source, so they stay the same on every page.
 
@@ -241,8 +242,9 @@ A cursor encodes the identifier of the last row a page returned, and nothing els
 identifier to its own sort position, so a redacted source's withheld timestamp never travels in a value you hold.
 It also names the listing that issued it: a cursor from `sources`, or from another source's `source show`, is
 refused rather than silently used as a boundary that would omit part of this source's provenance. Identifiers are
-format-opaque — no length or alphabet rule, because a bootstrap restore preserves them verbatim, so a restored
-source keeps its provenance traversable. A cursor this surface did not issue, one from a different listing, or
+format-opaque and unbounded — no length or alphabet rule, because a bootstrap restore preserves them verbatim and
+any ceiling would eventually refuse a cursor this surface itself issued, so a restored source keeps its
+provenance traversable. A cursor this surface did not issue, one from a different listing, or
 one naming a source that has since been forgotten is refused rather than guessed at (`invalid_source_cursor`,
 exit 2), as is a `--limit` outside its range (`invalid_source_page_limit`, exit 2). An id that names no receipt exits 1 with
 `unknown_source_session`. Under `--json` a refusal leaves stdout empty and puts a bounded diagnostic on stderr,

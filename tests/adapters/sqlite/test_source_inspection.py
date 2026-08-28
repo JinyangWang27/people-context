@@ -167,8 +167,28 @@ def test_an_opaque_restored_identifier_is_stored_and_resolved_verbatim(conn: sql
     assert store.sort_key_for_session(restored) == (_START, restored)
 
 
-def test_the_listing_query_seeks_through_the_recent_index(conn: sqlite3.Connection) -> None:
-    """The page must be an index seek; a scan would grow with the table it is paging."""
+def test_the_listing_query_seeks_rather_than_scanning(conn: sqlite3.Connection) -> None:
+    """`SEARCH`, not `SCAN`: naming the index is not enough, since a scan uses it too.
+
+    The equivalent `created_at < ? OR (created_at = ? AND id < ?)` spelling plans as a scan, so
+    every later page would walk the index from the newest row down to the cursor and the constant
+    page cost would be a fiction. This asserts the plan itself, because that is the only place the
+    difference is visible.
+    """
+    plan = conn.execute(
+        "EXPLAIN QUERY PLAN SELECT id FROM import_source_sessions "
+        "WHERE (created_at, id) < (?, ?) "
+        "ORDER BY created_at DESC, id DESC LIMIT ?",
+        ("x", "y", 3),
+    ).fetchall()
+
+    detail = " ".join(str(row["detail"]) for row in plan)
+    assert "idx_import_source_sessions_recent" in detail
+    assert detail.startswith("SEARCH")
+
+
+def test_the_expanded_keyset_spelling_would_have_scanned(conn: sqlite3.Connection) -> None:
+    """Pins why the row-value form is used, so a later simplification cannot quietly undo it."""
     plan = conn.execute(
         "EXPLAIN QUERY PLAN SELECT id FROM import_source_sessions "
         "WHERE created_at < ? OR (created_at = ? AND id < ?) "
@@ -176,7 +196,7 @@ def test_the_listing_query_seeks_through_the_recent_index(conn: sqlite3.Connecti
         ("x", "x", "y", 3),
     ).fetchall()
 
-    assert any("idx_import_source_sessions_recent" in str(row["detail"]) for row in plan)
+    assert " ".join(str(row["detail"]) for row in plan).startswith("SCAN")
 
 
 def test_mappings_are_paged_by_ascending_candidate_id_within_one_source(conn: sqlite3.Connection) -> None:
@@ -202,14 +222,16 @@ def test_a_mapping_cursor_resumes_after_its_candidate(conn: sqlite3.Connection) 
     assert [row.candidate_id for row in resumed] == ["B0001-C0002", "B0001-C0003", "B0001-C0004"]
 
 
-def test_the_mapping_query_seeks_through_the_source_index(conn: sqlite3.Connection) -> None:
+def test_the_mapping_query_seeks_rather_than_scanning(conn: sqlite3.Connection) -> None:
     plan = conn.execute(
         "EXPLAIN QUERY PLAN SELECT candidate_id FROM import_candidate_mappings "
         "WHERE source_session_id = ? AND candidate_id > ? ORDER BY candidate_id LIMIT ?",
         ("S0001", "C", 3),
     ).fetchall()
 
-    assert any("idx_import_candidate_mappings_source" in str(row["detail"]) for row in plan)
+    detail = " ".join(str(row["detail"]) for row in plan)
+    assert "idx_import_candidate_mappings_source" in detail
+    assert detail.startswith("SEARCH")
 
 
 def test_counts_are_aggregates_over_the_whole_source(conn: sqlite3.Connection) -> None:

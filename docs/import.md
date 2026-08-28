@@ -500,12 +500,16 @@ rather than list:
 - a cursor also names the listing that issued it, and one from anywhere else is refused. Without that, a cursor
   from source B's mapping page would be accepted by source A's as a bare `candidate_id >` boundary: the query
   would succeed while silently omitting everything of A's sorting below it, which is a wrong answer presented as
-  a complete page. The scope is length-prefixed rather than delimited, so an identifier containing any byte still
-  parses back unambiguously;
-- identifiers inside a cursor are **format-opaque**, with no length or alphabet rule of inspection's own. A
-  bootstrap restore preserves ids verbatim and validates them only as non-blank, so any narrower rule would leave
-  a restored source's provenance visible but impossible to look up or page through. The only limit is a resource
-  bound on the encoded cursor itself, generous enough that no identifier a real store holds approaches it;
+  a complete page. The scope travels as a fixed-width digest, which parses unambiguously against any identifier
+  content and keeps a cursor's size independent of how long the scoping identifier is;
+- identifiers are **format-opaque and unbounded**. A bootstrap restore preserves ids verbatim and validates them
+  only as non-blank, so inspection imposes no length or alphabet rule — on the id or on the cursor carrying it.
+  Any such ceiling eventually refuses a cursor this same surface issued, leaving a restored source's provenance
+  visible but impossible to page through;
+- the SQLite continuation uses a **row-value** comparison, `(created_at, id) < (?, ?)`. The equivalent
+  `created_at < ? OR (created_at = ? AND id < ?)` spelling is logically identical but SQLite plans it as a
+  `SCAN`, so each later page would walk the index from its newest entry down to the cursor and the constant page
+  cost would be a fiction. The row-value form plans as a `SEARCH` range seek;
 - the SQLite reader applies the cursor predicate and `LIMIT limit + 1` itself, so one query both fills a page and
   settles whether another exists. Nothing fetches a table and slices it;
 - the per-source candidate and status counts are `GROUP BY` aggregates, so a summary of a hundred-thousand-row

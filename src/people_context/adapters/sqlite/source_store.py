@@ -181,6 +181,15 @@ class SqliteImportSourceStore:
         rather than a table someone else slices. `created_at` is stored as `datetime.isoformat()`
         text, whose lexicographic order matches its chronological order for a fixed offset, and
         `idx_import_source_sessions_recent` covers exactly this ordering.
+
+        The continuation uses a **row-value** comparison rather than the equivalent
+        `created_at < ? OR (created_at = ? AND id < ?)`. The two are logically identical and the
+        expanded form is the more familiar spelling, but SQLite plans it as
+        `SCAN ... USING COVERING INDEX`: every later page would walk the index from its newest
+        entry down to the cursor, so page 500 would read the 25,000 receipts before it and the
+        promised constant page cost would be a fiction. The row-value form plans as
+        `SEARCH ... ((created_at,id)<(?,?))`, a real range seek straight to the page. Row values
+        need SQLite 3.15, comfortably below what this project's FTS5 schema already requires.
         """
         if after is None:
             rows = self._conn.execute(
@@ -190,12 +199,11 @@ class SqliteImportSourceStore:
             ).fetchall()
             return [_session(row) for row in rows]
         created_at, session_id = after
-        cursor_created_at = created_at.isoformat()
         rows = self._conn.execute(
             f"SELECT {_SESSION_COLUMNS} FROM import_source_sessions "  # noqa: S608 - fixed constants
-            "WHERE created_at < ? OR (created_at = ? AND id < ?) "
+            "WHERE (created_at, id) < (?, ?) "
             "ORDER BY created_at DESC, id DESC LIMIT ?",
-            (cursor_created_at, cursor_created_at, session_id, limit + 1),
+            (created_at.isoformat(), session_id, limit + 1),
         ).fetchall()
         return [_session(row) for row in rows]
 

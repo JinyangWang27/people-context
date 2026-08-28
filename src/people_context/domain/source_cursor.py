@@ -1,4 +1,4 @@
-"""Opaque bounded keyset cursors for source inspection.
+"""Opaque keyset cursors for source inspection.
 
 Inspection pages tables that can grow without limit, so continuation is a *key*, not an offset:
 each page resumes from the last row it returned, which keeps the read cost of page 500 identical
@@ -13,19 +13,21 @@ built from a sort key would have leaked exactly that through the one value a cal
 told to pass back. So the key is the row's identifier, which inspection discloses for every source
 including a redacted one, and the store resolves that identifier to its own sort position.
 
-**A cursor names the listing that issued it.** Every cursor carries a scope, and a decode that
-expects a different one refuses. Without that, a cursor from one source's mapping page would be
-accepted by another source's as a bare `candidate_id >` boundary: the query would succeed and
-silently omit the provenance sorting below it, which is a wrong answer presented as a complete
-one. The scope is length-prefixed rather than delimited, so an identifier containing any byte at
-all still parses back unambiguously.
+**A cursor names the listing that issued it.** Every cursor opens with a fixed-width digest of its
+scope, and a decode that expects a different scope refuses. Without that, a cursor from one
+source's mapping page would be accepted by another source's as a bare `candidate_id >` boundary:
+the query would succeed and silently omit the provenance sorting below it, which is a wrong answer
+presented as a complete page. The digest is a mix-up guard rather than a security boundary — the
+scope it stands for is derived from arguments the caller already supplies — and being fixed-width
+it both parses unambiguously against any identifier content and keeps a cursor's size independent
+of how long the scoping identifier happens to be.
 
-**Identifiers are format-opaque and unbounded in shape.** A bootstrap bundle preserves ids verbatim
-and requires only that they are non-blank, so inspection imposes no length or alphabet rule of its
-own: one would make restored provenance visible but impossible to look up or page through. The only
-limit is a resource bound on the encoded cursor this surface will parse at all, which is generous
-enough that no identifier a real store holds comes close. Identifiers are never parsed or compared
-by shape; every use is a bound SQL parameter.
+**Nothing here bounds an identifier.** A bootstrap bundle preserves ids verbatim and requires only
+that they are non-blank, so any ceiling — on the id, or on the cursor that must round-trip it —
+eventually refuses a cursor this same surface issued, leaving a restored database's provenance
+visible but impossible to page through. There is deliberately no such ceiling: a cursor arrives
+already materialized as one argument, base64 shrinks rather than amplifies what it decodes, and
+the key is only ever a bound SQL parameter of an exact comparison.
 
 Everything here raises plain ``ValueError``; the process boundary wraps it in the refusal its own
 callers expect.
@@ -35,22 +37,19 @@ from __future__ import annotations
 
 import base64
 import binascii
-import re
+import hashlib
+import hmac
 from typing import Final
-
-#: Characters an encoded cursor may carry.
-#:
-#: This is the one bound, and it is a resource limit rather than a statement about identifiers: it
-#: stops a hostile value at a length check instead of a decode. It allows roughly 1.5 KB of scope
-#: plus identifier, which no id this project mints — 26-character ULIDs — approaches, and which
-#: leaves ample room for the format-opaque ids a bundle from another implementation may carry.
-MAX_CURSOR_CHARS: Final = 2048
 
 #: Scope of a cursor issued by the source listing.
 SOURCE_LIST_SCOPE: Final = "sources"
 
-#: Digits of the length prefix that separates a cursor's scope from its key.
-_LENGTH_PREFIX: Final = re.compile(r"\A([0-9]{1,4}):")
+#: Hexadecimal characters of the scope digest that opens every cursor.
+#:
+#: Short because it identifies which of a handful of listings issued a cursor, not who did. A
+#: collision would at worst let one source's cursor page another's, which is the same mistake this
+#: guards against being caught 2**64 times less often — not an escalation.
+SCOPE_DIGEST_CHARS: Final = 16
 
 
 def mapping_scope(session_id: str) -> str:
@@ -60,13 +59,11 @@ def mapping_scope(session_id: str) -> str:
 
 def encode_cursor(scope: str, key: str) -> str:
     """Return the opaque cursor resuming `scope`'s page after the row with this key."""
-    return base64.urlsafe_b64encode(f"{len(scope)}:{scope}{key}".encode()).decode("ascii").rstrip("=")
+    return _b64(f"{_scope_digest(scope)}{key}")
 
 
 def decode_cursor(raw: str, *, scope: str) -> str:
     """Return the key one cursor names, or raise ``ValueError``.
-
-    The length check runs before the decode so an enormous value is refused without being decoded.
 
     The key is returned exactly as it was encoded. Only the surrounding encoded text is trimmed,
     never the payload: ids are preserved verbatim across a bootstrap restore, so normalizing one
@@ -75,33 +72,32 @@ def decode_cursor(raw: str, *, scope: str) -> str:
     text = raw.strip()
     if not text:
         raise ValueError("cursor must not be blank")
-    if len(text) > MAX_CURSOR_CHARS:
-        raise ValueError(f"cursor is at most {MAX_CURSOR_CHARS} characters")
     padding = "=" * (-len(text) % 4)
     try:
-        payload = base64.urlsafe_b64decode(text + padding).decode("utf-8")
-    except (binascii.Error, UnicodeDecodeError, ValueError):
+        payload = _b64decode(text + padding)
+    except ValueError:
         raise ValueError("cursor is not a valid pagination cursor") from None
-    found_scope, key = _split(payload)
-    if found_scope != scope:
+    if len(payload) < SCOPE_DIGEST_CHARS:
+        raise ValueError("cursor is not a valid pagination cursor")
+    found, key = payload[:SCOPE_DIGEST_CHARS], payload[SCOPE_DIGEST_CHARS:]
+    if not hmac.compare_digest(found, _scope_digest(scope)):
         raise ValueError("cursor was issued for a different listing")
     if not key.strip():
         raise ValueError("cursor is not a valid pagination cursor")
     return key
 
 
-def _split(payload: str) -> tuple[str, str]:
-    """Split one decoded payload into its scope and key by the declared scope length.
+def _scope_digest(scope: str) -> str:
+    """Return the fixed-width tag standing for one listing."""
+    return hashlib.sha256(scope.encode("utf-8")).hexdigest()[:SCOPE_DIGEST_CHARS]
 
-    A length prefix rather than a delimiter, because both halves are format-opaque: a separator
-    byte could legitimately occur inside a restored identifier and would then split the payload in
-    the wrong place, silently addressing a different row.
-    """
-    match = _LENGTH_PREFIX.match(payload)
-    if match is None:
-        raise ValueError("cursor is not a valid pagination cursor")
-    length = int(match.group(1))
-    rest = payload[match.end() :]
-    if length > len(rest):
-        raise ValueError("cursor is not a valid pagination cursor")
-    return rest[:length], rest[length:]
+
+def _b64(payload: str) -> str:
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _b64decode(text: str) -> str:
+    try:
+        return base64.urlsafe_b64decode(text).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError, ValueError) as exc:
+        raise ValueError("cursor is not a valid pagination cursor") from exc
