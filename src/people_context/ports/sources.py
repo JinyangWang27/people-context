@@ -196,7 +196,16 @@ class ImportSourceInspectionReader(Protocol):
     ``limit + 1`` rows, so one query both fills a page and settles whether another exists. The
     extra row is the reader's whole contribution to that decision: truncation, cursors, and what
     a redacted receipt may disclose are application policy.
+
+    A source listing resumes from an identifier rather than from a sort key, because a caller
+    holds the cursor and a cursor is reversible. Resolving that identifier to its own position is
+    the store's job, so the key never has to leave the database — which matters for a terminal
+    redacted receipt, whose timestamps inspection must not disclose.
     """
+
+    def sort_key_for_session(self, session_id: str) -> tuple[datetime, str] | None:
+        """Return one receipt's `(created_at, id)` listing position, or None if it is gone."""
+        ...
 
     def list_sessions(
         self,

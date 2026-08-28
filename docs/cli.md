@@ -230,11 +230,19 @@ Repeated calls traverse a source with a hundred thousand mappings without one un
 counts are computed in SQL and describe the whole source, so they stay the same on every page.
 
 ```text
-More candidates; continue with: pctx source show 01J8... --cursor eyJ...
+More candidates; re-run this command with --cursor eyJ... to continue.
 ```
 
-A cursor this surface did not issue is refused rather than guessed at (`invalid_source_cursor`, exit 2), as is a
-`--limit` outside its range (`invalid_source_page_limit`, exit 2). An id that names no receipt exits 1 with
+The hint names the argument that changes rather than a whole command line, because `--db` and `--encrypted` are
+global options that come *before* the subcommand: a printed `pctx sources --cursor ...` would silently continue
+against a different database — creating and migrating the default one, or failing to open an encrypted store.
+
+A cursor encodes the identifier of the last row a page returned, and nothing else. The store resolves that
+identifier to its own sort position, so a redacted source's withheld timestamp never travels in a value you hold.
+Identifiers are format-opaque and bounded at 256 characters rather than assumed to be ULIDs, because a bootstrap
+restore preserves them verbatim — a restored source keeps its provenance traversable. A cursor this surface did
+not issue, or one naming a source that has since been forgotten, is refused rather than guessed at
+(`invalid_source_cursor`, exit 2), as is a `--limit` outside its range (`invalid_source_page_limit`, exit 2). An id that names no receipt exits 1 with
 `unknown_source_session`. Under `--json` a refusal leaves stdout empty and puts a bounded diagnostic on stderr,
 naming the rule rather than repeating what was supplied.
 

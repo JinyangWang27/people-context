@@ -1,94 +1,65 @@
 """Opaque bounded keyset cursors for source inspection.
 
-Inspection pages a table that can grow without limit, so continuation is a *key*, not an offset:
+Inspection pages tables that can grow without limit, so continuation is a *key*, not an offset:
 each page resumes from the last row it returned, which keeps the read cost of page 500 identical
 to the read cost of page one and never renumbers rows a concurrent staging run inserted.
 
-The cursor is opaque on purpose. It encodes a position in one ordering, and a caller that decoded
-it and started composing its own would be depending on a sort key that is free to change. Opaque
-is not a protection, though: the encoding here is reversible, so a cursor still carries whatever
-the key carries, which is why the keys are internal ids and timestamps and never a label, a name,
-or anything else a caller authored.
+**A cursor carries an identifier and nothing else.** The encoding here is reversible base64, so a
+cursor discloses whatever it holds — and one of the rows it can end a page on is a terminal
+`redacted` source, whose timestamps the hard-forget contract promises never to expose. A cursor
+built from a sort key would have leaked exactly that through the one field a caller is handed and
+told to pass back. So the key is the row's identifier, which inspection discloses for every source
+including a redacted one, and the store resolves that identifier to its own sort position.
 
-Every value is bounded and validated *before* it can reach a query. Everything here raises plain
-``ValueError``; the process boundary wraps it in the refusal its own callers expect.
+The cursor is still opaque to the caller: it encodes a position in an ordering this project is
+free to extend, and a caller that decoded one and started composing its own would be depending on
+a sort key that is not a contract.
+
+Identifiers are **format-opaque**. A restored bundle preserves ids verbatim and requires only that
+they are non-blank, so anything narrower here — a ULID shape, an ASCII alphabet — would make
+restored provenance impossible to page through. They are bounded and never interpreted; every use
+is a bound SQL parameter.
+
+Everything here raises plain ``ValueError``; the process boundary wraps it in the refusal its own
+callers expect.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
-import re
-from datetime import datetime
 from typing import Final
 
-#: Characters an encoded cursor may carry. Generous enough for the keys below and small enough
-#: that a hostile value costs a length check rather than a decode.
+#: Characters an encoded cursor may carry. Large enough for any identifier below once base64
+#: expansion is allowed for, and small enough that a hostile value costs a length check rather
+#: than a decode.
 MAX_CURSOR_CHARS: Final = 512
 
-#: Characters one decoded cursor may carry.
-MAX_DECODED_CURSOR_CHARS: Final = 256
-
-#: Characters an identifier inside a cursor may carry. Ids here are 26-character ULIDs; the
-#: allowance leaves room for a restored id from another implementation without being unbounded.
-MAX_CURSOR_ID_CHARS: Final = 64
-
-#: A conservative identifier alphabet. A cursor id is compared against a primary key, never
-#: rendered, so anything outside this set is refused rather than normalized.
-CURSOR_ID_PATTERN: Final = re.compile(r"\A[A-Za-z0-9._:-]+\Z")
-
-#: Separator inside a composed cursor. A unit separator occurs in neither an ISO-8601 timestamp
-#: nor the identifier alphabet above, so the composition is unambiguous.
-CURSOR_SEPARATOR: Final = "\x1f"
+#: Characters an identifier inside a cursor may carry.
+#:
+#: This matches the bound the rest of the project puts on an opaque caller-supplied identifier.
+#: It is deliberately far wider than the 26-character ULIDs this installation mints: a bootstrap
+#: bundle preserves ids exactly and validates them only as non-blank, so a database restored from
+#: another implementation can legitimately hold longer ones, and refusing those would leave their
+#: provenance visible but untraversable.
+MAX_CURSOR_ID_CHARS: Final = 256
 
 
-def encode_source_cursor(created_at: datetime, session_id: str) -> str:
-    """Return the opaque cursor resuming a newest-first source listing after one row."""
-    return _encode(f"{created_at.isoformat()}{CURSOR_SEPARATOR}{session_id}")
+def encode_cursor(identifier: str) -> str:
+    """Return the opaque cursor resuming a page after the row with this identifier."""
+    return base64.urlsafe_b64encode(identifier.encode("utf-8")).decode("ascii").rstrip("=")
 
 
-def decode_source_cursor(raw: str) -> tuple[datetime, str]:
-    """Return the ``(created_at, id)`` key one source cursor names, or raise ``ValueError``.
+def decode_cursor(raw: str) -> str:
+    """Return the identifier one cursor names, or raise ``ValueError``.
 
-    The timestamp round-trips through ``isoformat``/``fromisoformat`` because that is exactly how
-    the stored column was written, so the decoded key re-renders to the same text the keyset
-    predicate compares against.
-    """
-    decoded = _decode(raw)
-    parts = decoded.split(CURSOR_SEPARATOR)
-    if len(parts) != 2:
-        raise ValueError("cursor is not a source listing position")
-    raw_created_at, session_id = parts
-    try:
-        created_at = datetime.fromisoformat(raw_created_at)
-    except ValueError:
-        raise ValueError("cursor is not a source listing position") from None
-    if created_at.tzinfo is None:
-        raise ValueError("cursor is not a source listing position")
-    return created_at, _checked_id(session_id)
+    The length check runs before the decode so an enormous value is refused without being
+    decoded, and the decoded identifier is bounded again because base64 expands what it carries
+    by a known factor only when the input is well formed.
 
-
-def encode_mapping_cursor(candidate_id: str) -> str:
-    """Return the opaque cursor resuming one source's mapping page after a candidate."""
-    return _encode(candidate_id)
-
-
-def decode_mapping_cursor(raw: str) -> str:
-    """Return the candidate id one mapping cursor names, or raise ``ValueError``."""
-    return _checked_id(_decode(raw))
-
-
-def _encode(payload: str) -> str:
-    """Return one cursor payload as unpadded URL-safe base64."""
-    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
-
-
-def _decode(raw: str) -> str:
-    """Return one cursor's payload, refusing anything oversized or malformed.
-
-    The length check runs first so an enormous value is refused without being decoded, and the
-    decoded text is bounded again because base64 expands what it carries by a known factor only
-    when the input is well formed.
+    The identifier is returned exactly as it was encoded. Only the surrounding encoded text is
+    trimmed, never the payload: ids are preserved verbatim across a bootstrap restore, so
+    normalizing one here could stop it matching the row it names.
     """
     text = raw.strip()
     if not text:
@@ -97,16 +68,21 @@ def _decode(raw: str) -> str:
         raise ValueError(f"cursor is at most {MAX_CURSOR_CHARS} characters")
     padding = "=" * (-len(text) % 4)
     try:
-        decoded = base64.urlsafe_b64decode(text + padding).decode("utf-8")
+        identifier = base64.urlsafe_b64decode(text + padding).decode("utf-8")
     except (binascii.Error, UnicodeDecodeError, ValueError):
         raise ValueError("cursor is not a valid pagination cursor") from None
-    if len(decoded) > MAX_DECODED_CURSOR_CHARS:
+    return check_cursor_identifier(identifier)
+
+
+def check_cursor_identifier(value: str) -> str:
+    """Return one accepted format-opaque identifier, or raise ``ValueError``.
+
+    Bounded and non-blank is the whole rule. The value is never parsed, compared by shape, or
+    interpolated — it reaches SQLite only as a bound parameter — so a narrower alphabet would
+    refuse legitimate restored ids without buying anything.
+    """
+    if not value.strip():
         raise ValueError("cursor is not a valid pagination cursor")
-    return decoded
-
-
-def _checked_id(value: str) -> str:
-    """Return one accepted identifier from inside a cursor, or raise ``ValueError``."""
-    if not value or len(value) > MAX_CURSOR_ID_CHARS or not CURSOR_ID_PATTERN.match(value):
+    if len(value) > MAX_CURSOR_ID_CHARS:
         raise ValueError("cursor is not a valid pagination cursor")
     return value

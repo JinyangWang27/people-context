@@ -20,7 +20,6 @@ its claim state, and the mapping page is never queried at all.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import datetime
 from typing import Final, TypeVar
 
@@ -28,10 +27,8 @@ from pydantic import BaseModel, Field
 
 from people_context.domain.source_cursor import (
     MAX_CURSOR_ID_CHARS,
-    decode_mapping_cursor,
-    decode_source_cursor,
-    encode_mapping_cursor,
-    encode_source_cursor,
+    decode_cursor,
+    encode_cursor,
 )
 from people_context.ports.sources import (
     STATUS_REDACTED,
@@ -58,7 +55,6 @@ INVALID_SOURCE_CURSOR: Final = "invalid_source_cursor"
 #: Stable refusal for a page size outside its documented range.
 INVALID_SOURCE_PAGE_LIMIT: Final = "invalid_source_page_limit"
 
-_CursorT = TypeVar("_CursorT")
 _RowT = TypeVar("_RowT")
 
 
@@ -159,9 +155,21 @@ class ListImportSources:
         limit: int = DEFAULT_SOURCE_PAGE_LIMIT,
         cursor: str | None = None,
     ) -> SourceListResult:
-        """Return at most `limit` receipts after `cursor`, and where the next page resumes."""
+        """Return at most `limit` receipts after `cursor`, and where the next page resumes.
+
+        The cursor names a row, and the store resolves that row's sort position, so a redacted
+        receipt's withheld timestamp never travels through the caller's hands. A cursor whose
+        row is gone — a source hard-forgotten between two pages — is refused rather than silently
+        restarting the listing at the top.
+        """
         page_limit = _checked_limit(limit)
-        after = _decoded(cursor, decode_source_cursor)
+        after = None
+        if cursor is not None:
+            after = self._reader.sort_key_for_session(_decoded(cursor))
+            if after is None:
+                raise SourceInspectionError(
+                    "this cursor no longer names a source", code=INVALID_SOURCE_CURSOR
+                )
         rows = self._reader.list_sessions(limit=page_limit, after=after)
         page, next_row = _split(rows, page_limit)
         return SourceListResult(
@@ -169,7 +177,7 @@ class ListImportSources:
             sources=[_summary(row) for row in page],
             # The cursor names the last row *returned*, never the peeked one, so resuming from it
             # yields the row after the page rather than skipping it.
-            next_cursor=None if next_row is None else encode_source_cursor(page[-1].created_at, page[-1].id),
+            next_cursor=None if next_row is None else encode_cursor(page[-1].id),
         )
 
 
@@ -193,7 +201,7 @@ class ShowImportSource:
         source's state, and a caller paging a list has no way to know which entry that is.
         """
         page_limit = _checked_limit(limit)
-        after = _decoded(cursor, decode_mapping_cursor)
+        after = _decoded(cursor) if cursor is not None else None
         session = self._reader.get_session(_checked_session_id(session_id))
         if session is None:
             raise SourceInspectionError("no such source session", code=UNKNOWN_SOURCE_SESSION)
@@ -209,7 +217,7 @@ class ShowImportSource:
             counts=_counts(self._reader.count_source_candidates(session.id, session.batch_id)),
             limit=page_limit,
             mappings=[_mapping_entry(row) for row in page],
-            next_cursor=None if next_row is None else encode_mapping_cursor(page[-1].candidate_id),
+            next_cursor=None if next_row is None else encode_cursor(page[-1].candidate_id),
         )
 
 
@@ -222,19 +230,21 @@ def _checked_limit(limit: int) -> int:
 
 
 def _checked_session_id(session_id: str) -> str:
-    """Bound the id before it reaches a query, refusing without echoing what was typed."""
-    identifier = session_id.strip()
-    if not identifier or len(identifier) > MAX_CURSOR_ID_CHARS:
+    """Bound the id before it reaches a query, refusing without echoing what was typed.
+
+    The value is passed on exactly as given rather than normalized. A bootstrap restore preserves
+    identifiers verbatim and requires only that they are non-blank, so trimming one here could
+    stop it matching the very row it names.
+    """
+    if not session_id.strip() or len(session_id) > MAX_CURSOR_ID_CHARS:
         raise SourceInspectionError("no such source session", code=UNKNOWN_SOURCE_SESSION)
-    return identifier
+    return session_id
 
 
-def _decoded(cursor: str | None, decode: Callable[[str], _CursorT]) -> _CursorT | None:
+def _decoded(cursor: str) -> str:
     """Decode one opaque cursor, refusing it by rule rather than by value."""
-    if cursor is None:
-        return None
     try:
-        return decode(cursor)
+        return decode_cursor(cursor)
     except ValueError as exc:
         raise SourceInspectionError(str(exc), code=INVALID_SOURCE_CURSOR) from None
 

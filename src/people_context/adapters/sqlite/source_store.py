@@ -156,6 +156,19 @@ class SqliteImportSourceStore:
         ).fetchall()
         return [_mapping(row) for row in rows]
 
+    def sort_key_for_session(self, session_id: str) -> tuple[datetime, str] | None:
+        """Resolve one receipt's listing position by primary key, without disclosing it.
+
+        A cursor names a row rather than a sort key, so the key is looked up here and stays in
+        the database. That is what keeps a terminal redacted receipt's `created_at` — a field
+        inspection deliberately withholds — out of a value the caller is handed to pass back.
+        """
+        row = self._conn.execute(
+            "SELECT created_at, id FROM import_source_sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        return (datetime.fromisoformat(row["created_at"]), row["id"]) if row is not None else None
+
     def list_sessions(
         self,
         *,

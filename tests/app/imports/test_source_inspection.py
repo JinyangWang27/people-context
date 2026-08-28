@@ -7,6 +7,8 @@ rather than any SQL. The SQLite counterpart lives in `tests/adapters/sqlite/`.
 
 from __future__ import annotations
 
+import base64
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -21,6 +23,7 @@ from people_context.app.imports import (
     ShowImportSource,
     SourceInspectionError,
 )
+from people_context.domain.source_cursor import encode_cursor
 from people_context.ports.sources import (
     DISPOSITION_ENTITY,
     DISPOSITION_MERGED_AWAY,
@@ -52,8 +55,14 @@ class FakeSourceInspectionReader:
         self.mappings = mappings or []
         self.totals = totals or SourceCandidateTotals(mappings_total=0)
         self.session_requests: list[tuple[int, tuple[datetime, str] | None]] = []
+        self.key_requests: list[str] = []
         self.mapping_requests: list[tuple[str, int, str | None]] = []
         self.count_requests: list[tuple[str, str | None]] = []
+
+    def sort_key_for_session(self, session_id: str) -> tuple[datetime, str] | None:
+        self.key_requests.append(session_id)
+        row = self.get_session(session_id)
+        return (row.created_at, row.id) if row is not None else None
 
     def list_sessions(
         self,
@@ -268,10 +277,57 @@ def test_a_session_id_outside_its_bounds_is_refused_before_any_query(session_id:
     assert not typed or typed not in str(raised.value)
 
 
-def test_a_session_id_is_matched_after_surrounding_whitespace_is_trimmed() -> None:
+def test_a_session_id_reaches_the_reader_exactly_as_given() -> None:
+    """Restore preserves ids verbatim, so normalizing one here could unmatch the row it names."""
     reader = FakeSourceInspectionReader([_session(1)])
 
-    assert ShowImportSource(reader).execute("  S0001  ").source.id == "S0001"
+    with pytest.raises(SourceInspectionError):
+        ShowImportSource(reader).execute("  S0001  ")
+
+
+def test_a_session_id_a_bootstrap_restore_accepts_is_inspectable() -> None:
+    """A restored id may be neither a ULID nor ASCII; its provenance must still be readable."""
+    restored = replace(_session(1), id="urn:uuid:9f8a/7b+6c источник " + "A" * 200)
+    reader = FakeSourceInspectionReader([restored])
+
+    assert ShowImportSource(reader).execute(restored.id).source.id == restored.id
+
+
+def test_a_listing_cursor_carries_only_the_identifier_of_its_last_row() -> None:
+    """A redacted receipt can end a page, and its timestamp must not travel in the cursor."""
+    redacted = replace(_session(1), status=STATUS_REDACTED)
+    reader = FakeSourceInspectionReader([redacted, _session(2)])
+
+    page = ListImportSources(reader).execute(limit=1, cursor=encode_cursor("S0002"))
+
+    assert [row.id for row in page.sources] == ["S0001"]
+    assert page.next_cursor is None
+    # The store resolved the position; the caller never held it.
+    assert reader.key_requests == ["S0002"]
+
+
+def test_a_redacted_row_ending_a_page_leaks_no_timestamp_through_the_cursor() -> None:
+    reader = FakeSourceInspectionReader(
+        [replace(_session(index), status=STATUS_REDACTED) for index in range(1, 4)]
+    )
+
+    page = ListImportSources(reader).execute(limit=1)
+
+    assert page.next_cursor is not None
+    decoded = base64.urlsafe_b64decode(page.next_cursor + "=" * (-len(page.next_cursor) % 4))
+    assert decoded.decode("utf-8") == "S0003"
+    assert "2026" not in decoded.decode("utf-8")
+
+
+def test_a_cursor_naming_a_source_that_is_gone_is_refused() -> None:
+    """A source hard-forgotten between two pages must not silently restart the listing."""
+    reader = FakeSourceInspectionReader([_session(1)])
+
+    with pytest.raises(SourceInspectionError) as raised:
+        ListImportSources(reader).execute(cursor=encode_cursor("S9999"))
+
+    assert raised.value.code == INVALID_SOURCE_CURSOR
+    assert reader.session_requests == []
 
 
 def test_a_redacted_source_discloses_only_its_id_kind_and_claim() -> None:

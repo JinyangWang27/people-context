@@ -131,6 +131,42 @@ def test_a_listing_cursor_resumes_after_its_key_including_a_timestamp_tie(conn: 
     assert [row.id for row in resumed] == ["S0002", "S0001"]
 
 
+def test_a_sort_key_is_resolved_from_the_identifier_alone(conn: sqlite3.Connection) -> None:
+    """The cursor names a row; the store, not the caller, holds that row's sort position."""
+    store = _store(conn)
+    _stage(store, 1, created_at=_START)
+
+    assert store.sort_key_for_session("S0001") == (_START, "S0001")
+
+
+def test_a_sort_key_for_a_source_that_is_gone_is_absent(conn: sqlite3.Connection) -> None:
+    assert _store(conn).sort_key_for_session("S9999") is None
+
+
+def test_a_listing_resumes_from_a_resolved_identifier(conn: sqlite3.Connection) -> None:
+    store = _store(conn)
+    for index in (1, 2, 3):
+        _stage(store, index)
+
+    after = store.sort_key_for_session("S0003")
+    assert after is not None
+
+    assert [row.id for row in store.list_sessions(limit=10, after=after)] == ["S0002", "S0001"]
+
+
+def test_an_opaque_restored_identifier_is_stored_and_resolved_verbatim(conn: sqlite3.Connection) -> None:
+    """A bundle preserves ids exactly, so a non-ULID one must still page and resolve."""
+    store = _store(conn)
+    restored = "urn:uuid:9f8a/7b+6c источник " + "A" * 200
+    _stage(store, 1, session_id=restored, created_at=_START)
+
+    session = store.get_session(restored)
+
+    assert session is not None
+    assert session.id == restored
+    assert store.sort_key_for_session(restored) == (_START, restored)
+
+
 def test_the_listing_query_seeks_through_the_recent_index(conn: sqlite3.Connection) -> None:
     """The page must be an index seek; a scan would grow with the table it is paging."""
     plan = conn.execute(

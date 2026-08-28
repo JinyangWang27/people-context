@@ -492,8 +492,14 @@ rather than list:
 
 - `--limit` defaults to **50** and accepts **1..200**;
 - sources are ordered newest-first by `(created_at DESC, id DESC)`, and a source's mappings by `candidate_id ASC`;
-- pagination is keyset-based. The opaque `--cursor` encodes the last key a page returned and is bounded and
-  validated *before* it reaches a query; a cursor this surface did not issue is refused rather than guessed at;
+- pagination is keyset-based. The opaque `--cursor` encodes only the **identifier** of the last row a page
+  returned, and the store resolves that identifier to its own sort position. The encoding is reversible, so a
+  cursor built from a sort key would have disclosed the `created_at` of a terminal redacted receipt that happened
+  to end a page — exactly the field the erasure contract withholds. Cursors are bounded and validated *before*
+  reaching a query, and one this surface did not issue, or one naming a source since forgotten, is refused;
+- identifiers inside a cursor are **format-opaque**: non-blank and at most 256 characters, never held to a ULID
+  shape or an ASCII alphabet. A bootstrap restore preserves ids verbatim and validates them only as non-blank, so
+  a narrower rule here would leave a restored source's provenance visible but impossible to page through;
 - the SQLite reader applies the cursor predicate and `LIMIT limit + 1` itself, so one query both fills a page and
   settles whether another exists. Nothing fetches a table and slices it;
 - the per-source candidate and status counts are `GROUP BY` aggregates, so a summary of a hundred-thousand-row

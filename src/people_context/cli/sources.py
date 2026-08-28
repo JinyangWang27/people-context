@@ -90,7 +90,7 @@ def _print_sources(result: SourceListResult) -> None:
         [_source_row(source) for source in result.sources],
     )
     if result.next_cursor is not None:
-        print(f"\nMore sources; continue with: pctx sources --cursor {result.next_cursor}")
+        print(f"\n{_continuation(result.next_cursor)}")
 
 
 def _print_source(result: SourceDetailResult) -> None:
@@ -120,10 +120,7 @@ def _print_source(result: SourceDetailResult) -> None:
         [_mapping_row(mapping) for mapping in result.mappings],
     )
     if result.next_cursor is not None:
-        print(
-            f"\nMore candidates; continue with: "
-            f"pctx source show {source.id} --cursor {result.next_cursor}"
-        )
+        print(f"\n{_continuation(result.next_cursor, subject='candidates')}")
 
 
 def _source_row(source: SourceSummary) -> tuple[str, str, str, str, str]:
@@ -145,6 +142,18 @@ def _mapping_row(mapping: SourceMappingEntry) -> tuple[str, str, str, str]:
         # during a person merge and reporting its id would point at nothing.
         mapping.entity_id or _ABSENT,
     )
+
+
+def _continuation(cursor: str, *, subject: str = "sources") -> str:
+    """Say how to reach the next page without pretending to know the whole command.
+
+    A full `pctx ...` line would be wrong the moment the caller used a global option: `--db` and
+    `--encrypted` come before the subcommand, so a hint that omitted them would name a command
+    that reads a different database — creating and migrating the default one, or failing to open
+    an encrypted store — rather than continuing the page just printed. Naming only the argument
+    that actually changes is correct under every invocation.
+    """
+    return f"More {subject}; re-run this command with --cursor {cursor} to continue."
 
 
 def _created(source: SourceSummary) -> str:

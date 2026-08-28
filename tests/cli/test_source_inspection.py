@@ -452,7 +452,9 @@ def test_human_listing_renders_a_table_and_offers_the_next_page_command(
     assert "ID" in captured.out
     assert "KIND" in captured.out
     assert "linkedin" in captured.out
-    assert "pctx sources --cursor " in captured.out
+    assert "re-run this command with --cursor " in captured.out
+    # A bare `pctx ...` line would drop the global --db this invocation used.
+    assert "pctx sources" not in captured.out
     # Only the first page is rendered, so the older source is not in this output.
     assert first["source_session_id"] not in captured.out
     assert "Import receipts are metadata about personal material" in captured.err
@@ -537,7 +539,8 @@ def test_human_output_offers_the_next_page_command(
     assert cli.main(["--db", str(db_file), "source", "show", batch["source_session_id"], "--limit", "1"]) == 0
 
     captured = capsys.readouterr()
-    assert f"pctx source show {batch['source_session_id']} --cursor " in captured.out
+    assert "re-run this command with --cursor " in captured.out
+    assert "pctx source show" not in captured.out
 
 
 def test_the_listing_and_detail_documents_are_byte_stable(
