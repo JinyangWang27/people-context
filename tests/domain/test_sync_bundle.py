@@ -20,6 +20,7 @@ from people_context.domain.sync_bundle import (
     SyncBundleDocument,
     validate_bundle_document,
 )
+from people_context.ports.sources import STATUS_PARTIALLY_COMMITTED, STATUS_STAGED
 
 _DEVICE_ID = "01J00000000000000000000DEV"
 _OTHER_DEVICE_ID = "01J0000000000000000000DEV2"
@@ -482,6 +483,35 @@ def test_a_committed_staging_row_alone_does_not_keep_a_session_live() -> None:
     assert any("owns no mapping and no reviewable staging row" in detail for detail in excinfo.value.details)
 
 
+@pytest.mark.parametrize("status", ["committed", "redacted"])
+def test_a_session_owning_a_pending_row_but_not_reviewable_is_rejected(status: str) -> None:
+    """This is the mismatch that loses a candidate in silence.
+
+    Export selects staging by the receipt's status, not by its rows, so a restored `committed`
+    receipt still holding a pending row drops that candidate from the very next bundle — and the
+    reduced bundle validates, so nothing downstream ever notices it went missing.
+    """
+    payload = _document()
+    session = _imports(payload)["source_sessions"][0]
+    session["status"] = status
+    if status == "redacted":
+        session.update(
+            {"label": None, "external_source_id": None, "extraction_contract_revision": None, "batch_id": None}
+        )
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    # A redacted receipt loses its batch, so its orphaned row is caught as an unbundled batch.
+    expected = "owns a reviewable staging row but is" if status == "committed" else "no bundled source session"
+    assert any(expected in detail for detail in excinfo.value.details)
+
+
+def test_the_reviewable_statuses_are_the_ones_export_carries_staging_for() -> None:
+    """Validation and export read one declaration, so neither can drift into losing a row."""
+    assert sync_bundle.REVIEWABLE_SESSION_STATUSES == (STATUS_STAGED, STATUS_PARTIALLY_COMMITTED)
+
+
 def test_a_partially_committed_session_may_own_only_its_surviving_mappings() -> None:
     """Exactly what hard forget produces when it erases a batch's reviewable rows but not its records.
 
@@ -530,24 +560,46 @@ def test_a_restored_candidate_missing_a_field_commit_indexes_is_rejected(candida
     "field, value",
     [
         ("aliases", "alice@example.com"),
+        ("aliases", ["alice@example.com"]),
+        ("aliases", [{"value": "alice@example.com", "kind": "postal"}]),
+        ("aliases", [{"value": "  "}]),
         ("match_count", "two"),
-        ("match_count", True),
+        ("match_disposition", "probably"),
+        ("date", "the Tuesday after the offsite"),
+        ("name", "   "),
     ],
 )
-def test_a_restored_candidate_holding_a_declared_field_as_the_wrong_primitive_is_rejected(
+def test_a_restored_candidate_whose_value_is_structurally_wrong_is_rejected(
     field: str,
     value: object,
 ) -> None:
-    """A present-but-wrongly-typed field reaches the durable write and fails it mid-commit.
+    """A wrong value fails at its durable write, and until then review displays it.
 
-    A boolean is included on purpose: `bool` is an `int` in Python, and a boolean count is not a
-    count.
+    A bare string among the aliases is the case worth naming: commit re-validates each entry
+    through `AliasInput` and raises there, having first shown whatever the string held to anyone
+    who ran `import review`.
     """
     payload = _document()
     _imports(payload)["staging"][0]["candidate"][field] = value
 
     with pytest.raises(ValidationError):
         SyncBundleDocument.model_validate(payload)
+
+
+def test_a_rejected_candidate_value_is_not_quoted_back() -> None:
+    """The refusal locates the field and says nothing about what was in it.
+
+    Pydantic's own message quotes rejected input, and a staged candidate is exactly where a
+    caller's raw source text would sit, so the report is built from the location and error type.
+    """
+    payload = _document()
+    _imports(payload)["staging"][0]["candidate"]["aliases"] = ["TRANSCRIPT-BODY-7c3f"]
+
+    with pytest.raises(ValidationError) as excinfo:
+        SyncBundleDocument.model_validate(payload)
+
+    assert "aliases" in str(excinfo.value)
+    assert "TRANSCRIPT-BODY-7c3f" not in str(excinfo.value)
 
 
 def test_a_restored_candidate_carrying_an_undeclared_field_is_rejected() -> None:

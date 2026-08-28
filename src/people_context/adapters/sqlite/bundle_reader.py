@@ -9,6 +9,7 @@ from typing import Any
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+from people_context.domain.import_provenance import REVIEWABLE_SESSION_STATUSES
 from people_context.ports.changelog import ChangelogEntry
 from people_context.ports.hlc import HlcTimestamp
 from people_context.ports.sync_bundle import BundleSource
@@ -80,13 +81,19 @@ class SqliteBundleReader:
         return [dict(row) for row in rows]
 
     def _incomplete_staging(self) -> list[dict[str, Any]]:
-        """Return staging rows only for batches that still have something to review or commit."""
+        """Return staging rows only for batches that still have something to review or commit.
+
+        The statuses come from the same declaration restore validation reads, so a receipt whose
+        rows this query skips cannot be one restore would accept as still holding them.
+        """
+        placeholders = ", ".join("?" * len(REVIEWABLE_SESSION_STATUSES))
         rows = self._conn.execute(
-            """SELECT s.id, s.batch_id, s.source, s.candidate_json, s.status, s.created_at
+            f"""SELECT s.id, s.batch_id, s.source, s.candidate_json, s.status, s.created_at
                FROM import_staging s
                JOIN import_source_sessions ss ON ss.batch_id = s.batch_id
-               WHERE ss.status IN ('staged', 'partially_committed')
-               ORDER BY s.batch_id, s.created_at, s.id"""
+               WHERE ss.status IN ({placeholders})
+               ORDER BY s.batch_id, s.created_at, s.id""",  # noqa: S608 - placeholders are counted, not interpolated
+            REVIEWABLE_SESSION_STATUSES,
         ).fetchall()
         return [
             {

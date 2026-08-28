@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 
@@ -27,11 +27,12 @@ from people_context.adapters.sqlite import (
     open_db,
 )
 from people_context.app.imports import CandidateStager, StageCandidates
+from people_context.app.imports.identity import MatchDisposition
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
-from people_context.domain.import_provenance import (
-    STAGED_CANDIDATE_TYPES,
-    STAGED_OPTIONAL_FIELDS,
-    STAGED_REQUIRED_FIELDS,
+from people_context.domain.import_provenance import STAGED_CANDIDATE_TYPES
+from people_context.domain.staged_candidate import (
+    STAGED_CANDIDATE_MODELS,
+    MatchDispositionValue,
 )
 from people_context.domain.sync_bundle import BundleStagingRow
 
@@ -167,10 +168,11 @@ def test_every_persisted_candidate_satisfies_the_restore_contract(strict_identit
 
 
 def test_the_declared_shape_names_no_field_the_stager_never_writes() -> None:
-    """The other direction: a stale entry left behind by a removed field is dead permission.
+    """The other direction: a field declared but never written is permission granted for nothing.
 
     Every declared field must appear on some really-staged candidate of its type, across both
-    identity paths, or the table is granting a key nothing produces.
+    identity paths. A model that outlived the field it described would keep accepting a key the
+    stager stopped producing — which is the one place unexplained text could still sit.
     """
     strict = _staged_candidates(strict_identity=True)
     loose = _staged_candidates(strict_identity=False)
@@ -180,5 +182,10 @@ def test_the_declared_shape_names_no_field_the_stager_never_writes() -> None:
         for staged in (strict, loose):
             for candidate in staged[kind]:
                 written |= set(candidate)
-        declared = {*STAGED_REQUIRED_FIELDS[kind], *STAGED_OPTIONAL_FIELDS[kind]}
+        declared = set(STAGED_CANDIDATE_MODELS[kind].model_fields)
         assert declared <= written, f"{kind} declares fields the stager never writes: {declared - written}"
+
+
+def test_the_declared_match_dispositions_are_the_ones_matching_produces() -> None:
+    """The domain cannot import the producing enum, so the two are pinned against each other."""
+    assert set(get_args(MatchDispositionValue)) == {member.value for member in MatchDisposition}

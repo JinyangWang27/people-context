@@ -412,13 +412,21 @@ fresh exactly as before, and so is an explicit `--force` reprocessing session: i
 for no canonical key, so retaining it would leave the digest of an erased artifact behind while suppressing
 nothing.
 
-A restored staging row is held to the whole persisted candidate shape, not just the parts that make it findable:
-its type, the canonical reference fields that type requires, every field commit indexes directly, and nothing
-else. A row missing one of those does not go unresolved at commit — it raises mid-transaction, after earlier
-candidates in the same commit have already written — and a field the stager never writes is raw source text that
-review would display and every later bundle would carry. A row's status and its outcome must also agree in both
-directions, because the mapping and the transition to `committed` are written in one unit of work: a pending row
-may not already carry a mapping, and a committed one may not be missing it.
+A restored staging row is held to the whole persisted candidate shape — its type, the canonical reference fields
+that type requires, and then the strict models in `domain/staged_candidate.py`, which accept exactly the fields
+the stager writes and nothing else. Neither way of being wrong has a good report at commit time: a missing field
+raises mid-transaction, after earlier candidates in the same commit have already written, and a structurally
+wrong value (a bare string among the aliases, an unparseable date, a category outside the vocabulary) fails the
+same way at its durable write while review displays whatever it holds until then. The extraction boundary's byte
+budgets are deliberately not re-imposed: they bound one submitted request, the durable write applies none of
+them, and re-checking them would refuse a bundle whose rows this installation itself stored.
+
+A row's status and its outcome must agree in both directions, because the mapping and the transition to
+`committed` are written in one unit of work: a pending row may not already carry a mapping, and a committed one
+may not be missing it. A receipt's status must likewise agree with its rows. Export selects staging by that
+status rather than by the rows, so a restored `committed` receipt still holding a pending row would drop that
+candidate from the very next bundle — and the reduced bundle would validate, so nothing downstream would notice.
+Validation and export read the same declaration of which statuses carry staging, so the two cannot drift apart.
 
 The claim key is what makes a terminal receipt do its job — duplicate detection finds it by that key, not by the
 digest — so both the schema and version-2 restore validation require a `redacted` row to carry one. A receipt

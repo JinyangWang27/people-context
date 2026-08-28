@@ -21,6 +21,7 @@ from typing import Annotated, Any, ClassVar, Literal
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from people_context.domain.import_provenance import (
+    REVIEWABLE_SESSION_STATUSES,
     check_contract_revision,
     check_hex64,
     check_opaque_label,
@@ -723,6 +724,13 @@ def _emptied_session_details(imports: BundleImportState) -> list[str]:
     A *partially committed* receipt whose reviewable rows were erased but whose other mappings
     survived is an ordinary outcome of that same forget, and stays accepted: it still owns
     something live. Only having nothing at all is the contradiction.
+
+    The opposite mismatch is refused too, and it is the one that loses data quietly. A receipt's
+    status is recomputed from its rows at every commit, so `committed` means none were left
+    pending. Export reads that status rather than the rows: it carries staging only for a
+    `staged` or `partially_committed` receipt. A restored `committed` receipt still holding a
+    pending row would therefore drop that candidate from the very next bundle — and the reduced
+    bundle would validate, so nothing downstream would ever notice it had gone.
     """
     pending_batches = {row.batch_id for row in imports.staging if row.status != "committed"}
     mapped_sessions = {mapping.source_session_id for mapping in imports.candidate_mappings}
@@ -731,7 +739,9 @@ def _emptied_session_details(imports: BundleImportState) -> list[str]:
         if session.status == "redacted":
             continue
         has_pending = session.batch_id is not None and session.batch_id in pending_batches
-        if session.status == "staged" and not has_pending:
+        if has_pending and session.status not in REVIEWABLE_SESSION_STATUSES:
+            details.append(f"source session {session.id} owns a reviewable staging row but is {session.status}")
+        elif session.status == "staged" and not has_pending:
             # `staged` means nothing has committed, so mappings cannot stand in for the rows.
             details.append(f"source session {session.id} is staged but owns no reviewable staging row")
         elif not has_pending and session.id not in mapped_sessions:

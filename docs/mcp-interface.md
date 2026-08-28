@@ -250,7 +250,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `set_communication_philosophy` | Store user-authored guidance; audit stores lengths, not text. |
 | `import_content` / `stage_candidates` / `review_import` / `commit_import` | Reviewable distilled imports without raw source retention. |
 
-`import_content(source_type, content, path, self_sender)` accepts `email`, `mbox`, `vcard`, `ics`, `linkedin`,
+`import_content(source_type, content, path, self_sender, forced)` accepts `email`, `mbox`, `vcard`, `ics`, `linkedin`,
 `outlook`, and `whatsapp`. M14 added the last two source values plus the optional `self_sender` chat-export
 label for the user; both are additive and the response shape is unchanged. See
 [docs/import.md](import.md).
@@ -273,7 +273,13 @@ instead of copying it. Without a digest the session deliberately asserts no clai
 hashes text it was not given. Supplying any of the other four without `source_kind` is refused rather than
 silently ignored. The staging response gains the additive `source_session_id`, `duplicate`, and `reviewable`
 fields; `import_content` gains the same three on a path-based import. A duplicate is reported, not raised: the response
-describes the batch that already exists. See
+describes the batch that already exists.
+
+Because a path-based `import_content` now claims the file it reads, that tool also gains one optional `forced`
+argument, matching the CLI's `--force`. It stages the same content as a distinct processing session and never
+weakens the duplicate rule for later calls. It is additive and defaults to the released behaviour, and it is the
+only route past `source_previously_redacted` after a hard forget — for `mbox`, which is read from a path and
+cannot be resubmitted as inline content, the only route at all. See
 [docs/import.md](import.md#source-receipts-and-repeat-imports-m181).
 
 `set_relationship` accepts free-form type input. M7 snake-case normalizes it, resolves synonyms, canonicalizes

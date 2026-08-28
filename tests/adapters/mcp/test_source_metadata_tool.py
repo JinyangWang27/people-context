@@ -142,3 +142,82 @@ def test_a_rejected_label_is_not_echoed_back(tmp_path: Path) -> None:
 
     assert payload["error"] == "invalid_source_metadata"
     assert sentinel not in str(payload)
+
+
+# -- the file importer's own reprocessing route ------------------------
+
+
+_LINKEDIN_HEADERS = "First Name,Last Name,URL,Email Address,Company,Position,Connected On,Notes"
+
+
+def _linkedin(tmp_path: Path) -> Path:
+    source = tmp_path / "connections.csv"
+    source.write_text(
+        f"{_LINKEDIN_HEADERS}\n"
+        "Sofia,Rossi,https://example.invalid/in/sr,sofia@example.com,Globex,Designer,23 Jul 2026,note\n",
+        encoding="utf-8",
+    )
+    return source
+
+
+def _import(server: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def call(client: Client) -> dict[str, Any]:
+        result = await client.call_tool("import_content", arguments)
+        assert result.structured_content is not None
+        return result.structured_content
+
+    payload = _run(server, call)
+    assert isinstance(payload, dict)
+    return payload
+
+
+def test_a_repeated_file_import_reports_the_existing_batch(tmp_path: Path) -> None:
+    db_path = tmp_path / "t.db"
+    server = build_server(db_path=db_path)
+    source = _linkedin(tmp_path)
+    first = _import(server, {"source_type": "linkedin", "path": str(source)})
+
+    second = _import(server, {"source_type": "linkedin", "path": str(source)})
+
+    assert second["duplicate"] is True
+    assert second["batch_id"] == first["batch_id"]
+
+
+def test_the_file_importer_offers_the_same_reprocessing_route_the_cli_does(tmp_path: Path) -> None:
+    """Source tracking reached MCP file imports, so the way out of a claim had to reach it too.
+
+    Without this the tool can claim a file and then never reprocess it — and for `mbox`, which is
+    read from a path and cannot be resubmitted as inline content, there is no other way in at all.
+    """
+    db_path = tmp_path / "t.db"
+    server = build_server(db_path=db_path)
+    source = _linkedin(tmp_path)
+    first = _import(server, {"source_type": "linkedin", "path": str(source)})
+
+    forced = _import(server, {"source_type": "linkedin", "path": str(source), "forced": True})
+
+    assert forced["duplicate"] is False
+    assert forced["batch_id"] != first["batch_id"]
+    sessions = _sessions(db_path)
+    assert len(sessions) == 2
+    # The forced session keeps the digest and asserts no canonical claim, exactly as `--force` does.
+    assert len({row["content_digest"] for row in sessions}) == 1
+    assert sorted(row["claim_key"] is None for row in sessions) == [False, True]
+
+
+def test_omitting_the_reprocessing_flag_keeps_the_released_call_shape(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "t.db")
+    content = "\n".join(
+        [
+            "From: Alice Ahmed <alice@example.com>",
+            "To: You <you@example.com>",
+            "Date: Mon, 20 Jul 2026 09:00:00 +0000",
+            "Subject: Hello",
+            "",
+        ]
+    )
+
+    payload = _import(server, {"source_type": "email", "content": content})
+
+    assert payload["batch_id"]
+    assert payload["duplicate"] is False

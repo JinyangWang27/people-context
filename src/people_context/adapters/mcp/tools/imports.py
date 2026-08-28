@@ -31,12 +31,20 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         content: str | None = None,
         path: str | None = None,
         self_sender: str | None = None,
+        forced: bool = False,
     ) -> dict[str, Any]:
         """Extract and atomically stage header-only candidates from a supported source without bodies.
 
         Accepted `source_type` values are `email`, `mbox`, `vcard`, `ics`, `linkedin`, `outlook`,
         and `whatsapp`. `self_sender` is an optional chat-export label for the user, such as a
         display name or a bare phone number, used to omit the user's own messages.
+
+        A `path` import records a receipt for the file it read, so importing that exact file again
+        reports the existing batch instead of staging a second copy. `forced` says the repeat is
+        intentional: it stages the same content as a distinct processing session and never weakens
+        the duplicate rule for later calls. It is also the only way past
+        `source_previously_redacted` after a hard forget — and for `mbox`, which is read from a
+        path and cannot be resubmitted as inline content, the only way at all.
         """
         try:
             return deps.import_content.execute(
@@ -44,6 +52,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 content=content,
                 path=path,
                 self_sender=self_sender,
+                forced=forced,
             ).model_dump(mode="json")
         except (ImportPipelineError, ImportExtractionError) as exc:
             return _error(exc)

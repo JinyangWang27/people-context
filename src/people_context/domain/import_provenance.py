@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from typing import Any, Final
 
+from people_context.domain.staged_candidate import staged_candidate_error
+
 #: Characters a bounded machine source category may carry.
 MAX_SOURCE_KIND_CHARS: Final = 128
 
@@ -55,6 +57,14 @@ EXTRACTION_FINGERPRINT_ABSENT: Final = "fingerprint-absent"
 
 #: Statuses a persisted staging row may carry.
 STAGING_STATUSES: Final[tuple[str, ...]] = ("pending", "committed")
+
+#: Receipt statuses that still own reviewable rows.
+#:
+#: A receipt's status is recomputed from its rows at every commit, so this is what decides whether
+#: staging travels: the bundle reader selects rows by it, and restore validation refuses a receipt
+#: whose status and rows disagree. Both read this one declaration, because a receipt that exported
+#: no rows but was validated as if it had would drop a candidate from the next bundle in silence.
+REVIEWABLE_SESSION_STATUSES: Final[tuple[str, ...]] = ("staged", "partially_committed")
 
 #: Candidate types the stager persists.
 STAGED_CANDIDATE_TYPES: Final[frozenset[str]] = frozenset(
@@ -90,90 +100,32 @@ REQUIRED_STAGED_REFERENCES: Final[dict[str, tuple[str, ...]]] = {
 }
 
 
-#: What a persisted candidate of each type must carry beyond its canonical reference fields.
-#:
-#: These are exactly the fields commit indexes directly. A restored row missing one is not a
-#: candidate commit can decline — it raises `KeyError` mid-transaction, on a batch the restore
-#: already accepted and after earlier candidates in the same commit have written.
-STAGED_REQUIRED_FIELDS: Final[dict[str, tuple[str, ...]]] = {
-    "person": ("name", "aliases"),
-    "interaction": ("summary", "date"),
-    "affiliation": ("org", "role"),
-    "fact": ("predicate", "value"),
-    "observation": ("text",),
-    "trait": ("category", "value", "evidence_note", "confidence"),
-    "relationship": ("relationship_type",),
-}
-
-#: What a persisted candidate of each type may additionally carry.
-#:
-#: The stager writes `model_dump(mode="json", exclude_none=True)`, so an unset optional is absent
-#: rather than null; a person row then gains its match outcome, and the strict-identity path adds
-#: the disposition and count alongside it.
-STAGED_OPTIONAL_FIELDS: Final[dict[str, tuple[str, ...]]] = {
-    "person": ("summary", "message_id", "date", "matched_person_id", "match_disposition", "match_count"),
-    "interaction": ("channel", "message_id", "sensitivity"),
-    "affiliation": ("valid_from", "valid_to", "confidence"),
-    "fact": ("valid_from", "valid_to", "confidence", "sensitivity"),
-    "observation": ("observed_at", "sensitivity"),
-    "trait": ("sensitivity",),
-    "relationship": ("confidence",),
-}
-
-#: The primitive each declared field holds once serialized. A field name means the same thing
-#: wherever it appears, so this is stated once rather than per type.
-STAGED_FIELD_KINDS: Final[dict[str, str]] = {
-    "aliases": "list",
-    "participant_candidate_ids": "list",
-    "confidence": "number",
-    "match_count": "number",
-}
-
-
 def check_staged_candidate(candidate: dict[str, Any]) -> str:
     """Return the accepted persisted candidate's type, or raise ``ValueError``.
 
-    Two failures are being prevented, and neither is one commit could report cleanly.
+    The whole shape is checked, through the strict models in `domain/staged_candidate.py`, because
+    neither way of being wrong has a good report at commit time. A row missing a field commit
+    indexes raises mid-transaction, after earlier candidates in the same commit have written; a
+    structurally wrong value fails the same way at its durable write, and until then review shows
+    whatever it contains. Both are refused here, where the batch can still be declined whole.
 
-    A row missing a field commit indexes raises mid-transaction rather than going unresolved, so
-    presence is checked here where the batch can still be refused whole. And a row carrying a
-    field the stager never writes is not merely inert: staging is where extraction output stops
-    being prose, so an unknown key is raw source text that review would display and every later
-    bundle would carry. The allowed set is therefore closed, exactly as the models that produce
-    these rows forbid extras.
+    The reference fields are checked first and by hand, because their requirement is not a
+    property of one candidate: they name *other rows in the same batch*, and the message that
+    names the missing one is what the batch-local closure elsewhere reports against.
     """
     candidate_type = candidate.get("type")
     if candidate_type not in STAGED_CANDIDATE_TYPES:
         raise ValueError("staged candidate must carry a supported type")
     kind = str(candidate_type)
-    references = REQUIRED_STAGED_REFERENCES[kind]
-    for field_name in references:
+    for field_name in REQUIRED_STAGED_REFERENCES[kind]:
         value = candidate.get(field_name)
         resolved = {value} if isinstance(value, str) and value else identifier_list(value)
         if not resolved:
             raise ValueError(f"staged {kind} candidate must carry {field_name}")
-    for field_name in STAGED_REQUIRED_FIELDS[kind]:
-        if candidate.get(field_name) is None:
-            raise ValueError(f"staged {kind} candidate must carry {field_name}")
-    allowed = {"type", *references, *STAGED_REQUIRED_FIELDS[kind], *STAGED_OPTIONAL_FIELDS[kind]}
-    unknown = sorted(key for key in candidate if key not in allowed)
-    if unknown:
-        # The keys are named because they are the stager's own vocabulary or a caller's invention;
-        # the values are not, because an invented field is exactly where smuggled prose would sit.
-        raise ValueError(f"staged {kind} candidate carries unknown fields: {', '.join(unknown)}")
-    for field_name, expected in STAGED_FIELD_KINDS.items():
-        value = candidate.get(field_name)
-        if value is None or _is_kind(value, expected):
-            continue
-        raise ValueError(f"staged {kind} candidate must carry {field_name} as a {expected}")
+    reason = staged_candidate_error(candidate)
+    if reason is not None:
+        raise ValueError(f"staged {kind} candidate is not a valid persisted candidate: {reason}")
     return kind
-
-
-def _is_kind(value: Any, expected: str) -> bool:
-    if expected == "list":
-        return isinstance(value, list)
-    # `bool` is an `int` in Python, and a boolean confidence is not a confidence.
-    return isinstance(value, int | float) and not isinstance(value, bool)
 
 
 def check_source_kind(value: str) -> str:
