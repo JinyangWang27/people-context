@@ -76,6 +76,8 @@ class SqliteForgetStore:
             affected_entities=affected_entities,
             covered_op_ids=covered_ops,
             covered_transaction_ids=covered_transactions,
+            redacted_source_ids=cleanup.redacted_source_ids,
+            deleted_source_ids=cleanup.deleted_source_ids,
         )
 
     def forget_record(self, entity_type: str, entity_id: str) -> ForgetStoreResult:
@@ -130,6 +132,8 @@ class SqliteForgetStore:
             affected_entities=affected_entities,
             covered_op_ids=covered_ops,
             covered_transaction_ids=covered_transactions,
+            redacted_source_ids=cleanup.redacted_source_ids,
+            deleted_source_ids=cleanup.deleted_source_ids,
         )
 
     def preview_person_forget(self, person_id: str) -> dict[str, int]:

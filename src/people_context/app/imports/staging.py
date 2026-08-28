@@ -35,6 +35,7 @@ from people_context.app.imports.sources import (
     build_source_claim,
     require_source_kind_for,
     source_previously_redacted_error,
+    source_session_snapshot,
 )
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.shared import new_id, normalize_name
@@ -145,6 +146,11 @@ class CandidateStager:
         any other durable write. The payload carries the caller-authored label and external id
         because that is what a faithful replay needs — and it is exactly what hard forget later
         has to scrub from this history when it touches this source.
+
+        The replay image is the whole row, as it is for every other primary write here. The two
+        fields the accountability payload leaves out are the two a consumer could not put back:
+        `created_at` is required by the schema, and `claim_key` cannot be re-derived, because a
+        forced session deliberately carries a digest and no key at all.
         """
         if self._audit is None:
             return
@@ -164,6 +170,7 @@ class CandidateStager:
                 "batch_id": session.batch_id,
                 "status": session.status,
             },
+            replay_payload=source_session_snapshot(session),
             changed_fields=["batch_id", "source_kind", "status"],
             source="import",
         )

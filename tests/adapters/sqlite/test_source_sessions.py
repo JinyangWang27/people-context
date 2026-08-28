@@ -498,3 +498,69 @@ def test_a_retired_staged_match_is_not_resolved_through_either(harness: _Harness
 
     assert result.committed_ids == []
     assert result.unresolved_ids == [fact_row.id]
+
+
+def _changelog_payload(harness: _Harness, entity_type: str) -> dict[str, Any]:
+    rows = [row for row in harness.changelog() if row["entity_type"] == entity_type]
+    assert rows, f"no changelog entry for {entity_type}"
+    return dict(json.loads(rows[-1]["payload_json"]))
+
+
+def test_a_receipt_replays_as_a_complete_row(harness: _Harness) -> None:
+    """The accountability payload may summarise; the after-image is what a replica rebuilds from.
+
+    `created_at` is required by the schema and `claim_key` cannot be re-derived — a forced session
+    carries a digest and deliberately no key — so neither can be left to the consumer to infer.
+    """
+    batch = _stage(harness)
+
+    session = harness.sessions()[0]
+    replayed = _changelog_payload(harness, "import_source_session")
+    assert replayed == {
+        "id": session["id"],
+        "source_kind": session["source_kind"],
+        "label": session["label"],
+        "external_source_id": session["external_source_id"],
+        "content_digest": session["content_digest"],
+        "extraction_fingerprint": session["extraction_fingerprint"],
+        "extraction_contract_revision": session["extraction_contract_revision"],
+        "claim_key": session["claim_key"],
+        "batch_id": batch.batch_id,
+        "status": STATUS_STAGED,
+        "created_at": session["created_at"],
+    }
+
+
+def test_a_commit_mapping_replays_as_a_complete_row(harness: _Harness) -> None:
+    batch = _stage(harness)
+    rows = harness.review.execute(batch.batch_id).candidates
+    person_row = next(row for row in rows if row.candidate["type"] == "person")
+
+    harness.commit.execute(batch.batch_id, [person_row.id])
+
+    mapping = harness.mappings()[0]
+    replayed = _changelog_payload(harness, "import_candidate_mapping")
+    assert replayed == {
+        "candidate_id": mapping["candidate_id"],
+        "batch_id": mapping["batch_id"],
+        "source_session_id": mapping["source_session_id"],
+        "disposition": mapping["disposition"],
+        "entity_type": mapping["entity_type"],
+        "entity_id": mapping["entity_id"],
+        "created_at": mapping["created_at"],
+    }
+
+
+def test_a_receipt_status_change_replays_the_whole_row_at_its_new_status(harness: _Harness) -> None:
+    """A replay consumer applies an image; it does not patch one field into a row it kept."""
+    batch = _stage(harness)
+    rows = harness.review.execute(batch.batch_id).candidates
+
+    harness.commit.execute(batch.batch_id, [row.id for row in rows])
+
+    session = harness.sessions()[0]
+    replayed = _changelog_payload(harness, "import_source_session")
+    assert replayed["status"] == STATUS_COMMITTED == session["status"]
+    assert replayed["claim_key"] == session["claim_key"]
+    assert replayed["created_at"] == session["created_at"]
+    assert replayed["id"] == session["id"]

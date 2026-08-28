@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from people_context.app._mutation import audit_mutation, transactional, unit_of_work_for
@@ -18,7 +19,11 @@ from people_context.app.imports.models import (
     ImportReviewResult,
     ImportReviewRow,
 )
-from people_context.app.imports.sources import build_source_claim
+from people_context.app.imports.sources import (
+    build_source_claim,
+    candidate_mapping_snapshot,
+    source_session_snapshot,
+)
 from people_context.app.imports.staging import CandidateStager
 from people_context.app.people.remember import AliasInput, RememberPerson, RememberPersonInput
 from people_context.app.records.affiliations import SetAffiliation, SetAffiliationInput
@@ -458,6 +463,7 @@ class CommitImport:
                     "entity_type": mapping.entity_type,
                     "entity_id": mapping.entity_id,
                 },
+                replay_payload=candidate_mapping_snapshot(mapping),
                 changed_fields=["disposition", "entity_id", "entity_type"],
                 transaction_id=transaction_id,
                 source="import",
@@ -473,6 +479,10 @@ class CommitImport:
             entity_type="import_source_session",
             entity_id=session.id,
             payload={"status": status},
+            # The after-image is the whole row at its new status, as it is for every other update
+            # here: a replay consumer applies an image, it does not patch one field into a row it
+            # would have to have kept.
+            replay_payload=source_session_snapshot(replace(session, status=status)),
             changed_fields=["status"],
             transaction_id=transaction_id,
             source="import",

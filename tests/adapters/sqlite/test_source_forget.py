@@ -484,3 +484,56 @@ def test_a_partial_commit_whose_pending_rows_are_all_forgotten_keeps_its_mapping
     assert set(harness.mappings()) == {alice_row.id}
     reviewable = harness.conn.execute("SELECT id FROM import_staging WHERE status <> 'committed'").fetchall()
     assert reviewable == []
+
+
+def _tombstones(harness: _Harness) -> list[dict[str, Any]]:
+    return [
+        json.loads(row["payload_json"])
+        for row in harness.conn.execute("SELECT payload_json FROM changelog WHERE op_kind = 'forget'")
+    ]
+
+
+def test_a_redacted_receipt_is_named_in_the_forget_replay_manifest(harness: _Harness) -> None:
+    """A replica that already holds the source has to be told to scrub it.
+
+    Locally the receipt survives with its caller-authored metadata cleared. Without that
+    instruction in the tombstone, a peer keeps the label this forget removed here — the erasure
+    would hold on one device and not the next.
+    """
+    batch = _stage(harness, [_person("a", "Alice Ahmed", "alice@example.com")])
+    ids = _commit_all(harness, batch.batch_id)
+    alice = harness.mappings()[ids["Alice Ahmed"]]["entity_id"]
+    source_id = harness.sessions()[0]["id"]
+
+    harness.forget.execute(alice, "person")
+
+    tombstones = _tombstones(harness)
+    redacted = {source for tombstone in tombstones for source in tombstone.get("redacted_source_sessions", [])}
+    assert redacted == {source_id}
+    assert not any(tombstone.get("deleted_source_sessions") for tombstone in tombstones)
+
+
+def test_a_deleted_receipt_is_named_separately_from_a_redacted_one(harness: _Harness) -> None:
+    """The two outcomes are different instructions, so a replica must be able to tell them apart."""
+    batch = _stage(harness, [_person("a", "Alice Ahmed", "alice@example.com")], content_digest=None)
+    ids = _commit_all(harness, batch.batch_id)
+    alice = harness.mappings()[ids["Alice Ahmed"]]["entity_id"]
+    source_id = harness.sessions()[0]["id"]
+
+    harness.forget.execute(alice, "person")
+
+    tombstones = _tombstones(harness)
+    deleted = {source for tombstone in tombstones for source in tombstone.get("deleted_source_sessions", [])}
+    assert deleted == {source_id}
+    assert not any(tombstone.get("redacted_source_sessions") for tombstone in tombstones)
+
+
+def test_a_forget_touching_no_receipt_carries_the_tombstone_it_always_did(harness: _Harness) -> None:
+    """The lists are additive: an untracked forget's manifest keeps its released shape."""
+    remembered = harness.remember.execute(RememberPersonInput(name="Solo Person", aliases=[]))
+
+    harness.forget.execute(remembered.person.id, "person")
+
+    for tombstone in _tombstones(harness):
+        assert "redacted_source_sessions" not in tombstone
+        assert "deleted_source_sessions" not in tombstone

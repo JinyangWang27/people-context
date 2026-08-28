@@ -14,7 +14,7 @@ scrubs every caller-authored field around it. A kind that carried a name would s
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Final
+from typing import Any, Final
 
 from people_context.app.imports.models import ImportPipelineError
 from people_context.domain.import_provenance import (
@@ -23,7 +23,7 @@ from people_context.domain.import_provenance import (
     check_opaque_label,
     check_source_kind,
 )
-from people_context.ports.sources import SourceSessionClaim
+from people_context.ports.sources import CandidateMappingRow, SourceSessionClaim, SourceSessionRow
 
 #: Stable refusal for receipt metadata outside its declared bounds or alphabet.
 INVALID_SOURCE_METADATA: Final = "invalid_source_metadata"
@@ -127,6 +127,40 @@ def build_source_claim(
         external_source_id=validate_opaque_label("external_source_id", external_source_id),
         forced=forced,
     )
+
+
+def source_session_snapshot(session: SourceSessionRow) -> dict[str, Any]:
+    """Return one receipt as a complete replay image.
+
+    Every field the row holds, so a consumer can reconstruct it: the accountability payload is
+    free to be a summary, but the changelog after-image is what a replica rebuilds from.
+    """
+    return {
+        "id": session.id,
+        "source_kind": session.source_kind,
+        "label": session.label,
+        "external_source_id": session.external_source_id,
+        "content_digest": session.content_digest,
+        "extraction_fingerprint": session.extraction_fingerprint,
+        "extraction_contract_revision": session.extraction_contract_revision,
+        "claim_key": session.claim_key,
+        "batch_id": session.batch_id,
+        "status": session.status,
+        "created_at": session.created_at.isoformat(),
+    }
+
+
+def candidate_mapping_snapshot(mapping: CandidateMappingRow) -> dict[str, Any]:
+    """Return one commit outcome as a complete replay image."""
+    return {
+        "candidate_id": mapping.candidate_id,
+        "batch_id": mapping.batch_id,
+        "source_session_id": mapping.source_session_id,
+        "disposition": mapping.disposition,
+        "entity_type": mapping.entity_type,
+        "entity_id": mapping.entity_id,
+        "created_at": mapping.created_at.isoformat(),
+    }
 
 
 def source_previously_redacted_error(source_session_id: str) -> ImportPipelineError:

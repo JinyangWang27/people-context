@@ -442,7 +442,11 @@ encrypted file exchange or an optional dumb relay that stores opaque batches.
 - **Relay retention is outside the local database guarantee.** A relay should support deletion and bounded
   retention, but backups may retain ciphertext. Future key rotation should make retired epochs unreadable.
 - **Forget propagates when replicas reconnect.** A forget tombstone instructs each replica to hard-delete
-  primary rows, redact local audit and changelog payloads, and suppress stale operations for the target.
+  primary rows, redact local audit and changelog payloads, and suppress stale operations for the target. Import
+  receipts are replicated primary state, so the tombstone names their outcomes too, and names them separately:
+  a *redacted* receipt survives with its caller-authored label and external id scrubbed and a terminal status,
+  while a claimless one is deleted outright. A replica cannot infer which from a deletion, and a receipt it was
+  told nothing about would keep wording the forget removed locally.
 - **A permanently offline device cannot be remotely erased.** A device that never reconnects keeps its copy.
   Retirement prevents future sync and should rotate keys, but it cannot delete data already stored there.
 - **Inter-user sharing is a separate boundary.** `restricted` data must not sync to another user by default.

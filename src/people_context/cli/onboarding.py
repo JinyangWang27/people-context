@@ -169,6 +169,13 @@ def _run_init_vcard_import(runtime: ApplicationRuntime, path: Path, self_person:
         )
     try:
         batch = runtime.use_cases.import_content.execute("vcard", path=str(path))
+        if not batch.reviewable:
+            # This vCard was imported before and its candidates are already committed — after a
+            # v2 restore, the durable mappings travel without the reviewable rows. That is a
+            # complete import, not a failure, so onboarding says so and carries on rather than
+            # sending a batch with nothing to decide into review, which would refuse it.
+            print("These contacts were already imported; there is nothing left to review.")
+            return 0
         review = runtime.use_cases.review_import.execute(batch.batch_id)
     except ImportPipelineError as exc:
         if exc.code == "no_candidates":
