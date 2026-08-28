@@ -29,7 +29,7 @@ from people_context.adapters.sqlite import (
 from people_context.app.imports import CandidateStager, StageCandidates
 from people_context.app.imports.identity import MatchDisposition
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
-from people_context.domain.import_provenance import STAGED_CANDIDATE_TYPES
+from people_context.domain.import_provenance import STAGED_CANDIDATE_TYPES, staged_candidate_references
 from people_context.domain.staged_candidate import (
     STAGED_CANDIDATE_MODELS,
     MatchDispositionValue,
@@ -189,3 +189,33 @@ def test_the_declared_shape_names_no_field_the_stager_never_writes() -> None:
 def test_the_declared_match_dispositions_are_the_ones_matching_produces() -> None:
     """The domain cannot import the producing enum, so the two are pinned against each other."""
     assert set(get_args(MatchDispositionValue)) == {member.value for member in MatchDisposition}
+
+
+def test_every_reference_the_stager_writes_names_a_person_row_in_the_same_batch() -> None:
+    """Restore refuses a reference to any other row, so this pins that none is ever written.
+
+    The stager mints candidate ids for person candidates alone and rewrites every batch-local ref
+    through that one map, which is also how commit builds its resolution map. A rule requiring
+    person targets would be wrong if the stager ever produced anything else.
+    """
+    conn = open_db(":memory:")
+    RememberPerson(
+        SqlitePeopleRepository(conn), SqlitePeopleRepository(conn), SqliteAuditLog(conn), _Clock()
+    ).execute(
+        RememberPersonInput(
+            name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")]
+        )
+    )
+    batch = _stager(conn).execute("weekly-sync", _every_type(), strict_identity=True)
+    rows = conn.execute(
+        "SELECT id, candidate_json FROM import_staging WHERE batch_id = ?", (batch.batch_id,)
+    ).fetchall()
+    conn.close()
+
+    persons = {row["id"] for row in rows if json.loads(row["candidate_json"])["type"] == "person"}
+    referenced: set[str] = set()
+    for row in rows:
+        referenced |= staged_candidate_references(json.loads(row["candidate_json"]))
+
+    assert referenced, "the fixture must contain candidates that reference people"
+    assert referenced <= persons

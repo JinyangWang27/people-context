@@ -421,9 +421,16 @@ same way at its durable write while review displays whatever it holds until then
 budgets are deliberately not re-imposed: they bound one submitted request, the durable write applies none of
 them, and re-checking them would refuse a bundle whose rows this installation itself stored.
 
+Batch-local references must name a person row *in the same batch*. The stager mints candidate ids for person
+candidates alone and rewrites every reference through that one map, and commit builds its resolution map the same
+way, so a dependant pointing at any other row can never resolve — while the source's claim keeps suppressing the
+restage that would fix it.
+
 A row's status and its outcome must agree in both directions, because the mapping and the transition to
 `committed` are written in one unit of work: a pending row may not already carry a mapping, and a committed one
-may not be missing it. A receipt's status must likewise agree with its rows. Export selects staging by that
+may not be missing it. A mapping must also sit in the same batch as the staging row that shares its candidate id.
+Both halves can look internally consistent — each agreeing with its own source session — while disagreeing with
+each other, and a mapping filed under the wrong batch is invisible to the commit that would use it. A receipt's status must likewise agree with its rows. Export selects staging by that
 status rather than by the rows, so a restored `committed` receipt still holding a pending row would drop that
 candidate from the very next bundle — and the reduced bundle would validate, so nothing downstream would notice.
 Validation and export read the same declaration of which statuses carry staging, so the two cannot drift apart.

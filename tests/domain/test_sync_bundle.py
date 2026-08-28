@@ -626,6 +626,89 @@ def test_a_restored_candidate_may_omit_every_optional_field() -> None:
     validate_bundle_document(SyncBundleDocument.model_validate(payload))
 
 
+def test_a_reference_to_a_candidate_that_is_not_a_person_is_rejected() -> None:
+    """Commit builds its resolution map from person rows alone.
+
+    A dependant pointing anywhere else can never resolve, and the claim keeps suppressing the
+    restage that would fix it, so the batch is stuck without ever failing loudly.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["staging"].extend(
+        [
+            _staged_fact("01J0000000000000000STAGE02", "01J0000000000000000STAGE03"),
+            _staged_fact("01J0000000000000000STAGE03", "01J0000000000000000STAGE01"),
+        ]
+    )
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("is not a person" in detail for detail in excinfo.value.details)
+
+
+def test_a_reference_to_a_person_in_the_same_batch_is_accepted() -> None:
+    payload = _document()
+    _imports(payload)["staging"].append(
+        _staged_fact("01J0000000000000000STAGE02", "01J0000000000000000STAGE01")
+    )
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def _staged_fact(row_id: str, person_candidate_id: str) -> dict[str, Any]:
+    return {
+        "id": row_id,
+        "batch_id": _BATCH_ID,
+        "source": "import/linkedin",
+        "candidate": {
+            "type": "fact",
+            "person_candidate_id": person_candidate_id,
+            "predicate": "city",
+            "value": "Berlin",
+        },
+        "status": "pending",
+        "created_at": "2026-07-03T00:00:00Z",
+    }
+
+
+def test_a_mapping_filed_under_a_batch_its_staging_row_does_not_share_is_rejected() -> None:
+    """Both halves can look internally consistent while disagreeing with each other.
+
+    The mapping agrees with its own session's batch and the row agrees with its own, but the
+    candidate id is the row id, so a row lives in one batch and its mapping is written there too.
+    Filed elsewhere, the mapping is invisible to the commit that would resolve a dependant
+    through it.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    other_batch = "01J00000000000000000BATCH2"
+    imports["source_sessions"].append(
+        {
+            **imports["source_sessions"][0],
+            "id": "01J0000000000000000SOURCE2",
+            "content_digest": "c" * 64,
+            "claim_key": f"linkedin\x1f{'c' * 64}\x1f{'b' * 64}",
+            "batch_id": other_batch,
+        }
+    )
+    imports["staging"].append(
+        {
+            "id": _CANDIDATE_ID,
+            "batch_id": other_batch,
+            "source": "import/linkedin",
+            "candidate": {"type": "person", "name": "Alice", "aliases": []},
+            "status": "committed",
+            "created_at": "2026-07-03T00:00:00Z",
+        }
+    )
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("but its staging row belongs to" in detail for detail in excinfo.value.details)
+
+
 def test_a_committed_staging_row_without_its_outcome_is_rejected() -> None:
     """The mapping and the transition to committed are written in one unit of work.
 

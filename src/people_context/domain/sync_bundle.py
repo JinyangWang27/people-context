@@ -641,11 +641,30 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         (session.batch_id for session in imports.source_sessions if session.batch_id is not None),
     )
     staged_by_batch: dict[str, set[str]] = {}
+    # A reference names a person and only a person: the stager mints candidate ids for person
+    # candidates alone and rewrites every ref through that one map. Commit builds its resolution
+    # map the same way, so a dependant pointing at any other row is not merely odd — it can never
+    # resolve, while the claim keeps suppressing a restage of the source that would fix it.
+    people_by_batch: dict[str, set[str]] = {}
+    staged_batch_of: dict[str, str] = {}
     for row in imports.staging:
         staged_by_batch.setdefault(row.batch_id, set()).add(row.id)
+        staged_batch_of[row.id] = row.batch_id
+        if row.candidate.get("type") == "person":
+            people_by_batch.setdefault(row.batch_id, set()).add(row.id)
 
     for mapping in imports.candidate_mappings:
         session = sessions.get(mapping.source_session_id)
+        staged_batch = staged_batch_of.get(mapping.candidate_id)
+        if staged_batch is not None and staged_batch != mapping.batch_id:
+            # The candidate id and the staging row id are the same identifier, and a row lives in
+            # one batch, so its mapping is written with that batch. Filed under another, the
+            # mapping is invisible to the commit that would use it even though both halves look
+            # internally consistent — each agrees with its own session.
+            details.append(
+                f"candidate mapping {mapping.candidate_id} is filed under {mapping.batch_id} but its staging "
+                f"row belongs to {staged_batch}"
+            )
         if session is None:
             details.append(
                 f"candidate mapping {mapping.candidate_id} references an unbundled source session: "
@@ -701,10 +720,19 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
             details.append(f"staging row {row.id} is committed but carries no outcome mapping")
         # References are batch-local, so a dependant naming a candidate the bundle does not carry
         # would restore a batch whose commit can never resolve it.
-        unknown = staged_candidate_references(row.candidate) - staged_by_batch.get(row.batch_id, set())
+        references = staged_candidate_references(row.candidate)
+        unknown = references - staged_by_batch.get(row.batch_id, set())
         details.extend(
             f"staging row {row.id} references a candidate outside its batch: {reference}"
             for reference in sorted(unknown)
+        )
+        # And one carried by the batch but of the wrong type is just as unresolvable, because the
+        # resolution map commit builds holds person rows only. (When M18.3 adds evidence
+        # references to observation and interaction candidates, this is the rule that widens.)
+        mistyped = (references - unknown) - people_by_batch.get(row.batch_id, set())
+        details.extend(
+            f"staging row {row.id} references a candidate that is not a person: {reference}"
+            for reference in sorted(mistyped)
         )
     details.extend(_emptied_session_details(imports))
     return details
