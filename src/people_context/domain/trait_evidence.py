@@ -49,5 +49,13 @@ def trait_evidence_key(trait_id: str, evidence_type: str, evidence_id: str) -> s
     Both the write that journals a link and the forget that redacts it read this one function,
     because the two must agree exactly: redaction finds that history by the very string the write
     recorded it under, and a drift between them would silently leave it behind.
+
+    The trait id is length-prefixed rather than merely delimited, because ids are opaque and may
+    contain the separator: joining three such components on any character is non-injective, so
+    `("a", "observation", "b:interaction:c")` and `("a:observation:b", "interaction", "c")` would
+    compose one string and a forget of either would match and redact both. The prefix says exactly
+    where the trait id ends; the evidence type is one of a closed set that contains no separator,
+    so what follows it is the evidence id whole. That makes the encoding injective by
+    construction rather than by assumption about what an id happens to contain.
     """
-    return f"{trait_id}:{evidence_type}:{evidence_id}"
+    return f"{len(trait_id)}:{trait_id}:{evidence_type}:{evidence_id}"

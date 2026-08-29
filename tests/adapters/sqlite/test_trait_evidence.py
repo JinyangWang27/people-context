@@ -493,6 +493,32 @@ def test_two_links_differing_only_by_evidence_type_erase_independently(tmp_path:
     assert trait_evidence_key(trait.id, "interaction", shared) not in tombstone
 
 
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        pytest.param(
+            ("a", "observation", "b:interaction:c"),
+            ("a:observation:b", "interaction", "c"),
+            id="separator-in-ids",
+        ),
+        pytest.param(
+            ("t", "observation", "x"),
+            ("t", "interaction", "x"),
+            id="same-id-different-type",
+        ),
+    ],
+)
+def test_distinct_links_never_share_an_accountability_identity(
+    first: tuple[str, str, str], second: tuple[str, str, str]
+) -> None:
+    """The identity is injective by construction, not by assuming what an opaque id contains.
+
+    Two links sharing one identity would let a forget of either match and redact both histories
+    and emit a replay target naming neither in particular.
+    """
+    assert trait_evidence_key(*first) != trait_evidence_key(*second)
+
+
 def test_a_database_with_no_links_reports_no_evidence_count(tmp_path: Path) -> None:
     """An ordinary forget keeps exactly the deletion summary it always had."""
     store = _Store(tmp_path / "people.db")
