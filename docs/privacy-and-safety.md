@@ -47,6 +47,16 @@ the counter cannot be used to detect that one exists. A birthday entry is labell
 stored value, so the upcoming date is disclosed without the birth year. The report also never guesses a
 timezone for a stored reminder datetime; it reports the calendar day the reminder was written with.
 
+`get_person_timeline` and `pctx timeline` filter the same way, and the filter is in SQL for the same reason: a
+page selected first and filtered afterwards would arrive short, which is itself a signal that something was
+withheld. An ordinary timeline page is therefore filled from ordinary records only, and an elevated record never
+displaces one. A trait entry names the durable evidence it rests on by *that evidence's* own level, not the
+trait's, so an ordinary caller is never told that a restricted observation exists by seeing its id beside a
+visible trait. The timeline returns no raw source material, because none is stored: `source_session_id` names an
+import receipt, which describes that material was processed and never what it said. `pctx timeline
+--include-sensitive` is the explicit local opt-in, warns on stderr before the operator redirects it anywhere,
+and has no MCP counterpart.
+
 ## Sensitivity levels and defaults
 
 Every assertive record (facts, observations, traits, interactions, relationships, affiliations) carries a

@@ -24,6 +24,7 @@ what encryption does and does not protect.
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
+| `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
@@ -52,8 +53,9 @@ what encryption does and does not protect.
 | `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
 | `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
 
-`show`, `brief`, `edit`, `add-alias`, and `delete` try an active id first and then `ResolvePerson`. Unknown
-references exit 1; ambiguous names exit 2 and print candidates rather than guessing.
+`show`, `brief`, `timeline`, `edit`, `add-alias`, and `delete` try an active id first and then
+`ResolvePerson`. Unknown references exit 1; ambiguous names exit 2 and print candidates rather than
+guessing.
 
 ## Onboarding
 
@@ -294,6 +296,57 @@ interaction date the report prints, so the two always agree; ordering instead co
 recorded with a different offset is placed by when it actually happened, and a naive stored timestamp is read as
 UTC rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and
 id; when more people qualify than `--limit`, the command says so.
+
+## Person timeline
+
+```bash
+uv run pctx timeline "Alice Zhang" --limit 25
+uv run pctx timeline 01J... --json
+uv run pctx timeline "Alice Zhang" --include-sensitive
+```
+
+Prints one bounded page of what happened around one person, newest first. `PERSON` takes an id or a resolvable
+name and behaves like every other person argument: an unknown name exits `1` and an ambiguous one exits `2` with
+candidates. `--limit` accepts `1..200` (default 50); an out-of-range value exits `2` without printing a partial
+report. When more entries exist than the page carries, the command says so.
+
+Entries project durable records that already exist — interactions the person attended, observations about them,
+facts, affiliations, relationships, and traits. It is a read: the timeline stores nothing, rewrites nothing, and
+is not an audit dump. `pctx sync-log` remains the lower-level operational history.
+
+Each row leads with the durable record's own id — the id a later `correct_record`, `forget`, or MCP read takes,
+because the timeline is a projection and mints no ids of its own — then the instant the entry is placed at, the
+stored field that instant came from, the record type, the record's own display text, its disclosure level, and
+the import receipt it came from when one exists. The `BASIS` column is the point of the report's honesty:
+
+- `occurred_at`, `observed_at`, and `updated_at` are the times an interaction happened, an observation was made,
+  and a trait was last written;
+- `valid_from` is the date a fact, affiliation, or relationship began to hold. A date has no time of day, so it
+  is placed at `00:00:00Z` — the same convention the calendar importer uses for an all-day value — and the row
+  still carries the date itself in `--json`;
+- `recorded_at` and `created_at` mean the record asserts no start date, so it is placed at the time it was
+  written down. Nothing is dropped for lacking a date and no timestamp is invented for it.
+
+Rows are ordered newest first, then by record type and id, so two records at the same instant always print in
+the same order. Ordering compares instants at the stored precision: a timestamp stored at another UTC offset is
+placed by when it actually happened, a naive stored timestamp is read as UTC rather than in the machine's
+timezone, and two records in the same second are separated by their microseconds.
+
+A relationship is shown from this person's side — a stored `parent_of` reads as `child_of` on the other
+person's timeline — and an edge to a deleted person is omitted. Affiliations and relationships carry no stored
+disclosure level, so their `SENSITIVITY` column shows `-` rather than a level this report invented for them.
+
+The `SOURCE` column names the earliest import whose committed candidate resolved to that record. It answers
+"which import wrote this down" rather than "which import created it": an import that matches an existing
+relationship updates it in place and still earns a receipt, so an edge you entered by hand can name an import
+that later touched it. A record no import ever committed onto shows `-`.
+
+`--include-sensitive` widens the report to `sensitive` and `restricted` records, which the MCP timeline never
+discloses. It prints a warning to stderr; the default stays ordinary. `--json` prints the versioned
+`people-context-person-timeline` document — the whole of stdout, so a redirected run and the printed document
+are byte-identical — with every value in full rather than the truncated display text. A trait entry additionally
+carries the durable evidence records it rests on as `evidence_type`/`evidence_id` pairs, filtered by *that
+evidence's* own level, so an ordinary run never names a restricted observation beside a visible trait.
 
 ## Upcoming dates
 

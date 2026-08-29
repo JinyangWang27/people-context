@@ -23,8 +23,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `find_connection` | One deterministic shortest relationship path. | `person_a`, `person_b`, `max_depth=4` | Ordered perspective-rendered hops or not-connected. |
 | `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
 | `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` | Ordered entries and `skipped_unparseable`. |
+| `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id`, `limit=50` | Ordered entries, `found`, and `truncated`. |
 
-All ten tools are annotated `readOnlyHint=true`.
+All eleven tools are annotated `readOnlyHint=true`.
 
 ## M7 graph contracts
 
@@ -206,6 +207,89 @@ the lowest `(kind, id)` pair supplies the detail. The field is descriptive rathe
 unrecognized `alias:<kind>` value as "matched via some alias". Scores, `match_reason`, ordering, the acceptance
 threshold, and `ambiguous` are unchanged, and the detail names an alias *kind* only — never an alias value the
 match did not already implicate. See [identity-resolution.md](identity-resolution.md#match_detail-which-stored-name-matched).
+
+## M19 person-timeline contract
+
+### `get_person_timeline`
+
+```json
+{
+  "found": true,
+  "person_id": "A",
+  "limit": 50,
+  "include_sensitive": false,
+  "entries": [{
+    "entry_type": "interaction",
+    "entry_id": "01J...",
+    "person_id": "A",
+    "effective_at": "2026-05-01T09:00:00+00:00",
+    "basis": "occurred_at",
+    "summary": "quarterly sync",
+    "detail": "video",
+    "sensitivity": "personal",
+    "valid_from": null,
+    "valid_to": null,
+    "source_session_id": "01J...",
+    "evidence": [],
+    "evidence_truncated": false
+  }],
+  "truncated": false
+}
+```
+
+The timeline is a projection over durable records — interactions the person attended, observations, facts,
+affiliations, relationships, and traits — assembled per call. It is not an event store, not an audit dump, and
+it writes nothing: no audit row, no changelog row, no durable state changes when it is read.
+
+`entry_id` is the durable record's own id, so an entry stays resolvable through the ordinary reads, which apply
+their own disclosure rules. `summary` and `detail` are the record's own display components: an interaction's
+summary and channel, an observation's text, a fact's predicate and value, an affiliation's role and
+organization, a relationship's type and counterpart, a trait's category and value. No raw import material
+appears, because none is stored.
+
+`basis` names the stored field `effective_at` came from, which is what keeps "this happened then" distinct from
+"this was written down then":
+
+- `occurred_at`, `observed_at`, `updated_at` — an interaction, observation, or trait's own time;
+- `valid_from` — the date a fact, affiliation, or relationship began to hold. A date has no time of day, so it
+  is placed at `00:00:00Z`, the same convention M9.2 fixed for all-day calendar values; the entry also carries
+  `valid_from`/`valid_to` so the date granularity is not lost;
+- `recorded_at`, `created_at` — the record asserts no start date and is placed at the time it was written down.
+  An undated record is neither dropped nor given an invented timestamp.
+
+Entries are ordered by `effective_at` descending, then `entry_type`, then `entry_id`, so one database always
+produces one order. Ordering compares instants at the stored precision: a stored timestamp keeps whatever offset
+its writer supplied, an aware value is converted to UTC and a naive one is read as UTC — never in the host
+timezone — and two records in the same second are separated by their microseconds rather than collapsed into a
+tie. The stored value is what the response carries; normalization decides comparisons and never rewrites what is
+returned.
+
+`limit` accepts `1..200` and defaults to 50. An out-of-range value returns
+`{"error": "invalid_parameter", "message": "..."}` rather than a partial page. `truncated` is `true` when more
+entries exist below the page. An unknown or soft-deleted person returns `{"found": false, "entries": []}` rather
+than an error.
+
+Disclosure is the ordinary rule and this tool has no elevated variant: only `public`/`personal` records
+participate, and `include_sensitive` is always `false` here. The local `pctx timeline --include-sensitive`
+is the explicit human-operated opt-in. A `null` `sensitivity` is not an unknown level: affiliations and
+relationships carry no disclosure field in the durable contract and are ordinary by construction. A relationship
+is rendered from this person's side, exactly as `get_person_context` renders it, and an edge to a soft-deleted
+person is omitted.
+
+`source_session_id` is the M18 receipt of the earliest import whose committed candidate resolved to this
+record — "which import wrote this down", which is not always "which import created it". A relationship an import
+matches to an existing edge is updated in place and still earns a candidate mapping, so an edge entered by hand
+can name the import that later touched it; only a record no import ever committed onto carries `null`. A record
+several imports touched stays one entry naming the earliest.
+
+`evidence` names the M18.3 durable records a trait rests on, each as an `evidence_type`/`evidence_id` pair. The
+type is part of the citation because ids are unique only within their own table: a restored store may hold an
+observation and an interaction under one id, and a bare id could not tell them apart. Citations are filtered by
+*that evidence's* own disclosure level rather than the trait's — a personal trait may rest on a restricted
+observation, and naming it would disclose that the record exists — and a citation whose record cannot be read is
+omitted rather than named. `evidence_truncated` is `true` when more *readable* citations exist than one entry
+reports; it is never set by links the caller may not see, because a visible trait answering with no citations
+and a truncation flag would itself prove that hidden evidence exists.
 
 ## Person context compatibility
 
