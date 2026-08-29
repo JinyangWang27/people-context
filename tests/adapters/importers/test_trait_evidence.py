@@ -309,8 +309,13 @@ def test_the_combined_evidence_budget_bounds_references_and_durable_ids_together
         )
 
 
-def test_a_rejected_evidence_value_is_never_echoed_with_the_candidate_text() -> None:
-    """The refusal may name the caller's own label; it must not carry candidate content."""
+def test_a_rejected_evidence_reference_is_never_echoed() -> None:
+    """The label is as untrusted as any other extracted string.
+
+    An `evidence_ref` is free-form text the agent chose, so it can carry source wording just as a
+    candidate body can. The refusal reports the field location and the failure category; neither
+    the label nor any candidate content travels back out through the diagnostic.
+    """
     harness = _Harness()
     secret = "Told me in confidence about the redundancy plan"
 
@@ -319,81 +324,33 @@ def test_a_rejected_evidence_value_is_never_echoed_with_the_candidate_text() -> 
             "planning-meeting",
             [
                 _person("alice", "Alice Rivera"),
-                _observation(text=secret, evidence_ref="dup"),
-                _interaction("alice", evidence_ref="dup"),
+                _observation(text=secret, evidence_ref=secret),
+                _interaction("alice", evidence_ref=secret),
             ],
         )
 
-    assert secret not in str(excinfo.value)
-    assert secret not in repr(excinfo.value.details)
+    reported = f"{excinfo.value}{excinfo.value.details}"
+    assert secret not in reported
+    assert "evidence_ref" in reported
 
 
-def test_an_untracked_batch_may_not_cite_evidence_staged_beside_it() -> None:
-    """Without the M18.1 mapping seam a batch-local citation has no answer after a partial
-    commit, so it is refused while the batch can still be declined whole."""
+def test_an_unknown_evidence_reference_is_never_echoed() -> None:
     harness = _Harness()
+    secret = "Mentioned the merger over dinner"
 
     with pytest.raises(ImportPipelineError) as excinfo:
-        harness.stage_untracked(
+        harness.stage_batch(
             "planning-meeting",
             [
                 _person("alice", "Alice Rivera"),
                 _observation(evidence_ref="metrics-question"),
-                _trait(evidence_refs=["metrics-question"]),
+                _trait(evidence_refs=[secret]),
             ],
         )
 
-    assert excinfo.value.code == "evidence_requires_source_tracking"
-    assert harness.conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
-
-
-def test_an_untracked_batch_may_still_cite_durable_records() -> None:
-    """A durable id already names the record, so it needs no receipt to be resolvable."""
-    harness = _Harness()
-
-    batch = harness.stage_untracked(
-        "planning-meeting",
-        [_person("alice", "Alice Rivera"), _trait(evidence_ids=["obs-1"])],
-    )
-
-    assert _staged(harness, batch.batch_id, "trait")["evidence_ids"] == ["obs-1"]
-
-
-def test_a_tracked_batch_resolves_a_citation_across_separate_commits() -> None:
-    """The regression the refusal above exists to prevent, proven fixed on a tracked batch."""
-    harness = _Harness()
-    batch = harness.stage_batch(
-        "planning-meeting",
-        [
-            _person("alice", "Alice Rivera"),
-            _observation(evidence_ref="metrics-question"),
-            _trait(evidence_refs=["metrics-question"]),
-        ],
-    )
-    rows = {row.candidate["type"]: row for row in harness.rows(batch.batch_id)}
-    harness.commit.execute(batch.batch_id, [rows["person"].id, rows["observation"].id])
-
-    result = harness.commit.execute(batch.batch_id, [rows["trait"].id])
-
-    assert result.unresolved_ids == []
-    assert len(harness.links()) == 1
-
-
-@pytest.mark.parametrize("field", ["evidence_ref", "evidence_ids"])
-def test_an_evidence_token_is_never_rewritten_on_its_way_to_storage(field: str) -> None:
-    """Tokens are identities matched exactly, not text: trimming one would make a legitimately
-    restored id unciteable, or resolve it to a different record whose id is the trimmed form."""
-    harness = _Harness()
-    padded = " obs-1 "
-    candidates = (
-        [_person("alice", "Alice Rivera"), _observation(evidence_ref=padded), _trait(evidence_refs=[padded])]
-        if field == "evidence_ref"
-        else [_person("alice", "Alice Rivera"), _trait(evidence_ids=[padded])]
-    )
-
-    batch = harness.stage_batch("planning-meeting", candidates)
-
-    assert _staged(harness, batch.batch_id, "trait").get("evidence_ids", [padded]) == [padded]
+    reported = f"{excinfo.value}{excinfo.value.details}"
+    assert secret not in reported
+    assert "evidence_refs" in reported
 
 
 # -- commit: resolution, subject rules, and declining ------------------

@@ -462,8 +462,10 @@ def _check_evidence_references(candidates: list[CandidateInput]) -> None:
     traits look grounded in review and then commit ungrounded, or grounded in whichever candidate
     the rewrite happened to reach last.
 
-    The messages name the caller's own label, which is a value the caller authored and already
-    holds. Nothing here reports a candidate's content.
+    Neither refusal names the offending label. An `evidence_ref` is free-form opaque text the
+    agent chose, so it can carry source wording as readily as any other extracted string, and the
+    milestone requires rejected values to fail "without echo". The location and the failure
+    category are enough to find the field; the value never travels back out through a diagnostic.
     """
     declared: dict[str, int] = {}
     for index, candidate in enumerate(candidates):
@@ -478,7 +480,7 @@ def _check_evidence_references(candidates: list[CandidateInput]) -> None:
                     {
                         "type": "value_error",
                         "loc": [index, "evidence_ref"],
-                        "msg": f"duplicate evidence ref: {candidate.evidence_ref}",
+                        "msg": "evidence_ref must be unique among the evidence candidates in this batch",
                     }
                 ],
             )
@@ -494,10 +496,7 @@ def _check_evidence_references(candidates: list[CandidateInput]) -> None:
                     {
                         "type": "value_error",
                         "loc": [index, "evidence_refs"],
-                        "msg": (
-                            "evidence_refs must name an observation or interaction candidate in this batch: "
-                            f"{', '.join(unknown)}"
-                        ),
+                        "msg": "evidence_refs must name observation or interaction candidates in this batch",
                     }
                 ],
             )
