@@ -258,9 +258,11 @@ appears, because none is stored.
   An undated record is neither dropped nor given an invented timestamp.
 
 Entries are ordered by `effective_at` descending, then `entry_type`, then `entry_id`, so one database always
-produces one order. Ordering compares instants: a stored timestamp keeps whatever offset its writer supplied,
-an aware value is converted to UTC and a naive one is read as UTC — never in the host timezone. The stored value
-is what the response carries; normalization decides comparisons and never rewrites what is returned.
+produces one order. Ordering compares instants at the stored precision: a stored timestamp keeps whatever offset
+its writer supplied, an aware value is converted to UTC and a naive one is read as UTC — never in the host
+timezone — and two records in the same second are separated by their microseconds rather than collapsed into a
+tie. The stored value is what the response carries; normalization decides comparisons and never rewrites what is
+returned.
 
 `limit` accepts `1..200` and defaults to 50. An out-of-range value returns
 `{"error": "invalid_parameter", "message": "..."}` rather than a partial page. `truncated` is `true` when more

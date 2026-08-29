@@ -15,7 +15,7 @@ from people_context.adapters.sqlite import (
     SqliteRelationshipVocabularyStore,
     open_db,
 )
-from people_context.adapters.sqlite.timeline_reader import _TIMELINE_SQL
+from people_context.adapters.sqlite.timeline_reader import _BRANCHES, _TIMELINE_SQL
 from people_context.adapters.sqlite.trait_evidence import SqliteTraitEvidenceStore
 from people_context.app.insights import GetPersonTimeline
 from people_context.app.records import (
@@ -638,3 +638,99 @@ def test_the_projection_only_emits_the_declared_vocabulary() -> None:
     # Every declared type and both dating rules are exercised by this fixture.
     assert {row.entry_type for row in rows} == set(TIMELINE_ENTRY_TYPES)
     assert {BASIS_VALID_FROM, BASIS_RECORDED_AT, BASIS_CREATED_AT} <= {row.basis for row in rows}
+
+
+def test_a_sub_millisecond_newer_record_is_not_dropped_at_the_page_boundary() -> None:
+    """The ordering key is exact to the microsecond, not to SQLite's millisecond `%f`.
+
+    Three observations inside one millisecond share a millisecond-resolution key. Ordering by that
+    key alone leaves the tie to `entry_id`, and ULIDs ascend with creation time, so a `limit=1` page
+    would keep the two *oldest* rows and drop the newest one entirely.
+    """
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    for microsecond in (100, 200, 400):
+        fixture.observations.execute(
+            RecordObservationInput(
+                person_id=alice.id,
+                text=f"micro {microsecond}",
+                observed_at=datetime(2026, 5, 1, 12, 0, 0, microsecond, tzinfo=UTC),
+            )
+        )
+
+    page = fixture.rows(alice.id, limit=1)
+
+    assert page[0].summary == "micro 400"
+    assert [row.summary for row in fixture.rows(alice.id)] == ["micro 400", "micro 200", "micro 100"]
+
+
+def test_sub_millisecond_order_holds_across_stored_offsets() -> None:
+    """The fraction needs no conversion: every real offset is a whole number of minutes."""
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    fixture.observations.execute(
+        RecordObservationInput(
+            person_id=alice.id,
+            text="later",
+            observed_at=datetime(2026, 6, 1, 7, 0, 0, 400, tzinfo=timezone(timedelta(hours=-5))),
+        )
+    )
+    fixture.observations.execute(
+        RecordObservationInput(
+            person_id=alice.id,
+            text="earlier",
+            observed_at=datetime(2026, 6, 1, 12, 0, 0, 100, tzinfo=UTC),
+        )
+    )
+
+    # Both are 12:00:00 UTC to the second; only the microseconds separate them.
+    assert [row.summary for row in fixture.rows(alice.id, limit=1)][:1] == ["later"]
+
+
+def test_a_record_with_no_stored_fraction_orders_before_one_in_the_same_second() -> None:
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    fixture.observations.execute(
+        RecordObservationInput(
+            person_id=alice.id,
+            text="whole second",
+            observed_at=datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC),
+        )
+    )
+    fixture.observations.execute(
+        RecordObservationInput(
+            person_id=alice.id,
+            text="one microsecond later",
+            observed_at=datetime(2026, 5, 1, 12, 0, 0, 1, tzinfo=UTC),
+        )
+    )
+
+    assert [row.summary for row in fixture.rows(alice.id)] == ["one microsecond later", "whole second"]
+
+
+def test_every_branch_is_cut_to_one_page_before_the_union() -> None:
+    """A `LIMIT` on the compound alone would still sort a whole history to answer `--limit 1`.
+
+    The structural assertion is the point: the bound has to be inside each branch, so that no read
+    materializes or sorts more than one page per record type before the union is assembled.
+    """
+    assert _TIMELINE_SQL.count("LIMIT :limit") == len(_BRANCHES) + 1
+
+
+def test_a_dense_single_branch_history_still_returns_only_a_page() -> None:
+    """The per-branch cut is what keeps a large history from being sorted whole."""
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    for index in range(400):
+        fixture.observations.execute(
+            RecordObservationInput(
+                person_id=alice.id,
+                text=f"note {index}",
+                observed_at=datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=index),
+            )
+        )
+
+    rows = fixture.rows(alice.id, limit=5)
+
+    assert len(rows) == 6
+    assert [row.summary for row in rows][:3] == ["note 399", "note 398", "note 397"]

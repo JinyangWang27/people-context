@@ -1,18 +1,29 @@
 """SQLite projection behind the bounded person timeline.
 
-One `UNION ALL` over the six record types a person's history is made of, ordered once and cut by
-`LIMIT`. The database returns a page; nothing here hands the application a table to slice.
+One `UNION ALL` over the six record types a person's history is made of. Every branch is cut to one
+page before the union, and the union is cut again, so the database returns a page; nothing here
+hands the application a table to slice.
 
-Three details in the query are deliberate.
+Four details in the query are deliberate.
 
-**The order key is normalized inside SQLite.** Stored timestamps keep whatever offset the writer
-supplied and some are naive, so no text comparison orders them: `2026-06-02T00:00:00+00:00` sorts
-after `2026-06-01T19:00:00-05:00` in text while being the *earlier* instant. `strftime` converts
-each value to UTC before comparing, and a naive value is read as UTC — the same reading the domain
-helper applies — never in the host timezone. The application then re-orders the returned page
-exactly, comparing parsed instants at full precision, so SQLite's millisecond resolution decides
-only which rows are on the page and never how they read: two records inside one millisecond may
-swap places at the page boundary, and are exactly ordered once there.
+**The order key is normalized, and exact to the microsecond.** Stored timestamps keep whatever
+offset the writer supplied and some are naive, so no text comparison orders them:
+`2026-06-02T00:00:00+00:00` sorts after `2026-06-01T19:00:00-05:00` in text while being the
+*earlier* instant. The key is therefore built in two halves. `strftime` normalizes the value to UTC
+whole seconds — reading a naive value as UTC, the same reading the domain helper applies, never in
+the host timezone — and the stored sub-second digits are appended to it verbatim, zero-padded to
+six. That second half needs no conversion because every real UTC offset is a whole number of
+minutes: shifting offsets changes the date, hour, and minute of a timestamp and never its seconds
+or its fraction. The result is a lexicographic key that is exactly the UTC instant at microsecond
+precision, so what the database selects is what the application's own exact ordering would select.
+`strftime`'s own `%f` is deliberately not used for the fraction: it resolves only to milliseconds,
+which would let a page keep two records from one millisecond and drop the newest.
+
+**Each branch is bounded before the union.** A `LIMIT` applied only to the compound would still let
+SQLite emit and sort every matching record of an active person's history to answer `--limit 1`. Each
+branch instead orders by that same key and takes one page, so no read ever sorts or materializes
+more than one page per record type. The whole page must be a subset of the union of the per-branch
+pages, which is what makes cutting early safe.
 
 **A record's source is a scalar subquery, not a join.** M18.1 allows several candidates to map to
 one reused entity, so joining the mapping table would multiply a record into as many timeline
@@ -50,6 +61,45 @@ from people_context.ports.timeline import (
 #: A date-only `valid_from` becomes this instant, the same deterministic convention M9.2 fixed for
 #: all-day calendar values. The entry still carries the date, so the granularity is never lost.
 _DATE_START_OF_DAY = "T00:00:00+00:00"
+
+#: Digits of sub-second precision the ordering key carries — what `datetime.isoformat()` writes.
+_FRACTION_DIGITS = 6
+
+#: Characters of a trailing `±HH:MM` offset.
+_OFFSET_CHARS = 6
+
+
+def _local_text(column: str) -> str:
+    """Return the stored timestamp with any trailing `±HH:MM` offset removed.
+
+    Only the wall-clock half is wanted, because the fraction is read off it. A value written by
+    `datetime.isoformat()` ends in that offset when it is aware and in a digit when it is naive, so
+    testing the sixth character from the end distinguishes the two without parsing.
+    """
+    return (
+        f"CASE WHEN substr({column}, -{_OFFSET_CHARS}, 1) IN ('+', '-') "
+        f"THEN substr({column}, 1, length({column}) - {_OFFSET_CHARS}) ELSE {column} END"
+    )
+
+
+def _sort_key(column: str) -> str:
+    """Return the exact UTC ordering key for one stored timestamp.
+
+    Whole seconds come from `strftime`, which does the offset conversion; the sub-second digits are
+    taken from the stored text and zero-padded, which is exact because an offset shift never moves
+    them. `COALESCE` keeps a value SQLite cannot normalize orderable by its own text rather than
+    sinking it below every other row, where `LIMIT` would drop it from a page it belongs on. Every
+    timestamp this project writes is `datetime.isoformat()` output, which SQLite does normalize, so
+    that fallback is a safety net rather than a path the supported writers reach.
+    """
+    local = _local_text(column)
+    fraction = (
+        f"CASE WHEN instr({local}, '.') = 0 THEN '{'0' * _FRACTION_DIGITS}' "
+        f"ELSE substr(substr({local}, instr({local}, '.') + 1) || '{'0' * _FRACTION_DIGITS}', "
+        f"1, {_FRACTION_DIGITS}) END"
+    )
+    return f"(COALESCE(strftime('%Y-%m-%dT%H:%M:%S', {column}), {column}) || '.' || ({fraction}))"
+
 
 def _source_session(entry_type: str, id_column: str) -> str:
     """Return the subquery naming the earliest import that produced one durable entity.
@@ -180,16 +230,20 @@ WHERE t.person_id = :person_id AND t.sensitivity IN ({{levels}})
 
 _BRANCHES = (_INTERACTIONS, _OBSERVATIONS, _FACTS, _AFFILIATIONS, _RELATIONSHIPS, _TRAITS)
 
-# `COALESCE` keeps a value SQLite cannot normalize orderable by its own text instead of sinking it
-# below every other row — where `LIMIT` would drop it from a page it belongs on. Every timestamp
-# this project writes is `datetime.isoformat()` output, which SQLite does normalize, so the
-# fallback is a safety net rather than a path the supported writers reach.
+#: The one ordering every level of this query uses, so a branch and the union agree on what "newest"
+#: means and the application's own exact sort reproduces it. `entry_type` and `entry_id` break an
+#: exact instant tie the way the application does.
+_ORDER_BY = f"ORDER BY {_sort_key('effective_at')} DESC, entry_type ASC, entry_id ASC"
+
+#: One branch, already cut to a page. The inner `SELECT *` is what lets the ordering refer to the
+#: branch's computed `effective_at` by name instead of repeating each branch's own CASE expression.
+_BOUNDED_BRANCHES = tuple(f"SELECT * FROM (SELECT * FROM ({branch}) {_ORDER_BY} LIMIT :limit)" for branch in _BRANCHES)
+
 _TIMELINE_SQL = (
     "SELECT entry_type, entry_id, effective_at, basis, summary, detail, sensitivity, "
     "valid_from, valid_to, source_session_id FROM ("
-    + " UNION ALL ".join(_BRANCHES)
-    + ") ORDER BY COALESCE(strftime('%Y-%m-%dT%H:%M:%fZ', effective_at), effective_at) DESC, "
-    "entry_type ASC, entry_id ASC LIMIT :limit"
+    + " UNION ALL ".join(_BOUNDED_BRANCHES)
+    + f") {_ORDER_BY} LIMIT :limit"
 )
 
 # The cited record's own level decides whether a trait may name it, so it is read alongside the

@@ -328,8 +328,9 @@ the import receipt it came from when one exists. The `BASIS` column is the point
   written down. Nothing is dropped for lacking a date and no timestamp is invented for it.
 
 Rows are ordered newest first, then by record type and id, so two records at the same instant always print in
-the same order. Ordering compares instants: a timestamp stored at another UTC offset is placed by when it
-actually happened, and a naive stored timestamp is read as UTC rather than in the machine's timezone.
+the same order. Ordering compares instants at the stored precision: a timestamp stored at another UTC offset is
+placed by when it actually happened, a naive stored timestamp is read as UTC rather than in the machine's
+timezone, and two records in the same second are separated by their microseconds.
 
 A relationship is shown from this person's side — a stored `parent_of` reads as `child_of` on the other
 person's timeline — and an edge to a deleted person is omitted. Affiliations and relationships carry no stored
