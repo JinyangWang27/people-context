@@ -220,12 +220,14 @@ class FakePersonTimelineReader:
     def __init__(
         self,
         rows: list[TimelineRow] | None = None,
-        evidence: dict[str, list[TimelineEvidenceRow]] | None = None,
+        evidence: dict[str, list[tuple[Sensitivity | None, TimelineEvidenceRow]]] | None = None,
     ) -> None:
         self.rows = rows or []
+        # Each citation is stored beside the level of the record it cites, which is what the real
+        # reader filters on in SQL before the application ever sees the row.
         self.evidence = evidence or {}
         self.calls: list[tuple[str, int, tuple[Sensitivity, ...]]] = []
-        self.evidence_calls: list[tuple[str, int]] = []
+        self.evidence_calls: list[tuple[str, int, tuple[Sensitivity, ...]]] = []
 
     def list_timeline_rows(
         self,
@@ -238,9 +240,18 @@ class FakePersonTimelineReader:
         visible = [row for row in self.rows if row.sensitivity is None or row.sensitivity in sensitivities]
         return visible[: limit + 1]
 
-    def list_trait_evidence(self, trait_id: str, *, limit: int) -> list[TimelineEvidenceRow]:
-        self.evidence_calls.append((trait_id, limit))
-        return self.evidence.get(trait_id, [])[: limit + 1]
+    def list_trait_evidence(
+        self,
+        trait_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[TimelineEvidenceRow]:
+        self.evidence_calls.append((trait_id, limit, sensitivities))
+        disclosable = [
+            row for level, row in self.evidence.get(trait_id, []) if level is not None and level in sensitivities
+        ]
+        return disclosable[: limit + 1]
 
 
 class FakeCurationReader:

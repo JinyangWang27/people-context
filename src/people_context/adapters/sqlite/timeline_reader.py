@@ -27,8 +27,12 @@ pages, which is what makes cutting early safe.
 
 **A record's source is a scalar subquery, not a join.** M18.1 allows several candidates to map to
 one reused entity, so joining the mapping table would multiply a record into as many timeline
-entries as imports touched it. The subquery names the earliest mapping instead — the import that
-first produced the record — with the candidate id breaking an exact tie.
+entries as imports touched it. The subquery names the earliest mapping instead, with the candidate
+id breaking an exact tie. "Earliest mapping" is deliberately not "created by": a mapping records
+that a committed candidate *resolved to* this record, and `SetRelationship` updates and returns a
+matching active edge rather than creating a second one, so an import that merely reused an edge
+entered by hand owns a mapping to it too. The field therefore says which import first committed a
+candidate onto this record, which is what the mapping table actually knows.
 
 **Disclosure filtering happens here, not after.** The caller passes the levels it may disclose and
 the page is selected from those rows only. Filtering an already-cut page would return a short page
@@ -102,7 +106,7 @@ def _sort_key(column: str) -> str:
 
 
 def _source_session(entry_type: str, id_column: str) -> str:
-    """Return the subquery naming the earliest import that produced one durable entity.
+    """Return the subquery naming the earliest import whose candidate committed onto one entity.
 
     Both arguments are fixed constants of this module — an entry type from the ports vocabulary
     and a column of the branch being composed — never caller input, so the composed text carries
@@ -246,20 +250,22 @@ _TIMELINE_SQL = (
     + f") {_ORDER_BY} LIMIT :limit"
 )
 
-# The cited record's own level decides whether a trait may name it, so it is read alongside the
-# link. `evidence_type` selects which table answers; a link whose record is gone reports no level
-# and the application withholds it.
+# The cited record's own level decides whether a trait may name it, so the filter is here, in the
+# same read: a link whose evidence the caller may not see never reaches the application, and so can
+# neither be named nor counted towards a truncation signal that would prove it exists.
+# `evidence_type` selects which table answers, and a link whose record is gone matches no level and
+# is excluded — failing closed rather than naming an id whose record is unaccounted for.
 _TRAIT_EVIDENCE_SQL = f"""
 SELECT te.evidence_type AS evidence_type,
-       te.evidence_id AS evidence_id,
-       CASE te.evidence_type
-            WHEN '{ENTRY_OBSERVATION}' THEN o.sensitivity
-            WHEN '{ENTRY_INTERACTION}' THEN i.sensitivity
-       END AS sensitivity
+       te.evidence_id AS evidence_id
 FROM trait_evidence te
 LEFT JOIN observations o ON te.evidence_type = '{ENTRY_OBSERVATION}' AND o.id = te.evidence_id
 LEFT JOIN interactions i ON te.evidence_type = '{ENTRY_INTERACTION}' AND i.id = te.evidence_id
 WHERE te.trait_id = :trait_id
+  AND CASE te.evidence_type
+           WHEN '{ENTRY_OBSERVATION}' THEN o.sensitivity
+           WHEN '{ENTRY_INTERACTION}' THEN i.sensitivity
+      END IN ({{levels}})
 ORDER BY te.evidence_type, te.evidence_id
 LIMIT :limit
 """
@@ -279,24 +285,24 @@ class SqlitePersonTimelineReader:
         sensitivities: tuple[Sensitivity, ...],
     ) -> list[TimelineRow]:
         """Return the newest rows for one person, reading one row past `limit`."""
-        levels = {f"level{index}": level.value for index, level in enumerate(sensitivities)}
-        placeholders = ", ".join(f":{name}" for name in levels) or "NULL"
-        sql = _TIMELINE_SQL.format(levels=placeholders)
+        levels = _levels(sensitivities)
+        sql = _TIMELINE_SQL.format(levels=_placeholders(levels))
         parameters: dict[str, object] = {"person_id": person_id, "limit": limit + 1, **levels}
         return [_row(row) for row in self._conn.execute(sql, parameters).fetchall()]
 
-    def list_trait_evidence(self, trait_id: str, *, limit: int) -> list[TimelineEvidenceRow]:
-        """Return one trait's evidence citations in stable order, reading one row past `limit`."""
-        rows = self._conn.execute(
-            _TRAIT_EVIDENCE_SQL,
-            {"trait_id": trait_id, "limit": limit + 1},
-        ).fetchall()
+    def list_trait_evidence(
+        self,
+        trait_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[TimelineEvidenceRow]:
+        """Return one trait's disclosable citations in stable order, reading one row past `limit`."""
+        levels = _levels(sensitivities)
+        parameters: dict[str, object] = {"trait_id": trait_id, "limit": limit + 1, **levels}
+        rows = self._conn.execute(_TRAIT_EVIDENCE_SQL.format(levels=_placeholders(levels)), parameters).fetchall()
         return [
-            TimelineEvidenceRow(
-                evidence_type=row["evidence_type"],
-                evidence_id=row["evidence_id"],
-                sensitivity=_sensitivity(row["sensitivity"]),
-            )
+            TimelineEvidenceRow(evidence_type=row["evidence_type"], evidence_id=row["evidence_id"])
             for row in rows
         ]
 
@@ -314,6 +320,20 @@ def _row(row: sqlite3.Row) -> TimelineRow:
         valid_to=_date(row["valid_to"]),
         source_session_id=row["source_session_id"],
     )
+
+
+def _levels(sensitivities: tuple[Sensitivity, ...]) -> dict[str, object]:
+    """Bind the levels a caller may disclose as one named parameter each."""
+    return {f"level{index}": level.value for index, level in enumerate(sensitivities)}
+
+
+def _placeholders(levels: dict[str, object]) -> str:
+    """Render the bound level names as an `IN` list.
+
+    An empty set becomes `IN (NULL)`, which matches nothing: a caller allowed to disclose no level
+    is shown no record carrying one, rather than every record.
+    """
+    return ", ".join(f":{name}" for name in levels) or "NULL"
 
 
 def _sensitivity(value: str | None) -> Sensitivity | None:

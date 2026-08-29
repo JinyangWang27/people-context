@@ -159,7 +159,7 @@ def test_a_visible_trait_never_names_evidence_the_caller_may_not_read(tmp_path: 
     payload = _run(server, flow)
     trait = next(entry for entry in payload["entries"] if entry["entry_type"] == "trait")
 
-    assert trait["evidence_ids"] == [ordinary.id]
+    assert trait["evidence"] == [{"evidence_type": "observation", "evidence_id": ordinary.id}]
     assert trait["evidence_truncated"] is False
     # The restricted observation itself is absent from the ordinary page, and naming it beside the
     # trait would have disclosed it anyway.

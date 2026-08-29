@@ -336,12 +336,17 @@ A relationship is shown from this person's side — a stored `parent_of` reads a
 person's timeline — and an edge to a deleted person is omitted. Affiliations and relationships carry no stored
 disclosure level, so their `SENSITIVITY` column shows `-` rather than a level this report invented for them.
 
+The `SOURCE` column names the earliest import whose committed candidate resolved to that record. It answers
+"which import wrote this down" rather than "which import created it": an import that matches an existing
+relationship updates it in place and still earns a receipt, so an edge you entered by hand can name an import
+that later touched it. A record no import ever committed onto shows `-`.
+
 `--include-sensitive` widens the report to `sensitive` and `restricted` records, which the MCP timeline never
 discloses. It prints a warning to stderr; the default stays ordinary. `--json` prints the versioned
 `people-context-person-timeline` document — the whole of stdout, so a redirected run and the printed document
 are byte-identical — with every value in full rather than the truncated display text. A trait entry additionally
-carries the durable evidence records it rests on, filtered by *that evidence's* own level, so an ordinary run
-never names a restricted observation beside a visible trait.
+carries the durable evidence records it rests on as `evidence_type`/`evidence_id` pairs, filtered by *that
+evidence's* own level, so an ordinary run never names a restricted observation beside a visible trait.
 
 ## Upcoming dates
 

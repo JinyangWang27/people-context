@@ -128,7 +128,10 @@ project:
   `effective_at` is what the entries are ordered by and `basis` names the stored field it came from, so a
   consumer never has to guess whether a timestamp means "this happened then" or "this was written down then".
   A `null` `sensitivity` means the record type carries no stored disclosure level and is always ordinary; it is
-  not an unknown level. The default document is ordinary-disclosure, and `include_sensitive` says whether the
+  not an unknown level. A trait's `evidence` entries are `evidence_type`/`evidence_id` pairs, and the type is
+  part of the contract: ids are unique only within their own table, so the pair is what makes a citation
+  resolvable. `source_session_id` names the earliest import whose committed candidate resolved to the record,
+  which is not a claim that the import created it. The default document is ordinary-disclosure, and `include_sensitive` says whether the
   local operator explicitly widened it.
 
   The stats document's aggregate-only guarantee is part of its contract: a later release may add sections,

@@ -77,8 +77,11 @@ class TimelineRow:
     fact's predicate and value, an affiliation's role and organization — never import material.
     People Context stores no raw source, so there is none to leak here.
 
-    `source_session_id` is the M18 receipt of the import that first produced this record, when one
-    did. A record entered by hand carries none, and that absence is not a defect.
+    `source_session_id` is the M18 receipt of the earliest import whose committed candidate
+    resolved to this record. That is "which import wrote this down", not always "which import
+    created it": a relationship an import matches to an existing edge is updated in place and still
+    earns a mapping, so an edge entered by hand can name the import that later touched it. A record
+    no import ever committed onto carries none, and that absence is not a defect.
     """
 
     entry_type: str
@@ -95,16 +98,16 @@ class TimelineRow:
 
 @dataclass(frozen=True)
 class TimelineEvidenceRow:
-    """One M18.3 evidence citation of a trait, carrying the cited record's own level.
+    """One M18.3 evidence citation of a trait.
 
-    The level travels with the link for the reason M18.3 gave it: the disclosure decision belongs
-    to the evidence, not to the trait it grounds. A `None` level means the cited record could not
-    be read at all, which fails closed rather than naming an id whose record is unaccounted for.
+    The type is half of the citation, not decoration: ids are opaque and nothing makes them unique
+    *across* tables, so a restored store may legitimately hold an observation and an interaction
+    sharing one id and one trait may cite both. Reporting the id alone would render those two
+    distinct records as one indistinguishable string.
     """
 
     evidence_type: str
     evidence_id: str
-    sensitivity: Sensitivity | None = None
 
 
 @runtime_checkable
@@ -125,6 +128,19 @@ class PersonTimelineReader(Protocol):
         """
         ...
 
-    def list_trait_evidence(self, trait_id: str, *, limit: int) -> list[TimelineEvidenceRow]:
-        """Return one trait's evidence citations in stable order, reading one row past `limit`."""
+    def list_trait_evidence(
+        self,
+        trait_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[TimelineEvidenceRow]:
+        """Return one trait's disclosable evidence citations, reading one row past `limit`.
+
+        Only citations whose *cited record* is at one of `sensitivities` participate — the
+        disclosure decision belongs to the evidence rather than to the trait it grounds — and a
+        citation whose record cannot be read at all is excluded, which fails closed rather than
+        naming an id whose record is unaccounted for. Filtering here rather than after the read is
+        what keeps the caller's truncation signal from describing links they may not know exist.
+        """
         ...

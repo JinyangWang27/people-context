@@ -17,7 +17,7 @@ from people_context.adapters.sqlite import (
 )
 from people_context.adapters.sqlite.timeline_reader import _BRANCHES, _TIMELINE_SQL
 from people_context.adapters.sqlite.trait_evidence import SqliteTraitEvidenceStore
-from people_context.app.insights import GetPersonTimeline
+from people_context.app.insights import MAX_TIMELINE_EVIDENCE_LINKS, GetPersonTimeline
 from people_context.app.records import (
     RecordFact,
     RecordFactInput,
@@ -480,13 +480,12 @@ def test_trait_evidence_carries_the_cited_records_own_level() -> None:
         )
     )
 
-    links = fixture.reader.list_trait_evidence(trait.id, limit=32)
+    ordinary_links = fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=ORDINARY)
+    every_link = fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=EVERY_LEVEL)
 
-    assert {(link.evidence_id, link.sensitivity) for link in links} == {
-        (ordinary.id, Sensitivity.PERSONAL),
-        (restricted.id, Sensitivity.RESTRICTED),
-        (interaction.id, Sensitivity.SENSITIVE),
-    }
+    # The cited record's own level decides, and the filter is in the read rather than after it.
+    assert [link.evidence_id for link in ordinary_links] == [ordinary.id]
+    assert {link.evidence_id for link in every_link} == {ordinary.id, restricted.id, interaction.id}
 
 
 def test_trait_evidence_is_ordered_stably_and_reads_one_row_past_the_limit() -> None:
@@ -511,7 +510,7 @@ def test_trait_evidence_is_ordered_stably_and_reads_one_row_past_the_limit() -> 
         )
     )
 
-    page = fixture.reader.list_trait_evidence(trait.id, limit=2)
+    page = fixture.reader.list_trait_evidence(trait.id, limit=2, sensitivities=ORDINARY)
 
     assert len(page) == 3
     assert [link.evidence_id for link in page] == sorted(link.evidence_id for link in page)
@@ -524,7 +523,7 @@ def test_a_trait_without_evidence_reads_no_links() -> None:
         RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
     )
 
-    assert fixture.reader.list_trait_evidence(trait.id, limit=32) == []
+    assert fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=ORDINARY) == []
 
 
 def test_reading_the_timeline_writes_nothing() -> None:
@@ -540,7 +539,7 @@ def test_reading_the_timeline_writes_nothing() -> None:
     before = fixture.counts()
 
     GetPersonTimeline(fixture.people, fixture.reader).execute(alice.id, include_sensitive=True)
-    fixture.reader.list_trait_evidence(trait.id, limit=32)
+    fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=EVERY_LEVEL)
 
     assert fixture.counts() == before
 
@@ -734,3 +733,93 @@ def test_a_dense_single_branch_history_still_returns_only_a_page() -> None:
 
     assert len(rows) == 6
     assert [row.summary for row in rows][:3] == ["note 399", "note 398", "note 397"]
+
+
+def test_a_citation_keeps_the_type_that_makes_its_id_resolvable() -> None:
+    """A restored store may hold an observation and an interaction under one id; both are citable."""
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    shared = "shared-evidence-id"
+    fixture.conn.execute(
+        "INSERT INTO observations (id, person_id, text, observed_at, sensitivity, provenance_source) "
+        "VALUES (?, ?, ?, ?, 'personal', 'agent')",
+        (shared, alice.id, "an observation", "2026-05-01T00:00:00+00:00"),
+    )
+    fixture.conn.execute(
+        "INSERT INTO interactions (id, summary, occurred_at, sensitivity, provenance_source) "
+        "VALUES (?, ?, ?, 'personal', 'agent')",
+        (shared, "an interaction", "2026-05-02T00:00:00+00:00"),
+    )
+    trait = fixture.traits.execute(
+        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
+    )
+    for evidence_type in ("observation", "interaction"):
+        fixture.conn.execute(
+            "INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at) "
+            "VALUES (?, ?, ?, '2026-05-03T00:00:00+00:00')",
+            (trait.id, evidence_type, shared),
+        )
+
+    links = fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=ORDINARY)
+
+    assert [(link.evidence_type, link.evidence_id) for link in links] == [
+        ("interaction", shared),
+        ("observation", shared),
+    ]
+
+
+def test_a_citation_whose_record_is_gone_is_excluded_rather_than_named() -> None:
+    """A dangling link matches no level, so it fails closed instead of naming an unaccounted id."""
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    trait = fixture.traits.execute(
+        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
+    )
+    fixture.conn.execute(
+        "INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at) "
+        "VALUES (?, 'observation', 'no-such-observation', '2026-05-03T00:00:00+00:00')",
+        (trait.id,),
+    )
+
+    assert fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=EVERY_LEVEL) == []
+
+
+def test_an_ordinary_read_of_wholly_elevated_evidence_reads_nothing_at_all() -> None:
+    """The count a truncation flag is derived from must not include links the caller cannot read.
+
+    A trait carrying more elevated links than one page reports would otherwise answer an ordinary
+    caller with no citations *and* a truncation flag, which together prove the hidden links exist.
+    """
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    hidden = [
+        fixture.observations.execute(
+            RecordObservationInput(
+                person_id=alice.id,
+                text=f"restricted {index}",
+                observed_at=datetime(2026, 5, 1, tzinfo=UTC),
+                sensitivity=Sensitivity.RESTRICTED,
+            )
+        )
+        for index in range(MAX_TIMELINE_EVIDENCE_LINKS + 1)
+    ]
+    trait = fixture.traits.execute(
+        RecordTraitInput(
+            person_id=alice.id,
+            category=TraitCategory.VALUES,
+            value="candour",
+            sensitivity=Sensitivity.PERSONAL,
+        )
+    )
+    for observation in hidden:
+        fixture.conn.execute(
+            "INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at) "
+            "VALUES (?, 'observation', ?, '2026-05-03T00:00:00+00:00')",
+            (trait.id, observation.id),
+        )
+
+    result = GetPersonTimeline(fixture.people, fixture.reader).execute(alice.id)
+    entry = next(item for item in result.entries if item.entry_type == ENTRY_TRAIT)
+
+    assert entry.evidence == []
+    assert entry.evidence_truncated is False

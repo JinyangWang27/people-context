@@ -42,7 +42,6 @@ from people_context.ports.repository import PersonReader
 from people_context.ports.timeline import (
     ENTRY_TRAIT,
     PersonTimelineReader,
-    TimelineEvidenceRow,
     TimelineRow,
 )
 
@@ -79,6 +78,19 @@ class PersonTimelineError(ValueError):
     """Raised when a timeline parameter falls outside its documented range."""
 
 
+class TimelineEvidenceLink(BaseModel):
+    """One durable record a trait entry rests on.
+
+    The type is part of the citation rather than decoration: ids are opaque and unique only within
+    their own table, so a restored store may hold an observation and an interaction sharing one id
+    and a trait may cite both. Reporting the bare id would render two distinct records as one
+    string, and leave a consumer unable to resolve either.
+    """
+
+    evidence_type: str
+    evidence_id: str
+
+
 class TimelineEntry(BaseModel):
     """One durable record placed on the chronology.
 
@@ -99,7 +111,7 @@ class TimelineEntry(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
     source_session_id: str | None = None
-    evidence_ids: list[str] = Field(default_factory=list)
+    evidence: list[TimelineEvidenceLink] = Field(default_factory=list)
     evidence_truncated: bool = False
 
 
@@ -169,15 +181,20 @@ class GetPersonTimeline:
             person_id=person_id,
             limit=page_limit,
             include_sensitive=include_sensitive,
-            entries=[self._entry(person_id, row, include_sensitive) for row in page],
+            entries=[self._entry(person_id, row, sensitivities) for row in page],
             truncated=len(ordered) > len(page),
         )
 
-    def _entry(self, person_id: str, row: TimelineRow, include_sensitive: bool) -> TimelineEntry:
-        evidence_ids: list[str] = []
+    def _entry(
+        self,
+        person_id: str,
+        row: TimelineRow,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> TimelineEntry:
+        evidence: list[TimelineEvidenceLink] = []
         truncated = False
         if row.entry_type == ENTRY_TRAIT:
-            evidence_ids, truncated = self._evidence(row.entry_id, include_sensitive)
+            evidence, truncated = self._evidence(row.entry_id, sensitivities)
         return TimelineEntry(
             entry_type=row.entry_type,
             entry_id=row.entry_id,
@@ -190,28 +207,39 @@ class GetPersonTimeline:
             valid_from=row.valid_from,
             valid_to=row.valid_to,
             source_session_id=row.source_session_id,
-            evidence_ids=evidence_ids,
+            evidence=evidence,
             evidence_truncated=truncated,
         )
 
-    def _evidence(self, trait_id: str, include_sensitive: bool) -> tuple[list[str], bool]:
-        """Return one trait's disclosable evidence ids, and whether links were left unread.
+    def _evidence(
+        self,
+        trait_id: str,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> tuple[list[TimelineEvidenceLink], bool]:
+        """Return one trait's disclosable citations, and whether more of them exist.
 
         The lookup is per trait rather than one query over the whole page on purpose: a shared
         budget would let a single trait with an unusual number of links consume it and leave the
         other traits on the page looking as though they rested on nothing.
 
-        Truncation is reported before filtering, so the flag says "this trait has more links than
-        one page reports" without also revealing how many of them were elevated.
+        Both the page and the truncation flag are computed over the links this caller may actually
+        read, because the reader filtered them. Counting the withheld ones first would have made
+        the flag a disclosure in its own right: a visible trait answering with no citations and
+        `evidence_truncated` set would prove that elevated evidence exists, which is exactly what
+        the level on that evidence is there to prevent.
         """
-        rows = self._timeline.list_trait_evidence(trait_id, limit=MAX_TIMELINE_EVIDENCE_LINKS)
-        truncated = len(rows) > MAX_TIMELINE_EVIDENCE_LINKS
-        disclosable = [
-            row.evidence_id
-            for row in rows[:MAX_TIMELINE_EVIDENCE_LINKS]
-            if _disclosable(row, include_sensitive)
-        ]
-        return disclosable, truncated
+        rows = self._timeline.list_trait_evidence(
+            trait_id,
+            limit=MAX_TIMELINE_EVIDENCE_LINKS,
+            sensitivities=sensitivities,
+        )
+        return (
+            [
+                TimelineEvidenceLink(evidence_type=row.evidence_type, evidence_id=row.evidence_id)
+                for row in rows[:MAX_TIMELINE_EVIDENCE_LINKS]
+            ],
+            len(rows) > MAX_TIMELINE_EVIDENCE_LINKS,
+        )
 
 
 def person_timeline_document(result: PersonTimelineResult) -> PersonTimelineDocument:
@@ -251,13 +279,3 @@ def _ordered(rows: list[TimelineRow]) -> list[TimelineRow]:
     by_identity = sorted(rows, key=lambda row: (row.entry_type, row.entry_id))
     return sorted(by_identity, key=lambda row: as_utc(row.effective_at), reverse=True)
 
-
-def _disclosable(row: TimelineEvidenceRow, include_sensitive: bool) -> bool:
-    """Return whether one evidence citation may be named.
-
-    A citation whose record could not be read carries no level and is withheld: an id whose
-    record is unaccounted for is exactly the thing that must not be disclosed by default.
-    """
-    if row.sensitivity is None:
-        return False
-    return include_sensitive or row.sensitivity in ORDINARY_SENSITIVITIES

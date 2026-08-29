@@ -230,7 +230,7 @@ match did not already implicate. See [identity-resolution.md](identity-resolutio
     "valid_from": null,
     "valid_to": null,
     "source_session_id": "01J...",
-    "evidence_ids": [],
+    "evidence": [],
     "evidence_truncated": false
   }],
   "truncated": false
@@ -276,13 +276,20 @@ relationships carry no disclosure field in the durable contract and are ordinary
 is rendered from this person's side, exactly as `get_person_context` renders it, and an edge to a soft-deleted
 person is omitted.
 
-`source_session_id` is the M18 receipt of the import that first produced the record, when one did; a record
-entered by hand carries `null`. A record several imports produced remains one entry naming the earliest.
+`source_session_id` is the M18 receipt of the earliest import whose committed candidate resolved to this
+record — "which import wrote this down", which is not always "which import created it". A relationship an import
+matches to an existing edge is updated in place and still earns a candidate mapping, so an edge entered by hand
+can name the import that later touched it; only a record no import ever committed onto carries `null`. A record
+several imports touched stays one entry naming the earliest.
 
-`evidence_ids` names the M18.3 durable records a trait rests on, filtered by *that evidence's* own disclosure
-level rather than the trait's: a personal trait may rest on a restricted observation, and naming it would
-disclose that the record exists. `evidence_truncated` is `true` when a trait carries more links than one entry
-reports.
+`evidence` names the M18.3 durable records a trait rests on, each as an `evidence_type`/`evidence_id` pair. The
+type is part of the citation because ids are unique only within their own table: a restored store may hold an
+observation and an interaction under one id, and a bare id could not tell them apart. Citations are filtered by
+*that evidence's* own disclosure level rather than the trait's — a personal trait may rest on a restricted
+observation, and naming it would disclose that the record exists — and a citation whose record cannot be read is
+omitted rather than named. `evidence_truncated` is `true` when more *readable* citations exist than one entry
+reports; it is never set by links the caller may not see, because a visible trait answering with no citations
+and a truncation flag would itself prove that hidden evidence exists.
 
 ## Person context compatibility
 

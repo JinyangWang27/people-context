@@ -7,10 +7,12 @@ from datetime import UTC, date, datetime, timedelta, timezone
 import pytest
 
 from people_context.app.insights import (
+    ALL_SENSITIVITIES,
     DEFAULT_TIMELINE_LIMIT,
     MAX_TIMELINE_EVIDENCE_LINKS,
     MAX_TIMELINE_LIMIT,
     MIN_TIMELINE_LIMIT,
+    ORDINARY_SENSITIVITIES,
     PERSON_TIMELINE_FORMAT,
     PERSON_TIMELINE_VERSION,
     GetPersonTimeline,
@@ -68,7 +70,7 @@ def _row(
 
 def _use_case(
     *rows: TimelineRow,
-    evidence: dict[str, list[TimelineEvidenceRow]] | None = None,
+    evidence: dict[str, list[tuple[Sensitivity | None, TimelineEvidenceRow]]] | None = None,
     people: list[Person] | None = None,
 ) -> tuple[GetPersonTimeline, FakePersonTimelineReader]:
     repo = FakePeopleRepository()
@@ -253,9 +255,9 @@ def test_a_trait_names_only_evidence_that_is_itself_ordinary() -> None:
         trait,
         evidence={
             "T1": [
-                TimelineEvidenceRow("observation", "O-public", Sensitivity.PUBLIC),
-                TimelineEvidenceRow("observation", "O-restricted", Sensitivity.RESTRICTED),
-                TimelineEvidenceRow("interaction", "I-sensitive", Sensitivity.SENSITIVE),
+                (Sensitivity.PUBLIC, TimelineEvidenceRow("observation", "O-public")),
+                (Sensitivity.RESTRICTED, TimelineEvidenceRow("observation", "O-restricted")),
+                (Sensitivity.SENSITIVE, TimelineEvidenceRow("interaction", "I-sensitive")),
             ]
         },
     )
@@ -263,23 +265,61 @@ def test_a_trait_names_only_evidence_that_is_itself_ordinary() -> None:
     ordinary = use_case.execute(ALICE.id).entries[0]
     elevated = use_case.execute(ALICE.id, include_sensitive=True).entries[0]
 
-    assert ordinary.evidence_ids == ["O-public"]
-    assert elevated.evidence_ids == ["O-public", "O-restricted", "I-sensitive"]
+    assert [link.evidence_id for link in ordinary.evidence] == ["O-public"]
+    assert [link.evidence_id for link in elevated.evidence] == ["O-public", "O-restricted", "I-sensitive"]
 
 
-def test_evidence_whose_record_cannot_be_read_is_withheld_rather_than_named() -> None:
-    trait = _row(ENTRY_TRAIT, "T1", datetime(2026, 3, 1, tzinfo=UTC))
+def test_the_evidence_lookup_asks_only_for_levels_the_caller_may_read() -> None:
+    """Filtering belongs to the read, so the truncation flag can never count a withheld link."""
+    use_case, reader = _use_case(_row(ENTRY_TRAIT, "T1", datetime(2026, 3, 1, tzinfo=UTC)))
+
+    use_case.execute(ALICE.id)
+    use_case.execute(ALICE.id, include_sensitive=True)
+
+    assert reader.evidence_calls[0] == ("T1", MAX_TIMELINE_EVIDENCE_LINKS, ORDINARY_SENSITIVITIES)
+    assert reader.evidence_calls[1] == ("T1", MAX_TIMELINE_EVIDENCE_LINKS, ALL_SENSITIVITIES)
+
+
+def test_a_citation_carries_the_type_that_makes_its_id_resolvable() -> None:
+    """Ids are unique only within their table, so a bare id can name two different records."""
     use_case, _ = _use_case(
-        trait,
-        evidence={"T1": [TimelineEvidenceRow("observation", "O-gone", None)]},
+        _row(ENTRY_TRAIT, "T1", datetime(2026, 3, 1, tzinfo=UTC)),
+        evidence={
+            "T1": [
+                (Sensitivity.PERSONAL, TimelineEvidenceRow("observation", "shared")),
+                (Sensitivity.PERSONAL, TimelineEvidenceRow("interaction", "shared")),
+            ]
+        },
     )
 
-    assert use_case.execute(ALICE.id, include_sensitive=True).entries[0].evidence_ids == []
+    entry = use_case.execute(ALICE.id).entries[0]
+
+    assert [(link.evidence_type, link.evidence_id) for link in entry.evidence] == [
+        ("observation", "shared"),
+        ("interaction", "shared"),
+    ]
 
 
-def test_a_trait_with_more_links_than_one_page_reports_says_so() -> None:
+def test_truncation_counts_only_links_the_caller_may_read() -> None:
+    """A visible trait with nothing disclosable must not flag that hidden links exist."""
+    hidden = [
+        (Sensitivity.RESTRICTED, TimelineEvidenceRow("observation", f"O{index:03d}"))
+        for index in range(MAX_TIMELINE_EVIDENCE_LINKS + 1)
+    ]
+    use_case, _ = _use_case(
+        _row(ENTRY_TRAIT, "T1", datetime(2026, 3, 1, tzinfo=UTC), sensitivity=Sensitivity.PERSONAL),
+        evidence={"T1": hidden},
+    )
+
+    entry = use_case.execute(ALICE.id).entries[0]
+
+    assert entry.evidence == []
+    assert entry.evidence_truncated is False
+
+
+def test_a_trait_with_more_readable_links_than_one_page_reports_says_so() -> None:
     links = [
-        TimelineEvidenceRow("observation", f"O{index:03d}", Sensitivity.PERSONAL)
+        (Sensitivity.PERSONAL, TimelineEvidenceRow("observation", f"O{index:03d}"))
         for index in range(MAX_TIMELINE_EVIDENCE_LINKS + 1)
     ]
     use_case, reader = _use_case(
@@ -289,9 +329,9 @@ def test_a_trait_with_more_links_than_one_page_reports_says_so() -> None:
 
     entry = use_case.execute(ALICE.id).entries[0]
 
-    assert len(entry.evidence_ids) == MAX_TIMELINE_EVIDENCE_LINKS
+    assert len(entry.evidence) == MAX_TIMELINE_EVIDENCE_LINKS
     assert entry.evidence_truncated is True
-    assert reader.evidence_calls == [("T1", MAX_TIMELINE_EVIDENCE_LINKS)]
+    assert reader.evidence_calls == [("T1", MAX_TIMELINE_EVIDENCE_LINKS, ORDINARY_SENSITIVITIES)]
 
 
 def test_evidence_is_read_once_per_trait_and_never_for_another_entry_type() -> None:
