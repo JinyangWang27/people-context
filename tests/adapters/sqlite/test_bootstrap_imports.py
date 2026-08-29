@@ -130,6 +130,22 @@ def _round_trip(document: Any) -> Any:
     return _parse(render_bundle_json(document))
 
 
+def _downgraded(document: Any, version: int) -> dict[str, Any]:
+    """Render the export as an older accepted version by dropping what that version predates.
+
+    Each released version is a closed shape, so a document can only be presented as an older one
+    by removing the collections that version does not know about. Anything left behind would be
+    refused as an unknown field, which is the behaviour the strict contract is for.
+    """
+    payload = json.loads(render_bundle_json(document))
+    payload["version"] = version
+    if version < 3:
+        payload.pop("trait_evidence")
+    if version < 2:
+        payload.pop("imports")
+    return payload
+
+
 def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> None:
     origin = _Origin(tmp_path / "origin.db")
     batch = origin.stage.execute(
@@ -147,7 +163,7 @@ def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> N
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 2
+    assert document.version == SYNC_BUNDLE_VERSION == 3
     assert [session.id for session in document.imports.source_sessions] == [batch.source_session_id]
     assert len(document.imports.candidate_mappings) == 1
     # The batch is only partially committed, so its reviewable rows travel.
@@ -390,9 +406,7 @@ def test_a_version_one_bundle_still_restores(tmp_path: Path) -> None:
     origin.commit.execute(batch.batch_id, [row.id for row in rows])
     origin.conn.execute("DELETE FROM import_staging")
     origin.conn.commit()
-    payload = json.loads(render_bundle_json(origin.export()))
-    payload["version"] = 1
-    payload.pop("imports")
+    payload = _downgraded(origin.export(), 1)
 
     document = _parse(json.dumps(payload))
     conn, outcome = _restore(document, tmp_path / "restored.db")
@@ -415,15 +429,11 @@ def test_a_version_one_bundle_carrying_version_two_state_is_refused(tmp_path: Pa
     assert any("imports" in detail for detail in excinfo.value.details)
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_a_non_empty_import_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
     origin = _Origin(tmp_path / "origin.db")
     origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
-    payload = json.loads(render_bundle_json(origin.export()))
-    if version == 1:
-        payload["version"] = 1
-        payload.pop("imports")
-    document = _parse(json.dumps(payload))
+    document = _parse(json.dumps(_downgraded(origin.export(), version)))
 
     destination = _Origin(tmp_path / "destination.db")
     destination.stage.execute(

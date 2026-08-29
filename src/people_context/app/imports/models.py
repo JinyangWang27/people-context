@@ -6,12 +6,13 @@ from collections.abc import Callable
 from datetime import date, datetime
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import TraitCategory
+from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
 
 class ImportPipelineError(Exception):
@@ -91,6 +92,13 @@ MAX_RELATIONSHIP_TYPE_CHARS: Final = 256
 #: Characters a batch-local person reference on an M17 candidate may carry.
 MAX_CANDIDATE_REF_CHARS: Final = 256
 
+#: Characters a batch-local evidence reference or a durable evidence id may carry.
+#:
+#: A durable id is *format-opaque*: the ceiling bounds what one request may submit and nothing
+#: more. Nothing here requires a ULID shape, case-folds, or normalizes, so a restored or
+#: hand-authored id such as `obs-1` stays addressable.
+MAX_EVIDENCE_REF_CHARS: Final = MAX_EVIDENCE_REFERENCE_CHARS
+
 
 def _within_bytes(limit: int) -> Callable[[str], str]:
     """Return a validator that bounds a field by UTF-8 bytes without echoing its value.
@@ -133,6 +141,25 @@ RelationshipTypeText = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RELATIONSHIP_TYPE_CHARS),
     AfterValidator(_normalizable_relationship_type),
 ]
+def _non_blank_token(value: str) -> str:
+    """Accept one opaque token, checking it is not blank without rewriting it.
+
+    Every other bounded string here is stripped, which is right for text a person typed. An
+    evidence reference is not text: it is an identity, matched exactly against a durable id whose
+    own contract — the released bundle `Identifier` — accepts any non-blank string, whitespace
+    included. Stripping would therefore make a legitimately restored id unciteable, and worse,
+    could silently resolve it to a *different* record whose id happens to be the trimmed form.
+    """
+    if not value.strip():
+        raise ValueError("an evidence reference must not be blank")
+    return value
+
+
+EvidenceReference = Annotated[
+    str,
+    StringConstraints(max_length=MAX_EVIDENCE_REF_CHARS),
+    AfterValidator(_non_blank_token),
+]
 
 
 class CandidateAlias(BaseModel):
@@ -172,6 +199,10 @@ class InteractionCandidateInput(BaseModel):
     channel: str | None = None
     message_id: str | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: An optional batch-local label a trait in the same request may cite as evidence. It is
+    #: purely addressing: it is removed during staging, never persisted, and an interaction
+    #: candidate without one is byte-for-byte the candidate it always was.
+    evidence_ref: EvidenceReference | None = None
 
 
 class AffiliationCandidateInput(BaseModel):
@@ -213,6 +244,8 @@ class ObservationCandidateInput(BaseModel):
     text: ObservationText
     observed_at: datetime | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: See `InteractionCandidateInput.evidence_ref`: a batch-local label, not stored state.
+    evidence_ref: EvidenceReference | None = None
 
 
 class TraitCandidateInput(BaseModel):
@@ -222,6 +255,12 @@ class TraitCandidateInput(BaseModel):
     person stating something about someone they know. An inference distilled out of unstructured
     material is a weaker claim, so this boundary requires the agent to say what the inference
     rests on and how sure it is rather than letting silence read as certainty.
+
+    M18.3 adds the id-based half of that grounding. `evidence_refs` names observation and
+    interaction candidates in this same request — an agent cannot know their staging ids, so it
+    addresses them by its own labels and staging rewrites them — while `evidence_ids` names
+    records already in the store. Both stay optional: `evidence_note` was never a placeholder for
+    them, and a trait drawn from material that produced no durable record is still a trait.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -233,6 +272,29 @@ class TraitCandidateInput(BaseModel):
     evidence_note: TraitEvidenceNote
     confidence: Confidence
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    evidence_refs: list[EvidenceReference] = Field(default_factory=list)
+    evidence_ids: list[EvidenceReference] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_evidence(self) -> TraitCandidateInput:
+        """Bound the grounding one trait may assert, naming no rejected value.
+
+        Uniqueness is per collection because the two name different things — a batch-local label
+        and a durable record — and a value legitimately appearing in both is not a repetition.
+        The budget spans them because it bounds what one trait's retrieval has to read, which
+        does not care which half a citation came from.
+        """
+        for field_name, values in (
+            ("evidence_refs", self.evidence_refs),
+            ("evidence_ids", self.evidence_ids),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError(f"{field_name} must not repeat a reference")
+        if len(self.evidence_refs) + len(self.evidence_ids) > MAX_TRAIT_EVIDENCE_LINKS:
+            raise ValueError(
+                f"a trait cites at most {MAX_TRAIT_EVIDENCE_LINKS} references and durable evidence ids combined"
+            )
+        return self
 
 
 class RelationshipCandidateInput(BaseModel):

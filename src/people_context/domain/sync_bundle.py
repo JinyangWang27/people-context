@@ -21,6 +21,7 @@ from typing import Annotated, Any, ClassVar, Literal
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from people_context.domain.import_provenance import (
+    EVIDENCE_CAPABLE_STAGED_TYPES,
     REVIEWABLE_SESSION_STATUSES,
     check_contract_revision,
     check_hex64,
@@ -29,6 +30,8 @@ from people_context.domain.import_provenance import (
     check_staged_candidate,
     compose_claim_key,
     staged_candidate_references,
+    staged_durable_references,
+    staged_evidence_references,
 )
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
@@ -38,14 +41,15 @@ from people_context.domain.trait import TraitCategory
 
 SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 
-#: The version this release emits. M18.1 added durable source receipts, candidate commit
-#: mappings, and the staging rows an incomplete batch needs, and the bundle is deliberately not
-#: additively extensible within a version — a reader that accepts a field must understand it —
-#: so carrying that state required a new version rather than optional fields on version 1.
-SYNC_BUNDLE_VERSION = 2
+#: The version this release emits. The bundle is deliberately not additively extensible within a
+#: version — a reader that accepts a field must understand it — so each round of new primary state
+#: has taken a new version rather than optional fields on the last one: version 2 for M18.1's
+#: durable source receipts, candidate commit mappings, and incomplete staging, and version 3 for
+#: M18.3's trait-evidence relations.
+SYNC_BUNDLE_VERSION = 3
 
 #: Versions restore accepts. A released version stays readable; only emission moves forward.
-SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2)
+SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3)
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -463,6 +467,21 @@ class BundleStagingRow(StrictBundleModel):
         return self
 
 
+class BundleStagingRowV2(BundleStagingRow):
+    """The version-2 staging row: the same shape, minus the evidence fields M18.3 added.
+
+    A released version is a closed shape, and the persisted-candidate models describe what this
+    installation stores *today*. Validating a version-2 document through them unchanged would
+    accept an M18.3 dependency field under a declaration that predates the relation resolving it —
+    the same silent upgrade the top-level per-version parsing exists to prevent.
+    """
+
+    @model_validator(mode="after")
+    def _check_candidate(self) -> BundleStagingRowV2:
+        check_staged_candidate(self.candidate, evidence_allowed=False)
+        return self
+
+
 class BundleImportState(StrictBundleModel):
     """Durable import provenance plus the operational staging an incomplete batch needs.
 
@@ -475,6 +494,41 @@ class BundleImportState(StrictBundleModel):
     source_sessions: list[BundleSourceSession]
     candidate_mappings: list[BundleCandidateMapping]
     staging: list[BundleStagingRow]
+
+
+class BundleImportStateV2(StrictBundleModel):
+    """Version 2's import state, whose staging rows predate trait evidence.
+
+    Declared separately rather than as a subclass narrowing `staging`: a list field is invariant,
+    so narrowing it in a subclass would be an unsound override. The two shapes differ in exactly
+    one field, and `upgraded()` is where a validated v2 becomes the current in-memory state.
+    """
+
+    source_sessions: list[BundleSourceSession]
+    candidate_mappings: list[BundleCandidateMapping]
+    staging: list[BundleStagingRowV2]
+
+    def current(self) -> BundleImportState:
+        """Return this state in the current shape; every row already validated as a v2 row."""
+        return BundleImportState(
+            source_sessions=self.source_sessions,
+            candidate_mappings=self.candidate_mappings,
+            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
+        )
+
+
+class BundleTraitEvidence(StrictBundleModel):
+    """One bundled link from an inferred trait to a durable record it rests on.
+
+    Ids stay format-opaque here, exactly as every other bundle identifier does. The staging
+    boundary caps what a caller may submit; a restore puts back what this installation already
+    stored, and holding it to the input ceiling would refuse a document it produced itself.
+    """
+
+    trait_id: Identifier
+    evidence_type: Literal["observation", "interaction"]
+    evidence_id: Identifier
+    created_at: UtcDatetime
 
 
 class SyncBundleDocumentV1(StrictBundleModel):
@@ -491,16 +545,16 @@ class SyncBundleDocumentV1(StrictBundleModel):
     changelog: list[BundleChangelogEntry]
 
     def upgraded(self) -> SyncBundleDocument:
-        """Return this document in the current in-memory shape, carrying no import state.
+        """Return this document in the current in-memory shape, carrying no later state.
 
-        A version-1 bundle genuinely contains no source receipts, so the empty collections are a
-        fact about it rather than a default filled in for a missing field. Restoring through one
-        shape keeps the writer from branching on version while the strict per-version parsing
-        above still refuses a v1 document that carries a v2 field.
+        A version-1 bundle genuinely contains no source receipts and no trait evidence, so the
+        empty collections are a fact about it rather than a default filled in for a missing
+        field. Restoring through one shape keeps the writer from branching on version while the
+        strict per-version parsing above still refuses a v1 document that carries a later field.
         """
         return SyncBundleDocument(
             format=self.format,
-            version=2,
+            version=SYNC_BUNDLE_VERSION,
             created_at=self.created_at,
             origin_device_id=self.origin_device_id,
             watermark=self.watermark,
@@ -509,11 +563,12 @@ class SyncBundleDocumentV1(StrictBundleModel):
             relationship_vocabulary=self.relationship_vocabulary,
             changelog=self.changelog,
             imports=BundleImportState(source_sessions=[], candidate_mappings=[], staging=[]),
+            trait_evidence=[],
         )
 
 
-class SyncBundleDocument(StrictBundleModel):
-    """One complete, point-in-time bootstrap bundle."""
+class SyncBundleDocumentV2(StrictBundleModel):
+    """The M18.1 version-2 bundle, still accepted by restore and no longer emitted."""
 
     format: Literal["people-context-sync-bundle"]
     version: Literal[2]
@@ -524,7 +579,44 @@ class SyncBundleDocument(StrictBundleModel):
     snapshot: BundleSnapshot
     relationship_vocabulary: BundleRelationshipVocabulary
     changelog: list[BundleChangelogEntry]
+    imports: BundleImportStateV2
+
+    def upgraded(self) -> SyncBundleDocument:
+        """Return this document in the current in-memory shape, carrying no trait evidence."""
+        return SyncBundleDocument(
+            format=self.format,
+            version=SYNC_BUNDLE_VERSION,
+            created_at=self.created_at,
+            origin_device_id=self.origin_device_id,
+            watermark=self.watermark,
+            devices=self.devices,
+            snapshot=self.snapshot,
+            relationship_vocabulary=self.relationship_vocabulary,
+            changelog=self.changelog,
+            imports=self.imports.current(),
+            trait_evidence=[],
+        )
+
+
+class SyncBundleDocument(StrictBundleModel):
+    """One complete, point-in-time bootstrap bundle.
+
+    Trait evidence sits beside the snapshot rather than inside it. `BundleSnapshot` is the
+    established portable export shape that the released JSON export also emits, and widening that
+    shape to carry a relation would change a document this milestone does not touch.
+    """
+
+    format: Literal["people-context-sync-bundle"]
+    version: Literal[3]
+    created_at: UtcDatetime
+    origin_device_id: Identifier
+    watermark: BundleWatermark
+    devices: list[BundleDevice]
+    snapshot: BundleSnapshot
+    relationship_vocabulary: BundleRelationshipVocabulary
+    changelog: list[BundleChangelogEntry]
     imports: BundleImportState
+    trait_evidence: list[BundleTraitEvidence]
 
 
 def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
@@ -532,12 +624,14 @@ def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
 
     Version selects the model before anything is validated, so a version-1 document carrying a
     version-2 collection is refused as an unknown field rather than quietly accepted. Anything
-    that does not declare version 1 is held to the current shape, which reports the versions this
-    release understands instead of guessing at a newer one.
+    that does not declare a released older version is held to the current shape, which reports the
+    versions this release understands instead of guessing at a newer one.
     """
     declared = payload.get("version") if isinstance(payload, dict) else None
     if declared == 1:
         return SyncBundleDocumentV1.model_validate(payload).upgraded()
+    if declared == 2:
+        return SyncBundleDocumentV2.model_validate(payload).upgraded()
     return SyncBundleDocument.model_validate(payload)
 
 
@@ -591,6 +685,7 @@ def validate_bundle_document(document: SyncBundleDocument) -> None:
         *_watermark_details(document),
         *_reference_details(document),
         *_import_details(document),
+        *_trait_evidence_details(document),
     ]
     if details:
         raise InvalidBundleError(details)
@@ -646,12 +741,21 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
     # map the same way, so a dependant pointing at any other row is not merely odd — it can never
     # resolve, while the claim keeps suppressing a restage of the source that would fix it.
     people_by_batch: dict[str, set[str]] = {}
+    # And the same for evidence: a trait's `evidence_candidate_ids` resolve only against the
+    # observation and interaction candidates of its own batch.
+    evidence_by_batch: dict[str, set[str]] = {}
     staged_batch_of: dict[str, str] = {}
+    staged_type_of: dict[str, str] = {}
     for row in imports.staging:
         staged_by_batch.setdefault(row.batch_id, set()).add(row.id)
         staged_batch_of[row.id] = row.batch_id
-        if row.candidate.get("type") == "person":
+        candidate_type = row.candidate.get("type")
+        if isinstance(candidate_type, str):
+            staged_type_of[row.id] = candidate_type
+        if candidate_type == "person":
             people_by_batch.setdefault(row.batch_id, set()).add(row.id)
+        elif candidate_type in EVIDENCE_CAPABLE_STAGED_TYPES:
+            evidence_by_batch.setdefault(row.batch_id, set()).add(row.id)
 
     for mapping in imports.candidate_mappings:
         session = sessions.get(mapping.source_session_id)
@@ -677,6 +781,16 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
             details.append(
                 f"candidate mapping {mapping.candidate_id} belongs to a batch its source session "
                 f"does not own: {mapping.batch_id}"
+            )
+        # A candidate produces a record of its own kind, always. A mapping that disagrees with the
+        # staged row it belongs to is a claim that some other kind of record came out of it, and
+        # nothing downstream re-checks: a trait citing that candidate would resolve through the
+        # mapping and be grounded in a record the candidate never produced.
+        staged_type = staged_type_of.get(mapping.candidate_id)
+        if staged_type is not None and staged_type != mapping.entity_type:
+            details.append(
+                f"candidate mapping {mapping.candidate_id} claims a {mapping.entity_type} for a "
+                f"{staged_type} candidate"
             )
         if mapping.disposition != "entity":
             continue
@@ -721,20 +835,85 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         # References are batch-local, so a dependant naming a candidate the bundle does not carry
         # would restore a batch whose commit can never resolve it.
         references = staged_candidate_references(row.candidate)
+        evidence_references = staged_evidence_references(row.candidate)
         unknown = references - staged_by_batch.get(row.batch_id, set())
         details.extend(
             f"staging row {row.id} references a candidate outside its batch: {reference}"
             for reference in sorted(unknown)
         )
-        # And one carried by the batch but of the wrong type is just as unresolvable, because the
-        # resolution map commit builds holds person rows only. (When M18.3 adds evidence
-        # references to observation and interaction candidates, this is the rule that widens.)
-        mistyped = (references - unknown) - people_by_batch.get(row.batch_id, set())
+        # And one carried by the batch but of the wrong type is just as unresolvable. Commit
+        # resolves the two reference kinds through two different maps — people, and the evidence
+        # candidates whose commit mappings the trait then reads — so each is checked against the
+        # rows it can actually resolve to.
+        mistyped = (references - unknown - evidence_references) - people_by_batch.get(row.batch_id, set())
         details.extend(
             f"staging row {row.id} references a candidate that is not a person: {reference}"
             for reference in sorted(mistyped)
         )
+        misfiled_evidence = (evidence_references - unknown) - evidence_by_batch.get(row.batch_id, set())
+        details.extend(
+            f"staging row {row.id} cites a candidate that is not evidence: {reference}"
+            for reference in sorted(misfiled_evidence)
+        )
+        # A durable evidence id names a record rather than a candidate. Hard forget deletes any
+        # staging row citing a record it erased, so a row this installation exported never points
+        # at one the bundle omits; restoring one would leave a trait that can never commit while
+        # its source claim keeps suppressing a restage.
+        dangling = staged_durable_references(row.candidate) - known["observations"] - known["interactions"]
+        details.extend(
+            f"staging row {row.id} cites an unbundled durable evidence record: {reference}"
+            for reference in sorted(dangling)
+        )
     details.extend(_emptied_session_details(imports))
+    return details
+
+
+def _trait_evidence_details(document: SyncBundleDocument) -> list[str]:
+    """Check that every restored evidence link still means what it meant when it was written.
+
+    The two rules are the ones the relation exists for. A link must name records the bundle
+    carries, or the restored trait would cite an id nothing resolves. And evidence must belong to
+    the trait's own subject, or a restored trait becomes a way to read the metadata of a record
+    about somebody else — which is precisely the disclosure the subject check prevents at the
+    write boundary.
+    """
+    snapshot = document.snapshot
+    traits = {row.id: row.person_id for row in snapshot.traits}
+    observations = {row.id: row.person_id for row in snapshot.observations}
+    participants = {row.id: set(row.participant_ids) for row in snapshot.interactions}
+
+    # The key is compared as a tuple rather than as a joined string. Evidence ids are opaque and
+    # may contain any character, a separator included, so any flattening is non-injective: two
+    # genuinely distinct links could compose the same text and a valid backup would be refused as
+    # carrying a duplicate.
+    seen: set[tuple[str, str, str]] = set()
+    repeated: set[tuple[str, str, str]] = set()
+    for row in document.trait_evidence:
+        key = (row.trait_id, row.evidence_type, row.evidence_id)
+        if key in seen:
+            repeated.add(key)
+        seen.add(key)
+    details: list[str] = [
+        f"duplicate trait evidence link: trait {trait_id} cites {evidence_type} {evidence_id}"
+        for trait_id, evidence_type, evidence_id in sorted(repeated)
+    ]
+    for row in document.trait_evidence:
+        subject = traits.get(row.trait_id)
+        if subject is None:
+            details.append(f"trait evidence references an unbundled trait: {row.trait_id}")
+            continue
+        if row.evidence_type == "observation":
+            owner = observations.get(row.evidence_id)
+            if owner is None:
+                details.append(f"trait {row.trait_id} references an unbundled observation: {row.evidence_id}")
+            elif owner != subject:
+                details.append(f"trait {row.trait_id} references an observation about another person")
+            continue
+        interaction = participants.get(row.evidence_id)
+        if interaction is None:
+            details.append(f"trait {row.trait_id} references an unbundled interaction: {row.evidence_id}")
+        elif subject not in interaction:
+            details.append(f"trait {row.trait_id} references an interaction its subject did not join")
     return details
 
 

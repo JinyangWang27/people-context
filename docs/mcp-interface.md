@@ -275,6 +275,25 @@ silently ignored. The staging response gains the additive `source_session_id`, `
 fields; `import_content` gains the same three on a path-based import. A duplicate is reported, not raised: the response
 describes the batch that already exists.
 
+M18.3 adds three optional candidate fields to `stage_candidates`, all additive and all inert when omitted:
+observation and interaction candidates accept a batch-local `evidence_ref` label, and a trait candidate accepts
+`evidence_refs` naming those labels plus `evidence_ids` naming durable observations and interactions already in
+the store. Staging rewrites each label to the canonical candidate id and stores neither the label nor a copy of
+any record; commit resolves the rewritten ids through the M18.1 commit mapping, refuses evidence about anyone
+but the trait's own subject, and leaves the trait unresolved rather than committing it ungrounded. Because that
+mapping is what answers a batch-local citation, `evidence_refs` requires a request that also passes
+`source_kind`; without one the request is refused with `evidence_requires_source_tracking`, while `evidence_ids`
+stays available either way. An `evidence_ref` or `evidence_id` is at most 256 characters and one trait cites at
+most 32 of them combined; both are opaque tokens preserved exactly — not trimmed, folded, or reshaped — so a
+restored non-ULID id remains addressable. See
+[docs/import.md](import.md#grounding-a-trait-in-the-records-it-was-drawn-from).
+
+`get_person_context` gains an additive `trait_evidence` collection reporting which durable records the traits in
+that same bundle were drawn from. It carries `trait_id`, `evidence_type`, and `evidence_id` only — never record
+content — and is filtered twice: a link appears only for a trait the bundle actually disclosed, and only when
+the *cited record's own* sensitivity is disclosable at the requested level. A visible trait therefore never
+reveals that restricted evidence exists.
+
 Because a path-based `import_content` now claims the file it reads, that tool also gains one optional `forced`
 argument, matching the CLI's `--force`. It stages the same content as a distinct processing session and never
 weakens the duplicate rule for later calls. It is additive and defaults to the released behaviour, and it is the

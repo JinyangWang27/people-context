@@ -205,13 +205,14 @@ can distil it without flattening everything into facts. They keep the project's 
 `RecordObservation`, `RecordTrait`, `SetRelationship` — so an imported record carries the same validation,
 provenance, audit, and changelog behavior as a directly recorded one.
 
-- **Observation** — `person_ref`, `text`, optional `observed_at`, optional `sensitivity`. Omitting
-  `observed_at` is how an agent says the source established no event time; commit then follows the released
-  `RecordObservation` clock behavior rather than guessing one.
+- **Observation** — `person_ref`, `text`, optional `observed_at`, optional `sensitivity`, optional
+  `evidence_ref`. Omitting `observed_at` is how an agent says the source established no event time; commit then
+  follows the released `RecordObservation` clock behavior rather than guessing one.
 - **Trait** — `person_ref`, `category` (the existing `TraitCategory` values; M17 invents no second taxonomy),
-  `value`, and — unlike a direct `record_trait` call — a **required** `evidence_note` and `confidence`. An
-  inference lifted out of unstructured material is a weaker claim than one a person states directly, so the
-  boundary refuses to let silence read as certainty or to accept an evidence-free generalization.
+  `value`, and — unlike a direct `record_trait` call — a **required** `evidence_note` and `confidence`, plus
+  optional `evidence_refs` and `evidence_ids`. An inference lifted out of unstructured material is a weaker
+  claim than one a person states directly, so the boundary refuses to let silence read as certainty or to
+  accept an evidence-free generalization.
 - **Relationship** — `from_ref`, `to_ref`, free-form `relationship_type`, optional `confidence`. Commit goes
   through `SetRelationship` unchanged: known vocabulary and synonyms canonicalize with inverse/symmetric
   endpoint semantics, a normalized but unregistered type stays a legal `uncategorized` edge, and only blank or
@@ -230,6 +231,58 @@ forbids it: an attempt to stage a sensitive or restricted edge fails rather than
 downgraded. Such a relationship stays out of People Context until relationship sensitivity exists as a durable
 contract. Sensitive information that *is* enforceable still has a home in facts, observations, traits, and
 interactions.
+
+### Grounding a trait in the records it was drawn from
+
+A trait's `evidence_note` says what the inference rests on in words. M18.3 adds the id-based half, so a trait
+can name the durable observations and interactions themselves.
+
+An agent cannot know a staging row's id before the stager mints it, so it never has to: observation and
+interaction candidates may carry an optional `evidence_ref` — a batch-local label of the agent's own choosing —
+and a trait cites those labels in `evidence_refs`. Staging rewrites each label to the canonical candidate id
+exactly as it rewrites `person_ref`, and the labels themselves are dropped rather than stored. A trait may also
+name records already in the store through `evidence_ids`. There is no append-to-batch API and no way to ask for
+a candidate id: one self-contained request is the whole interface.
+
+```json
+[
+  {"type": "person", "ref": "alice", "name": "Alice Rivera", "aliases": []},
+  {"type": "observation", "person_ref": "alice", "text": "Asked for metrics first",
+   "evidence_ref": "metrics-question"},
+  {"type": "trait", "person_ref": "alice", "category": "communication_style",
+   "value": "Responds to quantitative evidence", "evidence_note": "Twice in one week.",
+   "confidence": 0.65, "evidence_refs": ["metrics-question"], "evidence_ids": ["obs-1"]}
+]
+```
+
+Staging refuses a batch whose references cannot be rewritten to exactly one candidate: a repeated
+`evidence_ref` has no single meaning, and a `evidence_refs` entry naming no observation or interaction
+candidate has none at all. Person `ref` and `evidence_ref` are separate namespaces, so citing a person is
+simply an unknown evidence reference rather than a legal link to something a trait cannot rest on.
+
+`evidence_refs` also requires a **source-tracked batch** — one staged with a `source_kind`. The citation is
+answered at commit through the M18.1 candidate commit mapping, and that mapping exists only for a tracked
+batch; without one, committing the evidence and its trait in separate invocations would strand the trait
+permanently, because the evidence row is already committed and nothing recorded what it produced. Staging
+refuses that up front with `evidence_requires_source_tracking` rather than letting it become a trap. Durable
+`evidence_ids` need no receipt and stay available on any batch, because the id already names the record.
+
+Commit resolves a rewritten reference through the same M18.1 candidate commit mapping that resolves people, so
+evidence committed earlier in this invocation and evidence committed in an earlier partial commit are answered
+the same way. Explicit `evidence_ids` are looked up exactly: an id is an **opaque token**, so a restored or
+hand-authored id such as `obs-1` is as addressable as a generated ULID. Nothing case-folds, reshapes, or even
+trims one — unlike every other bounded string here, an evidence token is validated for non-blankness and length
+without being rewritten, because trimming an identity could resolve it to a different record.
+Every resolved record then faces the durable rules — a supported type, and evidence that belongs to the trait's
+own subject.
+
+If any required evidence cannot be resolved, does not exist, or turns out to be about someone else, the trait
+stays in `unresolved_ids` rather than committing without its grounding. That is the same "not yet" every other
+unresolvable dependency gets: accepting the missing candidate, or re-staging a corrected batch, commits it.
+
+The bounds are part of the contract: an `evidence_ref` or `evidence_id` is at most **256 characters**, and one
+trait cites at most **32** references and durable ids **combined**. A rejected value is refused before staging,
+and the refusal names the caller's own label rather than any candidate's content.
 
 ### Identity in an extraction batch
 
@@ -257,9 +310,9 @@ observation, trait, or relationship candidate is limited to **500 candidates**, 
 `source` label, **1 MiB** of canonically serialized candidate JSON, and **8 KiB for every string on every
 candidate — including the legacy person, fact, interaction, and affiliation fields**, so a mixed batch cannot
 smuggle a transcript through a released field. The new fields are tighter still: observation `text` at 4 KiB,
-trait `value` and `evidence_note` at 2 KiB each, and relationship type and batch-local references at 256
-characters. `source` is bounded as a privacy invariant as much as a resource one — `StageCandidates` copies
-that label into every staged row and every later provenance record.
+trait `value` and `evidence_note` at 2 KiB each, and relationship type, batch-local references, evidence
+references, and durable evidence ids at 256 characters. `source` is bounded as a privacy invariant as much as a
+resource one — `StageCandidates` copies that label into every staged row and every later provenance record.
 
 Every one of these is checked before validation and before any staging row exists, and a refusal names only
 the limit: the rejected payload is untrusted extraction output and is never echoed back. The limits are
@@ -366,7 +419,7 @@ This source was already imported as batch 01J... with 42 candidates; nothing new
 ```
 
 A batch whose candidates are all committed may no longer have reviewable rows — cleanup can drop them, and a
-version-2 restore carries a completed source's durable mappings without them. The duplicate report follows what
+a restore carries a completed source's durable mappings without them. The duplicate report follows what
 the batch still holds: it counts the committed candidates rather than reporting nought, and says there is nothing
 left to review instead of naming a batch `pctx import review` can no longer find.
 
@@ -436,7 +489,7 @@ candidate from the very next bundle — and the reduced bundle would validate, s
 Validation and export read the same declaration of which statuses carry staging, so the two cannot drift apart.
 
 The claim key is what makes a terminal receipt do its job — duplicate detection finds it by that key, not by the
-digest — so both the schema and version-2 restore validation require a `redacted` row to carry one. A receipt
+digest — so both the schema and restore validation require a `redacted` row to carry one. A receipt
 that is still live must own something behind it for the same reason in reverse: a restored `staged` receipt with
 no reviewable row, or any non-redacted receipt with neither a mapping nor a reviewable row, would report a
 source as already imported and then point at a batch review cannot find. A *partially committed* receipt whose

@@ -30,15 +30,48 @@ bundle would carry.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import TraitCategory
+from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+def _non_blank_token(value: str) -> str:
+    """Accept one opaque identity token, checking it is not blank without rewriting it.
+
+    An evidence reference is matched exactly against a durable id, and the bundle's own
+    `Identifier` contract accepts any non-blank string. Trimming one here would make a restored
+    id unciteable, or resolve it to a different record whose id is the trimmed form.
+    """
+    if not value.strip():
+        raise ValueError("an evidence identifier must not be blank")
+    return value
+
+
+#: A durable evidence id, or a canonical candidate id standing in for one until commit.
+#:
+#: The ceiling is the staging boundary's, applied here too because a persisted candidate is what a
+#: restore puts back: accepting a longer one from a hand-edited bundle would reintroduce exactly
+#: the unbounded field the input model refuses.
+EvidenceIdentifier = Annotated[
+    str,
+    StringConstraints(max_length=MAX_EVIDENCE_REFERENCE_CHARS),
+    AfterValidator(_non_blank_token),
+]
 
 #: What identity matching concluded about a staged person candidate.
 #:
@@ -133,7 +166,14 @@ class StagedObservation(StrictStagedModel):
 
 
 class StagedTrait(StrictStagedModel):
-    """A persisted trait candidate, held to the evidence the staging boundary requires."""
+    """A persisted trait candidate, held to the evidence the staging boundary requires.
+
+    The two evidence collections are what a caller's `evidence_refs` and `evidence_ids` become
+    after staging. `evidence_candidate_ids` names other candidates in this batch and resolves
+    through their commit mappings; `evidence_ids` names durable records directly. Both default
+    to empty and are written only when non-empty, so a trait staged before M18.3 — or one that
+    cites nothing — keeps the persisted shape it always had.
+    """
 
     type: Literal["trait"]
     person_candidate_id: NonBlank
@@ -142,6 +182,26 @@ class StagedTrait(StrictStagedModel):
     evidence_note: NonBlank
     confidence: Confidence
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    evidence_candidate_ids: list[EvidenceIdentifier] = Field(default_factory=list)
+    evidence_ids: list[EvidenceIdentifier] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_evidence(self) -> StagedTrait:
+        """Hold a persisted trait to the same evidence budget the input boundary applies.
+
+        Uniqueness is checked per collection and the budget across both, exactly as the caller's
+        request was checked. A duplicate would be a link the store already refuses as a primary
+        key, and an over-budget row would make one trait's retrieval unbounded.
+        """
+        for field_name, values in (
+            ("evidence_candidate_ids", self.evidence_candidate_ids),
+            ("evidence_ids", self.evidence_ids),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError(f"{field_name} must not repeat an identifier")
+        if len(self.evidence_candidate_ids) + len(self.evidence_ids) > MAX_TRAIT_EVIDENCE_LINKS:
+            raise ValueError(f"a trait cites at most {MAX_TRAIT_EVIDENCE_LINKS} pieces of evidence")
+        return self
 
 
 class StagedRelationship(StrictStagedModel):
@@ -188,13 +248,30 @@ def parse_staged_candidate(candidate: dict[str, Any]) -> Any:
     return _STAGED_ADAPTER.validate_python(candidate)
 
 
-def staged_candidate_error(candidate: dict[str, Any]) -> str | None:
+#: Fields M18.3 added to the persisted trait candidate.
+#:
+#: A bundle version that predates them must still reject them, because a released version is a
+#: closed shape: a reader that accepts a field must understand it, and the reader that wrote a
+#: version-2 document had no evidence relation to resolve these against.
+EVIDENCE_STAGED_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids", "evidence_ids")
+
+
+def staged_candidate_error(candidate: dict[str, Any], *, evidence_allowed: bool = True) -> str | None:
     """Return why a persisted candidate is unacceptable, naming no value it carries.
 
     Pydantic's own message quotes rejected input, and a staged candidate is the one place a
     caller's raw source text would sit. The report is therefore built from the location and the
     error type only — enough to find the offending field, never enough to leak what was in it.
+
+    ``evidence_allowed`` is how an older bundle version keeps its released shape. The models here
+    describe what this installation persists *today*; validating a version-2 document through them
+    unchanged would accept an M18.3 field under a declaration that predates it, which is exactly
+    the silent upgrade the per-version contract exists to prevent.
     """
+    if not evidence_allowed:
+        present = sorted(field for field in EVIDENCE_STAGED_FIELDS if field in candidate)
+        if present:
+            return "; ".join(f"{field} (extra_forbidden)" for field in present)
     try:
         parse_staged_candidate(candidate)
     except ValidationError as exc:

@@ -36,8 +36,22 @@ class PersonIdentity(BaseModel):
     is_self: bool
 
 
+class TraitEvidenceLink(BaseModel):
+    """One returned trait's citation of a durable record it rests on."""
+
+    trait_id: str
+    evidence_type: str
+    evidence_id: str
+
+
 class PersonContextResult(BaseModel):
-    """Stable response shape for person context, including not-found results."""
+    """Stable response shape for person context, including not-found results.
+
+    ``trait_evidence`` is additive: it explains the traits this bundle already returned by naming
+    the records they were drawn from. It carries ids and types only — enough to look the evidence
+    up through the ordinary reads, which apply their own disclosure rules — and never any part of
+    a record's content.
+    """
 
     found: bool
     person_id: str
@@ -48,6 +62,7 @@ class PersonContextResult(BaseModel):
     interactions: list[Interaction] = Field(default_factory=list)
     observations: list[Observation] = Field(default_factory=list)
     traits: list[Trait] = Field(default_factory=list)
+    trait_evidence: list[TraitEvidenceLink] = Field(default_factory=list)
     reminders: list[Reminder] = Field(default_factory=list)
 
 
@@ -115,8 +130,37 @@ class GetPersonContext:
             interactions=interactions,
             observations=[],
             traits=traits,
+            trait_evidence=self._trait_evidence(person_id, traits, include_sensitive),
             reminders=reminders,
         )
+
+    def _trait_evidence(
+        self,
+        person_id: str,
+        traits: list[Trait],
+        include_sensitive: bool,
+    ) -> list[TraitEvidenceLink]:
+        """Return citations of the returned traits, filtered by the *evidence's* own level.
+
+        Two filters, and they are separate on purpose. A link is only returned for a trait this
+        bundle actually disclosed, so evidence cannot explain a trait the caller was not shown.
+        And it is returned only if the cited record itself may be disclosed, because a trait's
+        level says nothing about its evidence: a personal trait may perfectly well rest on a
+        restricted observation, and naming that observation would tell an ordinary caller the
+        record exists — which is the disclosure the level exists to prevent.
+        """
+        disclosed = {trait.id for trait in traits}
+        if not disclosed:
+            return []
+        return [
+            TraitEvidenceLink(
+                trait_id=record.trait_id,
+                evidence_type=record.evidence_type,
+                evidence_id=record.evidence_id,
+            )
+            for record in self._context.list_trait_evidence(person_id)
+            if record.trait_id in disclosed and _can_disclose(record.sensitivity, include_sensitive)
+        ]
 
     def _rank_disclosure_records(
         self, person_id: str, max_items: int, include_sensitive: bool

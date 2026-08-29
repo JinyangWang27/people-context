@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.changelog import SqliteChangelog
+from people_context.adapters.sqlite.evidence_cleanup import TraitEvidenceCleaner
 from people_context.adapters.sqlite.import_cleanup import ImportCleanupResult, ImportProvenanceCleaner
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.lifecycle import (
@@ -33,6 +34,7 @@ class SqliteForgetStore:
         self._audit_failure_hook = audit_failure_hook
         self._changelog_failure_hook = changelog_failure_hook
         self._cleaner = ImportProvenanceCleaner(conn)
+        self._evidence_cleaner = TraitEvidenceCleaner(conn)
 
     @property
     def unit_of_work(self) -> SqliteUnitOfWork:
@@ -53,7 +55,13 @@ class SqliteForgetStore:
         with SqliteUnitOfWork(self._conn):
             counts = self.preview_person_forget(person_id)
             affected_entities, orphan_ids = self._person_forget_entities(person_id)
-            cleanup = self._cleaner.erase(_entity_targets(affected_entities), person_id)
+            targets = _entity_targets(affected_entities)
+            # Evidence links are removed before the mappings and the records themselves, so the
+            # ids they contribute reach the audit and changelog redaction below.
+            evidence = self._evidence_cleaner.erase(targets)
+            affected_entities.extend(evidence.affected_entities)
+            counts.update(evidence.counts)
+            cleanup = self._cleaner.erase(targets, person_id)
             affected_entities.extend(_mapping_entities(cleanup))
             counts.update(cleanup.counts)
             target_ids = {entity.entity_id for entity in affected_entities}
@@ -114,6 +122,9 @@ class SqliteForgetStore:
                     )
                     for participant in participant_rows
                 )
+            evidence = self._evidence_cleaner.erase([(entity_type, entity_id)])
+            affected_entities.extend(evidence.affected_entities)
+            deleted.update(evidence.counts)
             cleanup = self._cleaner.erase([(entity_type, entity_id)], None)
             affected_entities.extend(_mapping_entities(cleanup))
             deleted.update(cleanup.counts)
@@ -173,7 +184,9 @@ class SqliteForgetStore:
             (person_id,),
         ).fetchone()[0]
         entities, _orphan_ids = self._person_forget_entities(person_id)
-        counts.update(self._cleaner.plan(_entity_targets(entities), person_id).counts)
+        targets = _entity_targets(entities)
+        counts.update(self._evidence_cleaner.plan(targets).counts)
+        counts.update(self._cleaner.plan(targets, person_id).counts)
         return counts
 
     def _person_forget_entities(self, person_id: str) -> tuple[list[AffectedEntity], list[str]]:

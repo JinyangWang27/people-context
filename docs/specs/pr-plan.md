@@ -442,7 +442,7 @@ Check the matching box only in the PR that delivers it.
   - **Out:** trait evidence links, source rollback/delete cascade, document retrieval, confidence recomputation,
     second parallel record-source provenance table, offset/unbounded source or mapping scans.
 
-- [ ] **M18.3 — Ground traits in durable evidence records and bootstrap v3**
+- [x] **M18.3 — Ground traits in durable evidence records and bootstrap v3**
   - **Scope:** Add the next-free additive trait-evidence relation plus a bounded caller-addressable same-batch
     evidence-ref rewrite; support evidence committed in an earlier partial commit and explicit durable evidence ids;
     advance strict bootstrap export to v3 while retaining v1/v2 restore support; integrate the new relation with

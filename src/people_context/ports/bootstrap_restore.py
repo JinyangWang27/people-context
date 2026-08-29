@@ -41,6 +41,9 @@ class RestoreOutcome:
     source_sessions: int = 0
     candidate_mappings: int = 0
     staged_candidates: int = 0
+    #: M18.3 trait evidence, defaulted for the same reason: a version-1 or version-2 bundle
+    #: carries none of it.
+    trait_evidence: int = 0
 
 
 @runtime_checkable

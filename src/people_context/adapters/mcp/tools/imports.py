@@ -81,6 +81,11 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         request using `observation`, `trait`, or `relationship` is bounded to 500 candidates, a 128-character
         `source`, 1 MiB of candidate JSON, and 8 KiB per string.
 
+        A trait may name the records it was drawn from. Give a supporting `observation` or `interaction` any
+        short `evidence_ref` label of your own and list those labels in the trait's `evidence_refs`; use
+        `evidence_ids` for records already stored. Evidence must be about the trait's own person, and one trait
+        cites at most 32 references and ids combined, each at most 256 characters.
+
         `source_kind` optionally records an import receipt for this batch. It is a machine category such as
         `meeting_transcript`, at most 128 characters of letters, digits, `.`, `_`, `-`, or `/` — never a person,
         a title, or a description; put any human wording in `label` instead. If you can compute a SHA-256 over

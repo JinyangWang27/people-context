@@ -17,6 +17,7 @@ from people_context.domain.sync_bundle import (
     BundleSnapshot,
     BundleSourceSession,
     BundleStagingRow,
+    BundleTraitEvidence,
     BundleWatermark,
     SyncBundleDocument,
 )
@@ -61,6 +62,7 @@ class ExportSyncBundle:
                 ],
                 staging=[BundleStagingRow.model_validate(row) for row in source.staging],
             ),
+            trait_evidence=[BundleTraitEvidence.model_validate(row) for row in source.trait_evidence],
         )
 
 

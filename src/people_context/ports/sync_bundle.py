@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from people_context.ports.changelog import ChangelogEntry
@@ -28,6 +28,7 @@ class BundleSource:
     source_sessions: list[dict[str, Any]]
     candidate_mappings: list[dict[str, Any]]
     staging: list[dict[str, Any]]
+    trait_evidence: list[dict[str, Any]] = field(default_factory=list)
 
 
 @runtime_checkable
