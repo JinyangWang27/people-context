@@ -28,6 +28,8 @@ _PERSON_ID = "01J000000000000000000PERSON"
 _SOURCE_ID = "01J0000000000000000SOURCE1"
 _BATCH_ID = "01J00000000000000000BATCH1"
 _CANDIDATE_ID = "01J0000000000000000000CND1"
+_TRAIT_ID = "01J000000000000000000TRAIT"
+_OBSERVATION_ID = "01J00000000000000000000OBS"
 
 
 def _document() -> dict[str, Any]:
@@ -86,8 +88,29 @@ def _document() -> dict[str, Any]:
                     "provenance": {"source": "user", "session": None, "stated_by": None},
                 }
             ],
-            "observations": [],
-            "traits": [],
+            "observations": [
+                {
+                    "id": _OBSERVATION_ID,
+                    "person_id": _PERSON_ID,
+                    "text": "Asked for the agenda a day ahead.",
+                    "observed_at": "2026-07-02T09:00:00Z",
+                    "sensitivity": "personal",
+                    "provenance": {"source": "user", "session": None, "stated_by": None},
+                }
+            ],
+            "traits": [
+                {
+                    "id": _TRAIT_ID,
+                    "person_id": _PERSON_ID,
+                    "category": "communication_style",
+                    "value": "Prefers agendas in advance",
+                    "evidence_note": "Asked twice in one week.",
+                    "confidence": 0.6,
+                    "sensitivity": "personal",
+                    "provenance": {"source": "agent", "session": None, "stated_by": None},
+                    "updated_at": "2026-07-03T00:00:00Z",
+                }
+            ],
             "interactions": [],
             "reminders": [],
             "user_preferences": [
@@ -181,6 +204,14 @@ def _document() -> dict[str, Any]:
                 }
             ],
         },
+        "trait_evidence": [
+            {
+                "trait_id": _TRAIT_ID,
+                "evidence_type": "observation",
+                "evidence_id": _OBSERVATION_ID,
+                "created_at": "2026-07-03T00:00:00Z",
+            }
+        ],
     }
 
 
@@ -884,7 +915,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 3, "2"])
+@pytest.mark.parametrize("version", [0, 4, "3"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version

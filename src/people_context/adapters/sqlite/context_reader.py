@@ -13,7 +13,7 @@ from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod
 from people_context.domain.trait import Trait, TraitCategory
-from people_context.ports.context import AffiliationRecord, RelationshipRecord
+from people_context.ports.context import AffiliationRecord, RelationshipRecord, TraitEvidenceRecord
 
 
 class SqliteContextReader:
@@ -139,6 +139,39 @@ class SqliteContextReader:
                 sensitivity=Sensitivity(row["sensitivity"]),
                 provenance=_provenance(row),
                 updated_at=datetime.fromisoformat(row["updated_at"]),
+            )
+            for row in rows
+        ]
+
+    def list_trait_evidence(self, person_id: str) -> list[TraitEvidenceRecord]:
+        """Return every citation of this person's traits, carrying each record's own level.
+
+        The evidence's sensitivity is read here rather than inferred from the trait, because the
+        two are independent: a personal trait may rest on a restricted observation, and it is the
+        observation's level that decides whether its id may be shown.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT te.trait_id, te.evidence_type, te.evidence_id,
+                   COALESCE(o.sensitivity, i.sensitivity) AS sensitivity
+            FROM trait_evidence te
+            JOIN traits t ON t.id = te.trait_id
+            LEFT JOIN observations o ON te.evidence_type = 'observation' AND o.id = te.evidence_id
+            LEFT JOIN interactions i ON te.evidence_type = 'interaction' AND i.id = te.evidence_id
+            WHERE t.person_id = ?
+            ORDER BY te.trait_id, te.evidence_type, te.evidence_id
+            """,
+            (person_id,),
+        ).fetchall()
+        return [
+            TraitEvidenceRecord(
+                trait_id=row["trait_id"],
+                evidence_type=row["evidence_type"],
+                evidence_id=row["evidence_id"],
+                # A link whose record is gone is a row the schema cannot produce: the trait side
+                # cascades and hard forget deletes the evidence side. Should one ever exist, the
+                # most restrictive level is the safe reading of an unknown record.
+                sensitivity=Sensitivity(row["sensitivity"]) if row["sensitivity"] else Sensitivity.RESTRICTED,
             )
             for row in rows
         ]

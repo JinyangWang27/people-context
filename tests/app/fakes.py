@@ -21,7 +21,7 @@ from people_context.domain.shared import normalize_name
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
-from people_context.ports.context import AffiliationRecord, RelationshipRecord
+from people_context.ports.context import AffiliationRecord, RelationshipRecord, TraitEvidenceRecord
 from people_context.ports.curation import DeletedPersonReference, FactAssertion, NameUsage
 from people_context.ports.export import ExportSnapshot
 from people_context.ports.insights import RecencySignal
@@ -149,6 +149,7 @@ class FakeContextReader:
         self.traits: list[Trait] = []
         self.interactions: list[Interaction] = []
         self.reminders: list[Reminder] = []
+        self.trait_evidence: list[TraitEvidenceRecord] = []
 
     def list_active_relationships(self, person_id: str, as_of: date) -> list[RelationshipRecord]:
         return [
@@ -184,6 +185,13 @@ class FakeContextReader:
             for record in self.reminders
             if record.person_id == person_id and record.status == ReminderStatus.ACTIVE
         ]
+
+    def list_trait_evidence(self, person_id: str) -> list[TraitEvidenceRecord]:
+        traits = {trait.id for trait in self.list_traits(person_id)}
+        return sorted(
+            (record for record in self.trait_evidence if record.trait_id in traits),
+            key=lambda record: (record.trait_id, record.evidence_type, record.evidence_id),
+        )
 
 
 class FakeRecencyReader:

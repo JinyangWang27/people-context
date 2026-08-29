@@ -88,15 +88,17 @@ The staged flow has three distinct steps. Keep them distinct:
 - `person` — `ref`, `name`, and strict `aliases`; optional `summary`, `message_id`,
   `date`.
 - `interaction` — `summary`, `participant_refs` (batch-local person `ref`s), `date`;
-  optional `channel`, `message_id`, `sensitivity`.
+  optional `channel`, `message_id`, `sensitivity`, `evidence_ref`.
 - `affiliation` — `person_ref`, `org`, `role`; optional `valid_from`, `valid_to`,
   `confidence`.
 - `fact` — `person_ref`, `predicate`, `value`; optional `valid_from`, `valid_to`,
   `confidence`, `sensitivity`.
-- `observation` — `person_ref`, `text`; optional `observed_at`, `sensitivity`. Omit
-  `observed_at` when the source establishes no event time rather than guessing one.
+- `observation` — `person_ref`, `text`; optional `observed_at`, `sensitivity`,
+  `evidence_ref`. Omit `observed_at` when the source establishes no event time rather
+  than guessing one.
 - `trait` — `person_ref`, `category`, `value`, and — unlike a direct `record_trait`
-  call — a **required** `evidence_note` and `confidence`.
+  call — a **required** `evidence_note` and `confidence`; optional `evidence_refs` and
+  `evidence_ids`.
 - `relationship` — `from_ref`, `to_ref`, `relationship_type`; optional `confidence`.
 
 References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
@@ -124,6 +126,17 @@ The further a claim sits from what was explicitly said, the more it must carry. 
 therefore requires an explicit `confidence` and a concise `evidence_note` — a short
 derivation in your own words ("derived from the 24 Aug planning meeting"), never a
 quoted passage. One observed behaviour is not a high-confidence personality claim.
+
+Where the inference rests on records you are staging anyway, say so by id as well as in
+words. Give each supporting `observation` or `interaction` an `evidence_ref` — any short
+label of your own — and list those labels in the trait's `evidence_refs`; use
+`evidence_ids` for records already in the store. Staging rewrites your labels to real
+candidate ids, so you never need to know one. Two rules to work with rather than around:
+evidence must be about the trait's own person (an observation about someone else, or an
+interaction they were not in, leaves the trait uncommitted), and at most 32 references
+and ids combined. This does not replace `evidence_note`, and a trait drawn from material
+that produced no durable record is still a perfectly good trait — cite nothing there
+rather than inventing an observation to point at.
 
 Relationships stated in the source ("Sarah manages Bob", "Alice is John's sister") are
 `relationship` candidates rather than facts, so they reach the graph with its normal

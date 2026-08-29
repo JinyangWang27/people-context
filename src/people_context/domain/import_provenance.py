@@ -84,6 +84,16 @@ STAGED_REFERENCE_LIST_FIELDS: Final[tuple[str, ...]] = (
     "evidence_candidate_ids",
 )
 
+#: The subset of those that name evidence rather than people.
+#:
+#: Every other canonical reference resolves through the person map commit builds; these resolve
+#: through the observation and interaction candidates in the same batch, so a validator that
+#: treated them alike would refuse exactly the rows M18.3 exists to create.
+STAGED_EVIDENCE_REFERENCE_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids",)
+
+#: Staged candidate types that may be cited as another candidate's evidence.
+EVIDENCE_CAPABLE_STAGED_TYPES: Final[frozenset[str]] = frozenset({"observation", "interaction"})
+
 #: Canonical fields naming durable records rather than batch-local candidates.
 STAGED_DURABLE_REFERENCE_FIELDS: Final[tuple[str, ...]] = ("evidence_ids",)
 
@@ -178,6 +188,22 @@ def staged_candidate_references(candidate: dict[str, Any]) -> set[str]:
         if isinstance(value := candidate.get(field_name), str)
     }
     for field_name in STAGED_REFERENCE_LIST_FIELDS:
+        references |= identifier_list(candidate.get(field_name))
+    return references
+
+
+def staged_evidence_references(candidate: dict[str, Any]) -> set[str]:
+    """Return the batch-local candidate ids one persisted candidate cites as evidence."""
+    references: set[str] = set()
+    for field_name in STAGED_EVIDENCE_REFERENCE_FIELDS:
+        references |= identifier_list(candidate.get(field_name))
+    return references
+
+
+def staged_durable_references(candidate: dict[str, Any]) -> set[str]:
+    """Return the durable record ids one persisted candidate cites directly."""
+    references: set[str] = set()
+    for field_name in STAGED_DURABLE_REFERENCE_FIELDS:
         references |= identifier_list(candidate.get(field_name))
     return references
 

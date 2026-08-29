@@ -25,6 +25,10 @@ _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 _DIGEST = "a" * 64
 _NEW_TABLES = ("import_source_sessions", "import_candidate_mappings")
 
+#: The migration that introduced those relations. Pinned rather than derived from the latest
+#: version, so a later additive migration does not silently turn this into a test of itself.
+_SOURCE_MIGRATION = 7
+
 
 def _legacy_database(path: Path, *, through: int) -> None:
     """Write the database a release shipping only the first `through` migrations would."""
@@ -58,7 +62,7 @@ def test_a_fresh_database_creates_both_source_relations(tmp_path: Path) -> None:
 
 def test_a_legacy_database_upgrades_without_losing_its_staging(tmp_path: Path) -> None:
     path = tmp_path / "people.db"
-    _legacy_database(path, through=latest_schema_version() - 1)
+    _legacy_database(path, through=_SOURCE_MIGRATION - 1)
     legacy = sqlite3.connect(path)
     legacy.row_factory = sqlite3.Row
     try:

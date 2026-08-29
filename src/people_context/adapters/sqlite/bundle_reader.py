@@ -41,6 +41,7 @@ class SqliteBundleReader:
             source_sessions = self._source_sessions()
             candidate_mappings = self._candidate_mappings()
             staging = self._incomplete_staging()
+            trait_evidence = self._trait_evidence()
         return BundleSource(
             origin_device_id=origin["id"],
             watermark=HlcTimestamp(origin["hlc_physical_ms"], origin["hlc_logical"]),
@@ -52,7 +53,20 @@ class SqliteBundleReader:
             source_sessions=source_sessions,
             candidate_mappings=candidate_mappings,
             staging=staging,
+            trait_evidence=trait_evidence,
         )
+
+    def _trait_evidence(self) -> list[dict[str, Any]]:
+        """Return every durable trait citation.
+
+        These are primary state, not operational: a restored trait that lost its links would keep
+        claiming grounding in its `evidence_note` while no longer being able to name any of it.
+        """
+        rows = self._conn.execute(
+            """SELECT trait_id, evidence_type, evidence_id, created_at
+               FROM trait_evidence ORDER BY trait_id, evidence_type, evidence_id"""
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def _source_sessions(self) -> list[dict[str, Any]]:
         """Return every surviving receipt, including minimal terminal redacted ones.

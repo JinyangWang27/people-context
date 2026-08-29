@@ -53,6 +53,7 @@ _BASELINE_EMPTY_TABLES = (
     "import_staging",
     "import_source_sessions",
     "import_candidate_mappings",
+    "trait_evidence",
     "audit_log",
     "changelog",
     "sync_conflicts",
@@ -399,6 +400,16 @@ class SqliteBootstrapRestorer:
                 for row in snapshot.audit_log
             ),
         )
+        # After traits and interactions, because the relation's foreign key names the trait it
+        # grounds. A version-1 or version-2 bundle carries no links and writes nothing here.
+        self._insert_many(
+            "trait_evidence",
+            ("trait_id", "evidence_type", "evidence_id", "created_at"),
+            (
+                (row.trait_id, row.evidence_type, row.evidence_id, row.created_at.isoformat())
+                for row in document.trait_evidence
+            ),
+        )
 
     def _insert_imports(self, document: SyncBundleDocument) -> None:
         """Restore source receipts, commit mappings, and incomplete staging verbatim.
@@ -520,4 +531,5 @@ def _outcome(
         source_sessions=len(document.imports.source_sessions),
         candidate_mappings=len(document.imports.candidate_mappings),
         staged_candidates=len(document.imports.staging),
+        trait_evidence=len(document.trait_evidence),
     )

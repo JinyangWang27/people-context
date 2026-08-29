@@ -30,12 +30,15 @@ from people_context.app.records.affiliations import SetAffiliation, SetAffiliati
 from people_context.app.records.facts import RecordFact, RecordFactInput
 from people_context.app.records.interactions import RecordInteraction, RecordInteractionInput
 from people_context.app.records.observations import RecordObservation, RecordObservationInput
+from people_context.app.records.trait_evidence import TraitEvidenceError, resolve_trait_evidence
 from people_context.app.records.traits import RecordTrait, RecordTraitInput
 from people_context.app.relationships.commands import SetRelationship, SetRelationshipInput
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import new_id, normalize_name
+from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
+from people_context.ports.evidence import TraitEvidenceReader
 from people_context.ports.imports import (
     ExtractedImport,
     ImportExtractor,
@@ -290,6 +293,7 @@ class CommitImport:
         sources: ImportSourceStore | None = None,
         audit: AuditLog | None = None,
         clock: Clock | None = None,
+        evidence: TraitEvidenceReader | None = None,
     ) -> None:
         self._people = people
         self._staging = staging
@@ -303,6 +307,7 @@ class CommitImport:
         self._sources = sources
         self._audit = audit
         self._clock = clock
+        self._evidence = evidence
         self._uow = unit_of_work_for(staging, sources, audit)
 
     @property
@@ -332,35 +337,46 @@ class CommitImport:
         )
         transaction_id = new_id()
         accepted = set(accepted_ids)
-        committed: list[str] = []
-        unresolved: list[str] = []
-        outcomes: list[tuple[str, str, str]] = []
+        # Rows are placed in this list at the point their type is *considered*, and the write may
+        # happen later. That separation is what lets a trait be written after the interactions it
+        # cites while `committed_ids` and `unresolved_ids` keep the order they always reported.
+        sequence: list[str] = []
+        produced: dict[str, tuple[str, str]] = {}
+        unresolved_rows: set[str] = set()
         skipped = [row.id for row in rows if row.id in accepted and row.status == "committed"]
         resolution = self._existing_resolution(rows, stored_mappings)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "person":
                 continue
+            sequence.append(row.id)
             person_id = self._commit_person(row, transaction_id)
             if person_id is None:
-                unresolved.append(row.id)
+                unresolved_rows.add(row.id)
                 continue
             resolution[row.id] = person_id
-            committed.append(row.id)
-            outcomes.append((row.id, "person", person_id))
+            produced[row.id] = ("person", person_id)
+        # A trait may cite observations and interactions staged in this same batch, and an agent
+        # is free to list the conclusion before the material it rests on. Traits are therefore
+        # considered here, in their staged position, but written in a final pass — after every
+        # record they could cite has its outcome.
+        deferred_traits: list[tuple[StagedImportRow, str]] = []
         for row in rows:
             if row.id not in accepted or row.status == "committed":
                 continue
             candidate_type = row.candidate.get("type")
             if candidate_type not in _PERSON_SCOPED_TYPES:
                 continue
+            sequence.append(row.id)
             person_candidate_id = row.candidate["person_candidate_id"]
             person_id = resolution.get(person_candidate_id)
             if person_id is None:
-                unresolved.append(row.id)
+                unresolved_rows.add(row.id)
+                continue
+            if candidate_type == "trait":
+                deferred_traits.append((row, person_id))
                 continue
             entity_id = self._commit_person_scoped(str(candidate_type), person_id, row, transaction_id)
-            committed.append(row.id)
-            outcomes.append((row.id, str(candidate_type), entity_id))
+            produced[row.id] = (str(candidate_type), entity_id)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "relationship":
                 continue
@@ -371,8 +387,9 @@ class CommitImport:
             # every participant, so a name and a matching handle routinely describe the same
             # existing identity. Committing that would write the self-loop `merge_people` has
             # to clean up, so the edge stays unresolved and a corrected batch can be re-staged.
+            sequence.append(row.id)
             if subject_id is None or object_id is None or subject_id == object_id:
-                unresolved.append(row.id)
+                unresolved_rows.add(row.id)
                 continue
             relationship = self._set_relationship.execute(
                 SetRelationshipInput(
@@ -384,15 +401,15 @@ class CommitImport:
                 ),
                 transaction_id=transaction_id,
             )
-            committed.append(row.id)
-            outcomes.append((row.id, "relationship", relationship.id))
+            produced[row.id] = ("relationship", relationship.id)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "interaction":
                 continue
+            sequence.append(row.id)
             refs = row.candidate["participant_candidate_ids"]
             participant_ids = [resolution[ref] for ref in refs if ref in resolution]
             if len(participant_ids) != len(refs):
-                unresolved.append(row.id)
+                unresolved_rows.add(row.id)
                 continue
             interaction = self._record_interaction.execute(
                 RecordInteractionInput(
@@ -406,8 +423,16 @@ class CommitImport:
                 ),
                 transaction_id=transaction_id,
             )
-            committed.append(row.id)
-            outcomes.append((row.id, "interaction", interaction.id))
+            produced[row.id] = ("interaction", interaction.id)
+        for row, person_id in deferred_traits:
+            evidence_ids = self._trait_evidence_ids(row, person_id, stored_mappings, produced)
+            if evidence_ids is None:
+                unresolved_rows.add(row.id)
+                continue
+            produced[row.id] = ("trait", self._commit_trait(person_id, row, evidence_ids, transaction_id))
+        committed = [row_id for row_id in sequence if row_id in produced]
+        unresolved = [row_id for row_id in sequence if row_id in unresolved_rows]
+        outcomes = [(row_id, *produced[row_id]) for row_id in committed]
         self._staging.mark_committed(committed)
         if session is not None:
             self._record_provenance(session, batch_id, rows, committed, outcomes, transaction_id)
@@ -417,6 +442,71 @@ class CommitImport:
             unresolved_ids=unresolved,
             skipped_ids=skipped,
         )
+
+    def _trait_evidence_ids(
+        self,
+        row: StagedImportRow,
+        person_id: str,
+        stored_mappings: dict[str, CandidateMappingRow],
+        produced: dict[str, tuple[str, str]],
+    ) -> list[str] | None:
+        """Return the durable records one accepted trait cites, or None if it cannot cite them.
+
+        None means *not yet*, never *drop the link*. A trait whose evidence has not committed,
+        no longer resolves to a live record, or turns out to belong to somebody else stays in
+        `unresolved_ids` and remains committable once the batch is corrected or the missing
+        candidate is accepted. Writing it without its grounding would produce a trait that claims
+        evidence it does not have — the one outcome the relation exists to prevent.
+
+        Batch-local citations resolve through the M18.1 commit mapping, so evidence committed in
+        an earlier partial commit and evidence committed moments ago in this same invocation are
+        answered by the same lookup rather than by two heuristics.
+        """
+        candidate = row.candidate
+        references = list(candidate.get("evidence_candidate_ids", ()))
+        durable = list(candidate.get("evidence_ids", ()))
+        if not references and not durable:
+            return []
+        if self._evidence is None:
+            # The trait asks for grounding this commit has no way to record. Declining leaves it
+            # committable by a wired caller instead of storing an ungrounded claim.
+            return None
+        resolved: list[str] = []
+        for reference in references:
+            evidence_id = _committed_evidence_id(produced.get(reference)) or _mapped_evidence_id(
+                stored_mappings.get(reference)
+            )
+            if evidence_id is None:
+                return None
+            resolved.append(evidence_id)
+        resolved.extend(durable)
+        try:
+            records = resolve_trait_evidence(self._evidence, person_id, resolved)
+        except TraitEvidenceError:
+            return None
+        return [record.evidence_id for record in records]
+
+    def _commit_trait(
+        self,
+        person_id: str,
+        row: StagedImportRow,
+        evidence_ids: list[str],
+        transaction_id: str,
+    ) -> str:
+        candidate = row.candidate
+        return self._record_trait.execute(
+            RecordTraitInput(
+                person_id=person_id,
+                category=candidate["category"],
+                value=candidate["value"],
+                evidence_note=candidate["evidence_note"],
+                confidence=candidate["confidence"],
+                sensitivity=candidate.get("sensitivity", "personal"),
+                evidence_ids=evidence_ids,
+                source=row.source,
+            ),
+            transaction_id=transaction_id,
+        ).id
 
     def _record_provenance(
         self,
@@ -495,7 +585,11 @@ class CommitImport:
         row: StagedImportRow,
         transaction_id: str,
     ) -> str:
-        """Write one resolved person-scoped candidate through its own audited use case."""
+        """Write one resolved person-scoped candidate through its own audited use case.
+
+        Traits do not arrive here: they are written by `_commit_trait` after the evidence pass,
+        because their grounding may name records this same commit has not written yet.
+        """
         candidate = row.candidate
         if candidate_type == "affiliation":
             return self._set_affiliation.execute(
@@ -526,26 +620,13 @@ class CommitImport:
                 ),
                 transaction_id=transaction_id,
             ).id
-        if candidate_type == "observation":
-            # `observed_at` is absent when the source established no event time; the released
-            # `RecordObservation` clock behavior is what fills it in, not a guess made here.
-            return self._record_observation.execute(
-                RecordObservationInput(
-                    person_id=person_id,
-                    text=candidate["text"],
-                    observed_at=candidate.get("observed_at"),
-                    sensitivity=candidate.get("sensitivity", "personal"),
-                    source=row.source,
-                ),
-                transaction_id=transaction_id,
-            ).id
-        return self._record_trait.execute(
-            RecordTraitInput(
+        # `observed_at` is absent when the source established no event time; the released
+        # `RecordObservation` clock behavior is what fills it in, not a guess made here.
+        return self._record_observation.execute(
+            RecordObservationInput(
                 person_id=person_id,
-                category=candidate["category"],
-                value=candidate["value"],
-                evidence_note=candidate["evidence_note"],
-                confidence=candidate["confidence"],
+                text=candidate["text"],
+                observed_at=candidate.get("observed_at"),
                 sensitivity=candidate.get("sensitivity", "personal"),
                 source=row.source,
             ),
@@ -650,6 +731,26 @@ class CommitImport:
             transaction_id=transaction_id,
         )
         return result.person.id
+
+
+def _committed_evidence_id(outcome: tuple[str, str] | None) -> str | None:
+    """Return the record a candidate produced in this invocation, if a trait may cite it."""
+    if outcome is None or outcome[0] not in TRAIT_EVIDENCE_TYPES:
+        return None
+    return outcome[1]
+
+
+def _mapped_evidence_id(mapping: CandidateMappingRow | None) -> str | None:
+    """Return the record a candidate produced in an earlier commit, if a trait may cite it.
+
+    A terminal `merged_away` mapping is history rather than a reference, and no other entity type
+    is citable, so both leave the trait unresolved rather than pointing it at nothing.
+    """
+    if mapping is None or mapping.disposition != DISPOSITION_ENTITY:
+        return None
+    if mapping.entity_type not in TRAIT_EVIDENCE_TYPES:
+        return None
+    return mapping.entity_id
 
 
 def _mapped_person_id(mapping: CandidateMappingRow | None) -> str | None:

@@ -29,7 +29,12 @@ from people_context.adapters.sqlite import (
 from people_context.app.imports import CandidateStager, StageCandidates
 from people_context.app.imports.identity import MatchDisposition
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
-from people_context.domain.import_provenance import STAGED_CANDIDATE_TYPES, staged_candidate_references
+from people_context.domain.import_provenance import (
+    EVIDENCE_CAPABLE_STAGED_TYPES,
+    STAGED_CANDIDATE_TYPES,
+    staged_candidate_references,
+    staged_evidence_references,
+)
 from people_context.domain.staged_candidate import (
     STAGED_CANDIDATE_MODELS,
     MatchDispositionValue,
@@ -77,6 +82,7 @@ def _every_type() -> list[dict[str, Any]]:
             "channel": "email",
             "message_id": "<msg-2@example.com>",
             "sensitivity": "personal",
+            "evidence_ref": "review",
         },
         {
             "type": "affiliation",
@@ -103,6 +109,7 @@ def _every_type() -> list[dict[str, Any]]:
             "text": "Asked for metrics before agreeing to the roadmap",
             "observed_at": "2026-07-19T10:30:00Z",
             "sensitivity": "personal",
+            "evidence_ref": "metrics-question",
         },
         {
             "type": "trait",
@@ -112,6 +119,8 @@ def _every_type() -> list[dict[str, Any]]:
             "evidence_note": "Derived from the 19 Jul roadmap review.",
             "confidence": 0.65,
             "sensitivity": "personal",
+            "evidence_refs": ["metrics-question", "review"],
+            "evidence_ids": ["obs-1"],
         },
         {
             "type": "relationship",
@@ -191,12 +200,14 @@ def test_the_declared_match_dispositions_are_the_ones_matching_produces() -> Non
     assert set(get_args(MatchDispositionValue)) == {member.value for member in MatchDisposition}
 
 
-def test_every_reference_the_stager_writes_names_a_person_row_in_the_same_batch() -> None:
-    """Restore refuses a reference to any other row, so this pins that none is ever written.
+def test_every_reference_the_stager_writes_names_a_row_of_the_kind_its_field_promises() -> None:
+    """Restore refuses a reference to any other row, so this pins what each field may name.
 
-    The stager mints candidate ids for person candidates alone and rewrites every batch-local ref
-    through that one map, which is also how commit builds its resolution map. A rule requiring
-    person targets would be wrong if the stager ever produced anything else.
+    There are two reference namespaces and restore checks them separately. A person reference
+    must name a person candidate, because that is the one map commit builds its resolution from.
+    An evidence reference must name an observation or interaction candidate, because a trait
+    resolves it through that candidate's commit mapping. A rule requiring person targets for both
+    would refuse exactly the evidence rows the stager now writes.
     """
     conn = open_db(":memory:")
     RememberPerson(
@@ -212,10 +223,20 @@ def test_every_reference_the_stager_writes_names_a_person_row_in_the_same_batch(
     ).fetchall()
     conn.close()
 
-    persons = {row["id"] for row in rows if json.loads(row["candidate_json"])["type"] == "person"}
+    candidates = {row["id"]: json.loads(row["candidate_json"]) for row in rows}
+    persons = {row_id for row_id, candidate in candidates.items() if candidate["type"] == "person"}
+    evidence = {
+        row_id
+        for row_id, candidate in candidates.items()
+        if candidate["type"] in EVIDENCE_CAPABLE_STAGED_TYPES
+    }
     referenced: set[str] = set()
-    for row in rows:
-        referenced |= staged_candidate_references(json.loads(row["candidate_json"]))
+    evidence_referenced: set[str] = set()
+    for candidate in candidates.values():
+        referenced |= staged_candidate_references(candidate)
+        evidence_referenced |= staged_evidence_references(candidate)
 
     assert referenced, "the fixture must contain candidates that reference people"
-    assert referenced <= persons
+    assert evidence_referenced, "the fixture must contain a trait citing same-batch evidence"
+    assert evidence_referenced <= evidence
+    assert (referenced - evidence_referenced) <= persons

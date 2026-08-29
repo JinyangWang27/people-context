@@ -28,6 +28,7 @@ adapters.
 | `facts` | Objective predicate/value statements with validity, recording time, sensitivity, and provenance. |
 | `observations` | Explicitly subjective point-in-time notes. |
 | `traits` | Derived structured characteristics such as communication style or values. |
+| `trait_evidence` | Which observations and interactions a trait was drawn from; ids only, never text. |
 | `interactions` / `interaction_participants` | Concise interaction summaries and participant joins; never raw transcripts. |
 | `reminders` | Follow-up, occasion, and standing communication-note reminders. |
 | `user_preferences` | JSON values such as communication philosophy and semantic model metadata. |
@@ -135,3 +136,24 @@ atomically replaces vectors and model metadata.
 
 Keeping these concepts separate prevents subjective material from being presented as fact and supports narrow,
 purpose-specific disclosure.
+
+### Trait evidence
+
+A trait is the one record type here that nobody asserted directly, so it may name what it was drawn from.
+`trait_evidence` links one trait to observations and interactions — ids only, no copied text — under three
+rules:
+
+- **Only observations and interactions.** A trait citing another trait would be a belief chain in which every
+  link looks like grounding while adding no observed material. The schema forbids it outright.
+- **Evidence belongs to the subject.** An observation's person is the trait's person, and an interaction
+  includes them. Without this an unrelated trait becomes a way to learn that a record about somebody else
+  exists.
+- **Evidence never rewrites the inference.** Correcting or erasing a cited record removes the link; it does not
+  silently edit the trait's text or confidence, because the person who drew the conclusion is the one who
+  should revise it.
+
+The link is additive in both directions. A trait recorded before the relation existed simply has none, and
+`evidence_note` remains the human-readable account of the reasoning rather than something the ids replace.
+Hard-forgetting either end deletes the affected links in the same transaction, counts them in the preview, and
+redacts their accountability and replay history — while a link to a *shared* interaction that remains durable
+is untouched.

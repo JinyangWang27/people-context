@@ -51,6 +51,7 @@ from people_context.adapters.sqlite.semantic import (
 )
 from people_context.adapters.sqlite.source_store import SqliteImportSourceStore
 from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
+from people_context.adapters.sqlite.trait_evidence import SqliteTraitEvidenceStore
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 from people_context.app.context import (
     GetCommunicationGuidance,
@@ -197,6 +198,7 @@ class ApplicationRuntime:
     vault_reader: SqliteVaultReader
     import_staging: SqliteImportStagingStore
     import_sources: SqliteImportSourceStore
+    trait_evidence: SqliteTraitEvidenceStore
     semantic_documents: SqliteSemanticDocumentReader
     use_cases: RuntimeUseCases
 
@@ -258,6 +260,7 @@ def build_runtime(
     vault_reader = SqliteVaultReader(conn, runtime_clock)
     import_staging = SqliteImportStagingStore(conn)
     import_sources = SqliteImportSourceStore(conn)
+    trait_evidence = SqliteTraitEvidenceStore(conn)
     semantic_documents = SqliteSemanticDocumentReader(conn)
 
     remember_person = RememberPerson(repo, repo, audit, runtime_clock)
@@ -265,7 +268,7 @@ def build_runtime(
     set_affiliation = SetAffiliation(repo, organizations, records, audit, runtime_clock)
     record_fact = RecordFact(repo, records, audit, runtime_clock)
     record_observation = RecordObservation(repo, records, audit, runtime_clock)
-    record_trait = RecordTrait(repo, records, audit, runtime_clock)
+    record_trait = RecordTrait(repo, records, audit, runtime_clock, trait_evidence)
     set_relationship = SetRelationship(repo, relationship_store, audit, runtime_clock, relationship_vocabulary)
     candidate_stager = CandidateStager(repo, import_staging, runtime_clock, import_sources, audit)
     list_reminders = ListReminders(records)
@@ -357,6 +360,7 @@ def build_runtime(
             import_sources,
             audit,
             runtime_clock,
+            trait_evidence,
         ),
         stage_candidates=StageCandidates(candidate_stager),
         list_import_sources=ListImportSources(import_sources),
@@ -388,6 +392,7 @@ def build_runtime(
         vault_reader=vault_reader,
         import_staging=import_staging,
         import_sources=import_sources,
+        trait_evidence=trait_evidence,
         semantic_documents=semantic_documents,
         use_cases=use_cases,
     )

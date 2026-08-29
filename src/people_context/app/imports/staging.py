@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import TypeAdapter, ValidationError
@@ -112,7 +113,7 @@ class CandidateStager:
         self._reject_excess_candidates(len(candidates), limits)
         validated = self._validate(candidates)
         batch_id = new_id()
-        references = self._references(validated)
+        references = _batch_references(validated)
         rows = self._rows(batch_id, source, validated, references, limits, strict_identity)
         result = ImportBatchResult(
             batch_id=batch_id,
@@ -210,7 +211,7 @@ class CandidateStager:
         batch_id: str,
         source: str,
         candidates: list[CandidateInput],
-        references: dict[str, str],
+        references: _BatchReferences,
         limits: ImportBudget,
         strict_identity: bool,
     ) -> list[StagedImportRow]:
@@ -223,8 +224,8 @@ class CandidateStager:
         source_bytes = len(source.encode("utf-8"))
         payload_bytes = 0
         rows: list[StagedImportRow] = []
-        for candidate in candidates:
-            row = self._row(batch_id, source, candidate, references, strict_identity)
+        for index, candidate in enumerate(candidates):
+            row = self._row(batch_id, source, index, candidate, references, strict_identity)
             payload_bytes += source_bytes + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
             if limits.max_staged_payload_bytes is not None and payload_bytes > limits.max_staged_payload_bytes:
                 raise resource_limit_error(
@@ -286,23 +287,21 @@ class CandidateStager:
                         }
                     ],
                 )
+        _check_evidence_references(validated)
         return validated
-
-    @staticmethod
-    def _references(candidates: list[CandidateInput]) -> dict[str, str]:
-        return {candidate.ref: new_id() for candidate in candidates if isinstance(candidate, PersonCandidateInput)}
 
     def _row(
         self,
         batch_id: str,
         source: str,
+        index: int,
         candidate: CandidateInput,
-        references: dict[str, str],
+        references: _BatchReferences,
         strict_identity: bool,
     ) -> StagedImportRow:
         staged = candidate.model_dump(mode="json", exclude_none=True)
+        row_id = references.row_ids[index]
         if isinstance(candidate, PersonCandidateInput):
-            row_id = references[candidate.ref]
             staged.pop("ref")
             handles = [alias.value for alias in candidate.aliases if alias.kind == AliasKind.HANDLE]
             tokens = [*handles, candidate.name]
@@ -314,19 +313,21 @@ class CandidateStager:
             else:
                 matched = self._match_existing(tokens)
                 staged["matched_person_id"] = matched.id if matched else None
+        elif isinstance(candidate, InteractionCandidateInput):
+            staged.pop("participant_refs")
+            staged.pop("evidence_ref", None)
+            staged["participant_candidate_ids"] = [references.people[ref] for ref in candidate.participant_refs]
+        elif isinstance(candidate, RelationshipCandidateInput):
+            staged.pop("from_ref")
+            staged.pop("to_ref")
+            staged["from_candidate_id"] = references.people[candidate.from_ref]
+            staged["to_candidate_id"] = references.people[candidate.to_ref]
         else:
-            row_id = new_id()
-            if isinstance(candidate, InteractionCandidateInput):
-                staged.pop("participant_refs")
-                staged["participant_candidate_ids"] = [references[ref] for ref in candidate.participant_refs]
-            elif isinstance(candidate, RelationshipCandidateInput):
-                staged.pop("from_ref")
-                staged.pop("to_ref")
-                staged["from_candidate_id"] = references[candidate.from_ref]
-                staged["to_candidate_id"] = references[candidate.to_ref]
-            else:
-                staged.pop("person_ref")
-                staged["person_candidate_id"] = references[candidate.person_ref]
+            staged.pop("person_ref")
+            staged.pop("evidence_ref", None)
+            staged["person_candidate_id"] = references.people[candidate.person_ref]
+            if isinstance(candidate, TraitCandidateInput):
+                _rewrite_trait_evidence(staged, candidate, references)
         return StagedImportRow(
             id=row_id,
             batch_id=batch_id,
@@ -420,6 +421,111 @@ class StageCandidates:
             strict_identity=strict_identity or extraction,
             claim=claim,
         )
+
+
+def _check_evidence_references(candidates: list[CandidateInput]) -> None:
+    """Refuse a batch whose evidence references cannot be rewritten deterministically.
+
+    Both failures are refused before staging rather than resolved leniently at commit. A repeated
+    `evidence_ref` has no single meaning — two records answer to one label — and a trait citing a
+    label nothing declares has no meaning at all. Accepting either would produce a batch whose
+    traits look grounded in review and then commit ungrounded, or grounded in whichever candidate
+    the rewrite happened to reach last.
+
+    The messages name the caller's own label, which is a value the caller authored and already
+    holds. Nothing here reports a candidate's content.
+    """
+    declared: dict[str, int] = {}
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, (ObservationCandidateInput, InteractionCandidateInput)):
+            continue
+        if candidate.evidence_ref is None:
+            continue
+        if candidate.evidence_ref in declared:
+            raise _invalid_candidates(
+                "duplicate evidence reference",
+                details=[
+                    {
+                        "type": "value_error",
+                        "loc": [index, "evidence_ref"],
+                        "msg": f"duplicate evidence ref: {candidate.evidence_ref}",
+                    }
+                ],
+            )
+        declared[candidate.evidence_ref] = index
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, TraitCandidateInput):
+            continue
+        unknown = sorted(set(candidate.evidence_refs) - declared.keys())
+        if unknown:
+            raise _invalid_candidates(
+                "unknown evidence reference",
+                details=[
+                    {
+                        "type": "value_error",
+                        "loc": [index, "evidence_refs"],
+                        "msg": (
+                            "evidence_refs must name an observation or interaction candidate in this batch: "
+                            f"{', '.join(unknown)}"
+                        ),
+                    }
+                ],
+            )
+
+
+@dataclass(frozen=True)
+class _BatchReferences:
+    """The two caller-facing namespaces of one batch, resolved to canonical candidate ids.
+
+    They are separate namespaces on purpose. A person `ref` and an `evidence_ref` answer
+    different questions — who is this about, and what is this drawn from — and commit resolves
+    them through different maps. Merging them would let a trait cite a person, which is not a
+    thing a trait can rest on.
+
+    ``row_ids`` is every candidate's id, allocated up front and indexed by position, because an
+    evidence reference has to be rewritten to a row id that does not exist until it is minted.
+    """
+
+    people: dict[str, str]
+    evidence: dict[str, str]
+    row_ids: list[str]
+
+
+def _batch_references(candidates: list[CandidateInput]) -> _BatchReferences:
+    """Allocate one canonical id per candidate and index both reference namespaces onto them."""
+    row_ids = [new_id() for _ in candidates]
+    people = {
+        candidate.ref: row_ids[index]
+        for index, candidate in enumerate(candidates)
+        if isinstance(candidate, PersonCandidateInput)
+    }
+    evidence = {
+        candidate.evidence_ref: row_ids[index]
+        for index, candidate in enumerate(candidates)
+        if isinstance(candidate, (ObservationCandidateInput, InteractionCandidateInput))
+        and candidate.evidence_ref is not None
+    }
+    return _BatchReferences(people=people, evidence=evidence, row_ids=row_ids)
+
+
+def _rewrite_trait_evidence(
+    staged: dict[str, Any],
+    candidate: TraitCandidateInput,
+    references: _BatchReferences,
+) -> None:
+    """Replace a trait's caller-local evidence labels with canonical candidate ids.
+
+    This mirrors the person-ref rewrite exactly: the caller's own labels never reach storage, so
+    review and commit read canonical ids and nothing has to interpret an agent's naming scheme.
+    Both collections are written only when they hold something, which is what keeps a trait that
+    cites nothing byte-identical to one staged before evidence links existed.
+    """
+    staged.pop("evidence_refs", None)
+    staged.pop("evidence_ids", None)
+    if candidate.evidence_refs:
+        staged["evidence_candidate_ids"] = [references.evidence[ref] for ref in candidate.evidence_refs]
+    if candidate.evidence_ids:
+        staged["evidence_ids"] = list(candidate.evidence_ids)
 
 
 def _candidate_refs(candidate: CandidateInput) -> list[str]:

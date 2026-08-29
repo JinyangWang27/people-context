@@ -103,6 +103,13 @@ ordinary-disclosure only — an explicitly sensitive or restricted edge fails st
 entering a graph that cannot enforce the level it claims. Ambiguous identity is kept explicit: several
 possible existing people never becomes a silently created new person.
 
+The M18.3 evidence fields are bounded in the same spirit and for the same reason: an `evidence_ref` or
+`evidence_id` is at most 256 characters and a trait cites at most 32 combined, so neither becomes a place to
+copy an excerpt or to make one trait's retrieval unbounded. A link stores ids and nothing else. Two further
+rules keep it from becoming a disclosure route of its own: evidence must belong to the trait's own subject, so
+Alice's trait cannot surface a record about Bob; and a returned link is filtered by the *cited record's* own
+sensitivity rather than the trait's, so a visible trait never reveals that a restricted observation exists.
+
 ## Audit of every mutation
 
 Every create, update, merge, and forget operation atomically writes primary state, an `audit_log` entry, and
@@ -423,11 +430,13 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   without minting new audit or changelog entries. Forgotten-record redaction therefore stays redacted, and
   nothing is reconstructed or enriched.
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
-- Since M18.1 the bundle is **version 2** and carries import receipts, every durable candidate commit mapping,
-  and the staging rows of batches that are still reviewable. Restore still accepts version 1, validating each
-  document against its own strict shape, and the two new tables join the baseline-empty rule for both versions —
-  freshness is a property of the destination, not of the document. A terminal `redacted` receipt travels as the
-  minimal claim it was reduced to; a bundle that tried to reattach cleared caller metadata to one is refused.
+- Since M18.1 the bundle carries import receipts, every durable candidate commit mapping, and the staging rows
+  of batches that are still reviewable; since M18.3 it is **version 3** and also carries the trait-evidence
+  links. Restore still accepts versions 1 and 2, validating each document against its own strict shape, and
+  every new table joins the baseline-empty rule for *all* accepted versions — freshness is a property of the
+  destination, not of the document. A terminal `redacted` receipt travels as the minimal claim it was reduced
+  to; a bundle that tried to reattach cleared caller metadata to one is refused. An evidence link is validated
+  the way it was written: it must name records the bundle carries, and they must belong to the trait's subject.
 
 ## Writes and destructive operations are annotated for client-side gating
 

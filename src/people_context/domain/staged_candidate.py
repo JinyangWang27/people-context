@@ -32,13 +32,32 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
 
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import TraitCategory
+from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+#: A durable evidence id, or a canonical candidate id standing in for one until commit.
+#:
+#: The ceiling is the staging boundary's, applied here too because a persisted candidate is what a
+#: restore puts back: accepting a longer one from a hand-edited bundle would reintroduce exactly
+#: the unbounded field the input model refuses.
+EvidenceIdentifier = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_EVIDENCE_REFERENCE_CHARS),
+]
 
 #: What identity matching concluded about a staged person candidate.
 #:
@@ -133,7 +152,14 @@ class StagedObservation(StrictStagedModel):
 
 
 class StagedTrait(StrictStagedModel):
-    """A persisted trait candidate, held to the evidence the staging boundary requires."""
+    """A persisted trait candidate, held to the evidence the staging boundary requires.
+
+    The two evidence collections are what a caller's `evidence_refs` and `evidence_ids` become
+    after staging. `evidence_candidate_ids` names other candidates in this batch and resolves
+    through their commit mappings; `evidence_ids` names durable records directly. Both default
+    to empty and are written only when non-empty, so a trait staged before M18.3 — or one that
+    cites nothing — keeps the persisted shape it always had.
+    """
 
     type: Literal["trait"]
     person_candidate_id: NonBlank
@@ -142,6 +168,26 @@ class StagedTrait(StrictStagedModel):
     evidence_note: NonBlank
     confidence: Confidence
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    evidence_candidate_ids: list[EvidenceIdentifier] = Field(default_factory=list)
+    evidence_ids: list[EvidenceIdentifier] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_evidence(self) -> StagedTrait:
+        """Hold a persisted trait to the same evidence budget the input boundary applies.
+
+        Uniqueness is checked per collection and the budget across both, exactly as the caller's
+        request was checked. A duplicate would be a link the store already refuses as a primary
+        key, and an over-budget row would make one trait's retrieval unbounded.
+        """
+        for field_name, values in (
+            ("evidence_candidate_ids", self.evidence_candidate_ids),
+            ("evidence_ids", self.evidence_ids),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError(f"{field_name} must not repeat an identifier")
+        if len(self.evidence_candidate_ids) + len(self.evidence_ids) > MAX_TRAIT_EVIDENCE_LINKS:
+            raise ValueError(f"a trait cites at most {MAX_TRAIT_EVIDENCE_LINKS} pieces of evidence")
+        return self
 
 
 class StagedRelationship(StrictStagedModel):
