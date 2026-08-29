@@ -27,6 +27,7 @@ from people_context.app.records.observations import RecordObservationInput
 from people_context.app.records.trait_evidence import TraitEvidenceError, resolve_trait_evidence
 from people_context.app.records.traits import RecordTraitInput
 from people_context.domain.shared import Sensitivity, normalize_name
+from people_context.domain.trait_evidence import trait_evidence_key
 from people_context.ports.evidence import EvidenceRecord
 
 _MIGRATIONS = "people_context.adapters.sqlite.migrations"
@@ -424,7 +425,7 @@ def test_a_removed_link_is_named_in_the_replay_manifest_and_its_history_redacted
 ) -> None:
     store = _Store(tmp_path / "people.db")
     _alice, _bob, trait_id, interaction = _grounded(store)
-    link_entity = f"{trait_id}:{interaction}"
+    link_entity = trait_evidence_key(trait_id, "interaction", interaction)
 
     store.forget.execute(f"trait:{trait_id}", "record")
 
@@ -442,6 +443,52 @@ def test_a_removed_link_is_named_in_the_replay_manifest_and_its_history_redacted
         "SELECT payload_json FROM changelog WHERE entity_type = 'trait_evidence' AND op_kind <> 'forget'"
     ).fetchall()
     assert covered and all(row["payload_json"] == '{"redacted": true}' for row in covered)
+
+
+def test_two_links_differing_only_by_evidence_type_erase_independently(tmp_path: Path) -> None:
+    """Ids are opaque and unique only within their own table, so a restored store may hold an
+    observation and an interaction sharing one id, and a trait may cite both. They are two rows:
+    forgetting one must leave the other, and must name which one it removed."""
+    store = _Store(tmp_path / "people.db")
+    alice = store.person("Alice Rivera")
+    observation = store.observe.execute(RecordObservationInput(person_id=alice, text="Asked for metrics"))
+    interaction = store.interact.execute(
+        RecordInteractionInput(summary="Planning meeting", participant_ids=[alice], occurred_at=_NOW)
+    )
+    trait = store.trait.execute(
+        RecordTraitInput(person_id=alice, category="other", value="Direct", evidence_ids=[observation.id])
+    )
+    # Collapse the two records onto one shared opaque id, as a restore legitimately could.
+    # The rename is constructing that state, not exercising a path the application offers, so the
+    # participant foreign key is stood down for the surgery and restored immediately after.
+    shared = "shared-1"
+    store.conn.execute("PRAGMA foreign_keys=OFF")
+    store.conn.execute("UPDATE observations SET id = ? WHERE id = ?", (shared, observation.id))
+    store.conn.execute("UPDATE interactions SET id = ? WHERE id = ?", (shared, interaction.id))
+    store.conn.execute(
+        "UPDATE interaction_participants SET interaction_id = ? WHERE interaction_id = ?",
+        (shared, interaction.id),
+    )
+    store.conn.execute(
+        "UPDATE trait_evidence SET evidence_id = ? WHERE trait_id = ?", (shared, trait.id)
+    )
+    store.conn.execute(
+        """INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at)
+           VALUES (?, 'interaction', ?, ?)""",
+        (trait.id, shared, _NOW.isoformat()),
+    )
+    store.conn.commit()
+    store.conn.execute("PRAGMA foreign_keys=ON")
+
+    result = store.forget.execute(f"observation:{shared}", "record")
+
+    assert result.deleted["trait_evidence"] == 1
+    assert store.links() == [(trait.id, "interaction", shared)]
+    tombstone = store.conn.execute(
+        "SELECT payload_json FROM changelog WHERE op_kind = 'forget'"
+    ).fetchone()["payload_json"]
+    assert trait_evidence_key(trait.id, "observation", shared) in tombstone
+    assert trait_evidence_key(trait.id, "interaction", shared) not in tombstone
 
 
 def test_a_database_with_no_links_reports_no_evidence_count(tmp_path: Path) -> None:

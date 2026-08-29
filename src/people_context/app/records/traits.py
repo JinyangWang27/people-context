@@ -15,6 +15,7 @@ from people_context.app._mutation import (
 from people_context.app.records.trait_evidence import resolve_trait_evidence
 from people_context.domain.shared import Confidence, Sensitivity
 from people_context.domain.trait import Trait, TraitCategory
+from people_context.domain.trait_evidence import trait_evidence_key
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.evidence import EvidenceRecord, TraitEvidenceLink, TraitEvidenceStore
@@ -125,7 +126,8 @@ class RecordTrait:
         A link is replicable primary state, so it is accountable like any other durable write:
         one audit and changelog effect per link, sharing the trait's own transaction. The
         composite entity id is what lets hard forget find and redact this history later, exactly
-        as it does for an interaction's participants.
+        as it does for an interaction's participants. It names all three key components, because
+        two links differing only by evidence type are two distinct rows.
 
         The replay image carries `created_at` while the accountability payload does not. That
         asymmetry is the same one every other primary write here makes: a consumer *applies* the
@@ -154,7 +156,7 @@ class RecordTrait:
                 self._clock,
                 op="create",
                 entity_type="trait_evidence",
-                entity_id=f"{trait.id}:{record.evidence_id}",
+                entity_id=trait_evidence_key(trait.id, record.evidence_type, record.evidence_id),
                 payload={
                     "trait_id": trait.id,
                     "evidence_type": record.evidence_type,

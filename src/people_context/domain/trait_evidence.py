@@ -35,3 +35,19 @@ MAX_EVIDENCE_REFERENCE_CHARS: Final = 256
 
 #: Combined `evidence_refs` + `evidence_ids` one staged trait candidate may carry.
 MAX_TRAIT_EVIDENCE_LINKS: Final = 32
+
+
+def trait_evidence_key(trait_id: str, evidence_type: str, evidence_id: str) -> str:
+    """Return the accountability identity of one link, naming all three of its key components.
+
+    A link is identified by its whole primary key, and the type is not decoration there: ids are
+    opaque and nothing makes them unique *across* tables, so a restored store may legitimately
+    hold an observation and an interaction sharing one id, and one trait may cite both. Those are
+    two distinct rows. An identity that dropped the type would give them the same name, and a
+    forget of one would emit a tombstone that could not say which row to erase.
+
+    Both the write that journals a link and the forget that redacts it read this one function,
+    because the two must agree exactly: redaction finds that history by the very string the write
+    recorded it under, and a drift between them would silently leave it behind.
+    """
+    return f"{trait_id}:{evidence_type}:{evidence_id}"

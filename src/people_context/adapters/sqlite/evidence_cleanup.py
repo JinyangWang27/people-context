@@ -19,7 +19,7 @@ import sqlite3
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
+from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES, trait_evidence_key
 from people_context.ports.lifecycle import AffectedEntity
 
 
@@ -42,12 +42,13 @@ class EvidenceCleanupPlan:
     def affected_entities(self) -> list[AffectedEntity]:
         """Return the removed links as affected entities, so peer replay erases them too.
 
-        The composite id is the one `RecordTrait` journalled the link under, which is what makes
-        this forget's audit and changelog redaction able to find that history.
+        The identity is the one `RecordTrait` journalled the link under — both sides read the same
+        helper — which is what makes this forget's audit and changelog redaction able to find that
+        history, and what keeps two links that differ only by evidence type distinguishable.
         """
         return [
-            AffectedEntity(entity_type="trait_evidence", entity_id=f"{trait_id}:{evidence_id}")
-            for trait_id, _evidence_type, evidence_id in self.links
+            AffectedEntity(entity_type="trait_evidence", entity_id=trait_evidence_key(*link))
+            for link in self.links
         ]
 
 
