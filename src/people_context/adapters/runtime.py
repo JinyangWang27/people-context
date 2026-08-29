@@ -51,6 +51,7 @@ from people_context.adapters.sqlite.semantic import (
 )
 from people_context.adapters.sqlite.source_store import SqliteImportSourceStore
 from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
+from people_context.adapters.sqlite.timeline_reader import SqlitePersonTimelineReader
 from people_context.adapters.sqlite.trait_evidence import SqliteTraitEvidenceStore
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 from people_context.app.context import (
@@ -78,7 +79,7 @@ from people_context.app.imports import (
     ShowImportSource,
     StageCandidates,
 )
-from people_context.app.insights import GetStaleRelationships, ListUpcomingDates
+from people_context.app.insights import GetPersonTimeline, GetStaleRelationships, ListUpcomingDates
 from people_context.app.people import (
     AddAlias,
     EditPerson,
@@ -126,6 +127,7 @@ class RuntimeUseCases:
     get_relationship_graph: GetRelationshipGraph
     find_connection: FindConnection
     get_stale_relationships: GetStaleRelationships
+    get_person_timeline: GetPersonTimeline
     report_doctor_findings: ReportDoctorFindings
     report_store_stats: ReportStoreStats
     list_upcoming_dates: ListUpcomingDates
@@ -181,6 +183,7 @@ class ApplicationRuntime:
     context_reader: SqliteContextReader
     graph_reader: SqliteGraphReader
     recency_reader: SqliteRecencyReader
+    timeline_reader: SqlitePersonTimelineReader
     curation_reader: SqliteCurationReader
     stats_reader: SqliteStatsReader
     records: SqliteRecordStore | IndexingRecordStore
@@ -246,6 +249,7 @@ def build_runtime(
     context_reader = SqliteContextReader(conn)
     graph_reader = SqliteGraphReader(conn, runtime_clock)
     recency_reader = SqliteRecencyReader(conn)
+    timeline_reader = SqlitePersonTimelineReader(conn)
     curation_reader = SqliteCurationReader(conn)
     stats_reader = SqliteStatsReader(conn, path)
     relationship_store = SqliteRelationshipStore(conn)
@@ -281,6 +285,7 @@ def build_runtime(
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
+        get_person_timeline=GetPersonTimeline(repo, timeline_reader),
         report_doctor_findings=ReportDoctorFindings(curation_reader, runtime_clock),
         report_store_stats=ReportStoreStats(stats_reader, runtime_clock),
         list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
@@ -375,6 +380,7 @@ def build_runtime(
         context_reader=context_reader,
         graph_reader=graph_reader,
         recency_reader=recency_reader,
+        timeline_reader=timeline_reader,
         curation_reader=curation_reader,
         stats_reader=stats_reader,
         records=records,

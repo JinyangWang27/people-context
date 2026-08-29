@@ -33,6 +33,7 @@ from people_context.adapters.sqlite.semantic import (
 )
 from people_context.adapters.sqlite.source_store import SqliteImportSourceStore
 from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
+from people_context.adapters.sqlite.timeline_reader import SqlitePersonTimelineReader
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 
@@ -53,6 +54,7 @@ __all__ = [
     "SqliteMergeStore",
     "SqliteOrganizationStore",
     "SqlitePeopleRepository",
+    "SqlitePersonTimelineReader",
     "SqlitePreferencesStore",
     "SqliteRecencyReader",
     "SqliteRecordStore",

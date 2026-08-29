@@ -277,6 +277,7 @@ uv run pctx list [--all]
 uv run pctx search <query>
 uv run pctx show <person>
 uv run pctx stale [--category C] [--threshold-days N] [--limit N]
+uv run pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
 uv run pctx upcoming [--window-days N] [--person PERSON]
 uv run pctx doctor [--json] [--only CODE[,CODE...]]
 uv run pctx stats [--json] [--include-path]

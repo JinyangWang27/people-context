@@ -474,7 +474,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M19 — Knowledge consolidation & temporal views
 
-- [ ] **M19.1 — Add bounded person timeline reads**
+- [x] **M19.1 — Add bounded person timeline reads**
   - **Scope:** Add a narrow timeline port/use case, bounded SQLite projection, local `pctx timeline` and ordinary-
     disclosure MCP read over interactions/observations/dated state/traits plus M18 provenance/evidence where useful.
   - **Acceptance:** deterministic effective-time ordering with stable tie-breaks; explicit undated behavior; app and

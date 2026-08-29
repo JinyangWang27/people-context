@@ -17,7 +17,7 @@ from people_context.domain.organization import Affiliation, Organization
 from people_context.domain.person import Person
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
-from people_context.domain.shared import normalize_name
+from people_context.domain.shared import Sensitivity, normalize_name
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
@@ -33,6 +33,7 @@ from people_context.ports.semantic import (
 )
 from people_context.ports.stats import StoreInventory
 from people_context.ports.sync_bundle import BundleSource
+from people_context.ports.timeline import TimelineEvidenceRow, TimelineRow
 
 
 class FakeClock:
@@ -206,6 +207,40 @@ class FakeRecencyReader:
         return [
             signal for signal in self.signals if category is None or category in signal.categories
         ]
+
+
+class FakePersonTimelineReader:
+    """In-memory PersonTimelineReader returning pre-built projection rows.
+
+    The fake reproduces the two contract details the application depends on: only rows at one of
+    the requested levels (or carrying none) participate, and one row past `limit` is returned so
+    the use case can report truncation without counting.
+    """
+
+    def __init__(
+        self,
+        rows: list[TimelineRow] | None = None,
+        evidence: dict[str, list[TimelineEvidenceRow]] | None = None,
+    ) -> None:
+        self.rows = rows or []
+        self.evidence = evidence or {}
+        self.calls: list[tuple[str, int, tuple[Sensitivity, ...]]] = []
+        self.evidence_calls: list[tuple[str, int]] = []
+
+    def list_timeline_rows(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[TimelineRow]:
+        self.calls.append((person_id, limit, sensitivities))
+        visible = [row for row in self.rows if row.sensitivity is None or row.sensitivity in sensitivities]
+        return visible[: limit + 1]
+
+    def list_trait_evidence(self, trait_id: str, *, limit: int) -> list[TimelineEvidenceRow]:
+        self.evidence_calls.append((trait_id, limit))
+        return self.evidence.get(trait_id, [])[: limit + 1]
 
 
 class FakeCurationReader:

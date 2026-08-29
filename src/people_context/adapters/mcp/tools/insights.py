@@ -9,7 +9,9 @@ from mcp.types import ToolAnnotations
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
+    DEFAULT_TIMELINE_LIMIT,
     DEFAULT_WINDOW_DAYS,
+    PersonTimelineError,
     StaleRelationshipsError,
     UpcomingDatesError,
 )
@@ -39,6 +41,28 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 limit=limit,
             ).model_dump(mode="json")
         except StaleRelationshipsError as exc:
+            return {"error": "invalid_parameter", "message": str(exc)}
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def get_person_timeline(
+        person_id: str,
+        limit: int = DEFAULT_TIMELINE_LIMIT,
+    ) -> dict[str, Any]:
+        """Return one person's recent history, newest first, as a bounded chronology.
+
+        Entries project durable records — interactions, observations, facts, affiliations,
+        relationships, and traits — with the stored timestamp each was placed by and which field
+        that was. Sensitive and restricted records are never returned by this ordinary tool, and a
+        trait names only evidence that is itself ordinary. An unknown or removed person returns
+        `found: false` rather than an error.
+        """
+        try:
+            return deps.get_person_timeline.execute(
+                person_id,
+                limit=limit,
+                include_sensitive=False,
+            ).model_dump(mode="json")
+        except PersonTimelineError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
     @mcp.tool(annotations=_READ_ONLY)

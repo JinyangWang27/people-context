@@ -87,6 +87,7 @@ repurposed, and new fields are additive.
 | Person index | `people-context-person-index` | `1` | `pctx list --json` |
 | Data-quality findings | `people-context-doctor` | `1` | `pctx doctor --json` |
 | Aggregate inventory | `people-context-stats` | `1` | `pctx stats --json` |
+| Person timeline | `people-context-person-timeline` | `1` | `pctx timeline --json` |
 | Import staging batch | `people-context-import-batch` | `1` | `pctx import stage --json`, `pctx import stage-candidates --json` |
 | Import review | `people-context-import-review` | `1` | `pctx import review --json` |
 | Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
@@ -98,9 +99,9 @@ The documents differ in how a field addition is classified, because only one of 
 project:
 
 - **Portable dataset export**, **person brief**, **person index**, **data-quality findings**, **aggregate
-  inventory**, and the **import lifecycle** and **import source inspection** documents are producer-only:
-  nothing in this repository consumes them, and external readers are expected to ignore unknown fields. A new
-  field is additive and does not advance `version`; a removal or a repurposing does.
+  inventory**, **person timeline**, and the **import lifecycle** and **import source inspection** documents are
+  producer-only: nothing in this repository consumes them, and external readers are expected to ignore unknown
+  fields. A new field is additive and does not advance `version`; a removal or a repurposing does.
 
   The source-inspection documents add one contract of their own: `next_cursor` is opaque. It encodes a position
   in an ordering this project is free to extend, so a caller passes it back verbatim and never composes or
@@ -119,6 +120,16 @@ project:
   The doctor document's finding `code` values and the `surface` discriminator on a suggested action are part of
   its contract: an existing code is not removed or given a new meaning, and a later release may add codes and
   evidence collections additively. Consumers should ignore a `code` they do not recognize rather than fail.
+
+  The timeline document is a projection over durable records, never a second event store: its entries are
+  assembled per call and an `entry_id` is the id of the record itself, so it stays resolvable through the
+  ordinary reads. Its contract is `entry_type` and `basis`: existing values keep their meaning, a later release
+  may add either additively, and a consumer should ignore a value it does not recognize rather than fail.
+  `effective_at` is what the entries are ordered by and `basis` names the stored field it came from, so a
+  consumer never has to guess whether a timestamp means "this happened then" or "this was written down then".
+  A `null` `sensitivity` means the record type carries no stored disclosure level and is always ordinary; it is
+  not an unknown level. The default document is ordinary-disclosure, and `include_sensitive` says whether the
+  local operator explicitly widened it.
 
   The stats document's aggregate-only guarantee is part of its contract: a later release may add sections,
   documented tables, and distribution buckets, but no addition turns a count into a stored personal value.

@@ -14,12 +14,15 @@ from people_context.app.imports import (
 from people_context.app.insights import (
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
+    DEFAULT_TIMELINE_LIMIT,
     DEFAULT_WINDOW_DAYS,
     MAX_STALE_LIMIT,
     MAX_THRESHOLD_DAYS,
+    MAX_TIMELINE_LIMIT,
     MAX_WINDOW_DAYS,
     MIN_STALE_LIMIT,
     MIN_THRESHOLD_DAYS,
+    MIN_TIMELINE_LIMIT,
     MIN_WINDOW_DAYS,
 )
 from people_context.app.records import FINDING_CODES
@@ -111,6 +114,28 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_STALE_LIMIT,
         help=f"Maximum number of reported people ({MIN_STALE_LIMIT}..{MAX_STALE_LIMIT}).",
+    )
+
+    timeline = subparsers.add_parser(
+        "timeline",
+        help="Print one person's bounded chronology of durable records, newest first.",
+    )
+    timeline.add_argument("person", help="A person id, or a name to resolve.")
+    timeline.add_argument(
+        "--limit",
+        type=int,
+        default=DEFAULT_TIMELINE_LIMIT,
+        help=f"Maximum entries in one page ({MIN_TIMELINE_LIMIT}..{MAX_TIMELINE_LIMIT}).",
+    )
+    timeline.add_argument(
+        "--include-sensitive",
+        action="store_true",
+        help="Include sensitive and restricted records, which the MCP timeline never discloses.",
+    )
+    timeline.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the versioned timeline JSON document instead of the human table.",
     )
 
     upcoming = subparsers.add_parser("upcoming", help="Report birthdays and dated reminders coming up.")
