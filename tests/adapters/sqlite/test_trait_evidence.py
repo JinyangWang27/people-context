@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import UTC, datetime
 from importlib import resources
@@ -311,6 +312,49 @@ class _FakeEvidenceReader:
             person_ids=(self._person_id,),
             sensitivity=Sensitivity.PERSONAL,
         )
+
+
+def test_a_links_replay_image_carries_every_column_the_row_requires(tmp_path: Path) -> None:
+    """A replay consumer applies the image, and `trait_evidence.created_at` is NOT NULL."""
+    store = _Store(tmp_path / "people.db")
+    person = store.person("Alice Rivera")
+    observation = store.observe.execute(RecordObservationInput(person_id=person, text="Asked for metrics"))
+    trait = store.trait.execute(
+        RecordTraitInput(person_id=person, category="other", value="Direct", evidence_ids=[observation.id])
+    )
+
+    row = store.conn.execute(
+        "SELECT payload_json, changed_fields_json FROM changelog WHERE entity_type = 'trait_evidence'"
+    ).fetchone()
+    payload = json.loads(row["payload_json"])
+
+    assert payload == {
+        "trait_id": trait.id,
+        "evidence_type": "observation",
+        "evidence_id": observation.id,
+        "created_at": _NOW.isoformat(),
+    }
+    assert "created_at" in json.loads(row["changed_fields_json"])
+
+
+def test_a_direct_trait_and_its_links_form_one_replay_transaction(tmp_path: Path) -> None:
+    """Without an explicit transaction id the seam mints one; the links must share it, or a
+    replay could apply the trait without the evidence that grounds it."""
+    store = _Store(tmp_path / "people.db")
+    person = store.person("Alice Rivera")
+    observation = store.observe.execute(RecordObservationInput(person_id=person, text="Asked for metrics"))
+
+    store.trait.execute(
+        RecordTraitInput(person_id=person, category="other", value="Direct", evidence_ids=[observation.id])
+    )
+
+    transactions = {
+        row["transaction_id"]
+        for row in store.conn.execute(
+            "SELECT transaction_id FROM changelog WHERE entity_type IN ('trait', 'trait_evidence')"
+        )
+    }
+    assert len(transactions) == 1
 
 
 # -- hard forget -------------------------------------------------------

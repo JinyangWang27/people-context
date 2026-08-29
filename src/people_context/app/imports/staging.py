@@ -110,8 +110,10 @@ class CandidateStager:
         staged without a claim behaves exactly as it did before source sessions existed.
         """
         limits = budget or UNBOUNDED_IMPORT_BUDGET
+        tracked = claim is not None and self._sources is not None
         self._reject_excess_candidates(len(candidates), limits)
         validated = self._validate(candidates)
+        self._require_tracking_for_evidence(validated, tracked)
         batch_id = new_id()
         references = _batch_references(validated)
         rows = self._rows(batch_id, source, validated, references, limits, strict_identity)
@@ -195,6 +197,34 @@ class CandidateStager:
                 "duplicate": True,
                 "reviewable": outcome.reviewable,
             }
+        )
+
+    @staticmethod
+    def _require_tracking_for_evidence(candidates: list[CandidateInput], tracked: bool) -> None:
+        """Refuse a same-batch evidence citation this batch could never resolve.
+
+        A batch-local citation is resolved at commit through the M18.1 candidate commit mapping —
+        that mapping is the mechanism, and it exists only for a source-tracked batch. Without one,
+        a caller who commits the evidence and its trait in separate invocations strands the trait:
+        the evidence row is already committed so it is skipped, no mapping records what it
+        produced, and the citation can never be answered. Re-staging is the only way out, and
+        nothing would have said so.
+
+        Refusing here makes the dependency explicit while the batch can still be declined whole,
+        and the remedy is one field: name the material with `source_kind`. Durable `evidence_ids`
+        need no receipt and stay available either way, because they already name the record.
+        """
+        if tracked:
+            return
+        if not any(
+            isinstance(candidate, TraitCandidateInput) and candidate.evidence_refs
+            for candidate in candidates
+        ):
+            return
+        raise ImportPipelineError(
+            "evidence_requires_source_tracking",
+            "citing evidence staged in the same batch requires a source-tracked batch; "
+            "supply source_kind, or cite the durable records directly with evidence_ids",
         )
 
     @staticmethod

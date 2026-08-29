@@ -959,6 +959,8 @@ def test_a_staged_trait_citing_a_durable_record_the_bundle_omits_is_rejected() -
     [
         pytest.param("evidence_candidate_ids", [_OBSERVATION_ID, _OBSERVATION_ID], id="repeated"),
         pytest.param("evidence_ids", [f"obs-{index}" for index in range(33)], id="over-budget"),
+        pytest.param("evidence_ids", ["   "], id="blank"),
+        pytest.param("evidence_ids", ["x" * 257], id="overlong"),
     ],
 )
 def test_a_persisted_trait_breaking_the_evidence_contract_is_rejected(
@@ -975,6 +977,76 @@ def test_a_persisted_trait_breaking_the_evidence_contract_is_rejected(
 
     with pytest.raises(ValidationError):
         SyncBundleDocument.model_validate(payload)
+
+
+def test_two_distinct_links_are_not_confused_by_a_separator_in_an_opaque_id() -> None:
+    """Evidence ids are opaque and may contain any character, so the duplicate check compares
+    the key as a tuple: any flattening would refuse a valid backup as carrying a duplicate."""
+    payload = _document()
+    payload["snapshot"]["traits"].append(
+        {**payload["snapshot"]["traits"][0], "id": "a/observation/b"}
+    )
+    payload["snapshot"]["observations"].append(
+        {**payload["snapshot"]["observations"][0], "id": "c"}
+    )
+    payload["trait_evidence"] = [
+        {
+            "trait_id": "a",
+            "evidence_type": "observation",
+            "evidence_id": "b/observation/c",
+            "created_at": "2026-07-03T00:00:00Z",
+        },
+        {
+            "trait_id": "a/observation/b",
+            "evidence_type": "observation",
+            "evidence_id": "c",
+            "created_at": "2026-07-03T00:00:00Z",
+        },
+    ]
+    payload["snapshot"]["traits"].append({**payload["snapshot"]["traits"][0], "id": "a"})
+    payload["snapshot"]["observations"].append(
+        {**payload["snapshot"]["observations"][0], "id": "b/observation/c"}
+    )
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def test_a_mapping_claiming_a_record_its_candidate_never_produced_is_rejected() -> None:
+    """Nothing downstream re-checks the pairing, so a trait citing that candidate would resolve
+    through the mapping and be grounded in a record the candidate never made."""
+    payload = _document()
+    _staged_evidence(payload, [_EVIDENCE_ROW_ID])
+    imports = _imports(payload)
+    imports["staging"][1]["status"] = "committed"
+    imports["candidate_mappings"].append(
+        {
+            "candidate_id": _EVIDENCE_ROW_ID,
+            "batch_id": _BATCH_ID,
+            "source_session_id": _SOURCE_ID,
+            "disposition": "entity",
+            "entity_type": "interaction",
+            "entity_id": "01J0000000000000000000INT1",
+            "created_at": "2026-07-03T00:00:00Z",
+        }
+    )
+    payload["snapshot"]["interactions"].append(
+        {
+            "id": "01J0000000000000000000INT1",
+            "summary": "Planning meeting",
+            "occurred_at": "2026-07-02T10:00:00Z",
+            "channel": None,
+            "participant_ids": [_PERSON_ID],
+            "sensitivity": "personal",
+            "provenance": {"source": "user", "session": None, "stated_by": None},
+        }
+    )
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any(
+        "claims a interaction for a observation candidate" in detail for detail in excinfo.value.details
+    )
 
 
 def test_a_link_naming_a_trait_the_bundle_omits_is_rejected() -> None:

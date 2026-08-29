@@ -22,6 +22,7 @@ import pytest
 
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
+    SqliteImportSourceStore,
     SqliteImportStagingStore,
     SqlitePeopleRepository,
     open_db,
@@ -53,7 +54,27 @@ class _Clock:
 def _stager(conn: sqlite3.Connection) -> StageCandidates:
     people = SqlitePeopleRepository(conn)
     return StageCandidates(
-        CandidateStager(people, SqliteImportStagingStore(conn), _Clock(), None, SqliteAuditLog(conn))
+        CandidateStager(
+            people,
+            SqliteImportStagingStore(conn),
+            _Clock(),
+            SqliteImportSourceStore(conn),
+            SqliteAuditLog(conn),
+        )
+    )
+
+
+def _stage(conn: sqlite3.Connection, *, strict_identity: bool) -> Any:
+    """Stage the every-type batch as a source-tracked one.
+
+    Tracking is what makes a same-batch evidence citation resolvable at commit, so the fixture
+    that exercises every field has to be a batch the citation is legal in.
+    """
+    return _stager(conn).execute(
+        "weekly-sync",
+        _every_type(),
+        strict_identity=strict_identity,
+        source_kind="meeting_transcript",
     )
 
 
@@ -143,7 +164,7 @@ def _staged_candidates(*, strict_identity: bool) -> dict[str, list[dict[str, Any
             name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")]
         )
     )
-    batch = _stager(conn).execute("weekly-sync", _every_type(), strict_identity=strict_identity)
+    batch = _stage(conn, strict_identity=strict_identity)
     rows = conn.execute(
         "SELECT candidate_json FROM import_staging WHERE batch_id = ?", (batch.batch_id,)
     ).fetchall()
@@ -217,7 +238,7 @@ def test_every_reference_the_stager_writes_names_a_row_of_the_kind_its_field_pro
             name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")]
         )
     )
-    batch = _stager(conn).execute("weekly-sync", _every_type(), strict_identity=True)
+    batch = _stage(conn, strict_identity=True)
     rows = conn.execute(
         "SELECT id, candidate_json FROM import_staging WHERE batch_id = ?", (batch.batch_id,)
     ).fetchall()

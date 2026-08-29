@@ -103,6 +103,10 @@ class _Harness:
             content_digest=f"{self._digests:064x}",
         )
 
+    def stage_untracked(self, source: str, candidates: list[dict[str, Any]]) -> Any:
+        """Stage without any receipt metadata — the released default for `stage_candidates`."""
+        return self._stage.execute(source, candidates)
+
     def links(self) -> list[tuple[str, str, str]]:
         return [
             (row["trait_id"], row["evidence_type"], row["evidence_id"])
@@ -322,6 +326,74 @@ def test_a_rejected_evidence_value_is_never_echoed_with_the_candidate_text() -> 
 
     assert secret not in str(excinfo.value)
     assert secret not in repr(excinfo.value.details)
+
+
+def test_an_untracked_batch_may_not_cite_evidence_staged_beside_it() -> None:
+    """Without the M18.1 mapping seam a batch-local citation has no answer after a partial
+    commit, so it is refused while the batch can still be declined whole."""
+    harness = _Harness()
+
+    with pytest.raises(ImportPipelineError) as excinfo:
+        harness.stage_untracked(
+            "planning-meeting",
+            [
+                _person("alice", "Alice Rivera"),
+                _observation(evidence_ref="metrics-question"),
+                _trait(evidence_refs=["metrics-question"]),
+            ],
+        )
+
+    assert excinfo.value.code == "evidence_requires_source_tracking"
+    assert harness.conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_an_untracked_batch_may_still_cite_durable_records() -> None:
+    """A durable id already names the record, so it needs no receipt to be resolvable."""
+    harness = _Harness()
+
+    batch = harness.stage_untracked(
+        "planning-meeting",
+        [_person("alice", "Alice Rivera"), _trait(evidence_ids=["obs-1"])],
+    )
+
+    assert _staged(harness, batch.batch_id, "trait")["evidence_ids"] == ["obs-1"]
+
+
+def test_a_tracked_batch_resolves_a_citation_across_separate_commits() -> None:
+    """The regression the refusal above exists to prevent, proven fixed on a tracked batch."""
+    harness = _Harness()
+    batch = harness.stage_batch(
+        "planning-meeting",
+        [
+            _person("alice", "Alice Rivera"),
+            _observation(evidence_ref="metrics-question"),
+            _trait(evidence_refs=["metrics-question"]),
+        ],
+    )
+    rows = {row.candidate["type"]: row for row in harness.rows(batch.batch_id)}
+    harness.commit.execute(batch.batch_id, [rows["person"].id, rows["observation"].id])
+
+    result = harness.commit.execute(batch.batch_id, [rows["trait"].id])
+
+    assert result.unresolved_ids == []
+    assert len(harness.links()) == 1
+
+
+@pytest.mark.parametrize("field", ["evidence_ref", "evidence_ids"])
+def test_an_evidence_token_is_never_rewritten_on_its_way_to_storage(field: str) -> None:
+    """Tokens are identities matched exactly, not text: trimming one would make a legitimately
+    restored id unciteable, or resolve it to a different record whose id is the trimmed form."""
+    harness = _Harness()
+    padded = " obs-1 "
+    candidates = (
+        [_person("alice", "Alice Rivera"), _observation(evidence_ref=padded), _trait(evidence_refs=[padded])]
+        if field == "evidence_ref"
+        else [_person("alice", "Alice Rivera"), _trait(evidence_ids=[padded])]
+    )
+
+    batch = harness.stage_batch("planning-meeting", candidates)
+
+    assert _staged(harness, batch.batch_id, "trait").get("evidence_ids", [padded]) == [padded]
 
 
 # -- commit: resolution, subject rules, and declining ------------------

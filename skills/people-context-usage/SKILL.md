@@ -131,10 +131,11 @@ Where the inference rests on records you are staging anyway, say so by id as wel
 words. Give each supporting `observation` or `interaction` an `evidence_ref` — any short
 label of your own — and list those labels in the trait's `evidence_refs`; use
 `evidence_ids` for records already in the store. Staging rewrites your labels to real
-candidate ids, so you never need to know one. Two rules to work with rather than around:
-evidence must be about the trait's own person (an observation about someone else, or an
-interaction they were not in, leaves the trait uncommitted), and at most 32 references
-and ids combined. This does not replace `evidence_note`, and a trait drawn from material
+candidate ids, so you never need to know one. Three rules to work with rather than
+around: `evidence_refs` needs a `source_kind` on the same request (that receipt is what
+lets a later commit still resolve the citation); evidence must be about the trait's own
+person (an observation about someone else, or an interaction they were not in, leaves
+the trait uncommitted); and at most 32 references and ids combined. This does not replace `evidence_note`, and a trait drawn from material
 that produced no durable record is still a perfectly good trait — cite nothing there
 rather than inventing an observation to point at.
 

@@ -141,9 +141,24 @@ RelationshipTypeText = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RELATIONSHIP_TYPE_CHARS),
     AfterValidator(_normalizable_relationship_type),
 ]
+def _non_blank_token(value: str) -> str:
+    """Accept one opaque token, checking it is not blank without rewriting it.
+
+    Every other bounded string here is stripped, which is right for text a person typed. An
+    evidence reference is not text: it is an identity, matched exactly against a durable id whose
+    own contract — the released bundle `Identifier` — accepts any non-blank string, whitespace
+    included. Stripping would therefore make a legitimately restored id unciteable, and worse,
+    could silently resolve it to a *different* record whose id happens to be the trimmed form.
+    """
+    if not value.strip():
+        raise ValueError("an evidence reference must not be blank")
+    return value
+
+
 EvidenceReference = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_EVIDENCE_REF_CHARS),
+    StringConstraints(max_length=MAX_EVIDENCE_REF_CHARS),
+    AfterValidator(_non_blank_token),
 ]
 
 

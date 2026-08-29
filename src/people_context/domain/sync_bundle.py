@@ -709,10 +709,13 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
     # observation and interaction candidates of its own batch.
     evidence_by_batch: dict[str, set[str]] = {}
     staged_batch_of: dict[str, str] = {}
+    staged_type_of: dict[str, str] = {}
     for row in imports.staging:
         staged_by_batch.setdefault(row.batch_id, set()).add(row.id)
         staged_batch_of[row.id] = row.batch_id
         candidate_type = row.candidate.get("type")
+        if isinstance(candidate_type, str):
+            staged_type_of[row.id] = candidate_type
         if candidate_type == "person":
             people_by_batch.setdefault(row.batch_id, set()).add(row.id)
         elif candidate_type in EVIDENCE_CAPABLE_STAGED_TYPES:
@@ -742,6 +745,16 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
             details.append(
                 f"candidate mapping {mapping.candidate_id} belongs to a batch its source session "
                 f"does not own: {mapping.batch_id}"
+            )
+        # A candidate produces a record of its own kind, always. A mapping that disagrees with the
+        # staged row it belongs to is a claim that some other kind of record came out of it, and
+        # nothing downstream re-checks: a trait citing that candidate would resolve through the
+        # mapping and be grounded in a record the candidate never produced.
+        staged_type = staged_type_of.get(mapping.candidate_id)
+        if staged_type is not None and staged_type != mapping.entity_type:
+            details.append(
+                f"candidate mapping {mapping.candidate_id} claims a {mapping.entity_type} for a "
+                f"{staged_type} candidate"
             )
         if mapping.disposition != "entity":
             continue
@@ -833,10 +846,21 @@ def _trait_evidence_details(document: SyncBundleDocument) -> list[str]:
     observations = {row.id: row.person_id for row in snapshot.observations}
     participants = {row.id: set(row.participant_ids) for row in snapshot.interactions}
 
-    details: list[str] = _repeated(
-        "trait evidence link",
-        (f"{row.trait_id}/{row.evidence_type}/{row.evidence_id}" for row in document.trait_evidence),
-    )
+    # The key is compared as a tuple rather than as a joined string. Evidence ids are opaque and
+    # may contain any character, a separator included, so any flattening is non-injective: two
+    # genuinely distinct links could compose the same text and a valid backup would be refused as
+    # carrying a duplicate.
+    seen: set[tuple[str, str, str]] = set()
+    repeated: set[tuple[str, str, str]] = set()
+    for row in document.trait_evidence:
+        key = (row.trait_id, row.evidence_type, row.evidence_id)
+        if key in seen:
+            repeated.add(key)
+        seen.add(key)
+    details: list[str] = [
+        f"duplicate trait evidence link: trait {trait_id} cites {evidence_type} {evidence_id}"
+        for trait_id, evidence_type, evidence_id in sorted(repeated)
+    ]
     for row in document.trait_evidence:
         subject = traits.get(row.trait_id)
         if subject is None:

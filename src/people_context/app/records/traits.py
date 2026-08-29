@@ -87,7 +87,11 @@ class RecordTrait:
             updated_at=self._clock.now(),
         )
         self._writer.save_trait(trait)
-        audit_mutation(
+        # The seam mints a transaction id when the caller supplies none, and this is one logical
+        # mutation: the trait and the links that ground it must reach a peer as one group, or a
+        # replay could apply the trait without its evidence. Reusing what the first call returned
+        # is what keeps that true on the direct path as well as through an import commit.
+        transaction_id = audit_mutation(
             self._audit,
             self._clock,
             op="create",
@@ -122,6 +126,11 @@ class RecordTrait:
         one audit and changelog effect per link, sharing the trait's own transaction. The
         composite entity id is what lets hard forget find and redact this history later, exactly
         as it does for an interaction's participants.
+
+        The replay image carries `created_at` while the accountability payload does not. That
+        asymmetry is the same one every other primary write here makes: a consumer *applies* the
+        replay image, so it must contain every column the row requires, and `trait_evidence`
+        stores its creation instant as `NOT NULL`.
         """
         if not evidence:
             return
@@ -151,7 +160,13 @@ class RecordTrait:
                     "evidence_type": record.evidence_type,
                     "evidence_id": record.evidence_id,
                 },
-                changed_fields=["evidence_id", "evidence_type", "trait_id"],
+                replay_payload={
+                    "trait_id": trait.id,
+                    "evidence_type": record.evidence_type,
+                    "evidence_id": record.evidence_id,
+                    "created_at": now.isoformat(),
+                },
+                changed_fields=["created_at", "evidence_id", "evidence_type", "trait_id"],
                 source=data.source,
                 session=data.session,
                 stated_by=data.stated_by,

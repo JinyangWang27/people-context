@@ -280,9 +280,12 @@ observation and interaction candidates accept a batch-local `evidence_ref` label
 `evidence_refs` naming those labels plus `evidence_ids` naming durable observations and interactions already in
 the store. Staging rewrites each label to the canonical candidate id and stores neither the label nor a copy of
 any record; commit resolves the rewritten ids through the M18.1 commit mapping, refuses evidence about anyone
-but the trait's own subject, and leaves the trait unresolved rather than committing it ungrounded. An
-`evidence_ref` or `evidence_id` is at most 256 characters and one trait cites at most 32 of them combined; an
-`evidence_id` is an opaque token, so a restored non-ULID id remains addressable. See
+but the trait's own subject, and leaves the trait unresolved rather than committing it ungrounded. Because that
+mapping is what answers a batch-local citation, `evidence_refs` requires a request that also passes
+`source_kind`; without one the request is refused with `evidence_requires_source_tracking`, while `evidence_ids`
+stays available either way. An `evidence_ref` or `evidence_id` is at most 256 characters and one trait cites at
+most 32 of them combined; both are opaque tokens preserved exactly — not trimmed, folded, or reshaped — so a
+restored non-ULID id remains addressable. See
 [docs/import.md](import.md#grounding-a-trait-in-the-records-it-was-drawn-from).
 
 `get_person_context` gains an additive `trait_evidence` collection reporting which durable records the traits in

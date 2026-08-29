@@ -33,6 +33,7 @@ from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -49,6 +50,18 @@ from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, M
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
+def _non_blank_token(value: str) -> str:
+    """Accept one opaque identity token, checking it is not blank without rewriting it.
+
+    An evidence reference is matched exactly against a durable id, and the bundle's own
+    `Identifier` contract accepts any non-blank string. Trimming one here would make a restored
+    id unciteable, or resolve it to a different record whose id is the trimmed form.
+    """
+    if not value.strip():
+        raise ValueError("an evidence identifier must not be blank")
+    return value
+
+
 #: A durable evidence id, or a canonical candidate id standing in for one until commit.
 #:
 #: The ceiling is the staging boundary's, applied here too because a persisted candidate is what a
@@ -56,7 +69,8 @@ NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)
 #: the unbounded field the input model refuses.
 EvidenceIdentifier = Annotated[
     str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_EVIDENCE_REFERENCE_CHARS),
+    StringConstraints(max_length=MAX_EVIDENCE_REFERENCE_CHARS),
+    AfterValidator(_non_blank_token),
 ]
 
 #: What identity matching concluded about a staged person candidate.

@@ -260,10 +260,19 @@ Staging refuses a batch whose references cannot be rewritten to exactly one cand
 candidate has none at all. Person `ref` and `evidence_ref` are separate namespaces, so citing a person is
 simply an unknown evidence reference rather than a legal link to something a trait cannot rest on.
 
+`evidence_refs` also requires a **source-tracked batch** — one staged with a `source_kind`. The citation is
+answered at commit through the M18.1 candidate commit mapping, and that mapping exists only for a tracked
+batch; without one, committing the evidence and its trait in separate invocations would strand the trait
+permanently, because the evidence row is already committed and nothing recorded what it produced. Staging
+refuses that up front with `evidence_requires_source_tracking` rather than letting it become a trap. Durable
+`evidence_ids` need no receipt and stay available on any batch, because the id already names the record.
+
 Commit resolves a rewritten reference through the same M18.1 candidate commit mapping that resolves people, so
 evidence committed earlier in this invocation and evidence committed in an earlier partial commit are answered
 the same way. Explicit `evidence_ids` are looked up exactly: an id is an **opaque token**, so a restored or
-hand-authored id such as `obs-1` is as addressable as a generated ULID and nothing case-folds or reshapes one.
+hand-authored id such as `obs-1` is as addressable as a generated ULID. Nothing case-folds, reshapes, or even
+trims one — unlike every other bounded string here, an evidence token is validated for non-blankness and length
+without being rewritten, because trimming an identity could resolve it to a different record.
 Every resolved record then faces the durable rules — a supported type, and evidence that belongs to the trait's
 own subject.
 
