@@ -467,6 +467,21 @@ class BundleStagingRow(StrictBundleModel):
         return self
 
 
+class BundleStagingRowV2(BundleStagingRow):
+    """The version-2 staging row: the same shape, minus the evidence fields M18.3 added.
+
+    A released version is a closed shape, and the persisted-candidate models describe what this
+    installation stores *today*. Validating a version-2 document through them unchanged would
+    accept an M18.3 dependency field under a declaration that predates the relation resolving it —
+    the same silent upgrade the top-level per-version parsing exists to prevent.
+    """
+
+    @model_validator(mode="after")
+    def _check_candidate(self) -> BundleStagingRowV2:
+        check_staged_candidate(self.candidate, evidence_allowed=False)
+        return self
+
+
 class BundleImportState(StrictBundleModel):
     """Durable import provenance plus the operational staging an incomplete batch needs.
 
@@ -479,6 +494,27 @@ class BundleImportState(StrictBundleModel):
     source_sessions: list[BundleSourceSession]
     candidate_mappings: list[BundleCandidateMapping]
     staging: list[BundleStagingRow]
+
+
+class BundleImportStateV2(StrictBundleModel):
+    """Version 2's import state, whose staging rows predate trait evidence.
+
+    Declared separately rather than as a subclass narrowing `staging`: a list field is invariant,
+    so narrowing it in a subclass would be an unsound override. The two shapes differ in exactly
+    one field, and `upgraded()` is where a validated v2 becomes the current in-memory state.
+    """
+
+    source_sessions: list[BundleSourceSession]
+    candidate_mappings: list[BundleCandidateMapping]
+    staging: list[BundleStagingRowV2]
+
+    def current(self) -> BundleImportState:
+        """Return this state in the current shape; every row already validated as a v2 row."""
+        return BundleImportState(
+            source_sessions=self.source_sessions,
+            candidate_mappings=self.candidate_mappings,
+            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
+        )
 
 
 class BundleTraitEvidence(StrictBundleModel):
@@ -543,7 +579,7 @@ class SyncBundleDocumentV2(StrictBundleModel):
     snapshot: BundleSnapshot
     relationship_vocabulary: BundleRelationshipVocabulary
     changelog: list[BundleChangelogEntry]
-    imports: BundleImportState
+    imports: BundleImportStateV2
 
     def upgraded(self) -> SyncBundleDocument:
         """Return this document in the current in-memory shape, carrying no trait evidence."""
@@ -557,7 +593,7 @@ class SyncBundleDocumentV2(StrictBundleModel):
             snapshot=self.snapshot,
             relationship_vocabulary=self.relationship_vocabulary,
             changelog=self.changelog,
-            imports=self.imports,
+            imports=self.imports.current(),
             trait_evidence=[],
         )
 

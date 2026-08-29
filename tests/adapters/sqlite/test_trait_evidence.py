@@ -28,7 +28,7 @@ from people_context.app.records.trait_evidence import TraitEvidenceError, resolv
 from people_context.app.records.traits import RecordTraitInput
 from people_context.domain.shared import Sensitivity, normalize_name
 from people_context.domain.trait_evidence import trait_evidence_key
-from people_context.ports.evidence import EvidenceRecord
+from people_context.ports.evidence import EvidenceRecord, EvidenceReference
 
 _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
@@ -273,7 +273,9 @@ def test_a_reader_offering_an_unsupported_record_type_is_refused(tmp_path: Path)
     person = store.person("Alice Rivera")
 
     with pytest.raises(TraitEvidenceError) as excinfo:
-        resolve_trait_evidence(_FakeEvidenceReader(person, "fact"), person, ["fact-1"])
+        resolve_trait_evidence(
+            _FakeEvidenceReader(person, "fact"), person, [EvidenceReference("fact-1")]
+        )
 
     assert excinfo.value.code == "unsupported_evidence_type"
 
@@ -306,7 +308,7 @@ class _FakeEvidenceReader:
         self._person_id = person_id
         self._evidence_type = evidence_type
 
-    def get_evidence(self, evidence_id: str) -> EvidenceRecord:
+    def get_evidence(self, evidence_id: str, evidence_type: str | None = None) -> EvidenceRecord:
         return EvidenceRecord(
             evidence_id=evidence_id,
             evidence_type=self._evidence_type,

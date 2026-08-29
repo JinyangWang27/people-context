@@ -23,16 +23,22 @@ class SqliteTraitEvidenceStore:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self._conn = conn
 
-    def get_evidence(self, evidence_id: str) -> EvidenceRecord | None:
+    def get_evidence(self, evidence_id: str, evidence_type: str | None = None) -> EvidenceRecord | None:
         """Return the observation or interaction with exactly this id, or None.
 
-        The two tables are consulted in the fixed order the domain declares. Generated ids are
-        ULIDs and never collide across tables, but a restored or hand-authored id need not be
-        one, and a stable order is what keeps such an id resolving to the same record on every
-        machine rather than to whichever table happened to be read first.
+        A declared ``evidence_type`` is honoured exactly: the caller already knows which record it
+        means, and searching the other table could answer with a different one that happens to
+        share the id.
+
+        Without one, the two tables are consulted in the fixed order the domain declares.
+        Generated ids are ULIDs and never collide across tables, but a restored or hand-authored
+        id need not be one, and a stable order is what keeps such an id resolving to the same
+        record on every machine rather than to whichever table happened to be read first.
         """
-        for evidence_type in TRAIT_EVIDENCE_TYPES:
-            record = self._lookup(evidence_type, evidence_id)
+        if evidence_type is not None:
+            return self._lookup(evidence_type, evidence_id) if evidence_type in TRAIT_EVIDENCE_TYPES else None
+        for supported in TRAIT_EVIDENCE_TYPES:
+            record = self._lookup(supported, evidence_id)
             if record is not None:
                 return record
         return None

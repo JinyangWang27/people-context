@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel, Field
 
 from people_context.app._mutation import (
@@ -18,7 +20,12 @@ from people_context.domain.trait import Trait, TraitCategory
 from people_context.domain.trait_evidence import trait_evidence_key
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
-from people_context.ports.evidence import EvidenceRecord, TraitEvidenceLink, TraitEvidenceStore
+from people_context.ports.evidence import (
+    EvidenceRecord,
+    EvidenceReference,
+    TraitEvidenceLink,
+    TraitEvidenceStore,
+)
 from people_context.ports.records import RecordWriter
 from people_context.ports.repository import PersonReader
 
@@ -68,15 +75,26 @@ class RecordTrait:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: RecordTraitInput, *, transaction_id: str | None = None) -> Trait:
+    def execute(
+        self,
+        data: RecordTraitInput,
+        *,
+        transaction_id: str | None = None,
+        evidence: Sequence[EvidenceReference] | None = None,
+    ) -> Trait:
         """Persist and audit a validated trait category and its evidence links.
 
         Evidence is resolved before the trait is written, so a citation that cannot be honoured
         refuses the whole assertion rather than storing a trait whose grounding silently went
         missing. Both writes share the caller's transaction, so they roll back together.
+
+        ``evidence`` supersedes ``data.evidence_ids`` for a caller that already knows which record
+        type each citation names — an import commit resolving through candidate mappings does.
+        `RecordTraitInput` keeps the plain list of ids, because a caller naming durable records
+        by hand has only opaque tokens to give.
         """
         require_active_person(self._people, data.person_id)
-        evidence = self._resolve(data)
+        resolved_evidence = self._resolve(data, evidence)
         trait = Trait(
             person_id=data.person_id,
             category=data.category,
@@ -104,15 +122,24 @@ class RecordTrait:
             stated_by=data.stated_by,
             transaction_id=transaction_id,
         )
-        self._link(trait, evidence, data, transaction_id)
+        self._link(trait, resolved_evidence, data, transaction_id)
         return trait
 
-    def _resolve(self, data: RecordTraitInput) -> list[EvidenceRecord]:
-        if not data.evidence_ids:
+    def _resolve(
+        self,
+        data: RecordTraitInput,
+        evidence: Sequence[EvidenceReference] | None,
+    ) -> list[EvidenceRecord]:
+        references = (
+            list(evidence)
+            if evidence is not None
+            else [EvidenceReference(evidence_id) for evidence_id in data.evidence_ids]
+        )
+        if not references:
             return []
         if self._evidence is None:
             raise RuntimeError("recording trait evidence requires a trait evidence store")
-        return resolve_trait_evidence(self._evidence, data.person_id, data.evidence_ids)
+        return resolve_trait_evidence(self._evidence, data.person_id, references)
 
     def _link(
         self,

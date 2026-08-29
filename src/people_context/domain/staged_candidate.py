@@ -30,7 +30,7 @@ bundle would carry.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -248,13 +248,30 @@ def parse_staged_candidate(candidate: dict[str, Any]) -> Any:
     return _STAGED_ADAPTER.validate_python(candidate)
 
 
-def staged_candidate_error(candidate: dict[str, Any]) -> str | None:
+#: Fields M18.3 added to the persisted trait candidate.
+#:
+#: A bundle version that predates them must still reject them, because a released version is a
+#: closed shape: a reader that accepts a field must understand it, and the reader that wrote a
+#: version-2 document had no evidence relation to resolve these against.
+EVIDENCE_STAGED_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids", "evidence_ids")
+
+
+def staged_candidate_error(candidate: dict[str, Any], *, evidence_allowed: bool = True) -> str | None:
     """Return why a persisted candidate is unacceptable, naming no value it carries.
 
     Pydantic's own message quotes rejected input, and a staged candidate is the one place a
     caller's raw source text would sit. The report is therefore built from the location and the
     error type only — enough to find the offending field, never enough to leak what was in it.
+
+    ``evidence_allowed`` is how an older bundle version keeps its released shape. The models here
+    describe what this installation persists *today*; validating a version-2 document through them
+    unchanged would accept an M18.3 field under a declaration that predates it, which is exactly
+    the silent upgrade the per-version contract exists to prevent.
     """
+    if not evidence_allowed:
+        present = sorted(field for field in EVIDENCE_STAGED_FIELDS if field in candidate)
+        if present:
+            return "; ".join(f"{field} (extra_forbidden)" for field in present)
     try:
         parse_staged_candidate(candidate)
     except ValidationError as exc:

@@ -578,6 +578,41 @@ def test_an_interaction_the_subject_did_not_join_cannot_ground_this_trait() -> N
     assert harness.links() == []
 
 
+def test_a_mapped_citation_resolves_to_the_record_its_candidate_produced() -> None:
+    """Ids are unique only within their own table, so a citation carries the type its candidate
+    produced. Resolving by id alone would answer with whichever table is consulted first."""
+    harness = _Harness()
+    batch = harness.stage_batch(
+        "planning-meeting",
+        [
+            _person("alice", "Alice Rivera"),
+            _person("bob", "Bob Chen"),
+            _interaction("alice", evidence_ref="meeting"),
+            _trait(evidence_refs=["meeting"]),
+        ],
+    )
+    rows = {row.candidate["type"]: row for row in harness.rows(batch.batch_id)}
+    people = [row for row in harness.rows(batch.batch_id) if row.candidate["type"] == "person"]
+    harness.commit.execute(batch.batch_id, [*(row.id for row in people), rows["interaction"].id])
+    interaction_id = harness.conn.execute("SELECT id FROM interactions").fetchone()["id"]
+    bob = harness.conn.execute(
+        "SELECT id FROM persons WHERE canonical_name = 'Bob Chen'"
+    ).fetchone()["id"]
+    # A restored store may legitimately hold an observation sharing that opaque id — and this one
+    # is about somebody else, so resolving to it would either mis-ground the trait or strand it.
+    harness.conn.execute(
+        """INSERT INTO observations (id, person_id, text, observed_at, sensitivity, provenance_source)
+           VALUES (?, ?, 'Unrelated', '2026-08-19T10:00:00+00:00', 'personal', 'user')""",
+        (interaction_id, bob),
+    )
+    harness.conn.commit()
+
+    result = harness.commit.execute(batch.batch_id, [rows["trait"].id])
+
+    assert result.unresolved_ids == []
+    assert [link[1:] for link in harness.links()] == [("interaction", interaction_id)]
+
+
 def test_links_are_stored_in_a_stable_order_regardless_of_how_the_agent_listed_them() -> None:
     ordered = _links_for(["meeting", "metrics-question"])
     reversed_request = _links_for(["metrics-question", "meeting"])

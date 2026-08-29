@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
-from people_context.ports.evidence import EvidenceRecord, TraitEvidenceReader
+from people_context.ports.evidence import EvidenceRecord, EvidenceReference, TraitEvidenceReader
 
 
 class TraitEvidenceError(Exception):
@@ -40,20 +40,23 @@ class TraitEvidenceError(Exception):
 def resolve_trait_evidence(
     reader: TraitEvidenceReader,
     person_id: str,
-    evidence_ids: Sequence[str],
+    references: Sequence[EvidenceReference],
 ) -> list[EvidenceRecord]:
-    """Return the citable records for ``evidence_ids``, in stable order, or raise.
+    """Return the citable records for ``references``, in stable order, or raise.
+
+    A reference resolved from a candidate commit mapping carries the record type that candidate
+    produced, and it is honoured: ids are unique only within their own table, so resolving such a
+    citation by id alone could answer with a different record that happens to share the id.
 
     Ordering is by `(type, id)` rather than by the order the caller listed them, so the links one
     trait produces — and therefore the rows a later read returns — do not depend on how an agent
-    happened to arrange its request. Duplicates collapse: citing a record twice asserts the same
-    single link.
+    happened to arrange its request. Duplicates collapse on the *resolved* record: citing one
+    record twice asserts the same single link.
     """
-    resolved: dict[str, EvidenceRecord] = {}
-    for evidence_id in evidence_ids:
-        if evidence_id in resolved:
-            continue
-        record = reader.get_evidence(evidence_id)
+    resolved: dict[tuple[str, str], EvidenceRecord] = {}
+    for reference in references:
+        evidence_id = reference.evidence_id
+        record = reader.get_evidence(evidence_id, reference.evidence_type)
         if record is None:
             raise TraitEvidenceError(
                 "evidence_not_found",
@@ -72,5 +75,5 @@ def resolve_trait_evidence(
                 "trait evidence must concern the person the trait is about",
                 evidence_id,
             )
-        resolved[evidence_id] = record
-    return sorted(resolved.values(), key=lambda record: (record.evidence_type, record.evidence_id))
+        resolved[(record.evidence_type, record.evidence_id)] = record
+    return [resolved[key] for key in sorted(resolved)]

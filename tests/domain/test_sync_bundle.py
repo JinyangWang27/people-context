@@ -18,6 +18,7 @@ from people_context.domain.sync_bundle import (
     InvalidBundleError,
     StrictBundleModel,
     SyncBundleDocument,
+    parse_bundle_payload,
     validate_bundle_document,
 )
 from people_context.ports.sources import STATUS_PARTIALLY_COMMITTED, STATUS_STAGED
@@ -1047,6 +1048,39 @@ def test_a_mapping_claiming_a_record_its_candidate_never_produced_is_rejected() 
     assert any(
         "claims a interaction for a observation candidate" in detail for detail in excinfo.value.details
     )
+
+
+@pytest.mark.parametrize("field", ["evidence_candidate_ids", "evidence_ids"])
+def test_a_version_two_document_rejects_a_staged_trait_carrying_m18_3_fields(field: str) -> None:
+    """A released version is a closed shape all the way down.
+
+    The persisted-candidate models describe what this installation stores today; validating a
+    version-2 document through them unchanged would accept an M18.3 dependency field under a
+    declaration that predates the relation resolving it.
+    """
+    payload = _document()
+    _staged_evidence(payload, [_EVIDENCE_ROW_ID])
+    candidate = _imports(payload)["staging"][-1]["candidate"]
+    candidate.pop("evidence_candidate_ids", None)
+    candidate[field] = [_EVIDENCE_ROW_ID if field == "evidence_candidate_ids" else _OBSERVATION_ID]
+    payload["version"] = 2
+    payload.pop("trait_evidence")
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_a_version_two_document_without_those_fields_still_parses() -> None:
+    """The narrowing is exactly one field pair; everything else a v2 bundle carries is untouched."""
+    payload = _document()
+    payload["version"] = 2
+    payload.pop("trait_evidence")
+
+    document = parse_bundle_payload(payload)
+
+    assert document.version == SYNC_BUNDLE_VERSION
+    assert document.trait_evidence == []
+    assert len(document.imports.staging) == 1
 
 
 def test_a_link_naming_a_trait_the_bundle_omits_is_rejected() -> None:

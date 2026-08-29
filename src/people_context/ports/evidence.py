@@ -16,6 +16,7 @@ from typing import Protocol, runtime_checkable
 from people_context.domain.shared import Sensitivity
 
 __all__ = [
+    "EvidenceReference",
     "EvidenceRecord",
     "TraitEvidenceLink",
     "TraitEvidenceReader",
@@ -39,6 +40,21 @@ class EvidenceRecord:
 
 
 @dataclass(frozen=True)
+class EvidenceReference:
+    """One citation to resolve, carrying the record type when the caller knows it.
+
+    A durable id a caller supplied names no type — it is an opaque token, and the store resolves
+    it in the documented order. An id that came from a candidate commit mapping *does* carry one,
+    and it matters: ids are unique only within their own table, so a restored store may hold an
+    observation and an interaction sharing one, and resolving such a citation by id alone could
+    ground the trait in the record the candidate never produced.
+    """
+
+    evidence_id: str
+    evidence_type: str | None = None
+
+
+@dataclass(frozen=True)
 class TraitEvidenceLink:
     """One persisted trait-to-record citation."""
 
@@ -52,8 +68,13 @@ class TraitEvidenceLink:
 class TraitEvidenceReader(Protocol):
     """Resolve one durable evidence id exactly, without guessing at its format."""
 
-    def get_evidence(self, evidence_id: str) -> EvidenceRecord | None:
-        """Return the supported record with exactly this id, or None if there is none."""
+    def get_evidence(self, evidence_id: str, evidence_type: str | None = None) -> EvidenceRecord | None:
+        """Return the supported record with exactly this id, or None if there is none.
+
+        ``evidence_type`` narrows the lookup to one record type. Without it the supported types
+        are tried in the order the domain declares, which is the only answer available for an
+        opaque id whose caller named no type.
+        """
         ...
 
 

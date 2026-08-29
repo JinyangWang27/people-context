@@ -38,7 +38,7 @@ from people_context.domain.shared import new_id, normalize_name
 from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
-from people_context.ports.evidence import TraitEvidenceReader
+from people_context.ports.evidence import EvidenceReference, TraitEvidenceReader
 from people_context.ports.imports import (
     ExtractedImport,
     ImportExtractor,
@@ -449,7 +449,7 @@ class CommitImport:
         person_id: str,
         stored_mappings: dict[str, CandidateMappingRow],
         produced: dict[str, tuple[str, str]],
-    ) -> list[str] | None:
+    ) -> list[EvidenceReference] | None:
         """Return the durable records one accepted trait cites, or None if it cannot cite them.
 
         None means *not yet*, never *drop the link*. A trait whose evidence has not committed,
@@ -460,7 +460,10 @@ class CommitImport:
 
         Batch-local citations resolve through the M18.1 commit mapping, so evidence committed in
         an earlier partial commit and evidence committed moments ago in this same invocation are
-        answered by the same lookup rather than by two heuristics.
+        answered by the same lookup rather than by two heuristics. Each carries the record *type*
+        that candidate produced, not just its id: ids are unique only within their own table, so a
+        restored store may hold an observation and an interaction sharing one, and resolving by id
+        alone could ground the trait in the record the candidate never made.
         """
         candidate = row.candidate
         references = list(candidate.get("evidence_candidate_ids", ()))
@@ -471,26 +474,30 @@ class CommitImport:
             # The trait asks for grounding this commit has no way to record. Declining leaves it
             # committable by a wired caller instead of storing an ungrounded claim.
             return None
-        resolved: list[str] = []
+        resolved: list[EvidenceReference] = []
         for reference in references:
-            evidence_id = _committed_evidence_id(produced.get(reference)) or _mapped_evidence_id(
+            outcome = _committed_evidence(produced.get(reference)) or _mapped_evidence(
                 stored_mappings.get(reference)
             )
-            if evidence_id is None:
+            if outcome is None:
                 return None
-            resolved.append(evidence_id)
-        resolved.extend(durable)
+            resolved.append(outcome)
+        # A durable id the caller supplied names no type; it is an opaque token, resolved in the
+        # documented order like any other.
+        resolved.extend(EvidenceReference(evidence_id) for evidence_id in durable)
         try:
             records = resolve_trait_evidence(self._evidence, person_id, resolved)
         except TraitEvidenceError:
             return None
-        return [record.evidence_id for record in records]
+        return [
+            EvidenceReference(record.evidence_id, record.evidence_type) for record in records
+        ]
 
     def _commit_trait(
         self,
         person_id: str,
         row: StagedImportRow,
-        evidence_ids: list[str],
+        evidence: list[EvidenceReference],
         transaction_id: str,
     ) -> str:
         candidate = row.candidate
@@ -502,10 +509,10 @@ class CommitImport:
                 evidence_note=candidate["evidence_note"],
                 confidence=candidate["confidence"],
                 sensitivity=candidate.get("sensitivity", "personal"),
-                evidence_ids=evidence_ids,
                 source=row.source,
             ),
             transaction_id=transaction_id,
+            evidence=evidence,
         ).id
 
     def _record_provenance(
@@ -733,14 +740,14 @@ class CommitImport:
         return result.person.id
 
 
-def _committed_evidence_id(outcome: tuple[str, str] | None) -> str | None:
+def _committed_evidence(outcome: tuple[str, str] | None) -> EvidenceReference | None:
     """Return the record a candidate produced in this invocation, if a trait may cite it."""
     if outcome is None or outcome[0] not in TRAIT_EVIDENCE_TYPES:
         return None
-    return outcome[1]
+    return EvidenceReference(outcome[1], outcome[0])
 
 
-def _mapped_evidence_id(mapping: CandidateMappingRow | None) -> str | None:
+def _mapped_evidence(mapping: CandidateMappingRow | None) -> EvidenceReference | None:
     """Return the record a candidate produced in an earlier commit, if a trait may cite it.
 
     A terminal `merged_away` mapping is history rather than a reference, and no other entity type
@@ -748,9 +755,9 @@ def _mapped_evidence_id(mapping: CandidateMappingRow | None) -> str | None:
     """
     if mapping is None or mapping.disposition != DISPOSITION_ENTITY:
         return None
-    if mapping.entity_type not in TRAIT_EVIDENCE_TYPES:
+    if mapping.entity_type not in TRAIT_EVIDENCE_TYPES or mapping.entity_id is None:
         return None
-    return mapping.entity_id
+    return EvidenceReference(mapping.entity_id, mapping.entity_type)
 
 
 def _mapped_person_id(mapping: CandidateMappingRow | None) -> str | None:

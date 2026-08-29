@@ -110,7 +110,7 @@ REQUIRED_STAGED_REFERENCES: Final[dict[str, tuple[str, ...]]] = {
 }
 
 
-def check_staged_candidate(candidate: dict[str, Any]) -> str:
+def check_staged_candidate(candidate: dict[str, Any], *, evidence_allowed: bool = True) -> str:
     """Return the accepted persisted candidate's type, or raise ``ValueError``.
 
     The whole shape is checked, through the strict models in `domain/staged_candidate.py`, because
@@ -122,6 +122,9 @@ def check_staged_candidate(candidate: dict[str, Any]) -> str:
     The reference fields are checked first and by hand, because their requirement is not a
     property of one candidate: they name *other rows in the same batch*, and the message that
     names the missing one is what the batch-local closure elsewhere reports against.
+
+    ``evidence_allowed`` is passed through by a bundle version that predates trait evidence, so
+    that document keeps the closed shape it was released with.
     """
     candidate_type = candidate.get("type")
     if candidate_type not in STAGED_CANDIDATE_TYPES:
@@ -132,7 +135,7 @@ def check_staged_candidate(candidate: dict[str, Any]) -> str:
         resolved = {value} if isinstance(value, str) and value else identifier_list(value)
         if not resolved:
             raise ValueError(f"staged {kind} candidate must carry {field_name}")
-    reason = staged_candidate_error(candidate)
+    reason = staged_candidate_error(candidate, evidence_allowed=evidence_allowed)
     if reason is not None:
         raise ValueError(f"staged {kind} candidate is not a valid persisted candidate: {reason}")
     return kind
