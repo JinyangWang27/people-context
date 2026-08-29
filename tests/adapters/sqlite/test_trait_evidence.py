@@ -23,9 +23,10 @@ from people_context.app.people import Forget, PreviewForget, RememberPerson, Rem
 from people_context.app.records import RecordInteraction, RecordObservation, RecordTrait
 from people_context.app.records.interactions import RecordInteractionInput
 from people_context.app.records.observations import RecordObservationInput
-from people_context.app.records.trait_evidence import TraitEvidenceError
+from people_context.app.records.trait_evidence import TraitEvidenceError, resolve_trait_evidence
 from people_context.app.records.traits import RecordTraitInput
-from people_context.domain.shared import normalize_name
+from people_context.domain.shared import Sensitivity, normalize_name
+from people_context.ports.evidence import EvidenceRecord
 
 _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
@@ -243,6 +244,73 @@ def test_the_context_reader_reports_each_link_with_the_cited_records_own_level(
         ],
         key=lambda row: row[1],
     )
+
+
+def test_citing_one_record_twice_in_a_request_asserts_a_single_link(tmp_path: Path) -> None:
+    """A repeated id is the caller saying one thing twice, not two citations."""
+    store = _Store(tmp_path / "people.db")
+    person = store.person("Alice Rivera")
+    observation = store.observe.execute(RecordObservationInput(person_id=person, text="Asked for metrics"))
+
+    trait = store.trait.execute(
+        RecordTraitInput(
+            person_id=person,
+            category="other",
+            value="Direct",
+            evidence_ids=[observation.id, observation.id],
+        )
+    )
+
+    assert store.links() == [(trait.id, "observation", observation.id)]
+
+
+def test_a_reader_offering_an_unsupported_record_type_is_refused(tmp_path: Path) -> None:
+    """Defence in depth: the store only returns citable types, but the rule lives with the
+    decision rather than with the one adapter that happens to satisfy it today."""
+    store = _Store(tmp_path / "people.db")
+    person = store.person("Alice Rivera")
+
+    with pytest.raises(TraitEvidenceError) as excinfo:
+        resolve_trait_evidence(_FakeEvidenceReader(person, "fact"), person, ["fact-1"])
+
+    assert excinfo.value.code == "unsupported_evidence_type"
+
+
+def test_recording_evidence_without_a_store_is_a_wiring_error_not_a_silent_drop(
+    tmp_path: Path,
+) -> None:
+    """Dropping the links would leave a trait claiming grounding it does not have."""
+    store = _Store(tmp_path / "people.db")
+    person = store.person("Alice Rivera")
+    observation = store.observe.execute(RecordObservationInput(person_id=person, text="Asked for metrics"))
+    unwired = RecordTrait(
+        SqlitePeopleRepository(store.conn), SqliteRecordStore(store.conn), store.audit, _Clock()
+    )
+
+    with pytest.raises(RuntimeError):
+        unwired.execute(
+            RecordTraitInput(
+                person_id=person, category="other", value="Direct", evidence_ids=[observation.id]
+            )
+        )
+
+    assert store.conn.execute("SELECT COUNT(*) FROM traits").fetchone()[0] == 0
+
+
+class _FakeEvidenceReader:
+    """A reader that answers with a record type a trait may not cite."""
+
+    def __init__(self, person_id: str, evidence_type: str) -> None:
+        self._person_id = person_id
+        self._evidence_type = evidence_type
+
+    def get_evidence(self, evidence_id: str) -> EvidenceRecord:
+        return EvidenceRecord(
+            evidence_id=evidence_id,
+            evidence_type=self._evidence_type,
+            person_ids=(self._person_id,),
+            sensitivity=Sensitivity.PERSONAL,
+        )
 
 
 # -- hard forget -------------------------------------------------------

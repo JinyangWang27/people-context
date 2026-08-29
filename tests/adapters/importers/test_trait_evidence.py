@@ -398,6 +398,37 @@ def test_a_trait_whose_same_batch_evidence_was_not_accepted_stays_unresolved() -
     assert len(harness.links()) == 1
 
 
+def test_a_stored_mapping_naming_a_record_no_trait_may_cite_leaves_it_unresolved() -> None:
+    """Defence in depth at the resolution seam.
+
+    Staging refuses an `evidence_refs` entry naming anything but an observation or interaction,
+    and bundle validation refuses one too, so a mapping to another record type should never reach
+    here. If a corrupted or hand-edited row does, the trait declines rather than linking to
+    something a trait may not rest on.
+    """
+    harness = _Harness()
+    batch = harness.stage_batch(
+        "planning-meeting",
+        [
+            _person("alice", "Alice Rivera"),
+            _observation(evidence_ref="metrics-question"),
+            _trait(evidence_refs=["metrics-question"]),
+        ],
+    )
+    rows = {row.candidate["type"]: row for row in harness.rows(batch.batch_id)}
+    harness.commit.execute(batch.batch_id, [rows["person"].id, rows["observation"].id])
+    harness.conn.execute(
+        "UPDATE import_candidate_mappings SET entity_type = 'fact' WHERE candidate_id = ?",
+        (rows["observation"].id,),
+    )
+    harness.conn.commit()
+
+    result = harness.commit.execute(batch.batch_id, [rows["trait"].id])
+
+    assert result.unresolved_ids == [rows["trait"].id]
+    assert harness.links() == []
+
+
 def test_an_explicit_durable_evidence_id_is_used_exactly_as_supplied() -> None:
     """A restored non-ULID id is as addressable as a generated one: lookup is exact, not shaped."""
     harness = _Harness()

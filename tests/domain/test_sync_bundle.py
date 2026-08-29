@@ -30,6 +30,7 @@ _BATCH_ID = "01J00000000000000000BATCH1"
 _CANDIDATE_ID = "01J0000000000000000000CND1"
 _TRAIT_ID = "01J000000000000000000TRAIT"
 _OBSERVATION_ID = "01J00000000000000000000OBS"
+_EVIDENCE_ROW_ID = "01J0000000000000000STAGE03"
 
 
 def _document() -> dict[str, Any]:
@@ -881,6 +882,119 @@ def test_a_staged_candidate_referencing_a_row_in_its_batch_is_accepted() -> None
     )
 
     validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def _staged_evidence(payload: dict[str, Any], evidence_refs: list[str]) -> None:
+    """Add an observation candidate and a trait citing it by canonical candidate id."""
+    imports = _imports(payload)
+    imports["staging"].extend(
+        [
+            {
+                "id": _EVIDENCE_ROW_ID,
+                "batch_id": _BATCH_ID,
+                "source": "import/agent:weekly-sync",
+                "candidate": {
+                    "type": "observation",
+                    "person_candidate_id": "01J0000000000000000STAGE01",
+                    "text": "Asked for the agenda a day ahead",
+                },
+                "status": "pending",
+                "created_at": "2026-07-03T00:00:00Z",
+            },
+            {
+                "id": "01J0000000000000000STAGE04",
+                "batch_id": _BATCH_ID,
+                "source": "import/agent:weekly-sync",
+                "candidate": {
+                    "type": "trait",
+                    "person_candidate_id": "01J0000000000000000STAGE01",
+                    "category": "communication_style",
+                    "value": "Prefers agendas in advance",
+                    "evidence_note": "Asked twice in one week.",
+                    "confidence": 0.6,
+                    "evidence_candidate_ids": evidence_refs,
+                },
+                "status": "pending",
+                "created_at": "2026-07-03T00:00:00Z",
+            },
+        ]
+    )
+
+
+def test_a_staged_trait_citing_an_evidence_candidate_in_its_batch_is_accepted() -> None:
+    """An evidence reference resolves against observation and interaction rows, not people."""
+    payload = _document()
+    _staged_evidence(payload, [_EVIDENCE_ROW_ID])
+
+    validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+
+def test_a_staged_trait_citing_a_person_candidate_is_rejected() -> None:
+    """Commit resolves an evidence reference through the cited candidate's own commit mapping,
+    so a person row there is a citation that could never resolve."""
+    payload = _document()
+    _staged_evidence(payload, ["01J0000000000000000STAGE01"])
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("cites a candidate that is not evidence" in detail for detail in excinfo.value.details)
+
+
+def test_a_staged_trait_citing_a_durable_record_the_bundle_omits_is_rejected() -> None:
+    """Hard forget deletes a staging row citing an erased record, so this cannot be our own
+    export; restoring it would leave a trait that can never commit."""
+    payload = _document()
+    _staged_evidence(payload, [_EVIDENCE_ROW_ID])
+    _imports(payload)["staging"][-1]["candidate"]["evidence_ids"] = ["01J000000000000000MISSING2"]
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("unbundled durable evidence record" in detail for detail in excinfo.value.details)
+
+
+@pytest.mark.parametrize(
+    ("candidate_field", "value"),
+    [
+        pytest.param("evidence_candidate_ids", [_OBSERVATION_ID, _OBSERVATION_ID], id="repeated"),
+        pytest.param("evidence_ids", [f"obs-{index}" for index in range(33)], id="over-budget"),
+    ],
+)
+def test_a_persisted_trait_breaking_the_evidence_contract_is_rejected(
+    candidate_field: str, value: list[str]
+) -> None:
+    """The persisted shape is held to the staging boundary's own evidence rules: a repeated
+    citation is a row the store refuses as a primary key, and an over-budget one makes a single
+    trait's retrieval unbounded."""
+    payload = _document()
+    _staged_evidence(payload, [_EVIDENCE_ROW_ID])
+    candidate = _imports(payload)["staging"][-1]["candidate"]
+    candidate.pop("evidence_candidate_ids")
+    candidate[candidate_field] = value
+
+    with pytest.raises(ValidationError):
+        SyncBundleDocument.model_validate(payload)
+
+
+def test_a_link_naming_a_trait_the_bundle_omits_is_rejected() -> None:
+    payload = _document()
+    payload["trait_evidence"][0]["trait_id"] = "01J000000000000000MISSING3"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("unbundled trait" in detail for detail in excinfo.value.details)
+
+
+def test_a_link_naming_an_interaction_the_bundle_omits_is_rejected() -> None:
+    payload = _document()
+    payload["trait_evidence"][0]["evidence_type"] = "interaction"
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(SyncBundleDocument.model_validate(payload))
+
+    assert any("unbundled interaction" in detail for detail in excinfo.value.details)
 
 
 def _strict_models() -> list[type[BaseModel]]:
