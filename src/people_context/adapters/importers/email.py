@@ -67,8 +67,14 @@ class EmailImportExtractor:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
-        """Extract correspondents; ``self_names`` and ``self_sender`` are unused by this source."""
+        """Extract correspondents; ``self_names`` and ``self_sender`` are unused by this source.
+
+        ``max_retained_parse_records`` is accepted and not yet applied: this source still
+        materializes its messages, and metering that without streaming it first would refuse
+        sources the released contract accepts rather than bound the work they cost.
+        """
         messages = self._messages(source_type, content, content_bytes, path, max_source_bytes)
         people: dict[str, ImportPersonCandidate] = {}
         alternate_names: dict[str, list[str]] = {}

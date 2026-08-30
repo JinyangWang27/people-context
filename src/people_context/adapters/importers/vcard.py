@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 import quopri
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
+from people_context.adapters.importers.bounded_source import (
+    CandidateBudget,
+    ParserWorkBudget,
+    drain_source,
+    iter_split_lines,
+    open_source_stream,
+)
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -37,24 +44,60 @@ class VCardImportExtractor:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
-        """Extract cards; ``self_names`` and ``self_sender`` are unused by this source."""
+        """Extract cards; ``self_names`` and ``self_sender`` are unused by this source.
+
+        Cards are unfolded, split, and consumed one at a time, so the only parsed lines held
+        live are those of the card currently being read. A file of malformed cards costs the
+        skip reasons it reports and nothing more.
+        """
         if source_type != "vcard":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'vcard'")
-        text = resolve_source_text(
+        normalized_self_addresses = {normalize_name(address) for address in self_addresses if address.strip()}
+        candidates: list[dict[str, object]] = []
+        skipped: list[dict[str, int | str]] = []
+        budget = CandidateBudget(max_candidates)
+        work = ParserWorkBudget(max_retained_parse_records)
+        with open_source_stream(
             content=content,
             content_bytes=content_bytes,
             path=path,
             encoding="utf-8",
             max_bytes=max_source_bytes,
             source_label="vcard",
+            universal_newlines=True,
+        ) as lines:
+            try:
+                self._read_cards(
+                    _split_cards(_unfold_lines(iter_split_lines(lines)), work),
+                    normalized_self_addresses,
+                    candidates,
+                    skipped,
+                    budget,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
+        return ExtractedImport(
+            people=[],
+            interactions=[],
+            candidates=candidates,
+            skipped_cards=skipped,
         )
-        cards = _split_cards(_unfold_lines(text))
-        normalized_self_addresses = {normalize_name(address) for address in self_addresses if address.strip()}
-        candidates: list[dict[str, object]] = []
-        skipped: list[dict[str, int | str]] = []
-        budget = CandidateBudget(max_candidates)
-        for index, (lines, structurally_valid) in enumerate(cards, start=1):
+
+    @staticmethod
+    def _read_cards(
+        cards: Iterable[tuple[list[str], bool]],
+        normalized_self_addresses: set[str],
+        candidates: list[dict[str, object]],
+        skipped: list[dict[str, int | str]],
+        budget: CandidateBudget,
+    ) -> None:
+        """Turn each streamed card into candidates or one stable skip reason."""
+        for index, (card_lines, structurally_valid) in enumerate(cards, start=1):
             if not structurally_valid:
                 skipped.append({"index": index, "reason": "malformed_card"})
                 continue
@@ -63,7 +106,7 @@ class VCardImportExtractor:
             # declares. Card independence is the vCard contract, so every decode for this
             # card sits inside one guard and a failure skips only this card.
             try:
-                properties = [_parse_property(line) for line in lines]
+                properties = [_parse_property(line) for line in card_lines]
                 by_name: dict[str, list[_Property]] = {}
                 for prop in properties:
                     by_name.setdefault(prop.name, []).append(prop)
@@ -91,12 +134,6 @@ class VCardImportExtractor:
                 continue
             candidates.extend(card_candidates)
             budget.account(len(candidates))
-        return ExtractedImport(
-            people=[],
-            interactions=[],
-            candidates=candidates,
-            skipped_cards=skipped,
-        )
 
 
 def _card_candidates(index: int, name: str, properties: dict[str, list[_Property]]) -> list[dict[str, object]]:
@@ -152,41 +189,53 @@ def _card_candidates(index: int, name: str, properties: dict[str, list[_Property
     return candidates
 
 
-def _unfold_lines(text: str) -> list[str]:
-    physical = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    unfolded: list[str] = []
+def _unfold_lines(physical: Iterable[str]) -> Iterator[str]:
+    """Unfold continuation and quoted-printable soft-break lines as they stream past.
+
+    Only the line still being folded onto is held: a folded line is complete as soon as the
+    next physical line turns out not to continue it, which is the point it is yielded.
+    """
+    pending: str | None = None
     for line in physical:
-        if line.startswith((" ", "\t")) and unfolded:
-            unfolded[-1] += line[1:]
-        elif unfolded and unfolded[-1].endswith("=") and line not in {"BEGIN:VCARD", "END:VCARD"}:
-            unfolded[-1] = unfolded[-1][:-1] + line
+        if line.startswith((" ", "\t")) and pending is not None:
+            pending += line[1:]
+        elif pending is not None and pending.endswith("=") and line not in {"BEGIN:VCARD", "END:VCARD"}:
+            pending = pending[:-1] + line
         else:
-            unfolded.append(line)
-    return unfolded
+            if pending is not None:
+                yield pending
+            pending = line
+    if pending is not None:
+        yield pending
 
 
-def _split_cards(lines: list[str]) -> list[tuple[list[str], bool]]:
-    cards: list[tuple[list[str], bool]] = []
+def _split_cards(lines: Iterable[str], work: ParserWorkBudget) -> Iterator[tuple[list[str], bool]]:
+    """Yield each card the moment its structural verdict is final.
+
+    A card's verdict cannot be decided before its terminator, so its lines are the one parsed
+    record this source retains — and they are accounted as they accumulate, which is what keeps
+    a source of many small cards costing one card rather than a file's worth of them.
+    """
     current: list[str] | None = None
     malformed = False
     for line in lines:
         marker = line.strip().upper()
         if marker == "BEGIN:VCARD":
             if current is not None:
-                cards.append((current, False))
+                yield current, False
             current = []
             malformed = False
         elif marker == "END:VCARD":
             if current is not None:
-                cards.append((current, not malformed))
+                yield current, not malformed
                 current = None
             else:
                 malformed = True
         elif current is not None:
             current.append(line)
+            work.account(len(current))
     if current is not None:
-        cards.append((current, False))
-    return cards
+        yield current, False
 
 
 def _parse_property(line: str) -> _Property:

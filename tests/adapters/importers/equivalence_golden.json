@@ -1,0 +1,2463 @@
+{
+  "email-single::content": {
+    "candidates": [],
+    "interactions": [
+      {
+        "message_id": "<msg-1@example.com>",
+        "occurred_at": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "participant_emails": [
+          "ada@example.com",
+          "grace@example.com",
+          "bob@example.com"
+        ]
+      }
+    ],
+    "people": [
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "ada@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "Ada Lovelace"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "grace@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "Grace Hopper"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "bob@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "bob"
+      }
+    ],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "email-single::content_bytes": {
+    "candidates": [],
+    "interactions": [
+      {
+        "message_id": "<msg-1@example.com>",
+        "occurred_at": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "participant_emails": [
+          "ada@example.com",
+          "grace@example.com",
+          "bob@example.com"
+        ]
+      }
+    ],
+    "people": [
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "ada@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "Ada Lovelace"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "grace@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "Grace Hopper"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "bob@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "bob"
+      }
+    ],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "email-single::path": {
+    "candidates": [],
+    "interactions": [
+      {
+        "message_id": "<msg-1@example.com>",
+        "occurred_at": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "participant_emails": [
+          "ada@example.com",
+          "grace@example.com",
+          "bob@example.com"
+        ]
+      }
+    ],
+    "people": [
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "ada@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "Ada Lovelace"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "grace@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "Grace Hopper"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "bob@example.com",
+        "message_id": "<msg-1@example.com>",
+        "name": "bob"
+      }
+    ],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-ambiguous::content": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "ambiguous_dtstart"
+      },
+      {
+        "index": 2,
+        "reason": "nonexistent_dtstart"
+      },
+      {
+        "index": 3,
+        "reason": "invalid_dtstart"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-ambiguous::content_bytes": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "ambiguous_dtstart"
+      },
+      {
+        "index": 2,
+        "reason": "nonexistent_dtstart"
+      },
+      {
+        "index": 3,
+        "reason": "invalid_dtstart"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-ambiguous::path": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "ambiguous_dtstart"
+      },
+      {
+        "index": 2,
+        "reason": "nonexistent_dtstart"
+      },
+      {
+        "index": 3,
+        "reason": "invalid_dtstart"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-empty::content": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-empty::content_bytes": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-empty::path": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-folded-and-broken::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "long@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Long Name",
+        "ref": "long@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-04-01T12:00:00+00:00"
+        },
+        "message_id": "folded-uid",
+        "participant_refs": [
+          "long@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 2,
+        "reason": "malformed_event"
+      },
+      {
+        "index": 3,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-folded-and-broken::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "long@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Long Name",
+        "ref": "long@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-04-01T12:00:00+00:00"
+        },
+        "message_id": "folded-uid",
+        "participant_refs": [
+          "long@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 2,
+        "reason": "malformed_event"
+      },
+      {
+        "index": 3,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-folded-and-broken::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "long@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Long Name",
+        "ref": "long@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-04-01T12:00:00+00:00"
+        },
+        "message_id": "folded-uid",
+        "participant_refs": [
+          "long@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 2,
+        "reason": "malformed_event"
+      },
+      {
+        "index": 3,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-mixed::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada L."
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "ada@example.com",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "bob@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "bob",
+        "ref": "bob@example.com",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "cleo@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "cleo",
+        "ref": "cleo@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "message_id": "utc-1",
+        "participant_refs": [
+          "ada@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-01T08:00:00+00:00"
+        },
+        "message_id": "tz-1",
+        "participant_refs": [
+          "ada@example.com",
+          "bob@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-02T00:00:00+00:00"
+        },
+        "message_id": "allday-1",
+        "participant_refs": [
+          "cleo@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 4,
+        "reason": "floating_dtstart_unsupported"
+      },
+      {
+        "index": 5,
+        "reason": "missing_dtstart"
+      },
+      {
+        "index": 6,
+        "reason": "no_external_attendee"
+      },
+      {
+        "index": 7,
+        "reason": "unknown_tzid"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-mixed::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada L."
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "ada@example.com",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "bob@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "bob",
+        "ref": "bob@example.com",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "cleo@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "cleo",
+        "ref": "cleo@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "message_id": "utc-1",
+        "participant_refs": [
+          "ada@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-01T08:00:00+00:00"
+        },
+        "message_id": "tz-1",
+        "participant_refs": [
+          "ada@example.com",
+          "bob@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-02T00:00:00+00:00"
+        },
+        "message_id": "allday-1",
+        "participant_refs": [
+          "cleo@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 4,
+        "reason": "floating_dtstart_unsupported"
+      },
+      {
+        "index": 5,
+        "reason": "missing_dtstart"
+      },
+      {
+        "index": 6,
+        "reason": "no_external_attendee"
+      },
+      {
+        "index": 7,
+        "reason": "unknown_tzid"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-mixed::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada L."
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "ada@example.com",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "bob@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "bob",
+        "ref": "bob@example.com",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "cleo@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "cleo",
+        "ref": "cleo@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "message_id": "utc-1",
+        "participant_refs": [
+          "ada@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-01T08:00:00+00:00"
+        },
+        "message_id": "tz-1",
+        "participant_refs": [
+          "ada@example.com",
+          "bob@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-03-02T00:00:00+00:00"
+        },
+        "message_id": "allday-1",
+        "participant_refs": [
+          "cleo@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 4,
+        "reason": "floating_dtstart_unsupported"
+      },
+      {
+        "index": 5,
+        "reason": "missing_dtstart"
+      },
+      {
+        "index": 6,
+        "reason": "no_external_attendee"
+      },
+      {
+        "index": 7,
+        "reason": "unknown_tzid"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-reopened-event::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "two@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "two",
+        "ref": "two@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-05-02T09:00:00+00:00"
+        },
+        "message_id": "reopened",
+        "participant_refs": [
+          "two@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-reopened-event::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "two@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "two",
+        "ref": "two@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-05-02T09:00:00+00:00"
+        },
+        "message_id": "reopened",
+        "participant_refs": [
+          "two@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-reopened-event::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "two@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "two",
+        "ref": "two@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-05-02T09:00:00+00:00"
+        },
+        "message_id": "reopened",
+        "participant_refs": [
+          "two@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-exotic-preamble::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "cleo@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Cleo Patra",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "org": "Nile",
+        "person_ref": "linkedin-person-1",
+        "role": "Ruler",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2024-01-01"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-exotic-preamble::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "cleo@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Cleo Patra",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "org": "Nile",
+        "person_ref": "linkedin-person-1",
+        "role": "Ruler",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2024-01-01"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-exotic-preamble::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "cleo@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Cleo Patra",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "org": "Nile",
+        "person_ref": "linkedin-person-1",
+        "role": "Ruler",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2024-01-01"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-no-header::content": {
+    "refused": "invalid_headers"
+  },
+  "linkedin-no-header::content_bytes": {
+    "refused": "invalid_headers"
+  },
+  "linkedin-no-header::path": {
+    "refused": "invalid_headers"
+  },
+  "linkedin-preamble::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada L."
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "linkedin-person-2",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "linkedin-person-3",
+        "type": "person"
+      },
+      {
+        "org": "Analytical Engines",
+        "person_ref": "linkedin-person-1",
+        "role": "Engineer",
+        "type": "affiliation"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "linkedin-person-2",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "org": "Other Corp",
+        "person_ref": "linkedin-person-3",
+        "role": "Advisor",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2024-02-01"
+      },
+      {
+        "person_ref": "linkedin-person-2",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2020-03-15"
+      },
+      {
+        "person_ref": "linkedin-person-3",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2020-03-15"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 5,
+        "reason": "missing_name"
+      },
+      {
+        "index": 6,
+        "reason": "invalid_connected_on"
+      },
+      {
+        "index": 7,
+        "reason": "invalid_email"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-preamble::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada L."
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "linkedin-person-2",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "linkedin-person-3",
+        "type": "person"
+      },
+      {
+        "org": "Analytical Engines",
+        "person_ref": "linkedin-person-1",
+        "role": "Engineer",
+        "type": "affiliation"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "linkedin-person-2",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "org": "Other Corp",
+        "person_ref": "linkedin-person-3",
+        "role": "Advisor",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2024-02-01"
+      },
+      {
+        "person_ref": "linkedin-person-2",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2020-03-15"
+      },
+      {
+        "person_ref": "linkedin-person-3",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2020-03-15"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 5,
+        "reason": "missing_name"
+      },
+      {
+        "index": 6,
+        "reason": "invalid_connected_on"
+      },
+      {
+        "index": 7,
+        "reason": "invalid_email"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-preamble::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada L."
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "linkedin-person-2",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "linkedin-person-3",
+        "type": "person"
+      },
+      {
+        "org": "Analytical Engines",
+        "person_ref": "linkedin-person-1",
+        "role": "Engineer",
+        "type": "affiliation"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "linkedin-person-2",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "org": "Other Corp",
+        "person_ref": "linkedin-person-3",
+        "role": "Advisor",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2024-02-01"
+      },
+      {
+        "person_ref": "linkedin-person-2",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2020-03-15"
+      },
+      {
+        "person_ref": "linkedin-person-3",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2020-03-15"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 5,
+        "reason": "missing_name"
+      },
+      {
+        "index": 6,
+        "reason": "invalid_connected_on"
+      },
+      {
+        "index": 7,
+        "reason": "invalid_email"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-quoted-multiline::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "multi@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Multi Line Name",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "org": "Corp, Inc.",
+        "person_ref": "linkedin-person-1",
+        "role": "Chief",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2021-05-05"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-quoted-multiline::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "multi@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Multi Line Name",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "org": "Corp, Inc.",
+        "person_ref": "linkedin-person-1",
+        "role": "Chief",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2021-05-05"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "linkedin-quoted-multiline::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "multi@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Multi Line Name",
+        "ref": "linkedin-person-1",
+        "type": "person"
+      },
+      {
+        "org": "Corp, Inc.",
+        "person_ref": "linkedin-person-1",
+        "role": "Chief",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "linkedin-person-1",
+        "predicate": "linkedin_connected_on",
+        "type": "fact",
+        "value": "2021-05-05"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "mbox-three::path": {
+    "candidates": [],
+    "interactions": [
+      {
+        "message_id": "<mbox-1@example.com>",
+        "occurred_at": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "participant_emails": [
+          "ada@example.com"
+        ]
+      },
+      {
+        "message_id": null,
+        "occurred_at": {
+          "__datetime__": "2024-03-02T09:00:00+00:00"
+        },
+        "participant_emails": [
+          "grace@example.com"
+        ]
+      }
+    ],
+    "people": [
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-01T09:00:00+00:00"
+        },
+        "email": "ada@example.com",
+        "message_id": "<mbox-1@example.com>",
+        "name": "Ada Lovelace"
+      },
+      {
+        "alternate_names": [],
+        "date": {
+          "__datetime__": "2024-03-02T09:00:00+00:00"
+        },
+        "email": "grace@example.com",
+        "message_id": null,
+        "name": "Grace Hopper"
+      }
+    ],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "outlook-contacts::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada B Lovelace"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "outlook-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "grace@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "outlook-person-2",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Solo Contact",
+        "ref": "outlook-person-3",
+        "type": "person"
+      },
+      {
+        "org": "Analytical Engines",
+        "person_ref": "outlook-person-1",
+        "role": "Engineer",
+        "type": "affiliation"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "outlook-person-2",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "org": "Solo Corp",
+        "person_ref": "outlook-person-3",
+        "role": "Founder",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "outlook-person-1",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "1815-12-10"
+      },
+      {
+        "person_ref": "outlook-person-3",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "2000-02-29"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 3,
+        "reason": "invalid_birthday"
+      },
+      {
+        "index": 4,
+        "reason": "missing_name"
+      },
+      {
+        "index": 5,
+        "reason": "invalid_email"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "outlook-contacts::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada B Lovelace"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "outlook-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "grace@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "outlook-person-2",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Solo Contact",
+        "ref": "outlook-person-3",
+        "type": "person"
+      },
+      {
+        "org": "Analytical Engines",
+        "person_ref": "outlook-person-1",
+        "role": "Engineer",
+        "type": "affiliation"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "outlook-person-2",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "org": "Solo Corp",
+        "person_ref": "outlook-person-3",
+        "role": "Founder",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "outlook-person-1",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "1815-12-10"
+      },
+      {
+        "person_ref": "outlook-person-3",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "2000-02-29"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 3,
+        "reason": "invalid_birthday"
+      },
+      {
+        "index": 4,
+        "reason": "missing_name"
+      },
+      {
+        "index": 5,
+        "reason": "invalid_email"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "outlook-contacts::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          },
+          {
+            "kind": "other",
+            "value": "Ada B Lovelace"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "outlook-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "grace@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "outlook-person-2",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Solo Contact",
+        "ref": "outlook-person-3",
+        "type": "person"
+      },
+      {
+        "org": "Analytical Engines",
+        "person_ref": "outlook-person-1",
+        "role": "Engineer",
+        "type": "affiliation"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "outlook-person-2",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "org": "Solo Corp",
+        "person_ref": "outlook-person-3",
+        "role": "Founder",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "outlook-person-1",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "1815-12-10"
+      },
+      {
+        "person_ref": "outlook-person-3",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "2000-02-29"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 3,
+        "reason": "invalid_birthday"
+      },
+      {
+        "index": 4,
+        "reason": "missing_name"
+      },
+      {
+        "index": 5,
+        "reason": "invalid_email"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "outlook-malformed::content": {
+    "refused": "invalid_csv"
+  },
+  "outlook-malformed::content_bytes": {
+    "refused": "invalid_csv"
+  },
+  "outlook-malformed::path": {
+    "refused": "invalid_csv"
+  },
+  "outlook-no-header::content": {
+    "refused": "invalid_headers"
+  },
+  "outlook-no-header::content_bytes": {
+    "refused": "invalid_headers"
+  },
+  "outlook-no-header::path": {
+    "refused": "invalid_headers"
+  },
+  "vcard-bare-cr::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Carriage Return",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-bare-cr::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Carriage Return",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-bare-cr::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Carriage Return",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-empty::content": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-empty::content_bytes": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-empty::path": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-folded::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "KatherineJohnson",
+        "ref": "card-1",
+        "type": "person"
+      },
+      {
+        "org": "NASA",
+        "person_ref": "card-1",
+        "role": "Mathematician",
+        "type": "affiliation"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-folded::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "KatherineJohnson",
+        "ref": "card-1",
+        "type": "person"
+      },
+      {
+        "org": "NASA",
+        "person_ref": "card-1",
+        "role": "Mathematician",
+        "type": "affiliation"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-folded::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "KatherineJohnson",
+        "ref": "card-1",
+        "type": "person"
+      },
+      {
+        "org": "NASA",
+        "person_ref": "card-1",
+        "role": "Mathematician",
+        "type": "affiliation"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-malformed::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Second Start",
+        "ref": "card-2",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_card"
+      },
+      {
+        "index": 3,
+        "reason": "unsupported_version"
+      },
+      {
+        "index": 4,
+        "reason": "missing_fn"
+      },
+      {
+        "index": 5,
+        "reason": "malformed_card"
+      },
+      {
+        "index": 6,
+        "reason": "malformed_card"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-malformed::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Second Start",
+        "ref": "card-2",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_card"
+      },
+      {
+        "index": 3,
+        "reason": "unsupported_version"
+      },
+      {
+        "index": 4,
+        "reason": "missing_fn"
+      },
+      {
+        "index": 5,
+        "reason": "malformed_card"
+      },
+      {
+        "index": 6,
+        "reason": "malformed_card"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-malformed::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Second Start",
+        "ref": "card-2",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_card"
+      },
+      {
+        "index": 3,
+        "reason": "unsupported_version"
+      },
+      {
+        "index": 4,
+        "reason": "missing_fn"
+      },
+      {
+        "index": 5,
+        "reason": "malformed_card"
+      },
+      {
+        "index": 6,
+        "reason": "malformed_card"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-minimal::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-minimal::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-minimal::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "ada@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-no-trailing-newline::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "No Trailing Newline",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-no-trailing-newline::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "No Trailing Newline",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-no-trailing-newline::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "No Trailing Newline",
+        "ref": "card-1",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-quoted-printable::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "José Arcadio",
+        "ref": "card-2",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "unsupported_version"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-quoted-printable::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "José Arcadio",
+        "ref": "card-2",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "unsupported_version"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-quoted-printable::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "José Arcadio",
+        "ref": "card-2",
+        "type": "person"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "unsupported_version"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-rich::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "other",
+            "value": "Dr. Grace Brewster Hopper PhD"
+          },
+          {
+            "kind": "nickname",
+            "value": "Amazing Grace"
+          },
+          {
+            "kind": "nickname",
+            "value": "Grace"
+          },
+          {
+            "kind": "handle",
+            "value": "grace@example.com"
+          },
+          {
+            "kind": "handle",
+            "value": "g.hopper@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "card-1",
+        "type": "person"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "card-1",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "card-1",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "1906-12-09"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-rich::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "other",
+            "value": "Dr. Grace Brewster Hopper PhD"
+          },
+          {
+            "kind": "nickname",
+            "value": "Amazing Grace"
+          },
+          {
+            "kind": "nickname",
+            "value": "Grace"
+          },
+          {
+            "kind": "handle",
+            "value": "grace@example.com"
+          },
+          {
+            "kind": "handle",
+            "value": "g.hopper@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "card-1",
+        "type": "person"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "card-1",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "card-1",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "1906-12-09"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-rich::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "other",
+            "value": "Dr. Grace Brewster Hopper PhD"
+          },
+          {
+            "kind": "nickname",
+            "value": "Amazing Grace"
+          },
+          {
+            "kind": "nickname",
+            "value": "Grace"
+          },
+          {
+            "kind": "handle",
+            "value": "grace@example.com"
+          },
+          {
+            "kind": "handle",
+            "value": "g.hopper@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "card-1",
+        "type": "person"
+      },
+      {
+        "org": "US Navy",
+        "person_ref": "card-1",
+        "role": "Rear Admiral",
+        "type": "affiliation"
+      },
+      {
+        "person_ref": "card-1",
+        "predicate": "birthday",
+        "type": "fact",
+        "value": "1906-12-09"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-self-filtered::content": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-self-filtered::content_bytes": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "vcard-self-filtered::path": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-chat::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "+15550100"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "+1 555 0100",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1",
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "no_sender"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-chat::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "+15550100"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "+1 555 0100",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1",
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "no_sender"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-chat::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "+15550100"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "+1 555 0100",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1",
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "no_sender"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-unresolvable::content": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "ambiguous_date_order"
+      },
+      {
+        "index": 2,
+        "reason": "ambiguous_date_order"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-unresolvable::content_bytes": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "ambiguous_date_order"
+      },
+      {
+        "index": 2,
+        "reason": "ambiguous_date_order"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-unresolvable::path": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "ambiguous_date_order"
+      },
+      {
+        "index": 2,
+        "reason": "ambiguous_date_order"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  }
+}

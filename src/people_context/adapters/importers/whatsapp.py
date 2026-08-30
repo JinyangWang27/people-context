@@ -87,8 +87,14 @@ class WhatsAppImportExtractor:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
-        """Extract external participants and one neutral interaction per calendar day."""
+        """Extract external participants and one neutral interaction per calendar day.
+
+        ``max_retained_parse_records`` is accepted and not yet applied: this source infers its
+        date ordering from the whole export, so bounding what it retains is a change to how it
+        reads the file rather than a ceiling that can be imposed on the current parse.
+        """
         if source_type != "whatsapp":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'whatsapp'")
         text = resolve_source_text(

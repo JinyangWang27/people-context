@@ -503,7 +503,7 @@ Check the matching box only in the PR that delivers it.
 
 ## M20 — Streaming importer parsing
 
-- [ ] **M20.1 — Add the streaming source reader and parser-work budget**
+- [x] **M20.1 — Add the streaming source reader and parser-work budget**
   - **Scope:** Add a bounded line/record-oriented streaming counterpart to `read_source_text` and a narrow
     parser-work budget bounding **live retained parsed records**, both defaulting to unbounded exactly as
     `max_source_bytes` and `max_candidates` do; convert the sources with no cross-file state — `vcard`, `ics`,

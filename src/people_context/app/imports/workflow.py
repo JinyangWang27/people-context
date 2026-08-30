@@ -205,6 +205,7 @@ class ImportContent:
                 self_sender=self_sender,
                 max_source_bytes=limits.max_source_bytes,
                 max_candidates=limits.max_candidates,
+                max_retained_parse_records=limits.max_retained_parse_records,
             )
             return extracted, None
         identity = self._stable_extractor.extraction_identity(
@@ -221,6 +222,7 @@ class ImportContent:
             self_sender=self_sender,
             max_source_bytes=limits.max_source_bytes,
             max_candidates=limits.max_candidates,
+            max_retained_parse_records=limits.max_retained_parse_records,
         )
         claim = build_source_claim(
             source_kind=source_type,

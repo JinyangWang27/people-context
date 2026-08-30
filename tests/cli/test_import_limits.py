@@ -29,6 +29,7 @@ from people_context.adapters.sqlite import (
 from people_context.app.imports import (
     CLI_IMPORT_BUDGET,
     MAX_CLI_CANDIDATE_JSON_BYTES,
+    MAX_CLI_RETAINED_PARSE_RECORDS,
     MAX_CLI_SOURCE_BYTES,
     MAX_CLI_STAGED_CANDIDATES,
     MAX_CLI_STAGED_PAYLOAD_BYTES,
@@ -74,7 +75,18 @@ def test_the_cli_budget_is_the_documented_ceiling() -> None:
         max_source_bytes=MAX_CLI_SOURCE_BYTES,
         max_candidates=MAX_CLI_STAGED_CANDIDATES,
         max_staged_payload_bytes=MAX_CLI_STAGED_PAYLOAD_BYTES,
+        max_retained_parse_records=MAX_CLI_RETAINED_PARSE_RECORDS,
     ) == CLI_IMPORT_BUDGET
+
+
+def test_the_parser_work_backstop_cannot_narrow_what_the_byte_ceiling_admits() -> None:
+    """The retention backstop is derived from the byte ceiling, not chosen independently.
+
+    Every parsed record costs at least one byte of source, so a ceiling equal to the source
+    budget cannot be reached by anything that budget already admits. That is the whole point:
+    M20 adds no fourth user-visible limit to `pctx import`.
+    """
+    assert MAX_CLI_RETAINED_PARSE_RECORDS == MAX_CLI_SOURCE_BYTES
 
 
 def test_a_source_one_byte_over_the_limit_is_refused_before_any_staging(

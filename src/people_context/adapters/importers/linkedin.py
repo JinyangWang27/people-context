@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import csv
-import io
+import itertools
 import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import date
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
+from people_context.adapters.importers.bounded_source import (
+    CandidateBudget,
+    ParserWorkBudget,
+    drain_source,
+    open_source_stream,
+)
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import clean_text, normalize_email
 from people_context.domain.person import AliasKind
@@ -42,6 +48,8 @@ _ENGLISH_MONTHS = {
 }
 _ENGLISH_DATE_RE = re.compile(r"^(\d{2}) ([A-Z][a-z]{2}) (\d{4})$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+#: Every boundary `str.splitlines` breaks on, with ``\r\n`` first so it stays a single one.
+_LINE_BOUNDARY = re.compile("\r\n|[\n\r\v\f\x1c\x1d\x1e\x85  ]")
 
 
 @dataclass
@@ -69,11 +77,18 @@ class LinkedInImportExtractor:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
-        """Extract connection rows; ``self_names`` and ``self_sender`` are unused by this source."""
+        """Extract connection rows; ``self_names`` and ``self_sender`` are unused by this source.
+
+        The export's preamble is skipped by scanning one line at a time rather than by splitting
+        the whole file, and `csv` then streams rows off the same reader, so nothing larger than
+        the current line and the current row is held while the source is parsed.
+        """
         if source_type != "linkedin":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'linkedin'")
-        text = resolve_source_text(
+        work = ParserWorkBudget(max_retained_parse_records)
+        with open_source_stream(
             content=content,
             content_bytes=content_bytes,
             path=path,
@@ -81,8 +96,30 @@ class LinkedInImportExtractor:
             max_bytes=max_source_bytes,
             source_label="linkedin",
             strip_content_bom=True,
-        )
-        reader = csv.DictReader(io.StringIO(_csv_from_canonical_header(text)), strict=True)
+            universal_newlines=False,
+        ) as lines:
+            try:
+                return self._extract_rows(
+                    csv.DictReader(_from_canonical_header(lines, work), strict=True),
+                    self_addresses=self_addresses,
+                    max_candidates=max_candidates,
+                    work=work,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
+
+    @staticmethod
+    def _extract_rows(
+        reader: csv.DictReader[str],
+        *,
+        self_addresses: set[str],
+        max_candidates: int | None,
+        work: ParserWorkBudget,
+    ) -> ExtractedImport:
+        """Turn the streamed connection rows into candidates, holding one row at a time."""
         headers = reader.fieldnames
         if headers is None or not _EXPECTED_HEADERS.issubset(headers):
             raise ImportExtractionError("invalid_headers", "linkedin CSV is missing required canonical headers")
@@ -101,6 +138,7 @@ class LinkedInImportExtractor:
 
         try:
             for row_index, row in enumerate(reader, start=1):
+                work.account(1)
                 name = _combined_name(row)
                 if not name:
                     skipped.append({"index": row_index, "reason": "missing_name"})
@@ -169,16 +207,53 @@ class LinkedInImportExtractor:
         )
 
 
-def _csv_from_canonical_header(text: str) -> str:
-    lines = text.splitlines(keepends=True)
-    for index, line in enumerate(lines):
-        try:
-            columns = next(csv.reader([line], strict=True))
-        except csv.Error:
-            continue
-        if _EXPECTED_HEADERS.issubset(columns):
-            return "".join(lines[index:])
+def _from_canonical_header(lines: Iterable[str], work: ParserWorkBudget) -> Iterator[str]:
+    """Yield the export from its canonical header row onward, scanning one line at a time.
+
+    A LinkedIn export puts a notice above the header, and the header is found by trying to read
+    each candidate line as a CSV record. The old scan split the whole file to do that; this one
+    holds a single line, and splits only that line further so the search still breaks at every
+    boundary `str.splitlines` recognizes rather than at newlines alone.
+
+    What follows the matched piece is handed straight through, so `csv` sees exactly the record
+    stream it saw when the tail was rejoined into one string first.
+    """
+    iterator = iter(lines)
+    for line in iterator:
+        for offset, piece in _split_lines_lazily(line):
+            work.account(1)
+            try:
+                columns = next(csv.reader([piece], strict=True))
+            except csv.Error:
+                continue
+            if _EXPECTED_HEADERS.issubset(columns):
+                # Slicing from the matched piece's offset is `"".join(pieces[index:])` without
+                # ever holding the pieces, which is the whole point of scanning them lazily.
+                yield from itertools.chain([line[offset:]], iterator)
+                return
     raise ImportExtractionError("invalid_headers", "linkedin CSV is missing required canonical headers")
+
+
+def _split_lines_lazily(line: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(offset, piece)`` for exactly what ``line.splitlines(keepends=True)`` returns.
+
+    Calling `str.splitlines` here would defeat the bound the streaming scan exists to provide.
+    The stream breaks on the newlines a text reader recognizes, but `str.splitlines` breaks on
+    more than that, so a source whose separators are all form feeds arrives as one line — and
+    splitting it would materialize one string object per separator, tens of millions of them
+    inside the byte ceiling, which is more than the source itself costs.
+
+    Yielding the offset alongside each piece is what lets the caller reconstruct the tail with
+    a single slice instead of rejoining a list it never built. `_LINE_BOUNDARY` is the exact
+    separator set `str.splitlines` documents, ``\\r\\n`` first so it stays one boundary, and a
+    test pins the two against each other character by character.
+    """
+    start = 0
+    for boundary in _LINE_BOUNDARY.finditer(line):
+        yield start, line[start : boundary.end()]
+        start = boundary.end()
+    if start < len(line):
+        yield start, line[start:]
 
 
 def _combined_name(row: dict[str | None, str | list[str] | None]) -> str:

@@ -146,6 +146,7 @@ class VerifiedSnapshotExtractor:
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> StableExtraction:
         """Return the digest and candidates of one verified stable pass over ``path``."""
         self._contract(source_type)
@@ -158,6 +159,7 @@ class VerifiedSnapshotExtractor:
                 self_sender=self_sender,
                 max_source_bytes=max_source_bytes,
                 max_candidates=max_candidates,
+                max_retained_parse_records=max_retained_parse_records,
             )
         raw = read_source_bytes(path, max_bytes=max_source_bytes)
         extracted = self._extractor.extract(
@@ -170,6 +172,7 @@ class VerifiedSnapshotExtractor:
             content_bytes=raw,
             max_source_bytes=max_source_bytes,
             max_candidates=max_candidates,
+            max_retained_parse_records=max_retained_parse_records,
         )
         return StableExtraction(content_digest=hashlib.sha256(raw).hexdigest(), extracted=extracted)
 
@@ -196,6 +199,7 @@ class VerifiedSnapshotExtractor:
         self_sender: str | None,
         max_source_bytes: int | None,
         max_candidates: int | None,
+        max_retained_parse_records: int | None,
     ) -> StableExtraction:
         """Extract from the path itself, keeping only a pass whose source never moved.
 
@@ -216,6 +220,7 @@ class VerifiedSnapshotExtractor:
                 content_bytes=None,
                 max_source_bytes=max_source_bytes,
                 max_candidates=max_candidates,
+                max_retained_parse_records=max_retained_parse_records,
             )
             after_digest = _digest_file(path, max_bytes=max_source_bytes)
             if before_identity == _file_identity(path) and before_digest == after_digest:

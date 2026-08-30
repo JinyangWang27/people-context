@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
+from people_context.adapters.importers.bounded_source import (
+    CandidateBudget,
+    ParserWorkBudget,
+    drain_source,
+    iter_split_lines,
+    open_source_stream,
+)
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
@@ -57,26 +64,68 @@ class IcsImportExtractor:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
-        """Extract attendees; ``self_names`` and ``self_sender`` are unused by this source."""
+        """Extract attendees; ``self_names`` and ``self_sender`` are unused by this source.
+
+        Events are unfolded and assembled one at a time and each is consumed the moment its
+        component is closed, so an export whose every event is skipped retains one event rather
+        than one per event.
+        """
         if source_type != "ics":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'ics'")
-        text = resolve_source_text(
-            content=content,
-            content_bytes=content_bytes,
-            path=path,
-            encoding="utf-8",
-            max_bytes=max_source_bytes,
-            source_label="ics",
-        )
         normalized_self = {normalize_name(address) for address in self_addresses if address.strip()}
 
         people: dict[str, _PersonAccumulator] = {}
         interactions: list[dict[str, object]] = []
         skipped: list[dict[str, int | str]] = []
         budget = CandidateBudget(max_candidates)
+        work = ParserWorkBudget(max_retained_parse_records)
 
-        for index, event in enumerate(_iter_events(_unfold_lines(text)), start=1):
+        with open_source_stream(
+            content=content,
+            content_bytes=content_bytes,
+            path=path,
+            encoding="utf-8",
+            max_bytes=max_source_bytes,
+            source_label="ics",
+            universal_newlines=True,
+        ) as lines:
+            try:
+                self._read_events(
+                    _iter_events(_unfold_lines(iter_split_lines(lines)), work),
+                    normalized_self,
+                    people,
+                    interactions,
+                    skipped,
+                    budget,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
+
+        person_candidates = [_person_candidate(accumulator) for accumulator in people.values()]
+        return ExtractedImport(
+            people=[],
+            interactions=[],
+            candidates=[*person_candidates, *interactions],
+            skipped_cards=skipped,
+        )
+
+    @classmethod
+    def _read_events(
+        cls,
+        events: Iterable[_Event],
+        normalized_self: set[str],
+        people: dict[str, _PersonAccumulator],
+        interactions: list[dict[str, object]],
+        skipped: list[dict[str, int | str]],
+        budget: CandidateBudget,
+    ) -> None:
+        """Turn each streamed event into an interaction or one stable skip reason."""
+        for index, event in enumerate(events, start=1):
             if event.malformed:
                 skipped.append({"index": index, "reason": "malformed_event"})
                 continue
@@ -87,7 +136,7 @@ class IcsImportExtractor:
             if occurred_at is None:
                 skipped.append({"index": index, "reason": reason or "invalid_dtstart"})
                 continue
-            refs = self._collect_attendees(event, normalized_self, people, budget)
+            refs = cls._collect_attendees(event, normalized_self, people, budget)
             if not refs:
                 skipped.append({"index": index, "reason": "no_external_attendee"})
                 continue
@@ -101,14 +150,6 @@ class IcsImportExtractor:
             }
             interactions.append(interaction)
             budget.account(len(people) + len(interactions))
-
-        person_candidates = [_person_candidate(accumulator) for accumulator in people.values()]
-        return ExtractedImport(
-            people=[],
-            interactions=[],
-            candidates=[*person_candidates, *interactions],
-            skipped_cards=skipped,
-        )
 
     @staticmethod
     def _collect_attendees(
@@ -207,8 +248,14 @@ def _parse_dtstart(params: dict[str, str], value: str) -> tuple[datetime | None,
     return None, "floating_dtstart_unsupported"
 
 
-def _iter_events(lines: list[str]) -> list[_Event]:
-    events: list[_Event] = []
+def _iter_events(lines: Iterable[str], work: ParserWorkBudget) -> Iterator[_Event]:
+    """Yield each ``VEVENT`` once nothing later in the file can still change it.
+
+    An open event is still mutable — a stray property, a nested component mismatch, or a second
+    ``BEGIN:VEVENT`` all mark it malformed — so it is emitted at exactly the point the old
+    whole-file scan stopped touching it. Emission order is the order events begin, which is what
+    keeps the one-based skip indexes counting from the same origin.
+    """
     stack: list[str] = []
     current: _Event | None = None
     for line in lines:
@@ -224,11 +271,16 @@ def _iter_events(lines: list[str]) -> list[_Event]:
         if upper == "BEGIN":
             component = value.strip().upper()
             stack.append(component)
+            # The open-component stack is retained parse state too, and a source of `BEGIN`
+            # records that never close grows it once per line while producing no candidate to
+            # account. Metering only the current event's attendees would leave exactly the
+            # candidate-free shape this budget exists to bound unbounded.
+            work.account(_live_records(stack, current))
             if component == "VEVENT":
                 if current is not None:
                     current.malformed = True
+                    yield current
                 current = _Event()
-                events.append(current)
         elif upper == "END":
             component = value.strip().upper()
             if stack and stack[-1] == component:
@@ -240,13 +292,26 @@ def _iter_events(lines: list[str]) -> list[_Event]:
                     current.malformed = True
                 while component in stack and stack.pop() != component:
                     pass
-            if component == "VEVENT":
+            if component == "VEVENT" and current is not None:
+                yield current
                 current = None
         elif current is not None and stack and stack[-1] == "VEVENT":
             _apply_property(current, upper, params, value)
+            work.account(_live_records(stack, current))
     if current is not None:
         current.malformed = True
-    return events
+        yield current
+
+
+def _live_records(stack: list[str], current: _Event | None) -> int:
+    """Return every parsed record this source holds live while it scans.
+
+    Two structures grow with the file and nothing else does: the open-component stack, which a
+    malformed source can drive as deep as it has lines, and the current event's attendee list,
+    which one enormous `VEVENT` can fan out. Counting them together is what makes the budget a
+    bound on the parser's whole retention rather than on the half of it that is easiest to see.
+    """
+    return len(stack) + (len(current.attendees) if current is not None else 0)
 
 
 def _apply_property(event: _Event, name: str, params: dict[str, str], value: str) -> None:
@@ -331,12 +396,15 @@ def _clean_text(value: str) -> str:
     return " ".join(value.split())
 
 
-def _unfold_lines(text: str) -> list[str]:
-    physical = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    unfolded: list[str] = []
+def _unfold_lines(physical: Iterable[str]) -> Iterator[str]:
+    """Unfold RFC 5545 continuation lines as they stream past, holding only the current one."""
+    pending: str | None = None
     for line in physical:
-        if line[:1] in {" ", "\t"} and unfolded:
-            unfolded[-1] += line[1:]
+        if line[:1] in {" ", "\t"} and pending is not None:
+            pending += line[1:]
         else:
-            unfolded.append(line)
-    return unfolded
+            if pending is not None:
+                yield pending
+            pending = line
+    if pending is not None:
+        yield pending

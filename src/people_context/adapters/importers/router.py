@@ -55,6 +55,7 @@ class ImportExtractorRouter:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
         """Extract candidates with the extractor registered for ``source_type``."""
         extractor: ImportExtractor
@@ -82,4 +83,5 @@ class ImportExtractorRouter:
             content_bytes=content_bytes,
             max_source_bytes=max_source_bytes,
             max_candidates=max_candidates,
+            max_retained_parse_records=max_retained_parse_records,
         )

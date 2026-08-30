@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import csv
-import io
 import re
 from dataclasses import dataclass, field
 from datetime import date
 
-from people_context.adapters.importers.bounded_source import CandidateBudget, resolve_source_text
+from people_context.adapters.importers.bounded_source import (
+    CandidateBudget,
+    ParserWorkBudget,
+    drain_source,
+    open_source_stream,
+)
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import clean_text, normalize_email
 from people_context.domain.person import AliasKind
@@ -60,11 +64,17 @@ class OutlookImportExtractor:
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
-        """Extract contact rows; ``self_names`` and ``self_sender`` are unused by this source."""
+        """Extract contact rows; ``self_names`` and ``self_sender`` are unused by this source.
+
+        `csv` already yields one row at a time; what this source used to retain was the decoded
+        text behind the reader, which the streaming reader removes. One parsed row is live at a
+        time, so the only structures that grow with the file are the candidates themselves.
+        """
         if source_type != "outlook":
             raise ImportExtractionError("invalid_source_type", "source_type must be 'outlook'")
-        text = resolve_source_text(
+        with open_source_stream(
             content=content,
             content_bytes=content_bytes,
             path=path,
@@ -72,8 +82,30 @@ class OutlookImportExtractor:
             max_bytes=max_source_bytes,
             source_label="outlook",
             strip_content_bom=True,
-        )
-        reader = csv.DictReader(io.StringIO(text), strict=True)
+            universal_newlines=False,
+        ) as lines:
+            try:
+                return self._extract_rows(
+                    csv.DictReader(lines, strict=True),
+                    self_addresses=self_addresses,
+                    max_candidates=max_candidates,
+                    max_retained_parse_records=max_retained_parse_records,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
+
+    @staticmethod
+    def _extract_rows(
+        reader: csv.DictReader[str],
+        *,
+        self_addresses: set[str],
+        max_candidates: int | None,
+        max_retained_parse_records: int | None,
+    ) -> ExtractedImport:
+        """Turn the streamed contact rows into candidates, holding one row at a time."""
         try:
             # Reading the header row parses CSV too, so it belongs inside the error boundary.
             headers = reader.fieldnames
@@ -93,9 +125,11 @@ class OutlookImportExtractor:
         seen_facts: set[tuple[str, str]] = set()
         skipped: list[dict[str, int | str]] = []
         budget = CandidateBudget(max_candidates)
+        work = ParserWorkBudget(max_retained_parse_records)
 
         try:
             for row_index, row in enumerate(reader, start=1):
+                work.account(1)
                 name = _combined_name(row)
                 if not name:
                     skipped.append({"index": row_index, "reason": "missing_name"})
