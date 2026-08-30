@@ -311,7 +311,7 @@ and a truncation flag would itself prove that hidden evidence exists.
     "recorded_at": "2024-01-05T09:00:00+00:00",
     "confidence": 1.0,
     "sensitivity": "personal",
-    "source": "agent",
+    "provenance": {"source": "agent", "session": null, "stated_by": null},
     "source_session_id": null
   }],
   "traits": [{
@@ -322,6 +322,7 @@ and a truncation flag would itself prove that hidden evidence exists.
     "confidence": 0.6,
     "updated_at": "2026-03-02T09:00:00+00:00",
     "sensitivity": "personal",
+    "provenance": {"source": "agent", "session": null, "stated_by": null},
     "source_session_id": null,
     "evidence": [{"evidence_type": "observation", "evidence_id": "01J..."}],
     "evidence_truncated": false
@@ -331,6 +332,7 @@ and a truncation flag would itself prove that hidden evidence exists.
     "text": "asked for numbers before agreeing",
     "observed_at": "2026-03-01T09:00:00+00:00",
     "sensitivity": "personal",
+    "provenance": {"source": "agent", "session": null, "stated_by": null},
     "source_session_id": null,
     "cited_by_trait_ids": ["01J..."]
   }],
@@ -386,11 +388,18 @@ cap reached inside an early group leaves later groups unreported; the flag is wh
 It is what lets a reader tell three observations that independently support one trait from three copies of one
 event; M19 leaves that judgement, and any change to a trait's confidence, to the user.
 
+Every record carries its own stored `provenance` — `source`, `session`, `stated_by` — because a maintenance
+proposal is an argument about which of two records to believe, and who asserted each is half of that argument.
+`source_session_id` is a *different* fact and no substitute for it: it names an M18 import receipt when one
+exists and is `null` for everything recorded directly, so a trait entered by hand would otherwise arrive with
+nothing to argue from. These are the same records, at the same levels, that `get_person_context` already returns
+with their provenance attached; the record's own sensitivity decides whether the row appears at all.
+
 Disclosure is the ordinary rule and this tool has no elevated variant: only `public`/`personal` records
 participate, `include_sensitive` is always `false` here, and a trait names only evidence readable at that level.
 Filtering happens in the SQL read rather than after it, so an elevated record can neither displace an ordinary
-one from the page nor change a signal it does not appear in. `source_session_id` names an M18 import receipt when
-one exists; no raw source material is returned, because none is stored.
+one from the page nor change a signal it does not appear in. No raw source material is returned, because none is
+stored — a receipt says that material was processed, never what it said.
 
 ## M19 fact-supersession contract
 

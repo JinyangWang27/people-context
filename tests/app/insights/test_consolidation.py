@@ -24,7 +24,7 @@ from people_context.app.insights import (
     GetConsolidationContext,
 )
 from people_context.domain.person import Person
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Provenance, Sensitivity
 from people_context.ports.consolidation import (
     ConsolidationFactRow,
     ConsolidationObservationRow,
@@ -57,7 +57,7 @@ def _fact(
         recorded_at=_RECORDED,
         confidence=1.0,
         sensitivity=sensitivity,
-        source="agent",
+        provenance=Provenance(source="agent"),
     )
 
 
@@ -76,6 +76,7 @@ def _trait(
         confidence=0.6,
         updated_at=_RECORDED,
         sensitivity=sensitivity,
+        provenance=Provenance(source="agent"),
     )
 
 
@@ -90,6 +91,7 @@ def _observation(
         text=text,
         observed_at=_RECORDED,
         sensitivity=sensitivity,
+        provenance=Provenance(source="agent"),
     )
 
 
@@ -532,7 +534,7 @@ class TestProjection:
             "recorded_at": _RECORDED,
             "confidence": 1.0,
             "sensitivity": Sensitivity.PERSONAL,
-            "source": "agent",
+            "provenance": {"source": "agent", "session": None, "stated_by": None},
             "source_session_id": None,
         }
 
@@ -548,7 +550,7 @@ class TestProjection:
                     recorded_at=_RECORDED,
                     confidence=1.0,
                     sensitivity=Sensitivity.PERSONAL,
-                    source="import",
+                    provenance=Provenance(source="import", session="msg-1", stated_by="alice"),
                     source_session_id="S1",
                 )
             ],
@@ -561,6 +563,7 @@ class TestProjection:
                     confidence=0.4,
                     updated_at=_RECORDED,
                     sensitivity=Sensitivity.PERSONAL,
+                    provenance=Provenance(source="agent"),
                     source_session_id="S2",
                 )
             ],
@@ -570,6 +573,7 @@ class TestProjection:
                     text="asked twice",
                     observed_at=_RECORDED,
                     sensitivity=Sensitivity.PERSONAL,
+                    provenance=Provenance(source="operator"),
                     source_session_id="S3",
                 )
             ],
@@ -581,6 +585,30 @@ class TestProjection:
         assert result.traits[0].source_session_id == "S2"
         assert result.observations[0].source_session_id == "S3"
         assert result.traits[0].evidence_note is None
+        # Stored provenance travels beside the receipt and is not folded into it.
+        assert result.facts[0].provenance == Provenance(source="import", session="msg-1", stated_by="alice")
+        assert result.traits[0].provenance.source == "agent"
+        assert result.observations[0].provenance.source == "operator"
+
+    def test_a_directly_recorded_record_still_reports_who_asserted_it(self) -> None:
+        """No import receipt is not the same as no provenance.
+
+        A maintenance proposal argues about which of two competing records to believe, and who
+        asserted each is half of that argument. A record entered by hand has `source_session_id`
+        null, so provenance is the only thing that can answer it — for every record type alike,
+        not just for facts.
+        """
+        use_case, _ = _use_case(
+            facts=[_fact("f1")],
+            traits=[_trait("t1")],
+            observations=[_observation("o1")],
+        )
+
+        result = use_case.execute(ALICE.id)
+
+        for record in (result.facts[0], result.traits[0], result.observations[0]):
+            assert record.source_session_id is None
+            assert record.provenance.source == "agent"
 
 
 def test_the_read_performs_no_mutation() -> None:

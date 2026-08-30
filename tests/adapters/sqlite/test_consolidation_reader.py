@@ -180,7 +180,7 @@ def test_every_stored_field_reaches_the_projection() -> None:
     assert row.recorded_at == stored.recorded_at
     assert row.confidence == 0.8
     assert row.sensitivity == Sensitivity.PERSONAL
-    assert row.source == "import"
+    assert row.provenance.source == "import"
     assert row.source_session_id is None
 
 
@@ -203,6 +203,58 @@ def test_trait_and_observation_rows_carry_their_own_fields() -> None:
     assert trait_row.updated_at == trait.updated_at
     assert (observation_row.observation_id, observation_row.text) == (observation.id, "pushed back on the timeline")
     assert observation_row.observed_at == observed_at
+
+
+def test_stored_provenance_round_trips_for_every_record_type() -> None:
+    """Every type keeps the same three provenance columns, so every type reports them.
+
+    A record entered directly has no import receipt, so provenance is the only thing that can say
+    who asserted it — which the maintenance workflow needs in order to argue about two competing
+    records at all.
+    """
+    fixture = _Fixture()
+    alice = fixture.person("Alice")
+    fixture.facts.execute(
+        RecordFactInput(
+            person_id=alice.id,
+            predicate="employer",
+            value="Acme",
+            source="import",
+            session="msg-1",
+            stated_by="alice",
+        )
+    )
+    fixture.observations.execute(
+        RecordObservationInput(person_id=alice.id, text="asked for numbers", source="operator")
+    )
+    fixture.traits.execute(
+        RecordTraitInput(
+            person_id=alice.id,
+            category=TraitCategory.COMMUNICATION_STYLE,
+            value="evidence-led",
+            source="agent",
+            stated_by="alice",
+        )
+    )
+
+    fact = fixture.reader.list_consolidation_facts(alice.id, limit=10, sensitivities=ORDINARY)[0]
+    observation = fixture.reader.list_consolidation_observations(alice.id, limit=10, sensitivities=ORDINARY)[0]
+    trait = fixture.reader.list_consolidation_traits(alice.id, limit=10, sensitivities=ORDINARY)[0]
+
+    assert (fact.provenance.source, fact.provenance.session, fact.provenance.stated_by) == (
+        "import",
+        "msg-1",
+        "alice",
+    )
+    assert observation.provenance.source == "operator"
+    assert observation.provenance.session is None
+    assert (trait.provenance.source, trait.provenance.stated_by) == ("agent", "alice")
+    # None of them came from an import, and that is a different fact from having no provenance.
+    assert (fact.source_session_id, observation.source_session_id, trait.source_session_id) == (
+        None,
+        None,
+        None,
+    )
 
 
 def test_another_persons_records_are_never_returned() -> None:

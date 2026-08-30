@@ -24,6 +24,16 @@ level, and the caller passes the levels it may disclose. Selecting a page and fi
 would return a short page that silently withheld the fact that something was filtered out — and, for
 a signal computed *over* the page, would let a withheld record change the answer without appearing
 in it.
+
+**Every row carries the record's own stored `Provenance`**, and every type carries it alike. A
+maintenance proposal is an argument about which of two records to believe, and who asserted a thing
+is half of that argument — so a trait entered by the operator and a trait an importer wrote down
+must be distinguishable here, not only when one of them happens to have an M18 import receipt.
+`source_session_id` is a different fact from provenance and does not stand in for it: it names an
+import receipt when one exists and is null for everything recorded directly. Provenance discloses no
+raw source material, because none is stored, and the record's own level already decides whether the
+row appears at all — the same rule under which `get_person_context` already returns these records
+with their provenance attached.
 """
 
 from __future__ import annotations
@@ -32,7 +42,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Protocol, runtime_checkable
 
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Provenance, Sensitivity
 from people_context.ports.timeline import TimelineEvidenceRow
 
 
@@ -43,8 +53,7 @@ class ConsolidationFactRow:
     The whole assertion travels, not a summary of it: predicate, value, and both validity endpoints
     are what decide whether two facts duplicate, contradict, or succeed one another, and
     `recorded_at` is what distinguishes the assertion's subject-matter time from the time it was
-    written down. `source` is the fact's own provenance source label — `agent`, an importer name —
-    never import material, of which none is stored.
+    written down.
     """
 
     fact_id: str
@@ -55,7 +64,7 @@ class ConsolidationFactRow:
     recorded_at: datetime
     confidence: float
     sensitivity: Sensitivity
-    source: str
+    provenance: Provenance
     source_session_id: str | None = None
 
 
@@ -75,6 +84,7 @@ class ConsolidationTraitRow:
     confidence: float
     updated_at: datetime
     sensitivity: Sensitivity
+    provenance: Provenance
     source_session_id: str | None = None
 
 
@@ -91,6 +101,7 @@ class ConsolidationObservationRow:
     text: str
     observed_at: datetime
     sensitivity: Sensitivity
+    provenance: Provenance
     source_session_id: str | None = None
 
 

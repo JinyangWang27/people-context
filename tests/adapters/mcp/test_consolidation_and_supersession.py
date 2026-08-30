@@ -110,6 +110,10 @@ class TestConsolidationTool:
         assert [entry["observation_id"] for entry in payload["observations"]] == [outcome["observation"]["id"]]
         # No trait cites this observation, so the reverse link is empty rather than guessed at.
         assert payload["observations"][0]["cited_by_trait_ids"] == []
+        # Nothing here came from an import, and every type still reports who asserted it.
+        for record in (payload["traits"][0], payload["observations"][0]):
+            assert record["source_session_id"] is None
+            assert record["provenance"]["source"] == "agent"
 
     def test_elevated_records_are_never_returned_by_the_ordinary_tool(self, tmp_path: Path) -> None:
         server = build_server(tmp_path / "disclosure.db")

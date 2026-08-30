@@ -48,7 +48,7 @@ from people_context.app.insights.timeline import (
     ORDINARY_SENSITIVITIES,
     TimelineEvidenceLink,
 )
-from people_context.domain.shared import Sensitivity, ValidityPeriod, normalize_name
+from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
 from people_context.ports.consolidation import (
     ConsolidationFactRow,
     ConsolidationObservationRow,
@@ -119,7 +119,13 @@ class ConsolidationContextError(ValueError):
 
 
 class ConsolidationFact(BaseModel):
-    """One durable fact, with everything a maintenance proposal needs to argue about it."""
+    """One durable fact, with everything a maintenance proposal needs to argue about it.
+
+    `provenance` is the fact's own stored provenance — who or what asserted it — and is what lets a
+    proposal say *why* one of two competing assertions should be believed. `source_session_id` is a
+    different thing and no substitute: it names an M18 import receipt when one exists, and is null
+    for anything recorded directly.
+    """
 
     fact_id: str
     predicate: str
@@ -129,7 +135,7 @@ class ConsolidationFact(BaseModel):
     recorded_at: datetime
     confidence: float
     sensitivity: Sensitivity
-    source: str
+    provenance: Provenance
     source_session_id: str | None = None
 
 
@@ -147,6 +153,7 @@ class ConsolidationTrait(BaseModel):
     confidence: float
     updated_at: datetime
     sensitivity: Sensitivity
+    provenance: Provenance
     source_session_id: str | None = None
     evidence: list[TimelineEvidenceLink] = Field(default_factory=list)
     evidence_truncated: bool = False
@@ -165,6 +172,7 @@ class ConsolidationObservation(BaseModel):
     text: str
     observed_at: datetime
     sensitivity: Sensitivity
+    provenance: Provenance
     source_session_id: str | None = None
     cited_by_trait_ids: list[str] = Field(default_factory=list)
 
@@ -279,6 +287,7 @@ class GetConsolidationContext:
             confidence=row.confidence,
             updated_at=row.updated_at,
             sensitivity=row.sensitivity,
+            provenance=row.provenance,
             source_session_id=row.source_session_id,
             evidence=[
                 TimelineEvidenceLink(evidence_type=link.evidence_type, evidence_id=link.evidence_id)
@@ -298,7 +307,7 @@ def _fact(row: ConsolidationFactRow) -> ConsolidationFact:
         recorded_at=row.recorded_at,
         confidence=row.confidence,
         sensitivity=row.sensitivity,
-        source=row.source,
+        provenance=row.provenance,
         source_session_id=row.source_session_id,
     )
 
@@ -324,6 +333,7 @@ def _observations(
             text=row.text,
             observed_at=row.observed_at,
             sensitivity=row.sensitivity,
+            provenance=row.provenance,
             source_session_id=row.source_session_id,
             cited_by_trait_ids=sorted(citations.get(row.observation_id, [])),
         )

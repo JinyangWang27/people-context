@@ -29,7 +29,7 @@ from people_context.adapters.sqlite._projection import (
     source_session,
 )
 from people_context.adapters.sqlite.timeline_reader import SqlitePersonTimelineReader
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Provenance, Sensitivity
 from people_context.ports.consolidation import (
     ConsolidationFactRow,
     ConsolidationObservationRow,
@@ -58,7 +58,9 @@ SELECT f.id AS fact_id,
        f.recorded_at AS recorded_at,
        f.confidence AS confidence,
        f.sensitivity AS sensitivity,
-       f.provenance_source AS source,
+       f.provenance_source AS provenance_source,
+       f.provenance_session AS provenance_session,
+       f.provenance_stated_by AS provenance_stated_by,
        {source_session(ENTRY_FACT, "f.id")} AS source_session_id
 FROM facts f
 WHERE f.person_id = :person_id AND f.sensitivity IN ({{levels}})
@@ -74,6 +76,9 @@ SELECT t.id AS trait_id,
        t.confidence AS confidence,
        t.updated_at AS updated_at,
        t.sensitivity AS sensitivity,
+       t.provenance_source AS provenance_source,
+       t.provenance_session AS provenance_session,
+       t.provenance_stated_by AS provenance_stated_by,
        {source_session(ENTRY_TRAIT, "t.id")} AS source_session_id
 FROM traits t
 WHERE t.person_id = :person_id AND t.sensitivity IN ({{levels}})
@@ -86,6 +91,9 @@ SELECT o.id AS observation_id,
        o.text AS text,
        o.observed_at AS observed_at,
        o.sensitivity AS sensitivity,
+       o.provenance_source AS provenance_source,
+       o.provenance_session AS provenance_session,
+       o.provenance_stated_by AS provenance_stated_by,
        {source_session(ENTRY_OBSERVATION, "o.id")} AS source_session_id
 FROM observations o
 WHERE o.person_id = :person_id AND o.sensitivity IN ({{levels}})
@@ -120,7 +128,7 @@ class SqlitePersonConsolidationReader:
                 recorded_at=datetime.fromisoformat(row["recorded_at"]),
                 confidence=float(row["confidence"]),
                 sensitivity=Sensitivity(row["sensitivity"]),
-                source=row["source"],
+                provenance=_provenance(row),
                 source_session_id=row["source_session_id"],
             )
             for row in rows
@@ -144,6 +152,7 @@ class SqlitePersonConsolidationReader:
                 confidence=float(row["confidence"]),
                 updated_at=datetime.fromisoformat(row["updated_at"]),
                 sensitivity=Sensitivity(row["sensitivity"]),
+                provenance=_provenance(row),
                 source_session_id=row["source_session_id"],
             )
             for row in rows
@@ -164,6 +173,7 @@ class SqlitePersonConsolidationReader:
                 text=row["text"],
                 observed_at=datetime.fromisoformat(row["observed_at"]),
                 sensitivity=Sensitivity(row["sensitivity"]),
+                provenance=_provenance(row),
                 source_session_id=row["source_session_id"],
             )
             for row in rows
@@ -189,6 +199,15 @@ class SqlitePersonConsolidationReader:
         bound_levels = levels(sensitivities)
         parameters: dict[str, object] = {"person_id": person_id, "limit": limit + 1, **bound_levels}
         return list(self._conn.execute(sql.format(levels=placeholders(bound_levels)), parameters).fetchall())
+
+
+def _provenance(row: sqlite3.Row) -> Provenance:
+    """Rebuild one record's stored provenance, the same three columns every record type keeps."""
+    return Provenance(
+        source=row["provenance_source"],
+        session=row["provenance_session"],
+        stated_by=row["provenance_stated_by"],
+    )
 
 
 def _date(value: str | None) -> date | None:
