@@ -57,6 +57,22 @@ import receipt, which describes that material was processed and never what it sa
 --include-sensitive` is the explicit local opt-in, warns on stderr before the operator redirects it anywhere,
 and has no MCP counterpart.
 
+`get_consolidation_context` filters the same way and for the same reason, and one consequence is worth stating
+on its own: a signal is computed only over the records the caller was actually shown. A withheld fact therefore
+cannot contradict a visible one from behind the disclosure gate, which would leak that something elevated exists
+without ever naming it. Trait citations follow the timeline's rule — the cited record's own level decides —
+and the read has no elevated MCP variant. It returns no raw source material, because none is stored.
+
+The consolidation read is read-only in the strong sense: it writes no audit row, no changelog row, and no durable
+state, and the maintenance actions it feeds are separate, explicitly approved mutations. M19 ships no autonomous
+belief updater and no background process that revises stored knowledge.
+
+`supersede_fact` is the one M19 mutation, and it is a history-preserving one. The old assertion keeps its value
+and its provenance and gains a closing date; the replacement inherits the old assertion's original end date rather
+than widening a bounded claim into an open-ended one. Nothing about a person's past is rewritten to make the
+present look tidy, and a value that was historically correct is never overwritten in place — that remains
+`correct_record`'s job, for data that was wrong.
+
 ## Sensitivity levels and defaults
 
 Every assertive record (facts, observations, traits, interactions, relationships, affiliations) carries a

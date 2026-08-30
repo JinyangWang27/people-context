@@ -137,6 +137,27 @@ atomically replaces vectors and model metadata.
 Keeping these concepts separate prevents subjective material from being presented as fact and supports narrow,
 purpose-specific disclosure.
 
+### Correcting a fact versus superseding it
+
+A fact carries an inclusive `ValidityPeriod`, so the store can hold what was true *and when*. Two different
+things can happen to a stored fact, and M19 keeps them apart because collapsing them destroys history that
+cannot be recovered:
+
+- **Correction** — the value was wrong at the time. `correct_record` updates the row in place and keeps the prior
+  snapshot only in the audit trail.
+- **Supersession** — the value was right, and then the world changed. `supersede_fact` closes the old row at the
+  day before the transition, leaving its value and provenance intact, and creates a new row for the same person
+  and predicate beginning at that date.
+
+The replacement inherits the old assertion's **original** `valid_to`, because that endpoint is part of what the
+assertion meant: a claim bounded to 2026 stays bounded to 2026, and an open-ended one stays open-ended. No
+migration is involved — supersession is two ordinary rows in the existing table, written in one transaction whose
+two changelog effects share one `transaction_id`, with the closure recorded under its own `supersede` op kind so
+replay can tell a transition from a repair.
+
+M19 supersedes facts only. Affiliation and relationship transitions already carry validity periods and can be
+given the same operation later if real usage shows the need.
+
 ### Trait evidence
 
 A trait is the one record type here that nobody asserted directly, so it may name what it was drawn from.

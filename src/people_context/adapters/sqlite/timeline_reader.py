@@ -4,20 +4,12 @@ One `UNION ALL` over the six record types a person's history is made of. Every b
 page before the union, and the union is cut again, so the database returns a page; nothing here
 hands the application a table to slice.
 
-Four details in the query are deliberate.
+Four details in the query are deliberate. Two of them — the exact UTC ordering key and the
+scalar-subquery source lookup — are shared with the consolidation projection and documented in
+`_projection.py`, which is the single place either is spelled.
 
-**The order key is normalized, and exact to the microsecond.** Stored timestamps keep whatever
-offset the writer supplied and some are naive, so no text comparison orders them:
-`2026-06-02T00:00:00+00:00` sorts after `2026-06-01T19:00:00-05:00` in text while being the
-*earlier* instant. The key is therefore built in two halves. `strftime` normalizes the value to UTC
-whole seconds — reading a naive value as UTC, the same reading the domain helper applies, never in
-the host timezone — and the stored sub-second digits are appended to it verbatim, zero-padded to
-six. That second half needs no conversion because every real UTC offset is a whole number of
-minutes: shifting offsets changes the date, hour, and minute of a timestamp and never its seconds
-or its fraction. The result is a lexicographic key that is exactly the UTC instant at microsecond
-precision, so what the database selects is what the application's own exact ordering would select.
-`strftime`'s own `%f` is deliberately not used for the fraction: it resolves only to milliseconds,
-which would let a page keep two records from one millisecond and drop the newest.
+**The order key is normalized, and exact to the microsecond**, so a page is cut by the instant a
+timestamp denotes rather than by the text it happens to be stored as.
 
 **Each branch is bounded before the union.** A `LIMIT` applied only to the compound would still let
 SQLite emit and sort every matching record of an active person's history to answer `--limit 1`. Each
@@ -25,14 +17,8 @@ branch instead orders by that same key and takes one page, so no read ever sorts
 more than one page per record type. The whole page must be a subset of the union of the per-branch
 pages, which is what makes cutting early safe.
 
-**A record's source is a scalar subquery, not a join.** M18.1 allows several candidates to map to
-one reused entity, so joining the mapping table would multiply a record into as many timeline
-entries as imports touched it. The subquery names the earliest mapping instead, with the candidate
-id breaking an exact tie. "Earliest mapping" is deliberately not "created by": a mapping records
-that a committed candidate *resolved to* this record, and `SetRelationship` updates and returns a
-matching active edge rather than creating a second one, so an import that merely reused an edge
-entered by hand owns a mapping to it too. The field therefore says which import first committed a
-candidate onto this record, which is what the mapping table actually knows.
+**A record's source is a scalar subquery, not a join**, so an entity several imports committed onto
+stays one timeline entry naming the earliest.
 
 **Disclosure filtering happens here, not after.** The caller passes the levels it may disclose and
 the page is selected from those rows only. Filtering an already-cut page would return a short page
@@ -44,6 +30,21 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, datetime
 
+from people_context.adapters.sqlite._projection import (
+    DATE_START_OF_DAY as _DATE_START_OF_DAY,
+)
+from people_context.adapters.sqlite._projection import (
+    levels as _levels,
+)
+from people_context.adapters.sqlite._projection import (
+    placeholders as _placeholders,
+)
+from people_context.adapters.sqlite._projection import (
+    sort_key as _sort_key,
+)
+from people_context.adapters.sqlite._projection import (
+    source_session as _source_session,
+)
 from people_context.domain.shared import Sensitivity
 from people_context.ports.timeline import (
     BASIS_CREATED_AT,
@@ -61,63 +62,6 @@ from people_context.ports.timeline import (
     TimelineEvidenceRow,
     TimelineRow,
 )
-
-#: A date-only `valid_from` becomes this instant, the same deterministic convention M9.2 fixed for
-#: all-day calendar values. The entry still carries the date, so the granularity is never lost.
-_DATE_START_OF_DAY = "T00:00:00+00:00"
-
-#: Digits of sub-second precision the ordering key carries — what `datetime.isoformat()` writes.
-_FRACTION_DIGITS = 6
-
-#: Characters of a trailing `±HH:MM` offset.
-_OFFSET_CHARS = 6
-
-
-def _local_text(column: str) -> str:
-    """Return the stored timestamp with any trailing `±HH:MM` offset removed.
-
-    Only the wall-clock half is wanted, because the fraction is read off it. A value written by
-    `datetime.isoformat()` ends in that offset when it is aware and in a digit when it is naive, so
-    testing the sixth character from the end distinguishes the two without parsing.
-    """
-    return (
-        f"CASE WHEN substr({column}, -{_OFFSET_CHARS}, 1) IN ('+', '-') "
-        f"THEN substr({column}, 1, length({column}) - {_OFFSET_CHARS}) ELSE {column} END"
-    )
-
-
-def _sort_key(column: str) -> str:
-    """Return the exact UTC ordering key for one stored timestamp.
-
-    Whole seconds come from `strftime`, which does the offset conversion; the sub-second digits are
-    taken from the stored text and zero-padded, which is exact because an offset shift never moves
-    them. `COALESCE` keeps a value SQLite cannot normalize orderable by its own text rather than
-    sinking it below every other row, where `LIMIT` would drop it from a page it belongs on. Every
-    timestamp this project writes is `datetime.isoformat()` output, which SQLite does normalize, so
-    that fallback is a safety net rather than a path the supported writers reach.
-    """
-    local = _local_text(column)
-    fraction = (
-        f"CASE WHEN instr({local}, '.') = 0 THEN '{'0' * _FRACTION_DIGITS}' "
-        f"ELSE substr(substr({local}, instr({local}, '.') + 1) || '{'0' * _FRACTION_DIGITS}', "
-        f"1, {_FRACTION_DIGITS}) END"
-    )
-    return f"(COALESCE(strftime('%Y-%m-%dT%H:%M:%S', {column}), {column}) || '.' || ({fraction}))"
-
-
-def _source_session(entry_type: str, id_column: str) -> str:
-    """Return the subquery naming the earliest import whose candidate committed onto one entity.
-
-    Both arguments are fixed constants of this module — an entry type from the ports vocabulary
-    and a column of the branch being composed — never caller input, so the composed text carries
-    nothing a caller supplied. `person_id` and the disclosure levels remain bound parameters.
-    """
-    return (
-        "(SELECT m.source_session_id FROM import_candidate_mappings m "
-        f"WHERE m.entity_type = '{entry_type}' AND m.entity_id = {id_column} "
-        "ORDER BY m.created_at, m.candidate_id LIMIT 1)"
-    )
-
 
 _INTERACTIONS = f"""
 SELECT '{ENTRY_INTERACTION}' AS entry_type,
@@ -320,20 +264,6 @@ def _row(row: sqlite3.Row) -> TimelineRow:
         valid_to=_date(row["valid_to"]),
         source_session_id=row["source_session_id"],
     )
-
-
-def _levels(sensitivities: tuple[Sensitivity, ...]) -> dict[str, object]:
-    """Bind the levels a caller may disclose as one named parameter each."""
-    return {f"level{index}": level.value for index, level in enumerate(sensitivities)}
-
-
-def _placeholders(levels: dict[str, object]) -> str:
-    """Render the bound level names as an `IN` list.
-
-    An empty set becomes `IN (NULL)`, which matches nothing: a caller allowed to disclose no level
-    is shown no record carrying one, rather than every record.
-    """
-    return ", ".join(f":{name}" for name in levels) or "NULL"
 
 
 def _sensitivity(value: str | None) -> Sensitivity | None:

@@ -6,6 +6,7 @@ from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRestorer
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
+from people_context.adapters.sqlite.consolidation_reader import SqlitePersonConsolidationReader
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.curation_reader import SqliteCurationReader
 from people_context.adapters.sqlite.db import EncryptedDatabaseError, open_db, open_encrypted_db
@@ -54,6 +55,7 @@ __all__ = [
     "SqliteMergeStore",
     "SqliteOrganizationStore",
     "SqlitePeopleRepository",
+    "SqlitePersonConsolidationReader",
     "SqlitePersonTimelineReader",
     "SqlitePreferencesStore",
     "SqliteRecencyReader",

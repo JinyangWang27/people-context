@@ -15,6 +15,7 @@ from people_context.app.records import (
     RecordObservationInput,
     RecordTraitInput,
     SetAffiliationInput,
+    SupersedeFactInput,
 )
 from people_context.app.relationships import SetRelationshipInput
 from people_context.domain.person import AliasKind
@@ -194,5 +195,36 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return call_action(
             lambda: deps.correct_record.execute(
                 CorrectRecordInput(entity_type=entity_type, entity_id=entity_id, fields=fields)
+            )
+        )
+
+    @mcp.tool(annotations=_WRITE)
+    async def supersede_fact(
+        fact_id: str,
+        new_value: str,
+        effective_from: str,
+        confidence: float | None = None,
+        sensitivity: str | None = None,
+    ) -> dict[str, Any]:
+        """Close a fact that was true and open its replacement from an effective date.
+
+        Use this when a stored value was historically correct and the real-world state changed;
+        `correct_record` remains the tool for a value that was simply wrong. The old fact keeps its
+        person, predicate, value, and provenance and is closed the day before `effective_from`; the
+        replacement inherits the old assertion's original end date, so a bounded claim is never
+        widened into an open-ended one. Person, predicate, and the replacement's end date cannot be
+        changed here. Omitting `confidence` or `sensitivity` inherits the old fact's.
+
+        Both rows commit together under one logical transaction, or neither commits.
+        """
+        return call_action(
+            lambda: deps.supersede_fact.execute(
+                SupersedeFactInput(
+                    fact_id=fact_id,
+                    new_value=new_value,
+                    effective_from=effective_from,
+                    confidence=confidence,
+                    sensitivity=sensitivity,
+                )
             )
         )
