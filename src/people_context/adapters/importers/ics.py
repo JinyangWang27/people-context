@@ -271,6 +271,11 @@ def _iter_events(lines: Iterable[str], work: ParserWorkBudget) -> Iterator[_Even
         if upper == "BEGIN":
             component = value.strip().upper()
             stack.append(component)
+            # The open-component stack is retained parse state too, and a source of `BEGIN`
+            # records that never close grows it once per line while producing no candidate to
+            # account. Metering only the current event's attendees would leave exactly the
+            # candidate-free shape this budget exists to bound unbounded.
+            work.account(_live_records(stack, current))
             if component == "VEVENT":
                 if current is not None:
                     current.malformed = True
@@ -292,11 +297,21 @@ def _iter_events(lines: Iterable[str], work: ParserWorkBudget) -> Iterator[_Even
                 current = None
         elif current is not None and stack and stack[-1] == "VEVENT":
             _apply_property(current, upper, params, value)
-            # One event's attendee list is the only parse state that grows with the file.
-            work.account(len(current.attendees) + 1)
+            work.account(_live_records(stack, current))
     if current is not None:
         current.malformed = True
         yield current
+
+
+def _live_records(stack: list[str], current: _Event | None) -> int:
+    """Return every parsed record this source holds live while it scans.
+
+    Two structures grow with the file and nothing else does: the open-component stack, which a
+    malformed source can drive as deep as it has lines, and the current event's attendee list,
+    which one enormous `VEVENT` can fan out. Counting them together is what makes the budget a
+    bound on the parser's whole retention rather than on the half of it that is easiest to see.
+    """
+    return len(stack) + (len(current.attendees) if current is not None else 0)
 
 
 def _apply_property(event: _Event, name: str, params: dict[str, str], value: str) -> None:

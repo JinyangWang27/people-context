@@ -5,6 +5,8 @@ from __future__ import annotations
 import inspect
 import io
 import os
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -24,6 +26,7 @@ from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.ics import IcsImportExtractor
 from people_context.adapters.importers.linkedin import LinkedInImportExtractor, _split_lines_lazily
 from people_context.adapters.importers.outlook import OutlookImportExtractor
+from people_context.adapters.importers.router import ImportExtractorRouter
 from people_context.adapters.importers.vcard import VCardImportExtractor
 from people_context.app.imports import MAX_CLI_RETAINED_PARSE_RECORDS, MAX_CLI_SOURCE_BYTES
 
@@ -587,3 +590,138 @@ def test_a_candidate_ceiling_never_outranks_the_undecodable_bytes_behind_it(
         )
 
     assert refusal.value.code == UNDECODABLE_SOURCE
+
+
+# --- the open-component stack is retained parse state too ---------------------------------
+
+
+def test_an_ics_source_of_unclosed_components_is_bounded_by_the_work_budget() -> None:
+    """A `BEGIN` that never closes grows the component stack once per line and stages nothing.
+
+    Metering only the current event's attendees would leave exactly the candidate-free shape
+    this budget exists to bound growing with the file, so the stack is counted alongside them.
+    """
+    source = "BEGIN:VTIMEZONE\n" * 20_000
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        IcsImportExtractor().extract(
+            "ics",
+            content=source,
+            path=None,
+            self_addresses=set(),
+            max_retained_parse_records=64,
+        )
+
+    assert refusal.value.code == PARSER_WORK_EXHAUSTED
+
+
+def test_ordinary_ics_nesting_stays_far_inside_the_work_budget() -> None:
+    """Real calendars nest a handful deep, so the stack accounting must not refuse them."""
+    event = (
+        "BEGIN:VEVENT\nUID:u\nDTSTART:20240301T090000Z\nATTENDEE:mailto:a@example.com\n"
+        "BEGIN:VALARM\nTRIGGER:-PT5M\nEND:VALARM\nEND:VEVENT\n"
+    )
+    source = "BEGIN:VCALENDAR\n" + event * 2_000 + "END:VCALENDAR\n"
+
+    extracted = IcsImportExtractor().extract(
+        "ics",
+        content=source,
+        path=None,
+        self_addresses=set(),
+        max_retained_parse_records=8,
+    )
+
+    # One attendee across every event: one person candidate, one interaction per event.
+    assert [candidate["type"] for candidate in extracted.candidates] == ["person"] + ["interaction"] * 2_000
+
+
+# --- sources that cannot report an offset -------------------------------------------------
+
+
+@pytest.fixture
+def fifo_source(tmp_path: Path) -> Callable[[str, bytes], str]:
+    """Serve a source over a named pipe: a real path whose stream cannot seek or tell."""
+
+    def make(name: str, raw: bytes) -> str:
+        path = tmp_path / name
+        os.mkfifo(path)
+
+        def write() -> None:
+            try:
+                with path.open("wb") as handle:
+                    handle.write(raw)
+            except BrokenPipeError:
+                # A refused read closes the pipe first; that is the case under test.
+                pass
+
+        threading.Thread(target=write, daemon=True).start()
+        return str(path)
+
+    return make
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are POSIX-only")
+@pytest.mark.parametrize(
+    ("source_type", "raw", "expected"),
+    [
+        (
+            "vcard",
+            b"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ada Lovelace\r\nEND:VCARD\r\n",
+            ["person"],
+        ),
+        (
+            "ics",
+            b"BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:u\r\nDTSTART:20240301T090000Z\r\n"
+            b"ATTENDEE:mailto:a@example.com\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+            ["person", "interaction"],
+        ),
+        (
+            "linkedin",
+            b"First Name,Last Name,URL,Email Address,Company,Position,Connected On\n"
+            b"Ada,Lovelace,u,ada@example.com,Corp,Eng,01 Feb 2024\n",
+            ["person", "affiliation", "fact"],
+        ),
+        (
+            "outlook",
+            b"First Name,Middle Name,Last Name,E-mail Address,Company,Job Title,Birthday\n"
+            b"Ada,,Lovelace,ada@example.com,Corp,Eng,1815-12-10\n",
+            ["person", "affiliation", "fact"],
+        ),
+    ],
+)
+def test_a_source_path_that_cannot_seek_is_still_read(
+    source_type: str,
+    raw: bytes,
+    expected: list[str],
+    fifo_source: Callable[[str, bytes], str],
+) -> None:
+    """`tell()` on a pipe raises rather than answering, and the whole-file reader never asked.
+
+    A named pipe, a process substitution, or `/dev/stdin` is a legitimate path for a format
+    whose reader only moves forward, so metering has to count bytes where it cannot ask offsets.
+    """
+    path = fifo_source(f"{source_type}.pipe", raw)
+
+    extracted = ImportExtractorRouter().extract(source_type, content=None, path=path, self_addresses=set())
+
+    assert [candidate["type"] for candidate in extracted.candidates] == expected
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes are POSIX-only")
+def test_the_byte_budget_still_bounds_a_source_that_cannot_seek(
+    fifo_source: Callable[[str, bytes], str],
+) -> None:
+    """Counting is equivalent to offsets here: a stream that cannot seek cannot re-read."""
+    raw = b"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ada\r\nEND:VCARD\r\n" * 500
+    path = fifo_source("over.pipe", raw)
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        VCardImportExtractor().extract(
+            "vcard",
+            content=None,
+            path=path,
+            self_addresses=set(),
+            max_source_bytes=100,
+        )
+
+    assert refusal.value.code == SOURCE_TOO_LARGE

@@ -280,6 +280,19 @@ class SourceReadBudget:
             raise source_too_large(self._max_bytes)
 
 
+def _reports_offsets(inner: IO[bytes]) -> bool:
+    """Whether this stream can answer `tell()`, so the furthest-offset measure is available.
+
+    A stream that cannot seek cannot be asked where it is, and asking anyway raises `OSError`
+    rather than returning a number. Deciding once, at construction, keeps that question out of
+    every read.
+    """
+    try:
+        return bool(inner.seekable())
+    except (AttributeError, OSError):
+        return False
+
+
 class MeteredSourceFile:
     """A read-through view of a source file that refuses past the caller's budget.
 
@@ -288,9 +301,16 @@ class MeteredSourceFile:
     single message. A budget applied at one call site would meter none of that, so it is
     applied to the file object the reader actually reads through.
 
-    The measure is the furthest offset reached, not a running total of bytes returned, because
-    a reader that seeks back over bytes it already read — as `mailbox` does when it re-reads
-    each message after the scan — has not read any more of the file.
+    On a seekable file the measure is the furthest offset reached, not a running total of bytes
+    returned, because a reader that seeks back over bytes it already read — as `mailbox` does
+    when it re-reads each message after the scan — has not read any more of the file.
+
+    A source that cannot report an offset at all is metered by counting instead. A named pipe,
+    a process substitution, or `/dev/stdin` is a legitimate path for a format whose reader only
+    ever moves forward, and `tell()` on one raises rather than answering; the whole-file reader
+    these formats used before never asked. Counting is exactly equivalent there, because a
+    stream that cannot seek cannot re-read, so bytes returned and offset reached are the same
+    number.
 
     Every read is also capped before it runs, so the budget bounds the allocation and not just
     the verdict: a source that grew into one enormous unterminated line cannot be pulled into
@@ -300,16 +320,25 @@ class MeteredSourceFile:
     def __init__(self, inner: IO[bytes], budget: SourceReadBudget) -> None:
         self._inner = inner
         self._budget = budget
+        self._seekable = _reports_offsets(inner)
+        self._consumed = 0
+
+    def _position(self) -> int:
+        """Return how far into the source this view has read, however the stream can say so."""
+        return self._inner.tell() if self._seekable else self._consumed
+
+    def _record(self, data: bytes) -> bytes:
+        """Account one read and refuse if it took the reader past the budget."""
+        if not self._seekable:
+            self._consumed += len(data)
+        self._budget.observe(self._position())
+        return data
 
     def read(self, size: int = -1) -> bytes:
-        data = self._inner.read(self._budget.cap(self._inner.tell(), size))
-        self._budget.observe(self._inner.tell())
-        return data
+        return self._record(self._inner.read(self._budget.cap(self._position(), size)))
 
     def readline(self, size: int = -1) -> bytes:
-        data = self._inner.readline(self._budget.cap(self._inner.tell(), size))
-        self._budget.observe(self._inner.tell())
-        return data
+        return self._record(self._inner.readline(self._budget.cap(self._position(), size)))
 
     def read1(self, size: int = -1) -> bytes:
         """Meter the one read a `TextIOWrapper` prefers, rather than delegating past the budget.
@@ -321,9 +350,7 @@ class MeteredSourceFile:
         source object without one falls back to the ordinary read rather than failing.
         """
         read1 = getattr(self._inner, "read1", self._inner.read)
-        data = read1(self._budget.cap(self._inner.tell(), size))
-        self._budget.observe(self._inner.tell())
-        return data
+        return self._record(read1(self._budget.cap(self._position(), size)))
 
     def __getattr__(self, name: str) -> Any:
         """Delegate everything else — `seek`, `tell`, `close`, `fileno`, `name` — unchanged."""
