@@ -677,6 +677,123 @@
     "skipped_message_ids": [],
     "skipped_without_id": 0
   },
+  "ics-reopened-event::content": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "two@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "two",
+        "ref": "two@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-05-02T09:00:00+00:00"
+        },
+        "message_id": "reopened",
+        "participant_refs": [
+          "two@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-reopened-event::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "two@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "two",
+        "ref": "two@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-05-02T09:00:00+00:00"
+        },
+        "message_id": "reopened",
+        "participant_refs": [
+          "two@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "ics-reopened-event::path": {
+    "candidates": [
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "two@example.com"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "two",
+        "ref": "two@example.com",
+        "type": "person"
+      },
+      {
+        "channel": "calendar",
+        "date": {
+          "__datetime__": "2024-05-02T09:00:00+00:00"
+        },
+        "message_id": "reopened",
+        "participant_refs": [
+          "two@example.com"
+        ],
+        "summary": "Calendar event",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 1,
+        "reason": "malformed_event"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
   "linkedin-exotic-preamble::content": {
     "candidates": [
       {

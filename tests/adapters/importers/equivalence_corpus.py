@@ -203,6 +203,24 @@ _ICS_AMBIGUOUS = (
     b"END:VCALENDAR\n"
 )
 
+# A second `BEGIN:VEVENT` arriving while one is still open is the point at which streaming has
+# to emit the abandoned event: it is malformed and nothing later can change that, so the old
+# whole-file scan stopped touching it here too. Covering it pins the emission order that keeps
+# the one-based skip indexes counting from the same origin.
+_ICS_REOPENED_EVENT = (
+    b"BEGIN:VCALENDAR\n"
+    b"BEGIN:VEVENT\n"
+    b"UID:never-closed\n"
+    b"DTSTART:20240501T090000Z\n"
+    b"ATTENDEE:mailto:one@example.com\n"
+    b"BEGIN:VEVENT\n"
+    b"UID:reopened\n"
+    b"DTSTART:20240502T090000Z\n"
+    b"ATTENDEE:mailto:two@example.com\n"
+    b"END:VEVENT\n"
+    b"END:VCALENDAR\n"
+)
+
 _LINKEDIN_HEADER = "First Name,Last Name,URL,Email Address,Company,Position,Connected On"
 
 _LINKEDIN_WITH_PREAMBLE = (
@@ -307,6 +325,7 @@ CORPUS: tuple[SourceFixture, ...] = (
     SourceFixture("ics-mixed", "ics", _ICS_MIXED, {"me@example.com"}, suffix=".ics"),
     SourceFixture("ics-folded-and-broken", "ics", _ICS_FOLDED_AND_BROKEN, suffix=".ics"),
     SourceFixture("ics-ambiguous", "ics", _ICS_AMBIGUOUS, suffix=".ics"),
+    SourceFixture("ics-reopened-event", "ics", _ICS_REOPENED_EVENT, suffix=".ics"),
     SourceFixture("ics-empty", "ics", b"", suffix=".ics"),
     SourceFixture("linkedin-preamble", "linkedin", _LINKEDIN_WITH_PREAMBLE, {"me@example.com"}, suffix=".csv"),
     SourceFixture("linkedin-exotic-preamble", "linkedin", _LINKEDIN_EXOTIC_PREAMBLE, suffix=".csv"),
