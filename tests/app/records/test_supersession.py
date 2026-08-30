@@ -316,6 +316,25 @@ class TestRefusals:
 
         assert (raised.value.entity_type, raised.value.entity_id) == ("fact", "missing")
 
+    def test_a_row_that_vanishes_before_the_closure_is_reported_as_a_missing_record(self) -> None:
+        """The write follows the read, so the row can be gone by the time the update lands.
+
+        The guard exists so that case is reported as the missing record it is, rather than
+        continuing into a replacement built from a row nothing closed.
+        """
+        store = _Store()
+        original = store.fact()
+        store.records.update_record_fields = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+
+        with pytest.raises(RecordNotFoundError) as raised:
+            store.supersede.execute(
+                SupersedeFactInput(fact_id=original.id, new_value="Globex", effective_from=date(2026, 7, 1))
+            )
+
+        assert (raised.value.entity_type, raised.value.entity_id) == ("fact", original.id)
+        # Nothing was recorded for a closure that never happened.
+        assert [entry.op for entry in store.audit.entries] == ["create"]
+
     def test_a_stored_record_that_is_not_a_fact_is_refused(self) -> None:
         """Only a fact may be superseded; anything else is reported missing rather than coerced."""
         store = _Store()
