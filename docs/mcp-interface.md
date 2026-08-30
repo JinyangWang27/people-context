@@ -24,8 +24,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
 | `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` | Ordered entries and `skipped_unparseable`. |
 | `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id`, `limit=50` | Ordered entries, `found`, and `truncated`. |
+| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id`, `limit=50` | Facts, traits, observations, deterministic `signals`, and per-collection truncation. |
 
-All eleven tools are annotated `readOnlyHint=true`.
+All twelve tools are annotated `readOnlyHint=true`.
 
 ## M7 graph contracts
 
@@ -291,6 +292,150 @@ omitted rather than named. `evidence_truncated` is `true` when more *readable* c
 reports; it is never set by links the caller may not see, because a visible trait answering with no citations
 and a truncation flag would itself prove that hidden evidence exists.
 
+## M19 consolidation contract
+
+### `get_consolidation_context`
+
+```json
+{
+  "found": true,
+  "person_id": "A",
+  "limit": 50,
+  "include_sensitive": false,
+  "facts": [{
+    "fact_id": "01J...",
+    "predicate": "employer",
+    "value": "Acme",
+    "valid_from": "2024-01-01",
+    "valid_to": null,
+    "recorded_at": "2024-01-05T09:00:00+00:00",
+    "confidence": 1.0,
+    "sensitivity": "personal",
+    "source": "agent",
+    "source_session_id": null
+  }],
+  "traits": [{
+    "trait_id": "01J...",
+    "category": "communication_style",
+    "value": "evidence-led",
+    "evidence_note": "derived from the March review",
+    "confidence": 0.6,
+    "updated_at": "2026-03-02T09:00:00+00:00",
+    "sensitivity": "personal",
+    "source_session_id": null,
+    "evidence": [{"evidence_type": "observation", "evidence_id": "01J..."}],
+    "evidence_truncated": false
+  }],
+  "observations": [{
+    "observation_id": "01J...",
+    "text": "asked for numbers before agreeing",
+    "observed_at": "2026-03-01T09:00:00+00:00",
+    "sensitivity": "personal",
+    "source_session_id": null,
+    "cited_by_trait_ids": ["01J..."]
+  }],
+  "signals": [{
+    "kind": "contradictory_fact",
+    "entity_type": "fact",
+    "key": "employer",
+    "entity_ids": ["01J...", "01J..."]
+  }],
+  "facts_truncated": false,
+  "traits_truncated": false,
+  "observations_truncated": false,
+  "signals_truncated": false
+}
+```
+
+This read exists to be *read before proposing*. It gathers what the store now holds about one person, the
+provenance and evidence behind it, and the places it may say the same thing twice — the material a maintenance
+proposal needs. It writes nothing: no audit row, no changelog row, no durable state changes when it is called.
+
+Each record type carries its own page of `limit` rows and its own truncation flag, so a person with four hundred
+imported observations is not reported as having no facts worth looking at. `limit` accepts `1..200` and defaults
+to 50; an out-of-range value returns `{"error": "invalid_parameter", "message": "..."}` rather than a partial
+page. An unknown or soft-deleted person returns `{"found": false}` with every collection empty. Facts are ordered
+newest first by asserted `valid_from`, or by `recorded_at` when they assert none — the same placement
+`get_person_timeline` uses, so one `limit` describes one window across both reads. Traits are ordered by
+`updated_at` and observations by `observed_at`, each with the id breaking an exact tie.
+
+`signals` relates two records that share a normalized predicate or category. It reports relations, never
+verdicts: it does not decide which record is right, does not merge anything, and does not score a trait by
+counting the rows that support it.
+
+| `kind` | Meaning |
+|---|---|
+| `duplicate_fact` | Same predicate and value over days both facts cover. |
+| `restated_fact` | Same predicate and value over days that do not meet. |
+| `contradictory_fact` | Same predicate, different values, over days both cover. |
+| `succeeding_fact` | Same predicate, different values, over days that do not meet — what a well-formed supersession leaves behind. |
+| `duplicate_trait` | Same category and value. |
+| `divergent_trait` | Same category, different values. |
+
+Comparison uses the project's own name normalization (NFKC, casefold, combining marks stripped, whitespace
+collapsed) and the domain's inclusive `ValidityPeriod` overlap — the same overlap M15's `doctor` decides fact
+conflicts with, so the two surfaces cannot disagree about what "at the same time" means. Nothing here reaches for
+an embedding or a similarity threshold; an agent wanting a semantic reading has the bounded text in front of it.
+`entity_ids` always holds exactly two ids in ascending order, so a pair is reported once. Signals are ordered by
+`entity_type`, then `key`, then those ids, and capped at 200 with `signals_truncated` saying so — one dense group
+must not turn a bounded page into a quadratic response. Because the cap cuts that one order where it stands, a
+cap reached inside an early group leaves later groups unreported; the flag is what says so, and a narrower
+`limit` is how a caller looks at one part of a crowded person at a time.
+
+`cited_by_trait_ids` is the reverse of the traits' own M18.3 evidence links, restricted to traits on this page.
+It is what lets a reader tell three observations that independently support one trait from three copies of one
+event; M19 leaves that judgement, and any change to a trait's confidence, to the user.
+
+Disclosure is the ordinary rule and this tool has no elevated variant: only `public`/`personal` records
+participate, `include_sensitive` is always `false` here, and a trait names only evidence readable at that level.
+Filtering happens in the SQL read rather than after it, so an elevated record can neither displace an ordinary
+one from the page nor change a signal it does not appear in. `source_session_id` names an M18 import receipt when
+one exists; no raw source material is returned, because none is stored.
+
+## M19 fact-supersession contract
+
+### `supersede_fact`
+
+```json
+{
+  "superseded": {"id": "01J...", "value": "Acme", "period": {"valid_from": "2024-01-01", "valid_to": "2026-06-30"}},
+  "replacement": {"id": "01K...", "value": "Globex", "period": {"valid_from": "2026-07-01", "valid_to": null}},
+  "transaction_id": "01K..."
+}
+```
+
+`supersede_fact(fact_id, new_value, effective_from, confidence?, sensitivity?)` records a **temporal transition**:
+the stored value was correct, and then the real-world state changed. `correct_record` remains the tool for a
+value that was simply wrong, and must not be repurposed to overwrite a historically correct one — doing so erases
+the fact that the old value was ever the case.
+
+The old fact keeps its person, predicate, value, provenance, and `recorded_at`; only its `valid_to` moves, to the
+day before `effective_from`, because `ValidityPeriod` endpoints are inclusive. The replacement is a new fact for
+the same person and predicate, valid from `effective_from`, and **inherits the old assertion's original
+`valid_to`**: `[2026-01-01, 2026-12-31]` superseded on `2026-07-01` yields an old fact through `2026-06-30` and a
+replacement valid `[2026-07-01, 2026-12-31]`. An originally open-ended fact stays open-ended, and a bounded one is
+never silently widened. M19 adds no second endpoint argument; the person, the predicate, and the replacement's end
+date cannot be changed here. `confidence` and `sensitivity` are the replacement's own and inherit the old fact's
+when omitted.
+
+`effective_from` must describe a transition while the old fact still held: strictly after any `valid_from`, and
+not after any `valid_to`. A date that does not is refused rather than clamped:
+
+```json
+{"error": "invalid_supersession", "fact_id": "01J...", "reason": "effective_from_after_valid_to"}
+```
+
+`reason` is a stable machine code — `effective_from_not_after_valid_from`, `effective_from_after_valid_to`, or
+`effective_from_has_no_prior_day` — and carries no stored value. An unknown id returns the shared
+`record_not_found` payload; a fact whose person has been removed returns `person_not_found`.
+
+Both durable rows, both audit rows, and both changelog rows commit as one unit of work, or none do. The two
+row-level replay effects carry **the same non-empty `transaction_id`**, which the response returns. SQLite
+atomicity alone is not grouping metadata: the sync contract defines `transaction_id` as the key tying together
+every effect of one logical transaction, so without it replay and inspection would describe one indivisible
+supersession as two unrelated changes. The closure is recorded under its own `supersede` op kind rather than
+`correct`, so a replayer and an inspector can tell a transition from an in-place repair.
+
 ## Person context compatibility
 
 M7 does not change existing relationship fields. Each hydrated relationship object adds one field:
@@ -330,6 +475,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `record_trait` | Record a derived categorized trait. |
 | `record_interaction` | Record a concise summary after participant validation. |
 | `correct_record` | Correct whitelisted fields with lossless before/after audit. |
+| `supersede_fact` | Close a historically correct fact and open its replacement, atomically. |
 | `set_reminder` / `complete_reminder` | Create and transition reminders. |
 | `set_communication_philosophy` | Store user-authored guidance; audit stores lengths, not text. |
 | `import_content` / `stage_candidates` / `review_import` / `commit_import` | Reviewable distilled imports without raw source retention. |

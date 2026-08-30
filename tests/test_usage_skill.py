@@ -133,6 +133,48 @@ class TestUsageSkill:
         assert "never call" in lowered and "commit_import" in body
         assert "automatically" in lowered
 
+    def test_maintenance_reads_before_it_proposes_and_waits_for_approval(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        # The review is a read pass over the three bounded reads, ending in proposals.
+        assert "get_consolidation_context" in body
+        assert "get_person_timeline" in body
+        assert "resolve_person" in body
+        # A signal is evidence for a judgement, never an instruction to write.
+        assert "not a verdict" in lowered
+        assert "never an instruction to write" in lowered
+        # Approval is explicit and per proposal, not implied by the request to review.
+        assert "wait for explicit approval" in lowered
+        assert "approval is per proposal" in lowered
+        # Proposals are structured tool arguments by id, never shell-interpolated names.
+        assert "never a shell command" in lowered
+
+    def test_distinguishes_correction_from_temporal_supersession(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "correct_record" in body and "supersede_fact" in body
+        # The rule that keeps history: a value that was true is never overwritten in place.
+        assert "the stored value was *wrong*" in lowered
+        assert "never propose changing a historically correct fact's `value` in place" in lowered
+        # The replacement inherits the original endpoint; a bounded claim is not widened.
+        assert "inherits the old assertion's original end date" in lowered
+        assert "stays open-ended" in lowered
+        # A refused effective date is reported, not retried until it lands.
+        assert "rather than nudging the date" in lowered
+
+    def test_keeps_multiple_evidence_distinct_from_redundant_representation(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        # Three observations supporting one trait are evidence, not duplicates to collapse.
+        assert "three pieces of evidence" in lowered
+        assert "do not propose collapsing them to reduce row count" in lowered
+        # Confidence is judgement, never a count of supporting rows.
+        assert "not a count of it" in lowered
+        # Genuine conflict is reported, not tidied away.
+        assert "leave the conflict standing" in lowered
+
     def test_frames_disclosure_gates_as_expected_not_obstacles(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
 

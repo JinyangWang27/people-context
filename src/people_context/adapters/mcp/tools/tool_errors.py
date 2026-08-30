@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 from people_context.app.records import (
     InvalidCorrectionError,
     InvalidReminderError,
+    InvalidSupersessionError,
     OrganizationNotFoundError,
     PersonNotFoundError,
     RecordNotFoundError,
@@ -39,6 +40,15 @@ def call_action(action: Callable[[], BaseModel]) -> dict[str, Any]:
             "entity_type": exc.entity_type,
             "fields": exc.fields,
             "allowed_fields": exc.allowed_fields,
+        }
+    except InvalidSupersessionError as exc:
+        # The reason is a stable machine code naming which temporal rule the date broke; it carries
+        # no stored value, so an agent can explain the refusal without reading the fact back.
+        return {
+            "error": "invalid_supersession",
+            "message": str(exc),
+            "fact_id": exc.fact_id,
+            "reason": exc.reason,
         }
     except ReminderNotActiveError as exc:
         return {

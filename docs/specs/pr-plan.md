@@ -482,7 +482,7 @@ Check the matching box only in the PR that delivers it.
     explicit; timeline is read-only projection, not a denormalized event store; stable JSON if documented.
   - **Out:** audit-log dump, new timeline table, automatic history rewriting.
 
-- [ ] **M19.2 — Add consolidation context, atomic fact supersession, and review-only maintenance workflow**
+- [x] **M19.2 — Add consolidation context, atomic fact supersession, and review-only maintenance workflow**
   - **Scope:** Provide a person-scoped read model exposing duplicate/superseding/reinforcing/contradictory knowledge;
     add narrow atomic `SupersedeFact` + `supersede_fact` MCP mutation; extend the agent skill to propose structured
     approved maintenance actions.

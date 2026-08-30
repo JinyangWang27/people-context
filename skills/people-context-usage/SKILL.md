@@ -1,6 +1,6 @@
 ---
 name: people-context-usage
-description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, or shares information worth remembering about people. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, and the review-before-commit approval flow.
+description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, shares information worth remembering about people, or asks to review, reconcile, or tidy what is already stored about someone. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, the review-before-commit approval flow, and correction vs. temporal supersession when maintaining stored knowledge.
 ---
 
 # Using people-context
@@ -170,6 +170,69 @@ pctx import stage-candidates --source "2026-08-27 planning sync" --input -   # o
 
 Its `--input` is candidate JSON — never the transcript. It stages only; `pctx import
 review BATCH_ID` and `pctx import commit BATCH_ID --accept ID` are the same gate.
+
+## Maintaining what is already stored: propose, wait, then write
+
+Long-lived stores accumulate. The same fact gets recorded twice, a role changes, an
+early weak inference sits beside a better-supported one. When the user asks you to
+review, tidy, reconcile, or check what is stored about someone, work the review as a
+read-only pass that ends in **proposals**, not writes:
+
+1. Resolve one person with `resolve_person`. An `ambiguous` result stops the review —
+   maintenance on the wrong identity is worse than none.
+2. Read `get_person_context`, `get_person_timeline`, and `get_consolidation_context`.
+   The timeline says what happened and when; consolidation context says what the store
+   now holds and where it may say the same thing twice.
+3. Read the `signals`. Each names two records that share a predicate or category and
+   says how they stand: `duplicate_fact`, `restated_fact`, `contradictory_fact`,
+   `succeeding_fact`, `duplicate_trait`, `divergent_trait`. They compare normalized
+   values and validity periods only — they are evidence for your judgement, not a
+   verdict, and a signal is never an instruction to write.
+4. Explain each proposal in the user's terms: which records, which evidence and
+   provenance support it, and what would change.
+5. Propose structured actions by stable id — the tool and its arguments, never a shell
+   command and never a name interpolated into text.
+6. **Wait for explicit approval.** Do not call a mutation tool because a signal looked
+   clear-cut, because the user asked you to "review" or "clean up", or because you
+   proposed it in the same turn. Approval is per proposal, not a blanket yes.
+7. After approved writes, re-read the person and report the resulting state.
+
+### Correction and supersession are different events
+
+This is the distinction the maintenance flow exists to get right:
+
+- **`correct_record`** — the stored value was *wrong*. A typo, a misheard employer, a
+  mis-keyed date. It updates the row in place.
+- **`supersede_fact`** — the stored value was *right, and then the world changed*. Alice
+  really did work at Acme; in July she moved to Globex.
+
+Never propose changing a historically correct fact's `value` in place merely because a
+newer value is now true — that erases the fact that the old value was ever the case.
+`supersede_fact(fact_id, new_value, effective_from, confidence?, sensitivity?)` closes
+the old row the day before `effective_from`, keeping its value and provenance, and opens
+a replacement that **inherits the old assertion's original end date**: a claim bounded to
+2026 stays bounded to 2026, and an open-ended one stays open-ended. Both rows commit
+together or not at all. It cannot change the person, the predicate, or the replacement's
+end date; anything else erroneous is a `correct_record`.
+
+`effective_from` must be a real transition date inside the stretch the old fact still
+held — after its `valid_from` and not after its `valid_to`. A refusal comes back with a
+`reason`; report it and ask the user for the right date rather than nudging the date
+until it is accepted.
+
+### Redundant representation is not the same as multiple evidence
+
+Three observations that each support one trait are three pieces of evidence, not two
+duplicates and an original. `cited_by_trait_ids` on an observation and `evidence` on a
+trait are there so you can tell the two apart. Do not propose collapsing them to reduce
+row count, and do not raise a trait's `confidence` because more rows point at it —
+confidence is judgement about the strength of evidence, not a count of it. A changed
+confidence is a proposal like any other.
+
+Where the source material genuinely conflicts, leave the conflict standing and say so.
+Rewriting history to make the current state look tidy loses the thing the store is for.
+Merging people is a proposal only when identity is independently established, never
+because two records look similar.
 
 ## Disclosure gates are expected, not obstacles
 

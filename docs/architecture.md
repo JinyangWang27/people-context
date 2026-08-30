@@ -83,6 +83,7 @@ actions in `records/doctor.py`, or the path redaction in `context/stats.py`) is 
 `MergeStore` (`ports/merge.py`), `ForgetStore` and `ForgetPreviewStore` (`ports/forget.py`),
 `HybridLogicalClock` (`ports/hlc.py`), `BundleReader` (`ports/sync_bundle.py`),
 `RecencyReader` (`ports/insights.py`), `PersonTimelineReader` (`ports/timeline.py`),
+`PersonConsolidationReader` (`ports/consolidation.py`),
 `CurationReader` (`ports/curation.py`),
 `StatsReader` (`ports/stats.py`),
 `ImportSourceStore` and the read-only `ImportSourceInspectionReader` (`ports/sources.py`),

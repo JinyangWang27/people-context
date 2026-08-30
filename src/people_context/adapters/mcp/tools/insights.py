@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.app.insights import (
+    DEFAULT_CONSOLIDATION_LIMIT,
     DEFAULT_STALE_LIMIT,
     DEFAULT_THRESHOLD_DAYS,
     DEFAULT_TIMELINE_LIMIT,
     DEFAULT_WINDOW_DAYS,
+    ConsolidationContextError,
     PersonTimelineError,
     StaleRelationshipsError,
     UpcomingDatesError,
@@ -63,6 +65,34 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 include_sensitive=False,
             ).model_dump(mode="json")
         except PersonTimelineError as exc:
+            return {"error": "invalid_parameter", "message": str(exc)}
+
+    @mcp.tool(annotations=_READ_ONLY)
+    async def get_consolidation_context(
+        person_id: str,
+        limit: int = DEFAULT_CONSOLIDATION_LIMIT,
+    ) -> dict[str, Any]:
+        """Return one person's stored facts, traits, and observations plus how they relate.
+
+        Use this before proposing maintenance. `signals` names pairs of records that share a
+        predicate or category and says how they stand — `duplicate_fact`, `restated_fact`,
+        `contradictory_fact`, `succeeding_fact`, `duplicate_trait`, `divergent_trait` — comparing
+        normalized values and inclusive validity periods only. It decides nothing: reading the
+        evidence and proposing a `correct_record`, a `supersede_fact`, or a `merge_people` for the
+        user to approve is your job, and several observations supporting one trait are separate
+        evidence rather than duplicates.
+
+        This read never writes. Sensitive and restricted records are never returned, and a trait
+        names only evidence that is itself ordinary. An unknown or removed person returns
+        `found: false` rather than an error.
+        """
+        try:
+            return deps.get_consolidation_context.execute(
+                person_id,
+                limit=limit,
+                include_sensitive=False,
+            ).model_dump(mode="json")
+        except ConsolidationContextError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
     @mcp.tool(annotations=_READ_ONLY)

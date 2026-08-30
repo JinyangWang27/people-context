@@ -21,6 +21,11 @@ from people_context.domain.shared import Sensitivity, normalize_name
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
+from people_context.ports.consolidation import (
+    ConsolidationFactRow,
+    ConsolidationObservationRow,
+    ConsolidationTraitRow,
+)
 from people_context.ports.context import AffiliationRecord, RelationshipRecord, TraitEvidenceRecord
 from people_context.ports.curation import DeletedPersonReference, FactAssertion, NameUsage
 from people_context.ports.export import ExportSnapshot
@@ -239,6 +244,74 @@ class FakePersonTimelineReader:
         self.calls.append((person_id, limit, sensitivities))
         visible = [row for row in self.rows if row.sensitivity is None or row.sensitivity in sensitivities]
         return visible[: limit + 1]
+
+    def list_trait_evidence(
+        self,
+        trait_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[TimelineEvidenceRow]:
+        self.evidence_calls.append((trait_id, limit, sensitivities))
+        disclosable = [
+            row for level, row in self.evidence.get(trait_id, []) if level is not None and level in sensitivities
+        ]
+        return disclosable[: limit + 1]
+
+
+class FakePersonConsolidationReader:
+    """In-memory PersonConsolidationReader returning pre-built maintenance rows.
+
+    The fake reproduces the two contract details the application depends on: only rows at one of the
+    requested levels participate — the real reader filters in SQL, before the page is cut — and one
+    row past `limit` is returned so the use case can report truncation without counting.
+    """
+
+    def __init__(
+        self,
+        facts: list[ConsolidationFactRow] | None = None,
+        traits: list[ConsolidationTraitRow] | None = None,
+        observations: list[ConsolidationObservationRow] | None = None,
+        evidence: dict[str, list[tuple[Sensitivity | None, TimelineEvidenceRow]]] | None = None,
+    ) -> None:
+        self.facts = facts or []
+        self.traits = traits or []
+        self.observations = observations or []
+        # Each citation is stored beside the level of the record it cites, which is what the real
+        # reader filters on in SQL before the application ever sees the row.
+        self.evidence = evidence or {}
+        self.calls: list[tuple[str, str, int, tuple[Sensitivity, ...]]] = []
+        self.evidence_calls: list[tuple[str, int, tuple[Sensitivity, ...]]] = []
+
+    def list_consolidation_facts(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[ConsolidationFactRow]:
+        self.calls.append(("facts", person_id, limit, sensitivities))
+        return [row for row in self.facts if row.sensitivity in sensitivities][: limit + 1]
+
+    def list_consolidation_traits(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[ConsolidationTraitRow]:
+        self.calls.append(("traits", person_id, limit, sensitivities))
+        return [row for row in self.traits if row.sensitivity in sensitivities][: limit + 1]
+
+    def list_consolidation_observations(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[ConsolidationObservationRow]:
+        self.calls.append(("observations", person_id, limit, sensitivities))
+        return [row for row in self.observations if row.sensitivity in sensitivities][: limit + 1]
 
     def list_trait_evidence(
         self,

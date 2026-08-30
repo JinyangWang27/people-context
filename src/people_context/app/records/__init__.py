@@ -38,12 +38,30 @@ from people_context.app.records.reminders import (
     SetReminder,
     SetReminderInput,
 )
+from people_context.app.records.supersession import (
+    FACT_ENTITY_TYPE,
+    REASON_AFTER_VALID_TO,
+    REASON_NO_PRIOR_DAY,
+    REASON_NOT_AFTER_VALID_FROM,
+    SUPERSEDE_OP,
+    SUPERSEDED_FIELD,
+    InvalidSupersessionError,
+    SupersedeFact,
+    SupersedeFactInput,
+    SupersedeFactResult,
+)
 from people_context.app.records.traits import RecordTrait, RecordTraitInput
 
 __all__ = [
     "DOCTOR_FORMAT",
     "DOCTOR_VERSION",
+    "FACT_ENTITY_TYPE",
     "FINDING_CODES",
+    "REASON_AFTER_VALID_TO",
+    "REASON_NOT_AFTER_VALID_FROM",
+    "REASON_NO_PRIOR_DAY",
+    "SUPERSEDED_FIELD",
+    "SUPERSEDE_OP",
     "CliAction",
     "CompleteReminder",
     "CompleteReminderInput",
@@ -56,6 +74,7 @@ __all__ = [
     "FindingCode",
     "FindingPerson",
     "InvalidCorrectionError",
+    "InvalidSupersessionError",
     "InvalidReminderError",
     "ListReminders",
     "ListRemindersInput",
@@ -79,5 +98,8 @@ __all__ = [
     "SetAffiliationInput",
     "SetReminder",
     "SetReminderInput",
+    "SupersedeFact",
+    "SupersedeFactInput",
+    "SupersedeFactResult",
     "render_doctor_json",
 ]

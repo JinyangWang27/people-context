@@ -20,7 +20,7 @@ from people_context.domain.shared import new_id
 #: restored bundle carries whatever its origin wrote, including an operation a later release
 #: introduced; this set is what a reader can rely on recognizing, not a validation rule.
 KNOWN_AUDIT_OPERATIONS: frozenset[str] = frozenset(
-    {"correct", "create", "delete", "forget", "merge", "update"}
+    {"correct", "create", "delete", "forget", "merge", "supersede", "update"}
 )
 
 

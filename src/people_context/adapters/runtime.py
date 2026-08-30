@@ -27,6 +27,7 @@ from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.bootstrap_restore import SqliteBootstrapRestorer
 from people_context.adapters.sqlite.bundle_reader import SqliteBundleReader
 from people_context.adapters.sqlite.changelog import SqliteChangelog
+from people_context.adapters.sqlite.consolidation_reader import SqlitePersonConsolidationReader
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.curation_reader import SqliteCurationReader
 from people_context.adapters.sqlite.db import open_db, open_encrypted_db
@@ -79,7 +80,12 @@ from people_context.app.imports import (
     ShowImportSource,
     StageCandidates,
 )
-from people_context.app.insights import GetPersonTimeline, GetStaleRelationships, ListUpcomingDates
+from people_context.app.insights import (
+    GetConsolidationContext,
+    GetPersonTimeline,
+    GetStaleRelationships,
+    ListUpcomingDates,
+)
 from people_context.app.people import (
     AddAlias,
     EditPerson,
@@ -101,6 +107,7 @@ from people_context.app.records import (
     ReportDoctorFindings,
     SetAffiliation,
     SetReminder,
+    SupersedeFact,
 )
 from people_context.app.relationships import (
     AddRelationshipType,
@@ -128,6 +135,7 @@ class RuntimeUseCases:
     find_connection: FindConnection
     get_stale_relationships: GetStaleRelationships
     get_person_timeline: GetPersonTimeline
+    get_consolidation_context: GetConsolidationContext
     report_doctor_findings: ReportDoctorFindings
     report_store_stats: ReportStoreStats
     list_upcoming_dates: ListUpcomingDates
@@ -146,6 +154,7 @@ class RuntimeUseCases:
     record_trait: RecordTrait
     record_interaction: RecordInteraction
     correct_record: CorrectRecord
+    supersede_fact: SupersedeFact
     set_reminder: SetReminder
     complete_reminder: CompleteReminder
     set_communication_philosophy: SetCommunicationPhilosophy
@@ -184,6 +193,7 @@ class ApplicationRuntime:
     graph_reader: SqliteGraphReader
     recency_reader: SqliteRecencyReader
     timeline_reader: SqlitePersonTimelineReader
+    consolidation_reader: SqlitePersonConsolidationReader
     curation_reader: SqliteCurationReader
     stats_reader: SqliteStatsReader
     records: SqliteRecordStore | IndexingRecordStore
@@ -250,6 +260,7 @@ def build_runtime(
     graph_reader = SqliteGraphReader(conn, runtime_clock)
     recency_reader = SqliteRecencyReader(conn)
     timeline_reader = SqlitePersonTimelineReader(conn)
+    consolidation_reader = SqlitePersonConsolidationReader(conn)
     curation_reader = SqliteCurationReader(conn)
     stats_reader = SqliteStatsReader(conn, path)
     relationship_store = SqliteRelationshipStore(conn)
@@ -286,6 +297,7 @@ def build_runtime(
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
         get_person_timeline=GetPersonTimeline(repo, timeline_reader),
+        get_consolidation_context=GetConsolidationContext(repo, consolidation_reader),
         report_doctor_findings=ReportDoctorFindings(curation_reader, runtime_clock),
         report_store_stats=ReportStoreStats(stats_reader, runtime_clock),
         list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
@@ -321,6 +333,7 @@ def build_runtime(
         record_trait=record_trait,
         record_interaction=record_interaction,
         correct_record=CorrectRecord(records, records, audit, runtime_clock, people=repo),
+        supersede_fact=SupersedeFact(records, records, audit, runtime_clock, people=repo),
         set_reminder=SetReminder(repo, records, audit, runtime_clock),
         complete_reminder=CompleteReminder(records, records, audit, runtime_clock, people=repo),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences, audit, runtime_clock),
@@ -381,6 +394,7 @@ def build_runtime(
         graph_reader=graph_reader,
         recency_reader=recency_reader,
         timeline_reader=timeline_reader,
+        consolidation_reader=consolidation_reader,
         curation_reader=curation_reader,
         stats_reader=stats_reader,
         records=records,
