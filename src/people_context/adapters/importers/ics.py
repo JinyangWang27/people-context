@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from people_context.adapters.importers.bounded_source import (
     CandidateBudget,
     ParserWorkBudget,
+    drain_source,
     iter_split_lines,
     open_source_stream,
 )
@@ -90,32 +91,20 @@ class IcsImportExtractor:
             source_label="ics",
             universal_newlines=True,
         ) as lines:
-            events = _iter_events(_unfold_lines(iter_split_lines(lines)), work)
-            for index, event in enumerate(events, start=1):
-                if event.malformed:
-                    skipped.append({"index": index, "reason": "malformed_event"})
-                    continue
-                if not event.dtstart_present:
-                    skipped.append({"index": index, "reason": "missing_dtstart"})
-                    continue
-                occurred_at, reason = _parse_dtstart(event.dtstart_params, event.dtstart_value)
-                if occurred_at is None:
-                    skipped.append({"index": index, "reason": reason or "invalid_dtstart"})
-                    continue
-                refs = self._collect_attendees(event, normalized_self, people, budget)
-                if not refs:
-                    skipped.append({"index": index, "reason": "no_external_attendee"})
-                    continue
-                interaction: dict[str, object] = {
-                    "type": "interaction",
-                    "summary": _EVENT_SUMMARY,
-                    "participant_refs": refs,
-                    "date": occurred_at,
-                    "channel": "calendar",
-                    "message_id": event.uid,
-                }
-                interactions.append(interaction)
-                budget.account(len(people) + len(interactions))
+            try:
+                self._read_events(
+                    _iter_events(_unfold_lines(iter_split_lines(lines)), work),
+                    normalized_self,
+                    people,
+                    interactions,
+                    skipped,
+                    budget,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
 
         person_candidates = [_person_candidate(accumulator) for accumulator in people.values()]
         return ExtractedImport(
@@ -124,6 +113,43 @@ class IcsImportExtractor:
             candidates=[*person_candidates, *interactions],
             skipped_cards=skipped,
         )
+
+    @classmethod
+    def _read_events(
+        cls,
+        events: Iterable[_Event],
+        normalized_self: set[str],
+        people: dict[str, _PersonAccumulator],
+        interactions: list[dict[str, object]],
+        skipped: list[dict[str, int | str]],
+        budget: CandidateBudget,
+    ) -> None:
+        """Turn each streamed event into an interaction or one stable skip reason."""
+        for index, event in enumerate(events, start=1):
+            if event.malformed:
+                skipped.append({"index": index, "reason": "malformed_event"})
+                continue
+            if not event.dtstart_present:
+                skipped.append({"index": index, "reason": "missing_dtstart"})
+                continue
+            occurred_at, reason = _parse_dtstart(event.dtstart_params, event.dtstart_value)
+            if occurred_at is None:
+                skipped.append({"index": index, "reason": reason or "invalid_dtstart"})
+                continue
+            refs = cls._collect_attendees(event, normalized_self, people, budget)
+            if not refs:
+                skipped.append({"index": index, "reason": "no_external_attendee"})
+                continue
+            interaction: dict[str, object] = {
+                "type": "interaction",
+                "summary": _EVENT_SUMMARY,
+                "participant_refs": refs,
+                "date": occurred_at,
+                "channel": "calendar",
+                "message_id": event.uid,
+            }
+            interactions.append(interaction)
+            budget.account(len(people) + len(interactions))
 
     @staticmethod
     def _collect_attendees(

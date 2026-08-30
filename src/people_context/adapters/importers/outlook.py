@@ -10,6 +10,7 @@ from datetime import date
 from people_context.adapters.importers.bounded_source import (
     CandidateBudget,
     ParserWorkBudget,
+    drain_source,
     open_source_stream,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
@@ -83,12 +84,18 @@ class OutlookImportExtractor:
             strip_content_bom=True,
             universal_newlines=False,
         ) as lines:
-            return self._extract_rows(
-                csv.DictReader(lines, strict=True),
-                self_addresses=self_addresses,
-                max_candidates=max_candidates,
-                max_retained_parse_records=max_retained_parse_records,
-            )
+            try:
+                return self._extract_rows(
+                    csv.DictReader(lines, strict=True),
+                    self_addresses=self_addresses,
+                    max_candidates=max_candidates,
+                    max_retained_parse_records=max_retained_parse_records,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
 
     @staticmethod
     def _extract_rows(

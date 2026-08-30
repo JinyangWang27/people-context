@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from people_context.adapters.importers.bounded_source import (
     CandidateBudget,
     ParserWorkBudget,
+    drain_source,
     iter_split_lines,
     open_source_stream,
 )
@@ -67,50 +68,72 @@ class VCardImportExtractor:
             source_label="vcard",
             universal_newlines=True,
         ) as lines:
-            cards = _split_cards(_unfold_lines(iter_split_lines(lines)), work)
-            for index, (card_lines, structurally_valid) in enumerate(cards, start=1):
-                if not structurally_valid:
-                    skipped.append({"index": index, "reason": "malformed_card"})
-                    continue
-                # Decoding a property can fail long after the file itself decoded cleanly — a
-                # `CHARSET` that cannot be resolved, or bytes invalid in the one the card
-                # declares. Card independence is the vCard contract, so every decode for this
-                # card sits inside one guard and a failure skips only this card.
-                try:
-                    properties = [_parse_property(line) for line in card_lines]
-                    by_name: dict[str, list[_Property]] = {}
-                    for prop in properties:
-                        by_name.setdefault(prop.name, []).append(prop)
-                    versions = by_name.get("VERSION", [])
-                    if len(versions) != 1:
-                        skipped.append({"index": index, "reason": "malformed_card"})
-                        continue
-                    version = _decode_text(versions[0]).strip()
-                    if version not in _SUPPORTED_VERSIONS:
-                        skipped.append({"index": index, "reason": "unsupported_version"})
-                        continue
-                    fn_properties = by_name.get("FN", [])
-                    name = _decode_text(fn_properties[0]).strip() if fn_properties else ""
-                    if not name:
-                        skipped.append({"index": index, "reason": "missing_fn"})
-                        continue
-                    if any(
-                        normalize_name(_decode_text(email).strip()) in normalized_self_addresses
-                        for email in by_name.get("EMAIL", [])
-                    ):
-                        continue
-                    card_candidates = _card_candidates(index, name, by_name)
-                except (UnicodeDecodeError, ValueError):
-                    skipped.append({"index": index, "reason": "malformed_card"})
-                    continue
-                candidates.extend(card_candidates)
-                budget.account(len(candidates))
+            try:
+                self._read_cards(
+                    _split_cards(_unfold_lines(iter_split_lines(lines)), work),
+                    normalized_self_addresses,
+                    candidates,
+                    skipped,
+                    budget,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
         return ExtractedImport(
             people=[],
             interactions=[],
             candidates=candidates,
             skipped_cards=skipped,
         )
+
+    @staticmethod
+    def _read_cards(
+        cards: Iterable[tuple[list[str], bool]],
+        normalized_self_addresses: set[str],
+        candidates: list[dict[str, object]],
+        skipped: list[dict[str, int | str]],
+        budget: CandidateBudget,
+    ) -> None:
+        """Turn each streamed card into candidates or one stable skip reason."""
+        for index, (card_lines, structurally_valid) in enumerate(cards, start=1):
+            if not structurally_valid:
+                skipped.append({"index": index, "reason": "malformed_card"})
+                continue
+            # Decoding a property can fail long after the file itself decoded cleanly — a
+            # `CHARSET` that cannot be resolved, or bytes invalid in the one the card
+            # declares. Card independence is the vCard contract, so every decode for this
+            # card sits inside one guard and a failure skips only this card.
+            try:
+                properties = [_parse_property(line) for line in card_lines]
+                by_name: dict[str, list[_Property]] = {}
+                for prop in properties:
+                    by_name.setdefault(prop.name, []).append(prop)
+                versions = by_name.get("VERSION", [])
+                if len(versions) != 1:
+                    skipped.append({"index": index, "reason": "malformed_card"})
+                    continue
+                version = _decode_text(versions[0]).strip()
+                if version not in _SUPPORTED_VERSIONS:
+                    skipped.append({"index": index, "reason": "unsupported_version"})
+                    continue
+                fn_properties = by_name.get("FN", [])
+                name = _decode_text(fn_properties[0]).strip() if fn_properties else ""
+                if not name:
+                    skipped.append({"index": index, "reason": "missing_fn"})
+                    continue
+                if any(
+                    normalize_name(_decode_text(email).strip()) in normalized_self_addresses
+                    for email in by_name.get("EMAIL", [])
+                ):
+                    continue
+                card_candidates = _card_candidates(index, name, by_name)
+            except (UnicodeDecodeError, ValueError):
+                skipped.append({"index": index, "reason": "malformed_card"})
+                continue
+            candidates.extend(card_candidates)
+            budget.account(len(candidates))
 
 
 def _card_candidates(index: int, name: str, properties: dict[str, list[_Property]]) -> list[dict[str, object]]:

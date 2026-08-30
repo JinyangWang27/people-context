@@ -208,6 +208,23 @@ def _decoded_lines(stream: Iterable[str], encoding: str) -> Iterator[str]:
         yield line
 
 
+def drain_source(lines: Iterable[str]) -> None:
+    """Consume what is left of a source so a read or decode refusal still outranks a parse one.
+
+    A whole-file read decoded the entire source *before* any parser looked at it, so a source
+    that was both unparseable and undecodable was always refused as undecodable, and one past
+    the byte ceiling was always refused as oversized. Streaming reverses that by construction:
+    the parser reaches its own objection first and would report it instead.
+
+    Draining restores the released precedence without restoring the whole-file read. It runs
+    only on the refusal path, where the old implementation had already paid for the entire
+    source anyway, and it retains nothing: if the rest of the source cannot be read or decoded,
+    that refusal is raised from here and replaces the parser's.
+    """
+    for _ in lines:
+        pass
+
+
 def iter_split_lines(lines: Iterable[str]) -> Iterator[str]:
     """Yield exactly what ``text.split("\\n")`` yields, one line at a time.
 

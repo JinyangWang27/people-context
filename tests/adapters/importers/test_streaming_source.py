@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import io
 import os
 from pathlib import Path
@@ -21,7 +22,7 @@ from people_context.adapters.importers.bounded_source import (
 )
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.ics import IcsImportExtractor
-from people_context.adapters.importers.linkedin import LinkedInImportExtractor
+from people_context.adapters.importers.linkedin import LinkedInImportExtractor, _split_lines_lazily
 from people_context.adapters.importers.outlook import OutlookImportExtractor
 from people_context.adapters.importers.vcard import VCardImportExtractor
 from people_context.app.imports import MAX_CLI_RETAINED_PARSE_RECORDS, MAX_CLI_SOURCE_BYTES
@@ -437,3 +438,152 @@ def test_a_metered_read1_falls_back_when_the_source_has_none() -> None:
     metered = MeteredSourceFile(_Plain(b"abcdef"), SourceReadBudget(None))  # type: ignore[arg-type]
 
     assert metered.read1(3) == b"abc"
+
+
+# --- the bounded canonical-header scan ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "",
+        "plain",
+        "plain\n",
+        "a\r\nb",
+        "a\rb",
+        "a\vb\fc",
+        "a\x1cb\x1dc\x1ed",
+        "a\x85b",
+        "a b c",
+        "trailing\r\n",
+        "\r\n\r\n",
+        "\n\r",
+        "mixed\r\nand\rmore\nand\fmore",
+        "Notes:\x0cFirst Name,Last Name\n",
+    ],
+)
+def test_the_lazy_piece_scan_matches_splitlines_exactly(line: str) -> None:
+    """The scan has to break where `str.splitlines` breaks, or it would search a different file."""
+    pieces = list(_split_lines_lazily(line))
+
+    assert [piece for _, piece in pieces] == line.splitlines(keepends=True)
+    # The offsets are what let the caller slice the tail instead of rejoining a list.
+    assert all(line[offset:] == "".join(rest for _, rest in pieces[index:]) for index, (offset, _) in enumerate(pieces))
+
+
+def test_the_piece_scan_is_lazy_rather_than_a_materialized_split() -> None:
+    """A form-feed-heavy line must not become one string object per separator.
+
+    `str.splitlines` on a single line near the byte ceiling would allocate tens of millions of
+    pieces — more than the source itself costs — which is exactly the retention the streaming
+    scan exists to avoid. Pulling one piece from a line with a million boundaries proves the
+    scan never builds them all.
+    """
+    line = "\x0c".join("x" * 3 for _ in range(1_000_000))
+    scan = _split_lines_lazily(line)
+
+    assert inspect.isgenerator(scan)
+    assert next(scan) == (0, "xxx\x0c")
+
+
+def test_a_form_feed_preamble_still_finds_the_canonical_header() -> None:
+    source = "Notes:\x0c" + _LINKEDIN_HEADER + "Ada,Lovelace,u,ada@example.com,Corp,Eng,01 Feb 2024\n"
+
+    extracted = LinkedInImportExtractor().extract(
+        "linkedin",
+        content=source,
+        path=None,
+        self_addresses=set(),
+        max_retained_parse_records=1,
+    )
+
+    assert [candidate["type"] for candidate in extracted.candidates] == ["person", "affiliation", "fact"]
+
+
+# --- refusal precedence: a read or decode failure outranks a parse failure ----------------
+
+
+def _undecodable_tail(head: bytes) -> bytes:
+    """Return a source whose parse objection comes first and whose bad byte comes much later."""
+    return head + b"padding,,,,,,\n" * 4_000 + b"\xff\n"
+
+
+@pytest.mark.parametrize("route", ["content_bytes", "path"])
+@pytest.mark.parametrize(
+    ("extractor", "source_type", "head"),
+    [
+        (
+            OutlookImportExtractor(),
+            "outlook",
+            _OUTLOOK_HEADER.encode() + b'"a"oops,,X,x@example.com,,,\n',
+        ),
+        (
+            LinkedInImportExtractor(),
+            "linkedin",
+            _LINKEDIN_HEADER.encode() + b'"a"oops,u,x@example.com,,,\n',
+        ),
+        (OutlookImportExtractor(), "outlook", b"wrong,headers,entirely\n"),
+    ],
+    ids=["outlook-malformed-row", "linkedin-malformed-row", "outlook-wrong-headers"],
+)
+def test_a_csv_objection_never_outranks_the_undecodable_bytes_behind_it(
+    extractor: object,
+    source_type: str,
+    head: bytes,
+    route: str,
+    tmp_path: Path,
+) -> None:
+    """The whole-file read decoded everything before parsing, so decoding still wins.
+
+    Streaming reaches the parser's own objection first and would report `invalid_csv` or
+    `invalid_headers` where the released path reported `undecodable_source`. Draining the rest
+    of the source on the refusal path restores that order without restoring the whole-file read.
+    """
+    raw = _undecodable_tail(head)
+    if route == "path":
+        source = tmp_path / f"{source_type}.csv"
+        source.write_bytes(raw)
+        inputs = {"content": None, "content_bytes": None, "path": str(source)}
+    else:
+        inputs = {"content": None, "content_bytes": raw, "path": None}
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        extractor.extract(source_type, self_addresses=set(), **inputs)  # type: ignore[attr-defined]
+
+    assert refusal.value.code == UNDECODABLE_SOURCE
+
+
+@pytest.mark.parametrize(
+    ("extractor", "source_type", "head"),
+    [
+        (VCardImportExtractor(), "vcard", b"BEGIN:VCARD\nVERSION:3.0\nFN:Ada\nEND:VCARD\n" * 2_000),
+        (
+            IcsImportExtractor(),
+            "ics",
+            b"BEGIN:VEVENT\nDTSTART:20240101T090000Z\nATTENDEE:mailto:a@example.com\nEND:VEVENT\n" * 2_000,
+        ),
+    ],
+    ids=["vcard", "ics"],
+)
+def test_a_candidate_ceiling_never_outranks_the_undecodable_bytes_behind_it(
+    extractor: object,
+    source_type: str,
+    head: bytes,
+) -> None:
+    """Same precedence for the line-oriented sources, whose objection is the candidate ceiling.
+
+    The head is deliberately far larger than one decode chunk, so the parser really does raise
+    before the reader has seen the bad byte. A short source would decode entirely on the first
+    read and pass whether or not the refusal path drains.
+    """
+    with pytest.raises(ImportExtractionError) as refusal:
+        extractor.extract(  # type: ignore[attr-defined]
+            source_type,
+            content=None,
+            path=None,
+            content_bytes=head + b"\xff\n",
+            self_addresses=set(),
+            max_candidates=1,
+        )
+
+    assert refusal.value.code == UNDECODABLE_SOURCE

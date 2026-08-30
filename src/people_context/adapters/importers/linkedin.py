@@ -12,6 +12,7 @@ from datetime import date
 from people_context.adapters.importers.bounded_source import (
     CandidateBudget,
     ParserWorkBudget,
+    drain_source,
     open_source_stream,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
@@ -47,6 +48,8 @@ _ENGLISH_MONTHS = {
 }
 _ENGLISH_DATE_RE = re.compile(r"^(\d{2}) ([A-Z][a-z]{2}) (\d{4})$")
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+#: Every boundary `str.splitlines` breaks on, with ``\r\n`` first so it stays a single one.
+_LINE_BOUNDARY = re.compile("\r\n|[\n\r\v\f\x1c\x1d\x1e\x85  ]")
 
 
 @dataclass
@@ -95,12 +98,18 @@ class LinkedInImportExtractor:
             strip_content_bom=True,
             universal_newlines=False,
         ) as lines:
-            return self._extract_rows(
-                csv.DictReader(_from_canonical_header(lines, work), strict=True),
-                self_addresses=self_addresses,
-                max_candidates=max_candidates,
-                work=work,
-            )
+            try:
+                return self._extract_rows(
+                    csv.DictReader(_from_canonical_header(lines, work), strict=True),
+                    self_addresses=self_addresses,
+                    max_candidates=max_candidates,
+                    work=work,
+                )
+            except ImportExtractionError:
+                # A parse refusal must not outrank one the rest of the source would have
+                # produced: the whole-file read decoded everything before parsing anything.
+                drain_source(lines)
+                raise
 
     @staticmethod
     def _extract_rows(
@@ -211,17 +220,40 @@ def _from_canonical_header(lines: Iterable[str], work: ParserWorkBudget) -> Iter
     """
     iterator = iter(lines)
     for line in iterator:
-        work.account(1)
-        pieces = line.splitlines(keepends=True)
-        for index, piece in enumerate(pieces):
+        for offset, piece in _split_lines_lazily(line):
+            work.account(1)
             try:
                 columns = next(csv.reader([piece], strict=True))
             except csv.Error:
                 continue
             if _EXPECTED_HEADERS.issubset(columns):
-                yield from itertools.chain(["".join(pieces[index:])], iterator)
+                # Slicing from the matched piece's offset is `"".join(pieces[index:])` without
+                # ever holding the pieces, which is the whole point of scanning them lazily.
+                yield from itertools.chain([line[offset:]], iterator)
                 return
     raise ImportExtractionError("invalid_headers", "linkedin CSV is missing required canonical headers")
+
+
+def _split_lines_lazily(line: str) -> Iterator[tuple[int, str]]:
+    """Yield ``(offset, piece)`` for exactly what ``line.splitlines(keepends=True)`` returns.
+
+    Calling `str.splitlines` here would defeat the bound the streaming scan exists to provide.
+    The stream breaks on the newlines a text reader recognizes, but `str.splitlines` breaks on
+    more than that, so a source whose separators are all form feeds arrives as one line — and
+    splitting it would materialize one string object per separator, tens of millions of them
+    inside the byte ceiling, which is more than the source itself costs.
+
+    Yielding the offset alongside each piece is what lets the caller reconstruct the tail with
+    a single slice instead of rejoining a list it never built. `_LINE_BOUNDARY` is the exact
+    separator set `str.splitlines` documents, ``\\r\\n`` first so it stays one boundary, and a
+    test pins the two against each other character by character.
+    """
+    start = 0
+    for boundary in _LINE_BOUNDARY.finditer(line):
+        yield start, line[start : boundary.end()]
+        start = boundary.end()
+    if start < len(line):
+        yield start, line[start:]
 
 
 def _combined_name(row: dict[str | None, str | list[str] | None]) -> str:
