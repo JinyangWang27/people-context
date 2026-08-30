@@ -60,6 +60,7 @@ class _RecordingExtractor:
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport:
         self.calls.append(
             {
@@ -69,6 +70,7 @@ class _RecordingExtractor:
                 "self_sender": self_sender,
                 "max_source_bytes": max_source_bytes,
                 "max_candidates": max_candidates,
+                "max_retained_parse_records": max_retained_parse_records,
             }
         )
         return ExtractedImport(
@@ -549,6 +551,7 @@ def test_import_content_forwards_normalized_self_names_and_the_sender_hint() -> 
                 # A caller that supplied no budget stays on the released unbounded contract.
                 "max_source_bytes": None,
                 "max_candidates": None,
+                "max_retained_parse_records": None,
             }
         ]
 

@@ -43,6 +43,17 @@ MAX_CLI_STAGED_CANDIDATES: Final = 100_000
 #: bytes — that the CLI is willing to stage, review, or commit for one batch.
 MAX_CLI_STAGED_PAYLOAD_BYTES: Final = 64 * 1024 * 1024
 
+#: Parsed records one extractor may hold live at once while parsing a `pctx import` source.
+#:
+#: This is a backstop, not a fourth input limit, and its value says so: every parsed record
+#: costs at least one byte of source, so a source inside `MAX_CLI_SOURCE_BYTES` cannot contain
+#: more records than that, and nothing the existing ceilings already admit can reach this one.
+#: What it does catch is a parser that retains *more* than the source it read — an extractor
+#: that expands one record into many, or one that keeps every record of a file it will stage
+#: nothing from. Deriving it from the byte ceiling rather than picking a round number is what
+#: keeps M20 from quietly narrowing which sources `pctx import` accepts.
+MAX_CLI_RETAINED_PARSE_RECORDS: Final = MAX_CLI_SOURCE_BYTES
+
 #: Candidates one `stage_candidates` request carrying an M17 candidate type may submit.
 MAX_EXTRACTION_CANDIDATES: Final = 500
 
@@ -83,6 +94,7 @@ class ImportBudget:
     max_source_bytes: int | None = None
     max_candidates: int | None = None
     max_staged_payload_bytes: int | None = None
+    max_retained_parse_records: int | None = None
 
 
 #: The released contract of every pre-M16 caller, stated explicitly rather than implied.
@@ -93,6 +105,7 @@ CLI_IMPORT_BUDGET: Final = ImportBudget(
     max_source_bytes=MAX_CLI_SOURCE_BYTES,
     max_candidates=MAX_CLI_STAGED_CANDIDATES,
     max_staged_payload_bytes=MAX_CLI_STAGED_PAYLOAD_BYTES,
+    max_retained_parse_records=MAX_CLI_RETAINED_PARSE_RECORDS,
 )
 
 

@@ -115,8 +115,11 @@ class ImportExtractor(Protocol):
     of ``content``, ``content_bytes``, and ``path`` is accepted.
 
     ``max_source_bytes`` is the caller's read budget for a path-based source and
-    ``max_candidates`` the ceiling on what that source may expand into. ``None`` keeps the
-    released unbounded behavior, so only a boundary that chose a budget is bounded by one.
+    ``max_candidates`` the ceiling on what that source may expand into.
+    ``max_retained_parse_records`` bounds the parsed records an extractor may hold live while
+    it turns the one into the other — the interval neither of the others covers, because a
+    record that is skipped never becomes a candidate to count. ``None`` keeps the released
+    unbounded behavior for all three, so only a boundary that chose a budget is bounded by one.
     """
 
     def extract(
@@ -131,6 +134,7 @@ class ImportExtractor(Protocol):
         content_bytes: bytes | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> ExtractedImport: ...
 
 
@@ -164,6 +168,7 @@ class StableSourceExtractor(Protocol):
         self_sender: str | None = None,
         max_source_bytes: int | None = None,
         max_candidates: int | None = None,
+        max_retained_parse_records: int | None = None,
     ) -> StableExtraction: ...
 
 

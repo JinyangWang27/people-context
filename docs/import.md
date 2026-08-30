@@ -371,6 +371,35 @@ created. Those ceilings are properties of this command: `import_content`, `revie
 `pctx init` keep their released, unbounded input and read contracts, and a resource refusal names only the limit,
 never any part of the rejected source.
 
+### Streaming parsers and the parser-work backstop (M20.1)
+
+Those ceilings bound what a source may *be* — how many bytes are read, how many candidates come out — but not
+the interval between them. Every extractor used to turn its whole in-budget source into intermediate Python
+objects before the first candidate existed, and a candidate ceiling cannot meter work that happens before there
+are candidates to count; a record that is skipped never becomes a candidate at all. That made the real promise
+"bounded by a constant multiple of 64 MiB", which is weaker than a 100,000-candidate ceiling implies.
+
+Since M20.1 the sources with no cross-file state — `vcard`, `ics`, `linkedin`, and `outlook` — read their input
+through a shared streaming reader instead. It decodes incrementally under the same byte budget and the same
+encoding rules a whole-file read applies, including universal newlines, `utf-8-sig` byte-order marks, and the
+`undecodable_source` refusal, which is still raised for the same inputs and carries no partial line, chunk, or
+decode position. vCard and iCalendar unfold and split lazily and emit each card or event as it completes;
+LinkedIn and Outlook feed `csv` from the stream, and LinkedIn's canonical-header preamble scan holds one line at
+a time rather than splitting the whole file.
+
+Alongside them is a third budget that is deliberately **not** a fourth input limit: a ceiling on the parsed
+records an extractor may hold **live at once**. It defaults to unbounded, exactly as the byte and candidate
+budgets did when they were introduced, so every released caller is unaffected. `pctx import` sets it to the
+source-byte ceiling, because a parsed record costs at least one byte of source and therefore nothing the 64 MiB
+budget already admits can reach it. It is a backstop against a parser retaining more than the source it read,
+not a new refusal, and it adds no number to the list above.
+
+None of this changes what a source extracts. The staged candidates, their order, their refs, their skip reasons,
+and the one-based indexes those reasons carry are identical to the pre-streaming implementation, which is
+enforced by a table-driven equivalence corpus covering every source and every accepted input. The released MCP
+surface is bounded by the streaming itself and by no ceiling at all: `import_content` accepts exactly what it
+accepted before, because a rejection cap there would narrow a released contract.
+
 ## Source receipts and repeat imports (M18.1)
 
 Re-reading the same export should not quietly create a second copy of everything in it. Since M18.1 a
