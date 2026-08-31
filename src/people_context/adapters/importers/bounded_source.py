@@ -44,6 +44,14 @@ UNDECODABLE_SOURCE = "undecodable_source"
 #: Stable failure code for a parser asked to hold more live records than the caller allows.
 PARSER_WORK_EXHAUSTED = "parser_work_exhausted"
 
+#: Stable failure code for a source that did not hold still for the reads one import needs.
+#:
+#: Reading a file more than once is what makes this reachable, and two unrelated importers now
+#: do: `VerifiedSnapshotExtractor` rehashes a path-only source around its extraction, and the
+#: chat extractor scans its export once for ordering evidence and once for candidates. Both
+#: refuse for the same reason and say the same thing, so they say it with one code.
+SOURCE_CHANGED_DURING_IMPORT = "source_changed_during_import"
+
 
 def read_source_bytes(path: str, *, max_bytes: int | None) -> bytes:
     """Return the file's bytes, refusing a source larger than ``max_bytes``."""

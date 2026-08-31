@@ -2229,6 +2229,306 @@
     "skipped_message_ids": [],
     "skipped_without_id": 0
   },
+  "whatsapp-bare-cr::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-bare-cr::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-bare-cr::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-bracketed::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "+442079460958"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "+44 20 7946 0958",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-14T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 2,
+        "reason": "invalid_sender"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-bracketed::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "+442079460958"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "+44 20 7946 0958",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-14T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 2,
+        "reason": "invalid_sender"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-bracketed::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [
+          {
+            "kind": "handle",
+            "value": "+442079460958"
+          }
+        ],
+        "date": null,
+        "message_id": null,
+        "name": "+44 20 7946 0958",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-13T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-14T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 2,
+        "reason": "invalid_sender"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
   "whatsapp-chat::content": {
     "candidates": [
       {
@@ -2406,6 +2706,402 @@
         "reason": "no_sender"
       }
     ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-empty::content": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-empty::content_bytes": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-empty::path": {
+    "candidates": [],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-month-first::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-01-31T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-03T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-04-05T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 4,
+        "reason": "invalid_timestamp"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-month-first::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-01-31T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-03T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-04-05T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 4,
+        "reason": "invalid_timestamp"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-month-first::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Grace Hopper",
+        "ref": "whatsapp-person-2",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-01-31T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-02-03T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-2"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-04-05T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [
+      {
+        "index": 4,
+        "reason": "invalid_timestamp"
+      }
+    ],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-no-trailing-newline::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-03-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-no-trailing-newline::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-03-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-no-trailing-newline::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-03-01T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-self-only-day::content": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-05-02T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-self-only-day::content_bytes": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-05-02T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
+    "skipped_message_ids": [],
+    "skipped_without_id": 0
+  },
+  "whatsapp-self-only-day::path": {
+    "candidates": [
+      {
+        "aliases": [],
+        "date": null,
+        "message_id": null,
+        "name": "Ada Lovelace",
+        "ref": "whatsapp-person-1",
+        "type": "person"
+      },
+      {
+        "channel": "whatsapp",
+        "date": {
+          "__datetime__": "2024-05-02T00:00:00+00:00"
+        },
+        "message_id": null,
+        "participant_refs": [
+          "whatsapp-person-1"
+        ],
+        "summary": "WhatsApp chat",
+        "type": "interaction"
+      }
+    ],
+    "interactions": [],
+    "people": [],
+    "skipped_cards": [],
     "skipped_message_ids": [],
     "skipped_without_id": 0
   },
