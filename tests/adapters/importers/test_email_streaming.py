@@ -153,7 +153,11 @@ def test_a_refusal_mid_iteration_still_closes_the_mailbox_exactly_once(
 def test_a_correspondent_free_mailbox_retains_a_constant_rather_than_its_message_count(
     tmp_path: Path,
 ) -> None:
-    """The candidate ceiling cannot meter this: a self-only mailbox stages nothing at all."""
+    """The candidate ceiling cannot meter this: a self-only mailbox stages nothing at all.
+
+    Two records — the message being read and the one-address bound of the header being parsed —
+    is the whole peak, for five hundred messages exactly as for one.
+    """
     source = _write_mbox(tmp_path / "self-only.mbox", count=500, correspondent=False)
 
     extracted = EmailImportExtractor().extract(
@@ -161,7 +165,7 @@ def test_a_correspondent_free_mailbox_retains_a_constant_rather_than_its_message
         content=None,
         path=str(source),
         self_addresses={_SELF},
-        max_retained_parse_records=1,
+        max_retained_parse_records=2,
     )
 
     assert extracted.people == []
@@ -194,10 +198,24 @@ def test_the_message_being_read_is_itself_accounted_against_the_parser_budget(
     assert str(source) not in str(refusal.value)
 
 
-def test_one_message_address_expansion_is_metered_while_the_list_is_built() -> None:
-    """The refusal has to arrive during the expansion, not after the whole message is finished."""
+def test_one_message_address_expansion_is_refused_before_the_addresses_are_parsed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`getaddresses` allocates the whole list at once, so metering has to precede the call.
+
+    Accounting only the correspondents that survive filtering would refuse after the allocation
+    worth bounding had already happened, which is exactly the spike the budget exists to stop.
+    """
+    calls = [0]
+    real_getaddresses = email_module.getaddresses
+
+    def _counting_getaddresses(fieldvalues: object) -> object:
+        calls[0] += 1
+        return real_getaddresses(fieldvalues)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(email_module, "getaddresses", _counting_getaddresses)
     recipients = ", ".join(f"Person {index} <person{index}@example.com>" for index in range(20))
-    content = f"From: Ada <ada@example.com>\nTo: {recipients}\n\nbody\n"
+    content = f"To: {recipients}\n\nbody\n"
 
     with pytest.raises(ImportExtractionError) as refusal:
         EmailImportExtractor().extract(
@@ -206,6 +224,44 @@ def test_one_message_address_expansion_is_metered_while_the_list_is_built() -> N
             path=None,
             self_addresses={_SELF},
             max_retained_parse_records=4,
+        )
+
+    assert refusal.value.code == PARSER_WORK_EXHAUSTED
+    assert calls[0] == 0
+
+
+def test_only_one_header_address_list_is_charged_at_a_time() -> None:
+    """The peak is one header's bound plus what is already retained, not every header's bound.
+
+    Four address headers of ten recipients each retain the message, the twenty-one
+    correspondents kept before the last header, and that header's own ten-address bound — so the
+    peak is 32. Charging every header's bound as if all four lists were live at once would put
+    it past 41, and this message would then need a budget it has no reason to need.
+    """
+    header = ", ".join(f"Person{index} <p{index}@example.com>" for index in range(10))
+    content = f"From: Ada <ada@example.com>\nTo: {header}\nCc: {header}\nReply-To: {header}\n\nbody\n"
+    extractor = EmailImportExtractor()
+
+    extracted = extractor.extract(
+        "email",
+        content=content,
+        path=None,
+        self_addresses={_SELF},
+        max_retained_parse_records=32,
+    )
+
+    assert [person.email for person in extracted.people] == [
+        "ada@example.com",
+        *[f"p{index}@example.com" for index in range(10)],
+    ]
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        extractor.extract(
+            "email",
+            content=content,
+            path=None,
+            self_addresses={_SELF},
+            max_retained_parse_records=31,
         )
 
     assert refusal.value.code == PARSER_WORK_EXHAUSTED

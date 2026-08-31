@@ -412,13 +412,20 @@ The metered file `mailbox` reads through is unchanged, so the byte budget still 
 table-of-contents scan that runs before the first message is parsed, and an oversized mailbox is still refused
 for its size rather than for whatever a partial parse of it reached first.
 
-The parser-work backstop now covers both email sources. What it meters is the message currently being read plus
-the correspondents that message's own `From`, `To`, `Cc`, and `Reply-To` headers expand into, accounted as the
-list is built rather than once the message is finished. A mailbox whose messages name no external correspondent
-stages nothing at all — so the candidate ceiling can never meter it — and now costs the same whether it holds
-three messages or a million. One header's address list is still parsed as a unit, because reading each of a
-header's values separately would change how a quoted display name folded across two lines is parsed, and what a
-source extracts is frozen for this milestone.
+The parser-work backstop now covers both email sources. What it meters is the message currently being read, the
+correspondents its `From`, `To`, `Cc`, and `Reply-To` headers have expanded into so far, and the addresses the
+header being parsed can still yield. That last part is charged *before* the header is parsed: `getaddresses` has
+no incremental form and returns one header's complete address list in a single allocation, so metering only what
+survives filtering would refuse after the spike rather than instead of it. The bound it is charged is the count
+`getaddresses` itself uses to validate its result — one address per header value plus one per comma — which
+costs a single pass over a string the parsed message already holds. Only one header's list is live at a time, so
+each header is charged against what is retained rather than on top of the header before it.
+
+A header's values are still parsed together rather than one at a time: joining them is what decides how a quoted
+display name folded across two header lines is read and how many addresses the strict count then expects, and
+what a source extracts is frozen for this milestone. A mailbox whose messages name no external correspondent
+stages nothing at all — so the candidate ceiling can never meter it — and now costs a constant regardless of
+whether it holds three messages or a million.
 
 `mailbox`'s own table of contents — two file offsets per message — is unchanged and remains proportional to the
 message count. It holds no parsed message, no header, and no byte of the source.
