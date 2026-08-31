@@ -414,18 +414,30 @@ for its size rather than for whatever a partial parse of it reached first.
 
 The parser-work backstop now covers both email sources. What it meters is the message currently being read, the
 correspondents its `From`, `To`, `Cc`, and `Reply-To` headers have expanded into so far, and the addresses the
-header being parsed can still yield. That last part is charged *before* the header is parsed: `getaddresses` has
-no incremental form and returns one header's complete address list in a single allocation, so metering only what
-survives filtering would refuse after the spike rather than instead of it. The bound it is charged is the count
-`getaddresses` itself uses to validate its result — one address per header value plus one per comma — which
-costs a single pass over a string the parsed message already holds. Only one header's list is live at a time, so
-each header is charged against what is retained rather than on top of the header before it.
+header being read can still expand into.
+
+One header expands twice, and both are charged before they happen. The larger of the two is easy to miss:
+`get_all` is not a lookup, because the message parser stores a header as the string it read and the configured
+policy builds its address tree only when the header is fetched — a 233 KiB `To:` of ten thousand addresses
+becomes roughly 80 MB of address objects inside that call. `getaddresses` then builds its own complete list and
+returns it whole. Neither can be bounded from inside, so the unparsed values are charged before `get_all` and
+the fetched ones before `getaddresses`, each against the text that feeds it. The bound is a length rather than
+a count of separators, because what has to be bounded is what a parse *builds* and not what it returns: a
+malformed run collapses to one address only after every one has been constructed. No record either parse builds
+is free of the text that produced it — the densest inputs cost one record per character — so length is a
+ceiling on both. Only one header is live at a time, so each is charged against what is retained rather than on
+top of the header before it.
 
 A header's values are still parsed together rather than one at a time: joining them is what decides how a quoted
 display name folded across two header lines is read and how many addresses the strict count then expects, and
 what a source extracts is frozen for this milestone. A mailbox whose messages name no external correspondent
 stages nothing at all — so the candidate ceiling can never meter it — and now costs a constant regardless of
 whether it holds three messages or a million.
+
+None of this narrows what an import accepts. Every character charged is a distinct source byte the 64 MiB budget
+already admitted, while the header name, the line ending, and the body that must accompany it are not charged at
+all, so nothing inside that budget can reach a parser-work ceiling derived from it. An unbudgeted caller —
+`import_content` and every other released surface — passes no ceiling and is unaffected.
 
 `mailbox`'s own table of contents — two file offsets per message — is unchanged and remains proportional to the
 message count. It holds no parsed message, no header, and no byte of the source.
