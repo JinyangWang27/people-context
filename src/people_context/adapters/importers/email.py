@@ -220,12 +220,18 @@ class EmailImportExtractor:
     ) -> list[tuple[str, str]]:
         """Return one message's external correspondents, metering each header before parsing it.
 
-        `getaddresses` has no incremental form: it builds one header's complete address list and
-        then returns it, so accounting only the correspondents that survive filtering would
-        meter the expansion after the allocation worth bounding had already happened. Nothing
-        can bound that list once the call has started, which leaves charging it before the call
-        as the only place the budget can act — and `_address_upper_bound` is what makes that
-        possible without parsing the header twice.
+        One header expands twice, and neither expansion can be bounded from inside. `get_all`
+        is the larger of the two: `policy.default` stores a header as the raw string the parser
+        read and builds its address tree only when the header is fetched, so a 233 KiB `To:`
+        becomes about 80 MB of `Address` objects during that call. `getaddresses` then builds
+        its own complete list and returns it whole. Both are single calls that allocate before
+        they hand anything back, which leaves charging them beforehand as the only place the
+        budget can act.
+
+        So each expansion is charged against the header text that feeds it, in the order they
+        happen: the unparsed values before `get_all`, then the parsed ones before
+        `getaddresses`. The two charges are separate `account` calls against the same retained
+        baseline rather than a sum, because the raw string is gone by the time the second runs.
 
         What is deliberately not done is parsing a header's values separately. Joining them is
         what decides how a quoted display name folded across two header lines is read, and how
@@ -234,15 +240,17 @@ class EmailImportExtractor:
         """
         correspondents: list[tuple[str, str]] = []
         for header in _ADDRESS_HEADERS:
+            raw_values = _raw_header_values(message, header)
+            if not raw_values:
+                continue
+            # One header's addresses are live at a time, alongside the message they came from
+            # and the correspondents kept so far. The previous header's expansion is already
+            # unreachable by the time this one is charged.
+            work.account(1 + len(correspondents) + _address_upper_bound(raw_values))
             values = message.get_all(header, [])
             if not values:
                 continue
-            # One header's addresses are live at a time, alongside the message they came from
-            # and the correspondents kept so far. The previous header's list is already
-            # unreachable by the time this one is charged.
             work.account(1 + len(correspondents) + _address_upper_bound(values))
-            # `getaddresses` returns its list whole; the accounting above is what bounds the
-            # allocation, because nothing here can bound it once the call has started.
             for display_name, address in getaddresses(values):
                 normalized_address = normalize_name(address.strip())
                 if not normalized_address or "@" not in normalized_address or normalized_address in self_addresses:
@@ -276,30 +284,41 @@ def _single_message(
     return parser.parsebytes(_header_bytes(raw), headersonly=True)
 
 
+def _raw_header_values(message: Message, header: str) -> list[str]:
+    """Return one header's values as stored, without triggering the policy's own parse.
+
+    `get_all` is not a lookup under `policy.default` — it is where the address tree is built,
+    which is precisely the expansion that has to be charged before it runs. `raw_items` exposes
+    what the message parser stored, so the header can be measured while it is still the string
+    it was read as.
+    """
+    wanted = header.lower()
+    return [str(value) for name, value in message.raw_items() if name.lower() == wanted]
+
+
 def _address_upper_bound(values: list[Any]) -> int:
-    """Return the most address tuples parsing one header's values can build.
+    """Return the most address records parsing one header's values can build.
 
-    What has to be bounded is the parser's *intermediate* list, not the one `getaddresses`
-    hands back. Strict validation collapses a malformed result to a single empty tuple, but
-    only after the parser has built every tuple it found, so the returned length says nothing
-    about the allocation. The two diverge exactly where it matters: a comma-free run of
-    `a@x <b@y>` returns one tuple and builds one per repetition.
+    What has to be bounded is what a parse *builds*, not what it hands back. `getaddresses`
+    collapses a malformed result to a single empty tuple, but only after every tuple has been
+    built, so the returned length says nothing about the allocation: a comma-free run of
+    `a@x <b@y>` returns one tuple and builds one per repetition. A comma count describes the
+    return and misses the rest.
 
-    Bytes bound the intermediate instead. No tuple the parser builds is free of the text that
-    produced it — the densest inputs measured, runs of `@` and of `;`, cost one byte each, and
-    nothing costs less — so the length of what `getaddresses` is handed is a ceiling on the
-    whole intermediate. The two bytes added per value cover the separator the join inserts
-    between them, and leave room for the single empty tuple substituted for a value that parses
-    to nothing.
+    Length bounds the build instead, for both of the expansions this header pays for — the
+    policy's address tree and `getaddresses`' list. No record either one builds is free of the
+    text that produced it: the densest inputs measured, runs of `@` and of `;`, cost one record
+    per character, and nothing costs less. The two characters added per value cover the
+    separator a join inserts between them, and leave room for the single empty tuple
+    substituted for a value that parses to nothing.
 
-    The length measured is the same one `getaddresses` will parse, because both take `str` of
-    the header object. Under this extractor's `policy.default` that is the header's normalized
-    value rather than its raw bytes, which is what makes the bound exact for the work being
-    charged rather than an estimate of it.
+    Applied to the raw values this measures the string the policy is about to parse, and
+    applied to the fetched ones the string `getaddresses` is about to parse, so each charge is
+    taken against the text that actually feeds it.
 
-    The number stays well inside a parser-work budget derived from a byte ceiling: every byte
-    counted here is a distinct source byte that budget already admitted, and the header name,
-    the line ending, and the body that must accompany it are not counted at all.
+    The number stays well inside a parser-work budget derived from a byte ceiling: every
+    character counted here is a distinct source byte that budget already admitted, and the
+    header name, the line ending, and the body that must accompany it are not counted at all.
     """
     return sum(len(value if isinstance(value, str) else str(value)) + 2 for value in values)
 

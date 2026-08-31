@@ -11,8 +11,10 @@ than by how many messages the file contains.
 from __future__ import annotations
 
 import mailbox
+from email import policy
 from email._parseaddr import AddressList
-from email.message import EmailMessage
+from email.message import EmailMessage, Message
+from email.parser import BytesParser
 from email.utils import getaddresses
 from pathlib import Path
 
@@ -27,6 +29,8 @@ from people_context.adapters.importers.email import (
     EmailImportExtractor,
     ImportExtractionError,
     _address_upper_bound,
+    _header_bytes,
+    _raw_header_values,
 )
 
 _SELF = "me@example.com"
@@ -73,6 +77,11 @@ def _write_mbox(path: Path, *, count: int, correspondent: bool, dated: bool = Fa
     finally:
         box.close()
     return path
+
+
+def _parse_headers(content: str) -> Message:
+    """Parse one message's headers exactly as the extractor's single-email route does."""
+    return BytesParser(policy=policy.default).parsebytes(_header_bytes(content.encode()), headersonly=True)
 
 
 def _count_parsed_messages(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -287,6 +296,64 @@ def test_only_one_header_address_list_is_charged_at_a_time() -> None:
         )
 
     assert refusal.value.code == PARSER_WORK_EXHAUSTED
+
+
+def test_a_wide_header_is_refused_before_the_policy_builds_its_address_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`get_all` is where the expansion happens, so metering after it would meter nothing.
+
+    Under `policy.default` a header is stored as the string the message parser read and its
+    address tree is built when the header is fetched — a 233 KiB `To:` costs about 80 MB there.
+    A budget check placed after that call would run once the allocation it exists to refuse had
+    already been made, so both `get_all` and the `getaddresses` that follows must find the
+    refusal already raised.
+    """
+    fetched: list[str] = []
+    real_get_all = email_module.Message.get_all
+
+    def _recording_get_all(self: object, name: str, failobj: object = None) -> object:
+        fetched.append(name)
+        return real_get_all(self, name, failobj)  # type: ignore[arg-type]
+
+    calls = [0]
+    real_getaddresses = email_module.getaddresses
+
+    def _counting_getaddresses(fieldvalues: object) -> object:
+        calls[0] += 1
+        return real_getaddresses(fieldvalues)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(email_module.Message, "get_all", _recording_get_all)
+    monkeypatch.setattr(email_module, "getaddresses", _counting_getaddresses)
+    recipients = ", ".join(f"person{index}@example.com" for index in range(2000))
+    content = f"To: {recipients}\n\nbody\n"
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        EmailImportExtractor().extract(
+            "email",
+            content=content,
+            path=None,
+            self_addresses={_SELF},
+            max_retained_parse_records=1024,
+        )
+
+    assert refusal.value.code == PARSER_WORK_EXHAUSTED
+    assert fetched == []
+    assert calls[0] == 0
+
+
+def test_the_raw_header_is_measured_without_parsing_it() -> None:
+    """The pre-`get_all` charge has to read the stored string, not a parsed rendering of it."""
+    recipients = ", ".join(f"person{index}@example.com" for index in range(20))
+    content = f"To: {recipients}\nCc: solo@example.com\n\nbody\n"
+    message = _parse_headers(content)
+
+    raw = _raw_header_values(message, "To")
+
+    assert [type(value) for value in raw] == [str]
+    assert raw == [recipients]
+    assert _raw_header_values(message, "cc") == ["solo@example.com"]
+    assert _raw_header_values(message, "Reply-To") == []
 
 
 @pytest.mark.parametrize(
