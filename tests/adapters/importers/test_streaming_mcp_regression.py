@@ -2,11 +2,11 @@
 
 M20 bounds the released MCP surface by streaming, never by rejection: a rejection cap there
 would refuse sources `import_content` accepts today, which the compatibility promise forbids
-within a major version. These tests pin that distinction for the sources M20.1 converts — the
+within a major version. These tests pin that distinction for every converted source — the
 unbudgeted caller passes no parser-work ceiling at all, and every one of them still reaches
-staging with the candidates and the skip report it produced before. `mbox`, `email`, and
-`whatsapp` are converted in M20.2 and M20.3 and are covered here only by the router-level
-equivalence corpus, which proves they are untouched.
+staging with the candidates and the skip report it produced before. `whatsapp` is converted in
+M20.3 and is covered here only by the router-level equivalence corpus, which proves it is
+untouched.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from .test_streaming_equivalence import run_fixture
 
 _NOW = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
 _GOLDEN: dict[str, Any] = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
-_STREAMED = ("vcard", "ics", "linkedin", "outlook")
+_STREAMED = ("vcard", "ics", "linkedin", "outlook", "email", "mbox")
 _STREAMED_FIXTURES = [fixture for fixture in CORPUS if fixture.source_type in _STREAMED]
 _STREAMED_IDS = [fixture.id for fixture in _STREAMED_FIXTURES]
 

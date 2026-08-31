@@ -520,7 +520,7 @@ Check the matching box only in the PR that delivers it.
   - **Out:** `mbox` and `email` conversion, WhatsApp, MCP-path work, new sources/candidate types, any change to
     the M16 ceilings or to which candidates a source yields.
 
-- [ ] **M20.2 — Stream mbox messages and meter email address expansion**
+- [x] **M20.2 — Stream mbox messages and meter email address expansion**
   - **Scope:** Stop materializing `list(mbox)`; move mailbox-handle ownership into the extractor's scope so the
     mailbox is consumed lazily by the extraction loop, and pass the budget into `_correspondents` so one
     message's address expansion is metered while it is built rather than after `getaddresses` returns.
