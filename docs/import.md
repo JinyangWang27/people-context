@@ -400,6 +400,29 @@ enforced by a table-driven equivalence corpus covering every source and every ac
 surface is bounded by the streaming itself and by no ceiling at all: `import_content` accepts exactly what it
 accepted before, because a rejection cap there would narrow a released contract.
 
+### Streamed mailboxes and metered address expansion (M20.2)
+
+`mbox` was the largest instance of the same property and the last one that read its whole source into records:
+it parsed every message in the mailbox into an `email.message.Message` before extraction looked at the first
+one, so 64 MiB of short messages became on the order of a million live objects. Since M20.2 the mailbox is
+consumed one message at a time by the extraction loop itself. That means the handle has to stay open for the
+whole loop rather than for the length of one call, so the extractor owns it and closes it exactly once on every
+path — a finished loop, a candidate ceiling reached halfway through, or any other refusal raised mid-iteration.
+The metered file `mailbox` reads through is unchanged, so the byte budget still covers the whole-file
+table-of-contents scan that runs before the first message is parsed, and an oversized mailbox is still refused
+for its size rather than for whatever a partial parse of it reached first.
+
+The parser-work backstop now covers both email sources. What it meters is the message currently being read plus
+the correspondents that message's own `From`, `To`, `Cc`, and `Reply-To` headers expand into, accounted as the
+list is built rather than once the message is finished. A mailbox whose messages name no external correspondent
+stages nothing at all — so the candidate ceiling can never meter it — and now costs the same whether it holds
+three messages or a million. One header's address list is still parsed as a unit, because reading each of a
+header's values separately would change how a quoted display name folded across two lines is parsed, and what a
+source extracts is frozen for this milestone.
+
+`mailbox`'s own table of contents — two file offsets per message — is unchanged and remains proportional to the
+message count. It holds no parsed message, no header, and no byte of the source.
+
 ## Source receipts and repeat imports (M18.1)
 
 Re-reading the same export should not quietly create a second copy of everything in it. Since M18.1 a
