@@ -247,9 +247,9 @@ class EmailImportExtractor:
             # and the correspondents kept so far. The previous header's expansion is already
             # unreachable by the time this one is charged.
             work.account(1 + len(correspondents) + _address_upper_bound(raw_values))
+            # Both reads filter the same stored headers by the same name, so this cannot come
+            # back empty once the raw read did not.
             values = message.get_all(header, [])
-            if not values:
-                continue
             work.account(1 + len(correspondents) + _address_upper_bound(values))
             for display_name, address in getaddresses(values):
                 normalized_address = normalize_name(address.strip())
