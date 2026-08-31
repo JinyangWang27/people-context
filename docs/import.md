@@ -400,6 +400,48 @@ enforced by a table-driven equivalence corpus covering every source and every ac
 surface is bounded by the streaming itself and by no ceiling at all: `import_content` accepts exactly what it
 accepted before, because a rejection cap there would narrow a released contract.
 
+### Streamed mailboxes and metered address expansion (M20.2)
+
+`mbox` was the largest instance of the same property and the last one that read its whole source into records:
+it parsed every message in the mailbox into an `email.message.Message` before extraction looked at the first
+one, so 64 MiB of short messages became on the order of a million live objects. Since M20.2 the mailbox is
+consumed one message at a time by the extraction loop itself. That means the handle has to stay open for the
+whole loop rather than for the length of one call, so the extractor owns it and closes it exactly once on every
+path — a finished loop, a candidate ceiling reached halfway through, or any other refusal raised mid-iteration.
+The metered file `mailbox` reads through is unchanged, so the byte budget still covers the whole-file
+table-of-contents scan that runs before the first message is parsed, and an oversized mailbox is still refused
+for its size rather than for whatever a partial parse of it reached first.
+
+The parser-work backstop now covers both email sources. What it meters is the message currently being read, the
+correspondents its `From`, `To`, `Cc`, and `Reply-To` headers have expanded into so far, and the addresses the
+header being read can still expand into.
+
+One header expands twice, and both are charged before they happen. The larger of the two is easy to miss:
+`get_all` is not a lookup, because the message parser stores a header as the string it read and the configured
+policy builds its address tree only when the header is fetched — a 233 KiB `To:` of ten thousand addresses
+becomes roughly 80 MB of address objects inside that call. `getaddresses` then builds its own complete list and
+returns it whole. Neither can be bounded from inside, so the unparsed values are charged before `get_all` and
+the fetched ones before `getaddresses`, each against the text that feeds it. The bound is a length rather than
+a count of separators, because what has to be bounded is what a parse *builds* and not what it returns: a
+malformed run collapses to one address only after every one has been constructed. No record either parse builds
+is free of the text that produced it — the densest inputs cost one record per character — so length is a
+ceiling on both. Only one header is live at a time, so each is charged against what is retained rather than on
+top of the header before it.
+
+A header's values are still parsed together rather than one at a time: joining them is what decides how a quoted
+display name folded across two header lines is read and how many addresses the strict count then expects, and
+what a source extracts is frozen for this milestone. A mailbox whose messages name no external correspondent
+stages nothing at all — so the candidate ceiling can never meter it — and now costs a constant regardless of
+whether it holds three messages or a million.
+
+None of this narrows what an import accepts. Every character charged is a distinct source byte the 64 MiB budget
+already admitted, while the header name, the line ending, and the body that must accompany it are not charged at
+all, so nothing inside that budget can reach a parser-work ceiling derived from it. An unbudgeted caller —
+`import_content` and every other released surface — passes no ceiling and is unaffected.
+
+`mailbox`'s own table of contents — two file offsets per message — is unchanged and remains proportional to the
+message count. It holds no parsed message, no header, and no byte of the source.
+
 ## Source receipts and repeat imports (M18.1)
 
 Re-reading the same export should not quietly create a second copy of everything in it. Since M18.1 a
