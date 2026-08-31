@@ -11,7 +11,9 @@ than by how many messages the file contains.
 from __future__ import annotations
 
 import mailbox
+from email._parseaddr import AddressList
 from email.message import EmailMessage
+from email.utils import getaddresses
 from pathlib import Path
 
 import pytest
@@ -21,7 +23,11 @@ from people_context.adapters.importers.bounded_source import (
     PARSER_WORK_EXHAUSTED,
     TOO_MANY_CANDIDATES,
 )
-from people_context.adapters.importers.email import EmailImportExtractor, ImportExtractionError
+from people_context.adapters.importers.email import (
+    EmailImportExtractor,
+    ImportExtractionError,
+    _address_upper_bound,
+)
 
 _SELF = "me@example.com"
 
@@ -155,23 +161,39 @@ def test_a_correspondent_free_mailbox_retains_a_constant_rather_than_its_message
 ) -> None:
     """The candidate ceiling cannot meter this: a self-only mailbox stages nothing at all.
 
-    Two records — the message being read and the one-address bound of the header being parsed —
-    is the whole peak, for five hundred messages exactly as for one.
+    The budget a hundred-fold larger mailbox needs is the same budget the small one needs, which
+    is the property under test — `list(mbox)` would have made it grow with the message count.
+    Both are pinned as the *minimum*, so the equality is not two numbers that merely both fit.
     """
-    source = _write_mbox(tmp_path / "self-only.mbox", count=500, correspondent=False)
+    extractor = EmailImportExtractor()
+    peak = 17
 
-    extracted = EmailImportExtractor().extract(
-        "mbox",
-        content=None,
-        path=str(source),
-        self_addresses={_SELF},
-        max_retained_parse_records=2,
-    )
+    for count in (5, 500):
+        source = _write_mbox(tmp_path / f"self-only-{count}.mbox", count=count, correspondent=False)
 
-    assert extracted.people == []
-    assert extracted.interactions == []
-    assert extracted.skipped_message_ids == []
-    assert extracted.skipped_without_id == 0
+        extracted = extractor.extract(
+            "mbox",
+            content=None,
+            path=str(source),
+            self_addresses={_SELF},
+            max_retained_parse_records=peak,
+        )
+
+        assert extracted.people == []
+        assert extracted.interactions == []
+        assert extracted.skipped_message_ids == []
+        assert extracted.skipped_without_id == 0
+
+        with pytest.raises(ImportExtractionError) as refusal:
+            extractor.extract(
+                "mbox",
+                content=None,
+                path=str(source),
+                self_addresses={_SELF},
+                max_retained_parse_records=peak - 1,
+            )
+
+        assert refusal.value.code == PARSER_WORK_EXHAUSTED
 
 
 def test_the_message_being_read_is_itself_accounted_against_the_parser_budget(
@@ -233,10 +255,10 @@ def test_one_message_address_expansion_is_refused_before_the_addresses_are_parse
 def test_only_one_header_address_list_is_charged_at_a_time() -> None:
     """The peak is one header's bound plus what is already retained, not every header's bound.
 
-    Four address headers of ten recipients each retain the message, the twenty-one
-    correspondents kept before the last header, and that header's own ten-address bound — so the
-    peak is 32. Charging every header's bound as if all four lists were live at once would put
-    it past 41, and this message would then need a budget it has no reason to need.
+    At the last of four address headers the message holds itself, the twenty-one correspondents
+    kept from the three before it, and that header's own 260-byte bound: 282. Charging all four
+    bounds as if every list were live at once would reach 823, and this message would then need
+    a budget it has no reason to need.
     """
     header = ", ".join(f"Person{index} <p{index}@example.com>" for index in range(10))
     content = f"From: Ada <ada@example.com>\nTo: {header}\nCc: {header}\nReply-To: {header}\n\nbody\n"
@@ -247,7 +269,7 @@ def test_only_one_header_address_list_is_charged_at_a_time() -> None:
         content=content,
         path=None,
         self_addresses={_SELF},
-        max_retained_parse_records=32,
+        max_retained_parse_records=282,
     )
 
     assert [person.email for person in extracted.people] == [
@@ -261,10 +283,39 @@ def test_only_one_header_address_list_is_charged_at_a_time() -> None:
             content=content,
             path=None,
             self_addresses={_SELF},
-            max_retained_parse_records=31,
+            max_retained_parse_records=281,
         )
 
     assert refusal.value.code == PARSER_WORK_EXHAUSTED
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "@" * 500,
+        ";" * 500,
+        "<>" * 250,
+        "a@x <b@y> " * 50,
+        ", ".join(f"p{index}@example.com" for index in range(40)),
+        "",
+    ],
+    ids=["at-signs", "semicolons", "angle-pairs", "malformed-pairs", "well-formed", "empty"],
+)
+def test_the_header_bound_covers_the_address_parser_intermediate_not_just_its_result(
+    value: str,
+) -> None:
+    """What has to be bounded is what the parser builds, which a comma count does not describe.
+
+    Strict validation collapses a malformed result to one tuple only after every tuple has been
+    built, so the returned length says nothing about the allocation — a comma-free run of
+    `a@x <b@y>` returns one and builds one per repetition. The densest inputs cost one tuple per
+    byte and none costs less, which is why the bound is taken from the length of the string the
+    parser is handed rather than from the separators inside it.
+    """
+    bound = _address_upper_bound([value])
+
+    assert bound >= len(AddressList(value).addresslist)
+    assert bound >= len(getaddresses([value]))
 
 
 def test_a_message_inside_the_parser_budget_extracts_exactly_as_it_did_unbudgeted() -> None:

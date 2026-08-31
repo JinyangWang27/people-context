@@ -128,6 +128,11 @@ class EmailImportExtractor:
                 elif occurred_at is None and correspondents:
                     skipped_without_id += 1
                 budget.account(len(people) + len(interactions))
+                # Advancing the mailbox parses the next message before this loop rebinds these
+                # names, so leaving them bound would keep two messages and two address lists
+                # live across the step the budget accounts as one. Releasing them here is what
+                # makes "one message at a time" the literal shape rather than the intent.
+                del message, correspondents
         candidates = [
             ImportPersonCandidate(
                 name=candidate.name,
@@ -165,19 +170,11 @@ class EmailImportExtractor:
         """
         parser = BytesParser(policy=policy.default)
         if source_type == "email":
-            supplied = [value is not None for value in (content, content_bytes, path)]
-            if sum(supplied) != 1:
-                raise ImportExtractionError(
-                    "invalid_source",
-                    "email import requires exactly one of content, content_bytes, or path",
-                )
-            if content is not None:
-                raw = content.encode("utf-8")
-            elif content_bytes is not None:
-                raw = content_bytes
-            else:
-                raw = read_source_bytes(path or "", max_bytes=max_source_bytes)
-            yield iter([parser.parsebytes(_header_bytes(raw), headersonly=True)])
+            # Built in a call that returns, so the frame holding the whole source dies before
+            # the yield below suspends this one. Reading the bytes inline would keep a
+            # source-sized buffer resident for the entire extraction that follows — headers are
+            # parsed lazily, so the message alone is no reason to hold the file it came from.
+            yield iter([_single_message(parser, content, content_bytes, path, max_source_bytes)])
             return
         if source_type == "mbox":
             # `mbox` is the one path-only contract: `mailbox.mbox` opens the path itself, so
@@ -223,14 +220,12 @@ class EmailImportExtractor:
     ) -> list[tuple[str, str]]:
         """Return one message's external correspondents, metering each header before parsing it.
 
-        `getaddresses` has no incremental form: it returns one header's complete address list,
-        so accounting only the correspondents that survive filtering would meter the expansion
-        after the allocation worth bounding had already happened. It does publish an upper bound
-        on what it can return, though — in its strict default mode the result is either one
-        tuple per comma-delimited element or the single empty tuple it substitutes for a
-        malformed header — and that bound is a comma count, one pass over a string the parsed
-        message already holds. Charging it before the call is what puts the allocation itself
-        under the budget rather than the list built from it.
+        `getaddresses` has no incremental form: it builds one header's complete address list and
+        then returns it, so accounting only the correspondents that survive filtering would
+        meter the expansion after the allocation worth bounding had already happened. Nothing
+        can bound that list once the call has started, which leaves charging it before the call
+        as the only place the budget can act — and `_address_upper_bound` is what makes that
+        possible without parsing the header twice.
 
         What is deliberately not done is parsing a header's values separately. Joining them is
         what decides how a quoted display name folded across two header lines is read, and how
@@ -246,6 +241,8 @@ class EmailImportExtractor:
             # and the correspondents kept so far. The previous header's list is already
             # unreachable by the time this one is charged.
             work.account(1 + len(correspondents) + _address_upper_bound(values))
+            # `getaddresses` returns its list whole; the accounting above is what bounds the
+            # allocation, because nothing here can bound it once the call has started.
             for display_name, address in getaddresses(values):
                 normalized_address = normalize_name(address.strip())
                 if not normalized_address or "@" not in normalized_address or normalized_address in self_addresses:
@@ -256,18 +253,55 @@ class EmailImportExtractor:
         return correspondents
 
 
-def _address_upper_bound(values: list[Any]) -> int:
-    """Return the most addresses `getaddresses` can return for one header's values.
+def _single_message(
+    parser: BytesParser[Any],
+    content: str | None,
+    content_bytes: bytes | None,
+    path: str | None,
+    max_source_bytes: int | None,
+) -> Message:
+    """Parse one standalone message's headers, releasing its source bytes on return."""
+    supplied = [value is not None for value in (content, content_bytes, path)]
+    if sum(supplied) != 1:
+        raise ImportExtractionError(
+            "invalid_source",
+            "email import requires exactly one of content, content_bytes, or path",
+        )
+    if content is not None:
+        raw = content.encode("utf-8")
+    elif content_bytes is not None:
+        raw = content_bytes
+    else:
+        raw = read_source_bytes(path or "", max_bytes=max_source_bytes)
+    return parser.parsebytes(_header_bytes(raw), headersonly=True)
 
-    This mirrors the count `getaddresses` computes to validate its own result: one address per
-    value plus one per comma inside it, with a malformed header collapsing to a single empty
-    tuple rather than exceeding it. Commas inside quoted display names are not discounted here,
-    which can only raise the number, so it stays an upper bound — and on a `getaddresses` that
-    predates that validation the per-append accounting in `_correspondents` is still the
-    backstop. Every unit counted costs at least one byte of the source that carried it, so a
-    source inside the caller's byte budget cannot reach a parser-work budget derived from it.
+
+def _address_upper_bound(values: list[Any]) -> int:
+    """Return the most address tuples parsing one header's values can build.
+
+    What has to be bounded is the parser's *intermediate* list, not the one `getaddresses`
+    hands back. Strict validation collapses a malformed result to a single empty tuple, but
+    only after the parser has built every tuple it found, so the returned length says nothing
+    about the allocation. The two diverge exactly where it matters: a comma-free run of
+    `a@x <b@y>` returns one tuple and builds one per repetition.
+
+    Bytes bound the intermediate instead. No tuple the parser builds is free of the text that
+    produced it — the densest inputs measured, runs of `@` and of `;`, cost one byte each, and
+    nothing costs less — so the length of what `getaddresses` is handed is a ceiling on the
+    whole intermediate. The two bytes added per value cover the separator the join inserts
+    between them, and leave room for the single empty tuple substituted for a value that parses
+    to nothing.
+
+    The length measured is the same one `getaddresses` will parse, because both take `str` of
+    the header object. Under this extractor's `policy.default` that is the header's normalized
+    value rather than its raw bytes, which is what makes the bound exact for the work being
+    charged rather than an estimate of it.
+
+    The number stays well inside a parser-work budget derived from a byte ceiling: every byte
+    counted here is a distinct source byte that budget already admitted, and the header name,
+    the line ending, and the body that must accompany it are not counted at all.
     """
-    return sum(1 + (value if isinstance(value, str) else str(value)).count(",") for value in values)
+    return sum(len(value if isinstance(value, str) else str(value)) + 2 for value in values)
 
 
 def _message_date(message: Message) -> datetime | None:
