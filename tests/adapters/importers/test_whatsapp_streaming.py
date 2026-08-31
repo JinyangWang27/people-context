@@ -5,14 +5,17 @@ the M14 ordering-inference and skip-reason rules are pinned by `test_whatsapp.py
 restated here. These tests cover the properties those cannot see: that the export is read exactly
 twice, that the first pass keeps only O(1) ordering evidence, that whole-file inference still
 reaches a message the evidence appears *after*, that what the parser holds live is bounded by the
-budget seam rather than by the number of messages, and that a source which changed between the two
-reads is refused instead of answered with one version's ordering over another version's messages.
+budget seam rather than by the number of messages, that a source which changed between the two
+reads is refused instead of answered with one version's ordering over another version's messages,
+and that a path which can only be read once is still imported rather than read a second time.
 """
 
 from __future__ import annotations
 
+import os
+import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -299,3 +302,121 @@ def test_a_request_naming_more_than_one_input_is_refused_exactly_as_before() -> 
         _extract(content="ignored", path="/nonexistent/chat.txt")
 
     assert refusal.value.code == "invalid_source"
+
+
+requires_fifo = pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs POSIX named pipes")
+
+
+def _served_from(monkeypatch: pytest.MonkeyPatch) -> list[tuple[bool, bool]]:
+    """Record, per pass, whether it was served from a path and whether from a byte snapshot."""
+    served: list[tuple[bool, bool]] = []
+    real = whatsapp_module.open_source_stream
+
+    @contextmanager
+    def _recording(**kwargs: Any) -> Iterator[Iterator[str]]:
+        served.append((kwargs["path"] is not None, kwargs["content_bytes"] is not None))
+        with real(**kwargs) as lines:
+            yield lines
+
+    monkeypatch.setattr(whatsapp_module, "open_source_stream", _recording)
+    return served
+
+
+def _fifo_writing(tmp_path: Path, name: str, raw: bytes) -> str:
+    """Create a named pipe and start the one writer that will ever fill it."""
+    fifo = tmp_path / name
+    os.mkfifo(fifo)
+
+    def write_once() -> None:
+        # A reader that stops early — the byte budget refusing an oversized source — closes the
+        # pipe under this writer, which is an ordinary end for it rather than a test failure.
+        with suppress(BrokenPipeError), open(fifo, "wb") as handle:
+            handle.write(raw)
+
+    threading.Thread(target=write_once, daemon=True).start()
+    return str(fifo)
+
+
+def _extract_without_blocking(**kwargs: Any) -> Any:
+    """Extract on a worker thread so a source read twice fails the test instead of hanging it.
+
+    Opening a drained named pipe blocks until another writer arrives, and there is never another
+    writer here. A regression therefore does not raise — it stops — so the timeout is the
+    assertion and re-reading the pipe cannot wedge the suite.
+    """
+    outcome: list[Any] = []
+
+    def run() -> None:
+        try:
+            outcome.append(_extract(**kwargs))
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the calling thread below
+            outcome.append(exc)
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout=30)
+    if worker.is_alive():
+        pytest.fail("extraction blocked: the source was opened a second time")
+    if isinstance(outcome[0], BaseException):
+        raise outcome[0]
+    return outcome[0]
+
+
+@requires_fifo
+def test_a_path_that_can_only_be_read_once_is_still_imported(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A named pipe is a supported path, and two passes over one would read it away.
+
+    `MeteredSourceFile` documents a FIFO, a process substitution, and `/dev/stdin` as legitimate
+    sources for a reader that only moves forward, and the whole-file read this replaced consumed
+    one exactly once. Opening it again does not re-read it: it blocks for a writer that will not
+    come, or sees end of file and looks like a source that changed. So it is snapshotted before
+    the first pass, and both passes are served from that snapshot rather than from the path.
+    """
+    source = _fifo_writing(tmp_path, "chat.fifo", b"31/01/2024, 09:00 - Ada Lovelace: hello\n")
+    served = _served_from(monkeypatch)
+
+    extracted = _extract_without_blocking(path=source)
+
+    assert [candidate["type"] for candidate in extracted.candidates] == ["person", "interaction"]
+    assert served == [(False, True), (False, True)]
+
+
+@requires_fifo
+def test_a_one_shot_path_is_still_refused_when_it_is_over_the_byte_ceiling(tmp_path: Path) -> None:
+    """Snapshotting must not buy back what the byte budget refuses.
+
+    The snapshot is the same bounded read the whole-file implementation performed for every path,
+    so an oversized one-shot source is refused for its size exactly as it was before.
+    """
+    source = _fifo_writing(tmp_path, "big.fifo", b"31/01/2024, 09:00 - Ada Lovelace: hello\n" * 64)
+
+    with pytest.raises(ImportExtractionError) as refusal:
+        _extract_without_blocking(path=source, max_source_bytes=16)
+
+    assert refusal.value.code == SOURCE_TOO_LARGE
+
+
+def test_an_ordinary_file_is_not_snapshotted_and_is_read_from_the_path_twice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one-shot fallback is the exception, not the rule: a regular file keeps the bound.
+
+    Snapshotting holds the whole source, which is what this milestone exists to stop doing, so it
+    must apply only where reading twice is impossible.
+    """
+    source = _write(tmp_path, "chat.txt", b"31/01/2024, 09:00 - Ada Lovelace: hello\n")
+    served = _served_from(monkeypatch)
+
+    _extract(path=source)
+
+    assert served == [(True, False), (True, False)]
+
+
+def test_a_missing_path_still_raises_the_error_it_always_raised(tmp_path: Path) -> None:
+    """Deciding whether a path can be re-read must not change what an unreadable one reports."""
+    with pytest.raises(OSError):
+        _extract(path=str(tmp_path / "absent.txt"))

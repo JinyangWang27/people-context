@@ -27,7 +27,9 @@ rather than allowed to answer with one version's ordering over another version's
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import stat
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -40,6 +42,8 @@ from people_context.adapters.importers.bounded_source import (
     drain_source,
     iter_split_lines,
     open_source_stream,
+    read_source_bytes,
+    require_one_source_input,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.domain.person import AliasKind
@@ -117,6 +121,17 @@ class _ChatSource:
     that could not have affected the answer. An in-memory ``content`` or ``content_bytes`` source
     cannot differ between passes at all; it is still digested, so the guarantee is a property of
     the extractor rather than of which input route a caller happened to use.
+
+    Not every path can be read twice, and the ones that cannot are paths this project already
+    supports. `MeteredSourceFile` names them: a FIFO, a process substitution, or ``/dev/stdin``
+    is a legitimate source for a reader that only moves forward, and the whole-file read this
+    replaced consumed one exactly once. Opening such a path a second time does not read it
+    again — it blocks for another writer, or sees end of file and looks like a source that
+    changed — so a one-shot path is snapshotted into memory before the first pass and both
+    passes read the snapshot. That holds the whole source, which is precisely what streaming
+    exists to avoid, and it is still the right answer here: it is exactly what the released
+    implementation held for exactly these inputs, so no supported import is narrowed, while
+    every ordinary file keeps the bound this milestone added.
     """
 
     def __init__(
@@ -127,11 +142,33 @@ class _ChatSource:
         path: str | None,
         max_bytes: int | None,
     ) -> None:
+        # Refusing an ill-formed request here rather than on the first read keeps `invalid_source`
+        # ahead of anything the snapshot below could raise about a path the caller never meant to
+        # be read alone, exactly as the whole-file resolver ordered the two.
+        require_one_source_input(
+            content=content,
+            content_bytes=content_bytes,
+            path=path,
+            source_label="whatsapp",
+        )
         self._content = content
         self._content_bytes = content_bytes
         self._path = path
         self._max_bytes = max_bytes
         self._passes: list[str] = []
+
+    def snapshot_if_read_once(self) -> None:
+        """Replace a path that yields its bytes once with the bytes themselves.
+
+        The read is the same bounded read the whole-file implementation performed for every path,
+        so a one-shot source over the caller's byte ceiling is still refused as `source_too_large`
+        and nothing about which sources are accepted changes. A regular file is left alone: it can
+        be read twice, and reading it twice is what keeps this source's retention bounded.
+        """
+        if self._path is None or _rereadable(self._path):
+            return
+        self._content_bytes = read_source_bytes(self._path, max_bytes=self._max_bytes)
+        self._path = None
 
     @contextmanager
     def read(self) -> Iterator[Iterator[str]]:
@@ -170,6 +207,21 @@ class _ChatSource:
         return len(self._passes) == 2 and self._passes[0] == self._passes[1]
 
 
+def _rereadable(path: str) -> bool:
+    """Whether opening this path a second time reads the same bytes a second time.
+
+    A regular file does, and a symlink to one does because this follows it. A FIFO, a process
+    substitution, a socket, or a character device does not: its bytes are gone once read, so a
+    second open blocks for another writer or returns end of file. Two passes over one of those is
+    not a slower answer, it is a wrong one.
+
+    A missing path, a directory, or anything else `stat` refuses raises here exactly as the open
+    that used to be the first thing this source did would have raised, so the error a caller sees
+    for an unreadable path is unchanged.
+    """
+    return stat.S_ISREG(os.stat(path).st_mode)
+
+
 class WhatsAppImportExtractor:
     """Read only per-message timestamps and sender labels from a plaintext chat export."""
 
@@ -204,6 +256,9 @@ class WhatsAppImportExtractor:
             path=path,
             max_bytes=max_source_bytes,
         )
+        # A path that yields its bytes once cannot answer two passes; it becomes a snapshot
+        # before either of them runs, so both read the same source and neither blocks.
+        source.snapshot_if_read_once()
 
         with source.read() as lines:
             try:

@@ -470,6 +470,14 @@ rather than the bytes underneath it, so a rewrite that changed only line endings
 single candidate, is not reported as a change. An in-memory `content` or `content_bytes` source cannot differ
 between the passes at all.
 
+Some paths cannot be read twice, and they are paths this importer already accepts: a FIFO, a process
+substitution, or `/dev/stdin` yields its bytes exactly once, and opening one a second time blocks for another
+writer or sees end of file. Such a path is read once into memory before the first pass and both passes read that
+snapshot. That holds the whole source, which is what streaming exists to avoid — and it is still the right
+answer, because it is exactly what the whole-file implementation held for exactly these inputs, so no supported
+import is narrowed. The snapshot is taken under the same byte budget, so an oversized one-shot source is still
+refused for its size. Every ordinary file is read from the path twice and keeps the bound.
+
 An export whose every message is skipped now costs a constant rather than one retained object per line — the
 case the candidate ceiling structurally cannot meter, because a skipped message never becomes a candidate to
 count. The skip report itself is extraction output that `skipped_cards` has always carried, exactly as it is for
