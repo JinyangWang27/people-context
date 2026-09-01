@@ -10,6 +10,7 @@ from pathlib import Path
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
+    UnsafeDatabasePathError,
     inspect_schema,
     latest_schema_version,
 )
@@ -128,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "stats":
         try:
             refusal = _unreadable_stats_target(args)
-        except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+        except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
         if refusal is not None:
@@ -149,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             warning=lambda message: print(f"Warning: {message}", file=sys.stderr),
             encrypted=args.encrypted,
         )
-    except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
         # Refuse with the reason only; the message never carries key material.
         print(f"Error: {exc}", file=sys.stderr)
         return 2

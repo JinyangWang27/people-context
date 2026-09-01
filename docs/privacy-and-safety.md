@@ -195,10 +195,88 @@ survived, and no page size or cursor widens that. A fully forgotten claimless so
 all. Inspection returns no raw source, no file path, and no extraction self-configuration, so provenance cannot
 resurrect an erased name through the metadata around it.
 
+## Database file permissions
+
+On Unix-like systems a newly created database is `0600` — readable and writable only by the account that owns
+it. Left to itself SQLite creates a missing database with `0o666 & ~umask`, which under the common `022` umask
+would publish the single most sensitive file this project owns to every other local account, while every export
+projected *from* it is deliberately `0600`. The store is therefore pre-created as an empty `O_CREAT | O_EXCL`
+file with mode `0600` before SQLite opens it; a zero-length file is a valid empty database, and the `-wal` and
+`-shm` companions SQLite derives from it inherit the same mode.
+
+The mode is applied to the resolved path, and SQLite is handed that same resolved path. `O_EXCL` deliberately
+refuses to follow a symlink, so a `--db` value that points at one — a normal way to keep the store on another
+volume — is resolved once, and the file that receives the mode is the file that ends up holding the pages.
+Resolving for one step but connecting by the original name would leave a window in which the link could be
+repointed between the two. The path you asked for is still what `pctx db-path` and the startup log report.
+
+If a symlink appears at the resolved path between resolution and the open, the command refuses and exits
+non-zero without creating or opening anything. Resolution output is never legitimately a symlink, so one there
+arrived afterwards — the classic race for a database kept in a directory another local account can write, where
+`O_EXCL` would otherwise report "exists", the store would look pre-existing, and SQLite would follow the planted
+link and create its target at the default `0644`. A store deliberately kept behind a symlink is unaffected,
+because that link is resolved before the check.
+
+None of that can be made airtight on its own, so the database's **directory** must be one only you can write.
+A directory writable by other local accounts is refused outright: an account that can write it can rename the
+prepared file away, let SQLite open a file it controls, and restore the original before any later check looks,
+and `sqlite3` accepts a path rather than a descriptor, so nothing in-process can bind the driver's open to a
+verified file. A sticky directory owned by a trusted account — `/tmp`, which belongs to root — is accepted, because sticky
+narrows renaming and removal to an entry's own owner, the directory's owner, and root. Ownership is checked
+too, and not the bit alone: an account that creates its own `01777` directory owns it and may rename every
+entry inside, which is exactly the substitution the exemption was meant to exclude. Every
+ancestor is checked and not just the directory itself, because a `0700` directory is only as private as the
+chain above it: an account able to write a non-sticky ancestor can rename the whole directory away and put one
+it controls in its place. Ownership is checked before permissions at every level, because an owner is never
+constrained by the mode — a directory belonging to another unprivileged account can be renamed through by that
+account whatever its bits say, and clearing owner-write does not help because the owner can restore it with
+`chmod`. Only root and you are trusted anywhere in the chain. The default location and the Docker image's `/data` are owner-only already, so this
+refuses only a database deliberately placed somewhere shared.
+
+A sticky directory still lets any account create a name that does not exist yet, so a database file found in
+place is accepted only if the current user owns it. An attacker who guesses the path can otherwise create it
+first as their own readable file, and it would be taken for an existing database and migrated into. The check
+is on *ownership* and never on mode: a database created before the owner-only default shipped is commonly
+`0644`, and refusing to open those would turn a hardening change into data loss.
+
+Preparing the file retries a bounded number of times, because each answer can be invalidated by the next step —
+an entry present when the exclusive create runs can be gone before it is inspected. A vanished entry re-attempts
+the secure creation rather than being treated as nothing to secure, which would hand SQLite an absent path and
+let it create the database at its own default. A path that will not settle is refused instead of opened.
+
+That check alone would only inspect a name, so the file's `(st_dev, st_ino)` identity is also re-checked once
+the driver has opened the path, before any pragma or migration runs. An account that presents an ordinary file
+for the symlink check and substitutes a link immediately afterwards is caught by the mismatch, and the
+substituted file is left empty rather than populated. Python's `sqlite3` accepts a path and not a descriptor,
+so the driver's own open cannot be bound to an already-verified inode; detecting the substitution and refusing
+is the strongest guarantee available, and it is stated here rather than implied away. Keeping the database in a
+directory only you can write removes the precondition for the whole class of races.
+
+The mode is also set explicitly on the open descriptor rather than left to `os.open`. A `mode` argument is only
+a request that the process umask filters, and a umask clearing an owner bit — `0o200`, say — would otherwise
+produce a read-only `0400` database that the first migration could not write to.
+
+**Windows is not covered by this.** The `mode` argument sets the read-only attribute there rather than
+installing an owner-only ACL, so a new database inherits the ACL of the directory holding it. Keep the database
+under your user profile, where the default ACL already excludes other standard accounts, rather than in a
+shared or root location — and prefer the encrypted extra if the machine has accounts you do not control.
+
+An existing database keeps whatever mode it already carries. Silently tightening a file the operator placed
+themselves could break a deliberate arrangement, so databases created before this behaviour shipped stay as
+they are until you widen the protection yourself:
+
+```bash
+chmod 600 "$(pctx db-path)"
+```
+
+Permissions are a boundary between local accounts, not a substitute for encryption: anything running *as you*
+can still read the file. See [optional at-rest encryption](#optional-at-rest-encryption) for that.
+
 ## Optional at-rest encryption
 
-By default the database is plain SQLite, readable by any process running as the user and by anyone who can read
-the file. That default has not changed. `people-context-mcp --encrypted` and the global CLI form
+By default the database is plain SQLite, readable by any process running as the user — file permissions keep
+other local accounts out, but they do not protect the bytes at rest or on a stolen disk. That default has not
+changed. `people-context-mcp --encrypted` and the global CLI form
 `pctx --encrypted ...` opt into SQLCipher instead, which encrypts the main database file and its WAL and shared
 memory companions.
 

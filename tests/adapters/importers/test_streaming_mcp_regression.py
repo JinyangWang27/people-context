@@ -2,11 +2,11 @@
 
 M20 bounds the released MCP surface by streaming, never by rejection: a rejection cap there
 would refuse sources `import_content` accepts today, which the compatibility promise forbids
-within a major version. These tests pin that distinction for the sources M20.1 converts — the
+within a major version. These tests pin that distinction for every converted source — the
 unbudgeted caller passes no parser-work ceiling at all, and every one of them still reaches
-staging with the candidates and the skip report it produced before. `mbox`, `email`, and
-`whatsapp` are converted in M20.2 and M20.3 and are covered here only by the router-level
-equivalence corpus, which proves they are untouched.
+staging with the candidates and the skip report it produced before. Since M20.3 that is all
+seven sources, so the coverage is taken straight from the corpus rather than from a list of the
+sources converted so far.
 """
 
 from __future__ import annotations
@@ -34,8 +34,7 @@ from .test_streaming_equivalence import run_fixture
 
 _NOW = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
 _GOLDEN: dict[str, Any] = json.loads(GOLDEN_PATH.read_text(encoding="utf-8"))
-_STREAMED = ("vcard", "ics", "linkedin", "outlook")
-_STREAMED_FIXTURES = [fixture for fixture in CORPUS if fixture.source_type in _STREAMED]
+_STREAMED_FIXTURES = list(CORPUS)
 _STREAMED_IDS = [fixture.id for fixture in _STREAMED_FIXTURES]
 
 
@@ -101,9 +100,28 @@ def test_the_released_import_budget_carries_no_parser_work_ceiling() -> None:
     assert UNBOUNDED_IMPORT_BUDGET.max_retained_parse_records is None
 
 
-def test_an_unbudgeted_caller_reaches_the_extractor_with_no_ceiling_at_all(tmp_path: Path) -> None:
-    source = tmp_path / "contacts.vcf"
-    source.write_bytes(b"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ada Lovelace\r\nEND:VCARD\r\n")
+@pytest.mark.parametrize(
+    ("source_type", "name", "raw"),
+    [
+        ("vcard", "contacts.vcf", b"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Ada Lovelace\r\nEND:VCARD\r\n"),
+        ("whatsapp", "chat.txt", b"31/01/2024, 09:00 - Ada Lovelace: hello\n"),
+    ],
+    ids=["single-pass", "two-pass"],
+)
+def test_an_unbudgeted_caller_reaches_the_extractor_with_no_ceiling_at_all(
+    source_type: str,
+    name: str,
+    raw: bytes,
+    tmp_path: Path,
+) -> None:
+    """Reading a source twice is still one extraction, and it still carries no ceiling.
+
+    The chat export is the case worth stating: bounding it took a second pass rather than a
+    limit, so the arguments the application hands the extractor must be exactly the arguments it
+    handed a single-pass source.
+    """
+    source = tmp_path / name
+    source.write_bytes(raw)
     router = _BudgetRecordingRouter()
 
     with open_db(":memory:") as conn:
@@ -112,7 +130,7 @@ def test_an_unbudgeted_caller_reaches_the_extractor_with_no_ceiling_at_all(tmp_p
             router,
             SqliteImportStagingStore(conn),
             _Clock(),
-        ).execute("vcard", path=str(source))
+        ).execute(source_type, path=str(source))
 
     assert router.budgets == [(None, None, None)]
 
@@ -128,6 +146,9 @@ def test_import_content_stages_the_same_batch_it_staged_before(
     batch-local refs, so what is compared here is what survives that: the candidate vocabulary
     the batch carries and the skip report beside it. Extraction order itself is pinned exactly
     by the router-level equivalence corpus.
+
+    `self_sender` is the one extraction input `import_content` takes from its caller rather than
+    from the store, so a chat fixture is staged under the same hint the corpus recorded it under.
     """
     expected = _GOLDEN[f"{fixture.id}::path"]
     path = fixture_inputs(fixture, "path", tmp_path)["path"]
@@ -138,11 +159,11 @@ def test_import_content_stages_the_same_batch_it_staged_before(
 
         if "refused" in expected:
             with pytest.raises((ImportPipelineError, ImportExtractionError)) as refusal:
-                importer.execute(fixture.source_type, path=path)
+                importer.execute(fixture.source_type, path=path, self_sender=fixture.self_sender)
             assert refusal.value.code == expected["refused"]
             return
 
-        batch = importer.execute(fixture.source_type, path=path)
+        batch = importer.execute(fixture.source_type, path=path, self_sender=fixture.self_sender)
         staged = [row.candidate for row in staging.list_batch(batch.batch_id)]
 
     assert Counter(candidate["type"] for candidate in staged) == Counter(

@@ -21,67 +21,25 @@ keeps identity, aliases, relationships, roles, durable facts, concise interactio
 and follow-ups in a local SQLite file, then exposes narrow tools that resolve identity and disclose only what a
 request needs.
 
-## Agent plugins
-
-### Codex
-
-Install the repository as a Codex marketplace and add the bundled plugin:
-
-```bash
-codex plugin marketplace add JinyangWang27/people-context
-codex plugin add people-context@people-context-plugins
-```
-
-Start a new Codex session after installation. The plugin launches the local stdio server, stores data outside
-the installed plugin copy, and keeps sensitive-context and full-export tools disabled by default. See
-[docs/codex-plugin.md](docs/codex-plugin.md) for runtime, update, validation, and publishing details.
-
-### Claude Code
-
-Install the repository as a Claude Code marketplace and add the bundled plugin:
-
-```bash
-claude plugin marketplace add JinyangWang27/people-context
-claude plugin install people-context@people-context-plugins
-```
-
-Restart Claude Code or run `/reload-plugins` after installation. The plugin launches the local stdio server,
-stores data outside the installed plugin copy, and keeps sensitive-context and full-export tools disabled by
-default. See [docs/claude-code-plugin.md](docs/claude-code-plugin.md) for runtime, update, validation, and
-publishing details.
-
-### OpenClaw
-
-Install the published plugin from ClawHub:
-
-```bash
-openclaw plugins install clawhub:openclaw-plugin-people-context
-openclaw plugins inspect people-context --runtime --json
-```
-
-The native OpenClaw plugin connects to the opt-in loopback HTTP server, which must be running separately.
-Persistent writes are optional, and sensitive-context and export wrappers are not exposed. See
-[docs/openclaw-plugin.md](docs/openclaw-plugin.md) for configuration, security, validation, and ClawHub publishing
-details.
-
 ## Features
 
-- explainable exact/normalized/FTS/fuzzy identity resolution with aliases and ambiguity handling;
-- bounded person context with sensitivity and purpose gates;
-- canonical relationship vocabulary, synonyms, inverse pairs, symmetric types, and uncategorized extensions;
-- minimal-disclosure relationship graph and shortest-path MCP tools with explicit caps/truncation;
-- ordinary-disclosure staleness reporting over stored interaction recency, as an MCP tool and CLI command;
-- ordinary-disclosure upcoming birthdays and dated reminders, with real leap-day projection, as an MCP tool
-  and CLI command;
-- organizations and time-aware affiliations;
-- separate facts, observations, traits, and concise interaction summaries;
-- communication guidance grounded in traits, interaction friction, reminders, and user-authored philosophy;
-- reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate imports without retaining raw
-  source content;
-- optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval;
-- atomic audit plus replay changelog/HLC capture for every durable write;
-- merge, forget/redaction, unchanged JSON export, and safe Obsidian vault export;
-- stdio by default and explicit unauthenticated loopback-only Streamable HTTP.
+- **Identity** — explainable exact/normalized/FTS/fuzzy resolution with aliases and ambiguity handling, plus
+  optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval.
+- **Relationships** — canonical vocabulary with synonyms, inverse pairs, symmetric types, and uncategorized
+  extensions; minimal-disclosure graph and shortest-path tools with explicit caps and truncation.
+- **Knowledge** — organizations and time-aware affiliations; facts, observations, traits, and concise
+  interaction summaries kept deliberately separate.
+- **Time** — bounded person timelines, staleness reports, and upcoming birthdays and reminders with real
+  leap-day projection; a consolidation view over duplicate, reinforcing, and contradictory knowledge, with
+  atomic fact supersession that preserves the superseded row.
+- **Disclosure** — bounded context behind sensitivity and purpose gates, and communication guidance grounded in
+  traits, interaction friction, reminders, and your own written philosophy.
+- **Import** — reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate staging that never
+  retains raw source content, with durable receipts mapping each committed candidate to the record it produced.
+- **Custody** — atomic audit and replay changelog/HLC capture on every durable write; merge, forget/redaction,
+  report-only doctor and aggregate stats, JSON/vCard/Obsidian export, and a bootstrap sync bundle that refuses
+  any non-empty target.
+- **Transport** — stdio by default; loopback-only Streamable HTTP is opt-in, explicit, and unauthenticated.
 
 ## Demo
 
@@ -113,7 +71,8 @@ server command in an MCP client and run the printed calls verbatim. See
 
 ## Quick start
 
-Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
+Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Using Codex, Claude Code, or OpenClaw? Those have
+a one-command install — skip to [agent plugins](#agent-plugins).
 
 The fastest path from discovery to a working stdio server is a zero-clone, zero-install run of the published
 `people-context` distribution:
@@ -163,6 +122,49 @@ uv run pctx export-vault --output ~/PeopleVault
 The directory is accepted only when nonexistent, empty, or already marked with `.people-context-vault`.
 Re-export is byte-deterministic over unchanged data. Sensitive/restricted facts require the explicit
 `--include-sensitive` flag; exported files are outside server disclosure controls.
+
+## Agent plugins
+
+### Codex
+
+Install the repository as a Codex marketplace and add the bundled plugin:
+
+```bash
+codex plugin marketplace add JinyangWang27/people-context
+codex plugin add people-context@people-context-plugins
+```
+
+Start a new Codex session after installation. The plugin launches the local stdio server, stores data outside
+the installed plugin copy, and keeps sensitive-context and full-export tools disabled by default. See
+[docs/codex-plugin.md](docs/codex-plugin.md) for runtime, update, validation, and publishing details.
+
+### Claude Code
+
+Install the repository as a Claude Code marketplace and add the bundled plugin:
+
+```bash
+claude plugin marketplace add JinyangWang27/people-context
+claude plugin install people-context@people-context-plugins
+```
+
+Restart Claude Code or run `/reload-plugins` after installation. The plugin launches the local stdio server,
+stores data outside the installed plugin copy, and keeps sensitive-context and full-export tools disabled by
+default. See [docs/claude-code-plugin.md](docs/claude-code-plugin.md) for runtime, update, validation, and
+publishing details.
+
+### OpenClaw
+
+Install the published plugin from ClawHub:
+
+```bash
+openclaw plugins install clawhub:openclaw-plugin-people-context
+openclaw plugins inspect people-context --runtime --json
+```
+
+The native OpenClaw plugin connects to the opt-in loopback HTTP server, which must be running separately.
+Persistent writes are optional, and sensitive-context and export wrappers are not exposed. See
+[docs/openclaw-plugin.md](docs/openclaw-plugin.md) for configuration, security, validation, and ClawHub publishing
+details.
 
 ## Other MCP clients
 
@@ -221,13 +223,18 @@ bind-mount ownership, the CLI entrypoint, MCP client configuration, and publishi
 
 ## Security model
 
-This project executes local Python with the launching user's filesystem permissions. The database is plaintext
-SQLite by default; rely on filesystem permissions and full-disk encryption, or opt into at-rest encryption as
-shown below. Ordinary MCP discovery excludes elevated
-sensitive context and full export. Operator-gated tools require process environment flags; models cannot enable
-them through arguments. Vault export is intentionally CLI-only. For a dated, sourced comparison with
-cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and deletion, see
+This project executes local Python with the launching user's filesystem permissions. Ordinary MCP discovery
+excludes elevated sensitive context and full export. Operator-gated tools require process environment flags;
+models cannot enable them through arguments. Vault export is intentionally CLI-only. For a dated, sourced
+comparison with cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and
+deletion, see
 [docs/privacy-and-safety.md](docs/privacy-and-safety.md#local-first-versus-cloud-hosted-memory-as-of-2026-08-05).
+
+The database is plaintext SQLite by default. On Unix-like systems a new one is created `0600`, so other local
+accounts cannot read it — a boundary between accounts, not encryption, so pair it with full-disk encryption or
+opt into at-rest encryption as shown below. An existing database keeps the mode it already has, and Windows
+inherits the containing directory's ACL instead; see
+[database file permissions](docs/privacy-and-safety.md#database-file-permissions).
 
 ## Optional at-rest encryption
 
@@ -271,33 +278,69 @@ Inspect the selected path with `uv run pctx db-path -v`.
 
 ## CLI overview
 
+`pctx` is on `PATH` after `uv tool install people-context`; inside a clone, prefix each command with
+`uv run`. Onboarding and inspection:
+
 ```bash
-uv run pctx db-path [-v]
-uv run pctx list [--all]
-uv run pctx search <query>
-uv run pctx show <person>
-uv run pctx stale [--category C] [--threshold-days N] [--limit N]
-uv run pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
-uv run pctx upcoming [--window-days N] [--person PERSON]
-uv run pctx doctor [--json] [--only CODE[,CODE...]]
-uv run pctx stats [--json] [--include-path]
-uv run pctx export [--output FILE]
-uv run pctx relationship-types
-uv run pctx relationship-types add TYPE --category C [--inverse T | --symmetric]
-uv run pctx normalize-relationships [--apply]
-uv run pctx export-vault --output DIR [--include-sensitive]
-uv run pctx export-vcard [--output FILE] [--include-sensitive] [--version 3.0|4.0]
-uv run pctx edit PERSON [--name NAME] [--summary TEXT]
-uv run pctx add-alias PERSON VALUE [--kind KIND]
-uv run pctx set communication_philosophy VALUE
-uv run pctx delete PERSON [--yes]
-uv run pctx sync push --output DIR
-uv run pctx sync pull --input PATH [--yes]
-uv run pctx sync-log [--limit N] [--entity ID] [--payloads]
-uv run pctx reindex [--semantic]
+pctx init                                    # seed self identity, optional vCard intake
+pctx demo [--reset]                          # isolated fictional dataset
+pctx db-path [-v]
+pctx list [--all] [--limit N] [--json]
+pctx search QUERY [--limit N]
+pctx show PERSON
+pctx brief PERSON [--include-sensitive] [--json] [--output FILE]
+pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
 ```
 
-See [docs/cli.md](docs/cli.md).
+Reports:
+
+```bash
+pctx stale [--category C] [--threshold-days N] [--limit N]
+pctx upcoming [--window-days N] [--person PERSON]
+pctx doctor [--json] [--only CODE[,CODE...]]
+pctx stats [--json] [--include-path]
+```
+
+Import lifecycle — staging never commits; accepted candidates are explicit:
+
+```bash
+pctx import stage SOURCE PATH [--self-sender TEXT] [--force] [--json]
+pctx import stage-candidates --source LABEL --input PATH|- [--source-kind KIND] [--json]
+pctx import review BATCH_ID [--json]
+pctx import commit BATCH_ID --all|--accept ID... [--json]
+pctx sources [--limit N] [--cursor CURSOR] [--json]
+pctx source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]
+```
+
+Curation:
+
+```bash
+pctx edit PERSON [--name NAME] [--summary TEXT]
+pctx add-alias PERSON VALUE [--kind KIND]
+pctx set communication_philosophy VALUE
+pctx delete PERSON [--yes]
+pctx relationship-types [add TYPE --category C [--inverse T | --symmetric]]
+pctx normalize-relationships [--apply]
+pctx reindex [--semantic]
+```
+
+Export, sync, and replay:
+
+```bash
+pctx export [--output FILE]
+pctx export-vault --output DIR [--include-sensitive]
+pctx export-vcard [--output FILE] [--include-sensitive] [--version 3.0|4.0]
+pctx reminders-ics --output FILE
+pctx sync push --output DIR
+pctx sync pull --input PATH [--yes]
+pctx sync-log [--limit N] [--entity ID] [--payloads]
+pctx watch [--interval S] [--from-start]
+```
+
+Every command accepts the global `--db PATH` and `--encrypted`. Single-file exports (`export`, `brief`,
+`export-vcard`, `reminders-ics`, `sync push`) are written atomically as owner-only `0600` files; `export-vault`
+writes an ordinary directory tree, since its whole purpose is to hand the content to Obsidian. See
+[docs/cli.md](docs/cli.md).
 
 ## Architecture
 

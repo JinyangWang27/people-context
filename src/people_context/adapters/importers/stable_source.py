@@ -33,16 +33,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
 
-from people_context.adapters.importers.bounded_source import read_source_bytes, source_too_large
+from people_context.adapters.importers.bounded_source import (
+    SOURCE_CHANGED_DURING_IMPORT,
+    read_source_bytes,
+    source_too_large,
+)
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import normalize_email
 from people_context.adapters.importers.router import ImportExtractorRouter, unsupported_source_type
 from people_context.adapters.importers.whatsapp import self_identity_keys
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractionIdentity, ImportExtractor, StableExtraction
-
-#: Stable failure code for a source that kept changing while it was being imported.
-SOURCE_CHANGED_DURING_IMPORT: Final = "source_changed_during_import"
 
 #: Sources whose reader owns the file and therefore cannot be handed a byte snapshot.
 PATH_ONLY_SOURCES: Final[frozenset[str]] = frozenset({"mbox"})

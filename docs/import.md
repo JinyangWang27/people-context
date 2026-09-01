@@ -160,7 +160,9 @@ candidate, a skip reason, a log record, or an error. The interaction summary is 
   line. Only a header that is a real calendar date in exactly one reading counts as evidence, so an impossible
   header such as `31/02/2025` is reported as `invalid_timestamp` and contributes none. If the file offers no
   evidence, or offers contradictory evidence, every numeric-dated message is skipped as `ambiguous_date_order`;
-  ISO-dated messages are unaffected.
+  ISO-dated messages are unaffected. Since M20.3 the export is read twice so this can be answered without
+  retaining it — see [Bounded chat-export resolution](#bounded-chat-export-resolution-m203) — and the rule
+  itself is unchanged.
 - Skip entries use stable one-based indexes over *detected messages*: `invalid_timestamp` for an impossible
   calendar date, `ambiguous_date_order` as above, `no_sender` for a system notice or header without a sender
   separator, and `invalid_sender` for an implausibly long label. No reason ever carries text from the file.
@@ -399,6 +401,92 @@ and the one-based indexes those reasons carry are identical to the pre-streaming
 enforced by a table-driven equivalence corpus covering every source and every accepted input. The released MCP
 surface is bounded by the streaming itself and by no ceiling at all: `import_content` accepts exactly what it
 accepted before, because a rejection cap there would narrow a released contract.
+
+### Streamed mailboxes and metered address expansion (M20.2)
+
+`mbox` was the largest instance of the same property and the last one that read its whole source into records:
+it parsed every message in the mailbox into an `email.message.Message` before extraction looked at the first
+one, so 64 MiB of short messages became on the order of a million live objects. Since M20.2 the mailbox is
+consumed one message at a time by the extraction loop itself. That means the handle has to stay open for the
+whole loop rather than for the length of one call, so the extractor owns it and closes it exactly once on every
+path — a finished loop, a candidate ceiling reached halfway through, or any other refusal raised mid-iteration.
+The metered file `mailbox` reads through is unchanged, so the byte budget still covers the whole-file
+table-of-contents scan that runs before the first message is parsed, and an oversized mailbox is still refused
+for its size rather than for whatever a partial parse of it reached first.
+
+The parser-work backstop now covers both email sources. What it meters is the message currently being read, the
+correspondents its `From`, `To`, `Cc`, and `Reply-To` headers have expanded into so far, and the addresses the
+header being read can still expand into.
+
+One header expands twice, and both are charged before they happen. The larger of the two is easy to miss:
+`get_all` is not a lookup, because the message parser stores a header as the string it read and the configured
+policy builds its address tree only when the header is fetched — a 233 KiB `To:` of ten thousand addresses
+becomes roughly 80 MB of address objects inside that call. `getaddresses` then builds its own complete list and
+returns it whole. Neither can be bounded from inside, so the unparsed values are charged before `get_all` and
+the fetched ones before `getaddresses`, each against the text that feeds it. The bound is a length rather than
+a count of separators, because what has to be bounded is what a parse *builds* and not what it returns: a
+malformed run collapses to one address only after every one has been constructed. No record either parse builds
+is free of the text that produced it — the densest inputs cost one record per character — so length is a
+ceiling on both. Only one header is live at a time, so each is charged against what is retained rather than on
+top of the header before it.
+
+A header's values are still parsed together rather than one at a time: joining them is what decides how a quoted
+display name folded across two header lines is read and how many addresses the strict count then expects, and
+what a source extracts is frozen for this milestone. A mailbox whose messages name no external correspondent
+stages nothing at all — so the candidate ceiling can never meter it — and now costs a constant regardless of
+whether it holds three messages or a million.
+
+None of this narrows what an import accepts. Every character charged is a distinct source byte the 64 MiB budget
+already admitted, while the header name, the line ending, and the body that must accompany it are not charged at
+all, so nothing inside that budget can reach a parser-work ceiling derived from it. An unbudgeted caller —
+`import_content` and every other released surface — passes no ceiling and is unaffected.
+
+`mailbox`'s own table of contents — two file offsets per message — is unchanged and remains proportional to the
+message count. It holds no parsed message, no header, and no byte of the source.
+
+### Bounded chat-export resolution (M20.3)
+
+WhatsApp was the last source with whole-file intermediates, and the only one where bounding them pulled against
+what the importer extracts. Numeric day/month ordering is locale dependent, and M14 resolves it from the whole
+file: a header that is a real calendar date in exactly one reading is evidence, and an export offering none or
+offering both has every numeric-dated message skipped as `ambiguous_date_order`. Holding a parsed record per
+detected line is how the released parser could answer that question, and a parser that instead decided the
+ordering from a bounded prefix would extract different candidates from the same file.
+
+Since M20.3 the export is read in **two bounded passes** instead. The first streams the source and keeps two
+booleans — whether any header was day-first evidence and whether any was month-first evidence — which is the
+entire input to the ordering decision and is constant in file size. The second streams the same source again
+and emits candidates under that decision, holding one message at a time. **The M14 ordering rules, skip reasons,
+and one-based indexes are unchanged**, including for a message that the evidence resolving it appears *after*;
+this is the spec's preferred resolution and not the alternative that narrows the inference to a documented
+prefix, so nothing in the section above needed renegotiating.
+
+The cost is reading the source twice, which is a cost the whole-file parser did not pay, and a source read twice
+can change in between. Each pass digests exactly the text it decoded, the second pass goes through the same
+bounded reader as the first — so a source that grew past the caller's byte ceiling is still refused for its size
+— and a pass pair that did not read the same export is refused with `source_changed_during_import` rather than
+answered with one version's ordering over another version's messages. The digest covers what the parser consumed
+rather than the bytes underneath it, so a rewrite that changed only line endings, which could not have changed a
+single candidate, is not reported as a change. An in-memory `content` or `content_bytes` source cannot differ
+between the passes at all.
+
+Some paths cannot be read twice, and they are paths this importer already accepts: a FIFO, a process
+substitution, or `/dev/stdin` yields its bytes exactly once, and opening one a second time blocks for another
+writer or sees end of file. Such a path is read once into memory before the first pass and both passes read that
+snapshot. That holds the whole source, which is what streaming exists to avoid — and it is still the right
+answer, because it is exactly what the whole-file implementation held for exactly these inputs, so no supported
+import is narrowed. The snapshot is taken under the same byte budget, so an oversized one-shot source is still
+refused for its size. Every ordinary file is read from the path twice and keeps the bound.
+
+An export whose every message is skipped now costs a constant rather than one retained object per line — the
+case the candidate ceiling structurally cannot meter, because a skipped message never becomes a candidate to
+count. The skip report itself is extraction output that `skipped_cards` has always carried, exactly as it is for
+every other source, and is unchanged.
+
+With this the streaming bound covers all seven sources on both surfaces. The released `import_content` accepts
+exactly the sources it accepted before, stages identical candidates, and raises identical errors: no parameter
+was added, narrowed, or given a new default, and the parser-work ceiling it passes is still none at all. The
+bound on that path comes from streaming, never from rejection, so none of this is a compatibility event.
 
 ## Source receipts and repeat imports (M18.1)
 

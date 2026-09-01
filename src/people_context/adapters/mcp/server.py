@@ -17,9 +17,10 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
+from people_context import __version__
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.runtime import build_runtime
-from people_context.adapters.sqlite.db import EncryptedDatabaseError
+from people_context.adapters.sqlite.db import EncryptedDatabaseError, UnsafeDatabasePathError
 from people_context.config import MissingDatabaseKeyError
 from people_context.ports.clock import Clock
 
@@ -84,7 +85,7 @@ def build_server(
     runtime = build_runtime(db_path, warning=logger.warning, encrypted=encrypted, clock=clock)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
-    mcp = MCPServer(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+    mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=SERVER_INSTRUCTIONS)
     register_all(mcp, runtime.use_cases)
     return mcp
 
@@ -133,7 +134,7 @@ def main(argv: list[str] | None = None) -> None:
     args = _build_parser().parse_args(argv)
     try:
         server = build_server(args.db, encrypted=args.encrypted)
-    except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
         # Refuse with the reason only; the message never carries key material.
         _configure_logging().error("%s", exc)
         raise SystemExit(2) from None
