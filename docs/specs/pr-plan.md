@@ -532,7 +532,7 @@ Check the matching box only in the PR that delivers it.
     `skipped_without_id` are byte-identical to the current implementation for the equivalence corpus.
   - **Out:** WhatsApp, MCP-path work, changing `mbox`'s path-only contract or the 64 MiB source budget.
 
-- [ ] **M20.3 — Bound WhatsApp resolution and extend the bound to `import_content`**
+- [x] **M20.3 — Bound WhatsApp resolution and extend the bound to `import_content`**
   - **Scope:** Replace WhatsApp's retain-every-`_Message` resolution with a bounded one, and extend the
     milestone's bound to the released MCP `import_content` path.
   - **Acceptance:** the chosen WhatsApp resolution is stated in the pull request with its reasoning. Preferred
