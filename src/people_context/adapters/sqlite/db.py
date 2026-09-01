@@ -46,6 +46,14 @@ class EncryptedDatabaseError(RuntimeError):
     """
 
 
+class UnsafeDatabasePathError(RuntimeError):
+    """Raised when the database path stopped being safe to create while resolving it.
+
+    The message names the path but never its contents: this fires before anything
+    is opened, so there is nothing else to disclose.
+    """
+
+
 def open_db(path: str | Path) -> sqlite3.Connection:
     """Open (creating if needed) a SQLite database and run pending migrations.
 
@@ -170,9 +178,24 @@ def _precreate_owner_private_db(db_path: Path) -> None:
     directory's own permissions and on the encrypted extra instead.
     """
     try:
-        handle = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
+        handle = os.open(
+            db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, PRIVATE_FILE_MODE
+        )
     except FileExistsError:
-        # A database is already there under that name; leave its mode alone.
+        # `db_path` is `realpath` output, so it cannot legitimately be a symlink:
+        # resolution follows every link and returns the final name. A symlink here
+        # therefore appeared *after* resolution, which in a directory another local
+        # account can write is the classic race — `O_EXCL` reports "exists", the
+        # database looks pre-existing, and SQLite follows the planted link and
+        # creates its target at the default `0o644`. Refuse instead: a caller who
+        # genuinely wants the store behind a symlink is unaffected, because their
+        # link was already resolved before this call.
+        if os.path.islink(db_path):
+            raise UnsafeDatabasePathError(
+                f"Refusing to open {db_path}: a symlink appeared at the resolved database path "
+                "while it was being prepared. Nothing was created or opened."
+            ) from None
+        # An ordinary database is already there; leave its mode alone.
         return
     except FileNotFoundError:
         # The link points into a directory that does not exist. Inventing it here

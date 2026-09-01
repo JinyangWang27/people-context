@@ -210,6 +210,13 @@ volume — is resolved once, and the file that receives the mode is the file tha
 Resolving for one step but connecting by the original name would leave a window in which the link could be
 repointed between the two. The path you asked for is still what `pctx db-path` and the startup log report.
 
+If a symlink appears at the resolved path between resolution and the open, the command refuses and exits
+non-zero without creating or opening anything. Resolution output is never legitimately a symlink, so one there
+arrived afterwards — the classic race for a database kept in a directory another local account can write, where
+`O_EXCL` would otherwise report "exists", the store would look pre-existing, and SQLite would follow the planted
+link and create its target at the default `0644`. A store deliberately kept behind a symlink is unaffected,
+because that link is resolved before the check.
+
 The mode is also set explicitly on the open descriptor rather than left to `os.open`. A `mode` argument is only
 a request that the process umask filters, and a umask clearing an owner bit — `0o200`, say — would otherwise
 produce a read-only `0400` database that the first migration could not write to.

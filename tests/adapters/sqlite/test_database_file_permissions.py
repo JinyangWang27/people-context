@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from people_context.adapters.filesystem.private_file import PRIVATE_FILE_MODE
-from people_context.adapters.sqlite import open_db
+from people_context.adapters.sqlite import UnsafeDatabasePathError, open_db
 from people_context.adapters.sqlite.db import _resolve_target
 
 pytestmark = pytest.mark.skipif(
@@ -191,4 +191,49 @@ def test_a_symlink_into_a_missing_directory_defers_to_sqlite(tmp_path: Path) -> 
         open_db(link)
 
     assert not missing.exists()
+
+
+def test_a_symlink_raced_into_the_resolved_path_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`realpath` returns a name, and the name can be claimed before the open.
+
+    In a directory another local account can write, that account can plant a symlink
+    at the resolved path after resolution and before `O_CREAT | O_EXCL`. The open then
+    reports `FileExistsError`, the path looks like an existing database, and SQLite
+    follows the planted link and creates its target at the default `0o644` — so the
+    pages end up in a file the attacker chose and can read.
+
+    Resolution output is never legitimately a symlink, so one appearing here can only
+    have arrived afterwards. The race is simulated deterministically by planting the
+    link from inside `realpath`, which is exactly the window being closed.
+    """
+    victim = tmp_path / "people.db"
+    attacker_target = tmp_path / "attacker.db"
+    real_realpath = os.path.realpath
+
+    def plant_symlink_during_resolution(path: object, *args: object, **kwargs: object) -> str:
+        resolved = real_realpath(path, *args, **kwargs)  # type: ignore[arg-type]
+        if not victim.is_symlink() and not victim.exists():
+            victim.symlink_to(attacker_target)
+        return resolved
+
+    monkeypatch.setattr(os.path, "realpath", plant_symlink_during_resolution)
+
+    with pytest.raises(UnsafeDatabasePathError, match="symlink appeared"):
+        open_db(victim)
+
+    assert not attacker_target.exists()
+
+
+def test_an_ordinary_existing_database_is_still_not_refused(tmp_path: Path) -> None:
+    """The refusal must key on the symlink, not merely on `FileExistsError`."""
+    db_path = tmp_path / "people.db"
+    open_db(db_path).close()
+    db_path.chmod(0o644)
+
+    conn = open_db(db_path)
+    conn.close()
+
+    assert _mode(db_path) == 0o644
 
