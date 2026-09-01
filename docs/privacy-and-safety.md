@@ -195,10 +195,31 @@ survived, and no page size or cursor widens that. A fully forgotten claimless so
 all. Inspection returns no raw source, no file path, and no extraction self-configuration, so provenance cannot
 resurrect an erased name through the metadata around it.
 
+## Database file permissions
+
+A newly created database is `0600` — readable and writable only by the account that owns it. Left to itself
+SQLite creates a missing database with `0o666 & ~umask`, which under the common `022` umask would publish the
+single most sensitive file this project owns to every other local account, while every export projected *from*
+it is deliberately `0600`. The store is therefore pre-created as an empty `O_CREAT | O_EXCL` file with mode
+`0600` before SQLite opens it; a zero-length file is a valid empty database, and the `-wal` and `-shm`
+companions SQLite derives from it inherit the same mode.
+
+An existing database keeps whatever mode it already carries. Silently tightening a file the operator placed
+themselves could break a deliberate arrangement, so databases created before this behaviour shipped stay as
+they are until you widen the protection yourself:
+
+```bash
+chmod 600 "$(pctx db-path)"
+```
+
+Permissions are a boundary between local accounts, not a substitute for encryption: anything running *as you*
+can still read the file. See [optional at-rest encryption](#optional-at-rest-encryption) for that.
+
 ## Optional at-rest encryption
 
-By default the database is plain SQLite, readable by any process running as the user and by anyone who can read
-the file. That default has not changed. `people-context-mcp --encrypted` and the global CLI form
+By default the database is plain SQLite, readable by any process running as the user — file permissions keep
+other local accounts out, but they do not protect the bytes at rest or on a stolen disk. That default has not
+changed. `people-context-mcp --encrypted` and the global CLI form
 `pctx --encrypted ...` opt into SQLCipher instead, which encrypts the main database file and its WAL and shared
 memory companions.
 

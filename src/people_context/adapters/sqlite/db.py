@@ -10,6 +10,7 @@ identically.
 from __future__ import annotations
 
 import importlib
+import os
 import re
 import socket
 import sqlite3
@@ -19,6 +20,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from people_context.adapters.filesystem.private_file import PRIVATE_FILE_MODE
 from people_context.domain.shared import new_id, normalize_name
 
 _MIGRATIONS_PACKAGE = "people_context.adapters.sqlite.migrations"
@@ -127,7 +129,30 @@ def _resolve_target(path: str | Path) -> tuple[str, bool]:
         return ":memory:", True
     db_path = Path(path).expanduser()
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    _precreate_owner_private_db(db_path)
     return str(db_path), False
+
+
+def _precreate_owner_private_db(db_path: Path) -> None:
+    """Create a missing database file with owner-only permissions.
+
+    Left to itself SQLite creates a missing database with `0o666 & ~umask`, which
+    under the common `022` umask publishes the single most sensitive file this
+    project owns to every other local account. Creating the empty file first with
+    `O_CREAT | O_EXCL` and mode `0o600` means SQLite opens a file that already
+    exists and leaves its mode alone; a zero-length file is a valid empty
+    database, and the `-wal` and `-shm` files SQLite derives from it inherit the
+    same permissions.
+
+    An existing database keeps whatever mode it already has. Silently tightening
+    a file the operator placed themselves would break a deliberate arrangement,
+    so widening protection for existing stores stays an explicit `chmod`.
+    """
+    try:
+        handle = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
+    except FileExistsError:
+        return
+    os.close(handle)
 
 
 def _configure_and_migrate(conn: sqlite3.Connection, *, is_memory: bool) -> None:
