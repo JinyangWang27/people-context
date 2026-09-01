@@ -221,13 +221,18 @@ bind-mount ownership, the CLI entrypoint, MCP client configuration, and publishi
 
 ## Security model
 
-This project executes local Python with the launching user's filesystem permissions. The database is plaintext
-SQLite by default; rely on filesystem permissions and full-disk encryption, or opt into at-rest encryption as
-shown below. Ordinary MCP discovery excludes elevated
-sensitive context and full export. Operator-gated tools require process environment flags; models cannot enable
-them through arguments. Vault export is intentionally CLI-only. For a dated, sourced comparison with
-cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and deletion, see
+This project executes local Python with the launching user's filesystem permissions. Ordinary MCP discovery
+excludes elevated sensitive context and full export. Operator-gated tools require process environment flags;
+models cannot enable them through arguments. Vault export is intentionally CLI-only. For a dated, sourced
+comparison with cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and
+deletion, see
 [docs/privacy-and-safety.md](docs/privacy-and-safety.md#local-first-versus-cloud-hosted-memory-as-of-2026-08-05).
+
+The database is plaintext SQLite by default. On Unix-like systems a new one is created `0600`, so other local
+accounts cannot read it — a boundary between accounts, not encryption, so pair it with full-disk encryption or
+opt into at-rest encryption as shown below. An existing database keeps the mode it already has, and Windows
+inherits the containing directory's ACL instead; see
+[database file permissions](docs/privacy-and-safety.md#database-file-permissions).
 
 ## Optional at-rest encryption
 
