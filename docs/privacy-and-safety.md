@@ -204,10 +204,15 @@ projected *from* it is deliberately `0600`. The store is therefore pre-created a
 file with mode `0600` before SQLite opens it; a zero-length file is a valid empty database, and the `-wal` and
 `-shm` companions SQLite derives from it inherit the same mode.
 
-The mode is applied to the resolved path. `O_EXCL` deliberately refuses to follow a symlink, so a `--db` value
-that points at one — a normal way to keep the store on another volume — is resolved first and the real target
-receives the mode, rather than the link being mistaken for an existing database and its target left to SQLite's
-default.
+The mode is applied to the resolved path, and SQLite is handed that same resolved path. `O_EXCL` deliberately
+refuses to follow a symlink, so a `--db` value that points at one — a normal way to keep the store on another
+volume — is resolved once, and the file that receives the mode is the file that ends up holding the pages.
+Resolving for one step but connecting by the original name would leave a window in which the link could be
+repointed between the two. The path you asked for is still what `pctx db-path` and the startup log report.
+
+The mode is also set explicitly on the open descriptor rather than left to `os.open`. A `mode` argument is only
+a request that the process umask filters, and a umask clearing an owner bit — `0o200`, say — would otherwise
+produce a read-only `0400` database that the first migration could not write to.
 
 **Windows is not covered by this.** The `mode` argument sets the read-only attribute there rather than
 installing an owner-only ACL, so a new database inherits the ACL of the directory holding it. Keep the database

@@ -21,6 +21,7 @@ import pytest
 
 from people_context.adapters.filesystem.private_file import PRIVATE_FILE_MODE
 from people_context.adapters.sqlite import open_db
+from people_context.adapters.sqlite.db import _resolve_target
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32",
@@ -49,6 +50,28 @@ def test_a_new_database_stays_owner_only_under_a_permissive_umask(tmp_path: Path
     try:
         conn = open_db(db_path)
         conn.close()
+    finally:
+        os.umask(previous)
+
+    assert _mode(db_path) == PRIVATE_FILE_MODE
+
+
+def test_a_new_database_is_still_writable_under_an_owner_masking_umask(tmp_path: Path) -> None:
+    """`mode` is a request the umask filters, including of owner bits.
+
+    Under `0o200` the create alone yields `0o400`: not the documented mode, and read-only,
+    so the very first migration write would fail on a database the process just made. The
+    descriptor is therefore hardened explicitly rather than trusting what `os.open` left.
+    """
+    db_path = tmp_path / "masked.db"
+    previous = os.umask(0o200)
+    try:
+        conn = open_db(db_path)
+        try:
+            conn.execute("CREATE TABLE probe (id INTEGER PRIMARY KEY)")
+            conn.commit()
+        finally:
+            conn.close()
     finally:
         os.umask(previous)
 
@@ -123,3 +146,29 @@ def test_a_symlink_to_an_existing_database_leaves_its_mode_alone(tmp_path: Path)
     conn.close()
 
     assert _mode(target) == 0o644
+
+
+def test_the_database_opened_is_the_file_that_was_secured(tmp_path: Path) -> None:
+    """Securing one name and connecting to another leaves a window between the two.
+
+    A symlink repointed after the target is created but before SQLite connects would
+    otherwise send the pages to a file that never received `0600`. Resolving once and
+    using that single answer for both steps is what closes it, so this pins that the
+    connect target is the resolved path rather than the name the caller passed.
+    """
+    target = tmp_path / "elsewhere" / "target.db"
+    target.parent.mkdir()
+    link = tmp_path / "people.db"
+    link.symlink_to(target)
+
+    resolved, is_memory = _resolve_target(link)
+
+    assert is_memory is False
+    assert resolved == str(target.resolve())
+    assert resolved != str(link)
+    assert _mode(target) == PRIVATE_FILE_MODE
+
+
+def test_resolving_the_in_memory_database_secures_nothing(tmp_path: Path) -> None:
+    assert _resolve_target(":memory:") == (":memory:", True)
+    assert list(tmp_path.iterdir()) == []

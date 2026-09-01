@@ -20,7 +20,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from people_context.adapters.filesystem.private_file import PRIVATE_FILE_MODE
+from people_context.adapters.filesystem.private_file import PRIVATE_FILE_MODE, restrict_fd_to_owner
 from people_context.domain.shared import new_id, normalize_name
 
 _MIGRATIONS_PACKAGE = "people_context.adapters.sqlite.migrations"
@@ -129,8 +129,14 @@ def _resolve_target(path: str | Path) -> tuple[str, bool]:
         return ":memory:", True
     db_path = Path(path).expanduser()
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    _precreate_owner_private_db(db_path)
-    return str(db_path), False
+    # Resolve once, then use that single answer for both securing the file and
+    # connecting to it. Securing the resolved target but handing SQLite the
+    # original name would leave a window in which the link is repointed between
+    # the two steps, so the file that received `0600` and the file that ends up
+    # holding the pages would not be the same file.
+    target = Path(os.path.realpath(db_path))
+    _precreate_owner_private_db(target)
+    return str(target), False
 
 
 def _precreate_owner_private_db(db_path: Path) -> None:
@@ -144,12 +150,15 @@ def _precreate_owner_private_db(db_path: Path) -> None:
     database, and the `-wal` and `-shm` files SQLite derives from it inherit the
     same permissions.
 
-    The mode is applied to the *resolved* path. `O_EXCL` refuses to follow a
-    symlink and reports `FileExistsError` for a dangling one, so testing
-    `db_path` directly would read "already there", hand the path to SQLite, and
-    let SQLite follow the link and create the real target at its own `0o644`.
-    Resolving first means the file that actually holds the pages is the file that
-    gets the mode, whichever name it was reached by.
+    `db_path` is already symlink-resolved by `_resolve_target`, and the same
+    resolved name is what SQLite is handed. `O_EXCL` refuses to follow a symlink
+    and reports `FileExistsError` for a dangling one, so testing an unresolved
+    name would read "already there", hand that name to SQLite, and let SQLite
+    follow the link and create the real target at its own `0o644`.
+
+    `mode` is only a request — the umask masks it, and a umask clearing an owner
+    bit would yield `0o400` — so the descriptor is hardened explicitly before it
+    is closed, exactly as the private-file writer does for exports.
 
     An existing database keeps whatever mode it already has. Silently tightening
     a file the operator placed themselves would break a deliberate arrangement,
@@ -160,9 +169,8 @@ def _precreate_owner_private_db(db_path: Path) -> None:
     hardens nothing. That platform is documented as relying on the profile
     directory's own permissions and on the encrypted extra instead.
     """
-    target = Path(os.path.realpath(db_path))
     try:
-        handle = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
+        handle = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
     except FileExistsError:
         # A database is already there under that name; leave its mode alone.
         return
@@ -171,7 +179,10 @@ def _precreate_owner_private_db(db_path: Path) -> None:
         # would create directories the caller never named, so defer to SQLite,
         # which raises its own "unable to open database file" for the same path.
         return
-    os.close(handle)
+    try:
+        restrict_fd_to_owner(handle)
+    finally:
+        os.close(handle)
 
 
 def _configure_and_migrate(conn: sqlite3.Connection, *, is_memory: bool) -> None:
