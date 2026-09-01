@@ -217,6 +217,14 @@ arrived afterwards — the classic race for a database kept in a directory anoth
 link and create its target at the default `0644`. A store deliberately kept behind a symlink is unaffected,
 because that link is resolved before the check.
 
+That check alone would only inspect a name, so the file's `(st_dev, st_ino)` identity is also re-checked once
+the driver has opened the path, before any pragma or migration runs. An account that presents an ordinary file
+for the symlink check and substitutes a link immediately afterwards is caught by the mismatch, and the
+substituted file is left empty rather than populated. Python's `sqlite3` accepts a path and not a descriptor,
+so the driver's own open cannot be bound to an already-verified inode; detecting the substitution and refusing
+is the strongest guarantee available, and it is stated here rather than implied away. Keeping the database in a
+directory only you can write removes the precondition for the whole class of races.
+
 The mode is also set explicitly on the open descriptor rather than left to `os.open`. A `mode` argument is only
 a request that the process umask filters, and a umask clearing an owner bit — `0o200`, say — would otherwise
 produce a read-only `0400` database that the first migration could not write to.

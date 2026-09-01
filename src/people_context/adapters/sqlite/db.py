@@ -37,6 +37,11 @@ SQLCIPHER_MODULE = "sqlcipher3.dbapi2"
 #: `sqlcipher3` build itself.
 ENCRYPTED_EXTRA_PLATFORMS = "glibc-based Linux x86_64"
 
+#: `O_NOFOLLOW` is POSIX-only and absent on Windows, where referencing it directly
+#: would raise `AttributeError` while the flags are evaluated — before `os.open` is
+#: even reached — and break every filesystem-backed open on that platform.
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
 
 class EncryptedDatabaseError(RuntimeError):
     """Raised when an encrypted database cannot be opened.
@@ -60,10 +65,16 @@ def open_db(path: str | Path) -> sqlite3.Connection:
     Accepts ":memory:" as well as filesystem paths. Parent directories are
     created for real paths. Sets Row factory and foreign-key / WAL pragmas.
     """
-    target, is_memory = _resolve_target(path)
+    target, is_memory, identity = _resolve_target(path)
     conn = sqlite3.connect(target)
-    conn.row_factory = sqlite3.Row
-    _configure_and_migrate(conn, is_memory=is_memory)
+    try:
+        # Before any pragma or migration: a substituted file is then left empty.
+        _verify_same_file(target, identity)
+        conn.row_factory = sqlite3.Row
+        _configure_and_migrate(conn, is_memory=is_memory)
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -83,8 +94,13 @@ def open_encrypted_db(path: str | Path, key: str) -> sqlite3.Connection:
         raise EncryptedDatabaseError("Refusing to open an encrypted database with an empty key.")
 
     dbapi = _load_sqlcipher()
-    target, is_memory = _resolve_target(path)
+    target, is_memory, identity = _resolve_target(path)
     conn = dbapi.connect(target)
+    try:
+        _verify_same_file(target, identity)
+    except BaseException:
+        conn.close()
+        raise
     try:
         # SQLCipher requires the key before the header is read; nothing above
         # this line may touch schema metadata.
@@ -131,10 +147,16 @@ def _quote_key(key: str) -> str:
     return f"'{escaped}'"
 
 
-def _resolve_target(path: str | Path) -> tuple[str, bool]:
-    """Return the connect target and whether it is the in-memory database."""
+def _resolve_target(path: str | Path) -> tuple[str, bool, tuple[int, int] | None]:
+    """Return the connect target, whether it is in-memory, and the file identity seen.
+
+    The identity is the `(st_dev, st_ino)` pair of the file this call secured or
+    observed. `_verify_same_file` re-checks it after the driver has opened the
+    path, which is what makes the symlink guard something more than a check on a
+    name that can change afterwards.
+    """
     if str(path) == ":memory:":
-        return ":memory:", True
+        return ":memory:", True, None
     db_path = Path(path).expanduser()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # Resolve once, then use that single answer for both securing the file and
@@ -143,11 +165,43 @@ def _resolve_target(path: str | Path) -> tuple[str, bool]:
     # the two steps, so the file that received `0600` and the file that ends up
     # holding the pages would not be the same file.
     target = Path(os.path.realpath(db_path))
-    _precreate_owner_private_db(target)
-    return str(target), False
+    identity = _precreate_owner_private_db(target)
+    return str(target), False, identity
 
 
-def _precreate_owner_private_db(db_path: Path) -> None:
+def _verify_same_file(target: str, identity: tuple[int, int] | None) -> None:
+    """Refuse if the path no longer names the file that was secured.
+
+    `os.path.islink` alone is a check on a name. Where another local account owns
+    the directory, it can present an ordinary file for that check and swap in a
+    symlink before the driver opens the path, so the guard passes while the driver
+    follows the replacement. Comparing `(st_dev, st_ino)` afterwards catches the
+    substitution: a different inode means the name was re-pointed, whatever it
+    looked like in between.
+
+    This runs before any pragma or migration, so a substituted file is left empty
+    rather than populated. Python's `sqlite3` takes a path and not a descriptor, so
+    the driver's own open cannot be bound to a verified inode; detecting the
+    substitution and failing closed is the strongest guarantee available here, and
+    `docs/privacy-and-safety.md` states the residual limit rather than implying it
+    away.
+    """
+    if identity is None:
+        return
+    try:
+        current = os.stat(target)
+    except OSError as exc:
+        raise UnsafeDatabasePathError(
+            f"Refusing to use {target}: the database path could not be re-checked after opening it."
+        ) from exc
+    if (current.st_dev, current.st_ino) != identity:
+        raise UnsafeDatabasePathError(
+            f"Refusing to use {target}: the path stopped pointing at the file that was prepared "
+            "for it while it was being opened. Nothing was written to it."
+        )
+
+
+def _precreate_owner_private_db(db_path: Path) -> tuple[int, int] | None:
     """Create a missing database file with owner-only permissions.
 
     Left to itself SQLite creates a missing database with `0o666 & ~umask`, which
@@ -179,7 +233,7 @@ def _precreate_owner_private_db(db_path: Path) -> None:
     """
     try:
         handle = os.open(
-            db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, PRIVATE_FILE_MODE
+            db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, PRIVATE_FILE_MODE
         )
     except FileExistsError:
         # `db_path` is `realpath` output, so it cannot legitimately be a symlink:
@@ -195,17 +249,24 @@ def _precreate_owner_private_db(db_path: Path) -> None:
                 f"Refusing to open {db_path}: a symlink appeared at the resolved database path "
                 "while it was being prepared. Nothing was created or opened."
             ) from None
-        # An ordinary database is already there; leave its mode alone.
-        return
+        # An ordinary database is already there; leave its mode alone, but still
+        # report which file it is so a later substitution is detectable.
+        try:
+            existing = os.lstat(db_path)
+        except OSError:
+            return None
+        return (existing.st_dev, existing.st_ino)
     except FileNotFoundError:
         # The link points into a directory that does not exist. Inventing it here
         # would create directories the caller never named, so defer to SQLite,
         # which raises its own "unable to open database file" for the same path.
-        return
+        return None
     try:
         restrict_fd_to_owner(handle)
+        created = os.fstat(handle)
     finally:
         os.close(handle)
+    return (created.st_dev, created.st_ino)
 
 
 def _configure_and_migrate(conn: sqlite3.Connection, *, is_memory: bool) -> None:

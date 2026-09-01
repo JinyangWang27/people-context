@@ -162,16 +162,19 @@ def test_the_database_opened_is_the_file_that_was_secured(tmp_path: Path) -> Non
     link = tmp_path / "people.db"
     link.symlink_to(target)
 
-    resolved, is_memory = _resolve_target(link)
+    resolved, is_memory, identity = _resolve_target(link)
 
     assert is_memory is False
     assert resolved == str(target.resolve())
     assert resolved != str(link)
     assert _mode(target) == PRIVATE_FILE_MODE
+    # The identity is what lets the guard outlive the name it checked.
+    stat = target.stat()
+    assert identity == (stat.st_dev, stat.st_ino)
 
 
 def test_resolving_the_in_memory_database_secures_nothing(tmp_path: Path) -> None:
-    assert _resolve_target(":memory:") == (":memory:", True)
+    assert _resolve_target(":memory:") == (":memory:", True, None)
     assert list(tmp_path.iterdir()) == []
 
 
@@ -236,4 +239,46 @@ def test_an_ordinary_existing_database_is_still_not_refused(tmp_path: Path) -> N
     conn.close()
 
     assert _mode(db_path) == 0o644
+
+
+def test_a_file_substituted_after_the_symlink_check_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`islink` checks a name, and the name can still change before the driver opens it.
+
+    Where another local account owns the directory it can present an ordinary file for
+    that check and swap in a symlink immediately after, so the guard passes while SQLite
+    follows the replacement. Comparing the inode after the open catches the substitution
+    whatever the name looked like in between; the swap is performed from inside
+    `sqlite3.connect` here, which is precisely the window.
+    """
+    db_path = tmp_path / "people.db"
+    attacker_target = tmp_path / "attacker.db"
+    attacker_target.write_text("")
+    real_connect = sqlite3.connect
+
+    def swap_during_connect(target: object, *args: object, **kwargs: object) -> object:
+        conn = real_connect(target, *args, **kwargs)  # type: ignore[arg-type]
+        db_path.unlink()
+        db_path.symlink_to(attacker_target)
+        return conn
+
+    monkeypatch.setattr(sqlite3, "connect", swap_during_connect)
+
+    with pytest.raises(UnsafeDatabasePathError, match="stopped pointing at the file"):
+        open_db(db_path)
+
+
+def test_an_unswapped_open_passes_the_identity_check(tmp_path: Path) -> None:
+    """The identity guard must not refuse the ordinary case it wraps."""
+    db_path = tmp_path / "people.db"
+
+    conn = open_db(db_path)
+    try:
+        conn.execute("CREATE TABLE probe (id INTEGER PRIMARY KEY)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert _mode(db_path) == PRIVATE_FILE_MODE
 
