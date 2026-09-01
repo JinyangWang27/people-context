@@ -9,6 +9,7 @@ import anyio
 import pytest
 from mcp.client import Client
 
+from people_context import __version__ as package_version
 from people_context.adapters import runtime as runtime_module
 from people_context.adapters.mcp.server import build_server
 from people_context.adapters.model2vec_embeddings import MODEL_ID
@@ -70,6 +71,29 @@ def _run(server: Any, coro_factory: Any) -> Any:
             return await coro_factory(client)
 
     return anyio.run(main)
+
+
+def test_initialize_advertises_the_released_package_version(tmp_path: Path) -> None:
+    """The handshake must name a version, and the same one the package ships under.
+
+    `MCPServer` defaults `version` to the empty string, so forgetting to pass it is
+    silent: clients and directory listings simply show a nameless build. Binding the
+    assertion to `people_context.__version__` — which release automation bumps beside
+    `pyproject.toml`, `server.json`, and the MCPB manifest — keeps this surface in step
+    with the other released version values instead of adding one more to hand-maintain.
+    """
+    server = build_server(db_path=tmp_path / "version.db")
+
+    async def initialize() -> Any:
+        async with Client(server) as client:
+            return client.server_info
+
+    server_info = anyio.run(initialize)
+
+    assert server_info is not None
+    assert server_info.name == "people-context"
+    assert server_info.version == package_version
+    assert server_info.version != ""
 
 
 def test_initialize_returns_safe_tool_composition_instructions(tmp_path: Path) -> None:

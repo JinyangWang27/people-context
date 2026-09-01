@@ -195,10 +195,46 @@ survived, and no page size or cursor widens that. A fully forgotten claimless so
 all. Inspection returns no raw source, no file path, and no extraction self-configuration, so provenance cannot
 resurrect an erased name through the metadata around it.
 
+## Database file permissions
+
+On Unix-like systems a newly created database is `0600` — readable and writable only by the account that owns
+it. Left to itself SQLite creates a missing database with `0o666 & ~umask`, which under the common `022` umask
+would publish the single most sensitive file this project owns to every other local account, while every export
+projected *from* it is deliberately `0600`. The store is therefore pre-created as an empty `O_CREAT | O_EXCL`
+file with mode `0600` before SQLite opens it; a zero-length file is a valid empty database, and the `-wal` and
+`-shm` companions SQLite derives from it inherit the same mode.
+
+The mode is applied to the resolved path, and SQLite is handed that same resolved path. `O_EXCL` deliberately
+refuses to follow a symlink, so a `--db` value that points at one — a normal way to keep the store on another
+volume — is resolved once, and the file that receives the mode is the file that ends up holding the pages.
+Resolving for one step but connecting by the original name would leave a window in which the link could be
+repointed between the two. The path you asked for is still what `pctx db-path` and the startup log report.
+
+The mode is also set explicitly on the open descriptor rather than left to `os.open`. A `mode` argument is only
+a request that the process umask filters, and a umask clearing an owner bit — `0o200`, say — would otherwise
+produce a read-only `0400` database that the first migration could not write to.
+
+**Windows is not covered by this.** The `mode` argument sets the read-only attribute there rather than
+installing an owner-only ACL, so a new database inherits the ACL of the directory holding it. Keep the database
+under your user profile, where the default ACL already excludes other standard accounts, rather than in a
+shared or root location — and prefer the encrypted extra if the machine has accounts you do not control.
+
+An existing database keeps whatever mode it already carries. Silently tightening a file the operator placed
+themselves could break a deliberate arrangement, so databases created before this behaviour shipped stay as
+they are until you widen the protection yourself:
+
+```bash
+chmod 600 "$(pctx db-path)"
+```
+
+Permissions are a boundary between local accounts, not a substitute for encryption: anything running *as you*
+can still read the file. See [optional at-rest encryption](#optional-at-rest-encryption) for that.
+
 ## Optional at-rest encryption
 
-By default the database is plain SQLite, readable by any process running as the user and by anyone who can read
-the file. That default has not changed. `people-context-mcp --encrypted` and the global CLI form
+By default the database is plain SQLite, readable by any process running as the user — file permissions keep
+other local accounts out, but they do not protect the bytes at rest or on a stolen disk. That default has not
+changed. `people-context-mcp --encrypted` and the global CLI form
 `pctx --encrypted ...` opt into SQLCipher instead, which encrypts the main database file and its WAL and shared
 memory companions.
 
