@@ -75,12 +75,17 @@ details.
   and CLI command;
 - organizations and time-aware affiliations;
 - separate facts, observations, traits, and concise interaction summaries;
+- bounded person timelines and a consolidation view that surfaces duplicate, reinforcing, and contradictory
+  knowledge, with atomic fact supersession that preserves the superseded row;
 - communication guidance grounded in traits, interaction friction, reminders, and user-authored philosophy;
 - reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate imports without retaining raw
   source content;
 - optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval;
+- durable import receipts mapping each committed candidate to the record it produced, inspectable per source;
 - atomic audit plus replay changelog/HLC capture for every durable write;
+- data-quality findings and aggregate-only storage stats, both report-only;
 - merge, forget/redaction, unchanged JSON export, and safe Obsidian vault export;
+- single-file bootstrap sync bundle that restores onto a second device and refuses any non-empty target;
 - stdio by default and explicit unauthenticated loopback-only Streamable HTTP.
 
 ## Demo
@@ -276,33 +281,69 @@ Inspect the selected path with `uv run pctx db-path -v`.
 
 ## CLI overview
 
+`pctx` is on `PATH` after `uv tool install people-context`; inside a clone, prefix each command with
+`uv run`. Onboarding and inspection:
+
 ```bash
-uv run pctx db-path [-v]
-uv run pctx list [--all]
-uv run pctx search <query>
-uv run pctx show <person>
-uv run pctx stale [--category C] [--threshold-days N] [--limit N]
-uv run pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
-uv run pctx upcoming [--window-days N] [--person PERSON]
-uv run pctx doctor [--json] [--only CODE[,CODE...]]
-uv run pctx stats [--json] [--include-path]
-uv run pctx export [--output FILE]
-uv run pctx relationship-types
-uv run pctx relationship-types add TYPE --category C [--inverse T | --symmetric]
-uv run pctx normalize-relationships [--apply]
-uv run pctx export-vault --output DIR [--include-sensitive]
-uv run pctx export-vcard [--output FILE] [--include-sensitive] [--version 3.0|4.0]
-uv run pctx edit PERSON [--name NAME] [--summary TEXT]
-uv run pctx add-alias PERSON VALUE [--kind KIND]
-uv run pctx set communication_philosophy VALUE
-uv run pctx delete PERSON [--yes]
-uv run pctx sync push --output DIR
-uv run pctx sync pull --input PATH [--yes]
-uv run pctx sync-log [--limit N] [--entity ID] [--payloads]
-uv run pctx reindex [--semantic]
+pctx init                                    # seed self identity, optional vCard intake
+pctx demo [--reset]                          # isolated fictional dataset
+pctx db-path [-v]
+pctx list [--all] [--limit N] [--json]
+pctx search QUERY [--limit N]
+pctx show PERSON
+pctx brief PERSON [--include-sensitive] [--json] [--output FILE]
+pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
 ```
 
-See [docs/cli.md](docs/cli.md).
+Reports:
+
+```bash
+pctx stale [--category C] [--threshold-days N] [--limit N]
+pctx upcoming [--window-days N] [--person PERSON]
+pctx doctor [--json] [--only CODE[,CODE...]]
+pctx stats [--json] [--include-path]
+```
+
+Import lifecycle — staging never commits; accepted candidates are explicit:
+
+```bash
+pctx import stage SOURCE PATH [--self-sender TEXT] [--force] [--json]
+pctx import stage-candidates --source LABEL --input PATH|- [--source-kind KIND] [--json]
+pctx import review BATCH_ID [--json]
+pctx import commit BATCH_ID --all|--accept ID... [--json]
+pctx sources [--limit N] [--cursor CURSOR] [--json]
+pctx source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]
+```
+
+Curation:
+
+```bash
+pctx edit PERSON [--name NAME] [--summary TEXT]
+pctx add-alias PERSON VALUE [--kind KIND]
+pctx set communication_philosophy VALUE
+pctx delete PERSON [--yes]
+pctx relationship-types [add TYPE --category C [--inverse T | --symmetric]]
+pctx normalize-relationships [--apply]
+pctx reindex [--semantic]
+```
+
+Export, sync, and replay:
+
+```bash
+pctx export [--output FILE]
+pctx export-vault --output DIR [--include-sensitive]
+pctx export-vcard [--output FILE] [--include-sensitive] [--version 3.0|4.0]
+pctx reminders-ics --output FILE
+pctx sync push --output DIR
+pctx sync pull --input PATH [--yes]
+pctx sync-log [--limit N] [--entity ID] [--payloads]
+pctx watch [--interval S] [--from-start]
+```
+
+Every command accepts the global `--db PATH` and `--encrypted`. Single-file exports (`export`, `brief`,
+`export-vcard`, `reminders-ics`, `sync push`) are written atomically as owner-only `0600` files; `export-vault`
+writes an ordinary directory tree, since its whole purpose is to hand the content to Obsidian. See
+[docs/cli.md](docs/cli.md).
 
 ## Architecture
 
