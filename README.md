@@ -41,6 +41,34 @@ request needs.
   any non-empty target.
 - **Transport** — stdio by default; loopback-only Streamable HTTP is opt-in, explicit, and unauthenticated.
 
+## Demo
+
+A packaged fictional dataset is the fastest way to see identity resolution, graph traversal, and bounded
+context without touching real data:
+
+```bash
+uvx --from people-context pctx demo --reset
+```
+
+The demo always writes its own dedicated database at
+`{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`. It ignores `--db`, `PEOPLE_CONTEXT_DB`, the config
+file, and workspace discovery, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
+real database is never read or modified. Seeding writes audited fictional people, handles, affiliations, facts,
+interactions, and a connected relationship graph, then prints the path-targeted server command and concrete
+tool calls that use the ids it just created:
+
+```text
+Demo database: /home/you/.local/share/people-context/demo.db
+Start MCP server: people-context-mcp --db /home/you/.local/share/people-context/demo.db
+resolve_person {"query": "Amina Hassan"}
+get_relationship_graph {"person_id": "<amina-id>", "depth": 2}
+find_connection {"person_a": "<self-id>", "person_b": "<sofia-id>"}
+```
+
+Person ids are generated per seed, so the printed values differ from the placeholders above. Start the printed
+server command in an MCP client and run the printed calls verbatim. See
+[docs/cli.md](docs/cli.md#packaged-demo).
+
 ## Quick start
 
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Using Codex, Claude Code, or OpenClaw? Those have
@@ -81,34 +109,6 @@ uv run people-context-mcp --http --host 127.0.0.1 --port 8765
 
 The endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and must be treated as accessible to other
 local processes. Prefer stdio.
-
-## Demo
-
-A packaged fictional dataset is the fastest way to see identity resolution, graph traversal, and bounded
-context without touching real data:
-
-```bash
-uvx --from people-context pctx demo --reset
-```
-
-The demo always writes its own dedicated database at
-`{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`. It ignores `--db`, `PEOPLE_CONTEXT_DB`, the config
-file, and workspace discovery, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
-real database is never read or modified. Seeding writes audited fictional people, handles, affiliations, facts,
-interactions, and a connected relationship graph, then prints the path-targeted server command and concrete
-tool calls that use the ids it just created:
-
-```text
-Demo database: /home/you/.local/share/people-context/demo.db
-Start MCP server: people-context-mcp --db /home/you/.local/share/people-context/demo.db
-resolve_person {"query": "Amina Hassan"}
-get_relationship_graph {"person_id": "<amina-id>", "depth": 2}
-find_connection {"person_a": "<self-id>", "person_b": "<sofia-id>"}
-```
-
-Person ids are generated per seed, so the printed values differ from the placeholders above. Start the printed
-server command in an MCP client and run the printed calls verbatim. See
-[docs/cli.md](docs/cli.md#packaged-demo).
 
 ## Example: graph-aware context and vault
 
