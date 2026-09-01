@@ -44,6 +44,14 @@ UNDECODABLE_SOURCE = "undecodable_source"
 #: Stable failure code for a parser asked to hold more live records than the caller allows.
 PARSER_WORK_EXHAUSTED = "parser_work_exhausted"
 
+#: Stable failure code for a source that did not hold still for the reads one import needs.
+#:
+#: Reading a file more than once is what makes this reachable, and two unrelated importers now
+#: do: `VerifiedSnapshotExtractor` rehashes a path-only source around its extraction, and the
+#: chat extractor scans its export once for ordering evidence and once for candidates. Both
+#: refuse for the same reason and say the same thing, so they say it with one code.
+SOURCE_CHANGED_DURING_IMPORT = "source_changed_during_import"
+
 
 def read_source_bytes(path: str, *, max_bytes: int | None) -> bytes:
     """Return the file's bytes, refusing a source larger than ``max_bytes``."""
@@ -86,38 +94,6 @@ def read_source_text(path: str, *, encoding: str, max_bytes: int | None) -> str:
     return decode_source_bytes(read_source_bytes(path, max_bytes=max_bytes), encoding=encoding)
 
 
-def resolve_source_text(
-    *,
-    content: str | None,
-    content_bytes: bytes | None,
-    path: str | None,
-    encoding: str,
-    max_bytes: int | None,
-    source_label: str,
-    strip_content_bom: bool = False,
-) -> str:
-    """Return one source's text from exactly one of the three accepted inputs.
-
-    ``content_bytes`` decodes through the same helper a path read uses, which is what lets a
-    caller hash a snapshot and still be certain the candidates came out of those exact bytes.
-
-    ``strip_content_bom`` covers the formats whose path encoding is ``utf-8-sig``: a decoded byte
-    snapshot has already lost its byte-order mark, so only an in-memory string handed straight to
-    the extractor still needs one removed.
-    """
-    require_one_source_input(
-        content=content,
-        content_bytes=content_bytes,
-        path=path,
-        source_label=source_label,
-    )
-    if content is not None:
-        return content.lstrip("\ufeff") if strip_content_bom else content
-    if content_bytes is not None:
-        return decode_source_bytes(content_bytes, encoding=encoding)
-    return read_source_text(path or "", encoding=encoding, max_bytes=max_bytes)
-
-
 def require_one_source_input(
     *,
     content: str | None,
@@ -148,23 +124,23 @@ def open_source_stream(
 ) -> Iterator[Iterator[str]]:
     """Yield one source's lines without ever holding the whole decoded source.
 
-    This is the streaming counterpart to `resolve_source_text`, and it is deliberately defined
-    in terms of it: the lines it yields are exactly the lines that iterating the string that
-    function returns would yield, for every one of the three accepted inputs. That equality is
-    the milestone's correctness obligation, so the two knobs where the released behaviour is
-    not uniform are explicit rather than inferred.
+    This replaced the whole-file resolution every extractor used before M20, and it is defined
+    in terms of it: the lines it yields are exactly the lines that iterating that whole decoded
+    string would have yielded, for every one of the three accepted inputs. That equality is the
+    milestone's correctness obligation, so the two knobs where the released behaviour was not
+    uniform are explicit here rather than inferred.
 
     ``universal_newlines`` is the first. A path or byte snapshot is decoded through a text
     wrapper with universal newlines, exactly as `read_source_text` decodes it, so both settings
-    agree there. An in-memory ``content`` string is handed over verbatim by `resolve_source_text`
-    and is then split by whichever rule its extractor applies: the line-oriented formats
-    translate ``\\r\\n`` and ``\\r`` themselves before splitting, while the CSV formats feed the
-    string to `csv` through a plain `io.StringIO` that splits on ``\\n`` alone. Passing the
-    caller's own rule here keeps a ``\\r`` inside a quoted CSV field meaning what it means today.
+    agree there. An in-memory ``content`` string was handed to its extractor verbatim and was
+    then split by whichever rule that extractor applies: the line-oriented formats translate
+    ``\\r\\n`` and ``\\r`` themselves before splitting, while the CSV formats feed the string to
+    `csv` through a plain `io.StringIO` that splits on ``\\n`` alone. Passing the caller's own
+    rule here keeps a ``\\r`` inside a quoted CSV field meaning what it means today.
 
-    ``strip_content_bom`` is the second, and matches `resolve_source_text` exactly: a decoded
-    byte snapshot has already lost its byte-order mark, so only an in-memory string still needs
-    one removed.
+    ``strip_content_bom`` is the second, and covers the formats whose path encoding is
+    ``utf-8-sig``: a decoded byte snapshot has already lost its byte-order mark, so only an
+    in-memory string still needs one removed.
 
     A decoding failure surfaces as `undecodable_source` at the line that could not be decoded,
     which is where the incremental decoder reaches the offending bytes regardless of how the
