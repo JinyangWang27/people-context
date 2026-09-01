@@ -21,6 +21,108 @@ keeps identity, aliases, relationships, roles, durable facts, concise interactio
 and follow-ups in a local SQLite file, then exposes narrow tools that resolve identity and disclose only what a
 request needs.
 
+## Features
+
+- **Identity** — explainable exact/normalized/FTS/fuzzy resolution with aliases and ambiguity handling, plus
+  optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval.
+- **Relationships** — canonical vocabulary with synonyms, inverse pairs, symmetric types, and uncategorized
+  extensions; minimal-disclosure graph and shortest-path tools with explicit caps and truncation.
+- **Knowledge** — organizations and time-aware affiliations; facts, observations, traits, and concise
+  interaction summaries kept deliberately separate.
+- **Time** — bounded person timelines, staleness reports, and upcoming birthdays and reminders with real
+  leap-day projection; a consolidation view over duplicate, reinforcing, and contradictory knowledge, with
+  atomic fact supersession that preserves the superseded row.
+- **Disclosure** — bounded context behind sensitivity and purpose gates, and communication guidance grounded in
+  traits, interaction friction, reminders, and your own written philosophy.
+- **Import** — reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate staging that never
+  retains raw source content, with durable receipts mapping each committed candidate to the record it produced.
+- **Custody** — atomic audit and replay changelog/HLC capture on every durable write; merge, forget/redaction,
+  report-only doctor and aggregate stats, JSON/vCard/Obsidian export, and a bootstrap sync bundle that refuses
+  any non-empty target.
+- **Transport** — stdio by default; loopback-only Streamable HTTP is opt-in, explicit, and unauthenticated.
+
+## Quick start
+
+Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Using Codex, Claude Code, or OpenClaw? Those have
+a one-command install — skip to [agent plugins](#agent-plugins).
+
+The fastest path from discovery to a working stdio server is a zero-clone, zero-install run of the published
+`people-context` distribution:
+
+```bash
+uvx --from people-context people-context
+```
+
+For a persistent installation of both the MCP server and the human-operated CLI:
+
+```bash
+uv tool install people-context
+people-context
+pctx --help
+```
+
+`people-context-mcp` remains an equivalent MCP server command for existing client configurations. `pctx` is the
+human-operated CLI.
+
+For local development:
+
+```bash
+git clone https://github.com/JinyangWang27/people-context.git
+cd people-context
+uv sync
+uv run people-context-mcp
+```
+
+Loopback HTTP is opt-in:
+
+```bash
+uv run people-context-mcp --http --host 127.0.0.1 --port 8765
+```
+
+The endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and must be treated as accessible to other
+local processes. Prefer stdio.
+
+## Demo
+
+A packaged fictional dataset is the fastest way to see identity resolution, graph traversal, and bounded
+context without touching real data:
+
+```bash
+uvx --from people-context pctx demo --reset
+```
+
+The demo always writes its own dedicated database at
+`{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`. It ignores `--db`, `PEOPLE_CONTEXT_DB`, the config
+file, and workspace discovery, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
+real database is never read or modified. Seeding writes audited fictional people, handles, affiliations, facts,
+interactions, and a connected relationship graph, then prints the path-targeted server command and concrete
+tool calls that use the ids it just created:
+
+```text
+Demo database: /home/you/.local/share/people-context/demo.db
+Start MCP server: people-context-mcp --db /home/you/.local/share/people-context/demo.db
+resolve_person {"query": "Amina Hassan"}
+get_relationship_graph {"person_id": "<amina-id>", "depth": 2}
+find_connection {"person_a": "<self-id>", "person_b": "<sofia-id>"}
+```
+
+Person ids are generated per seed, so the printed values differ from the placeholders above. Start the printed
+server command in an MCP client and run the printed calls verbatim. See
+[docs/cli.md](docs/cli.md#packaged-demo).
+
+## Example: graph-aware context and vault
+
+After recording people and relationships through MCP, inspect structure with `get_relationship_graph` or
+`find_connection`, then create a human-browsable vault:
+
+```bash
+uv run pctx export-vault --output ~/PeopleVault
+```
+
+The directory is accepted only when nonexistent, empty, or already marked with `.people-context-vault`.
+Re-export is byte-deterministic over unchanged data. Sensitive/restricted facts require the explicit
+`--include-sensitive` flag; exported files are outside server disclosure controls.
+
 ## Agent plugins
 
 ### Codex
@@ -63,111 +165,6 @@ The native OpenClaw plugin connects to the opt-in loopback HTTP server, which mu
 Persistent writes are optional, and sensitive-context and export wrappers are not exposed. See
 [docs/openclaw-plugin.md](docs/openclaw-plugin.md) for configuration, security, validation, and ClawHub publishing
 details.
-
-## Features
-
-- explainable exact/normalized/FTS/fuzzy identity resolution with aliases and ambiguity handling;
-- bounded person context with sensitivity and purpose gates;
-- canonical relationship vocabulary, synonyms, inverse pairs, symmetric types, and uncategorized extensions;
-- minimal-disclosure relationship graph and shortest-path MCP tools with explicit caps/truncation;
-- ordinary-disclosure staleness reporting over stored interaction recency, as an MCP tool and CLI command;
-- ordinary-disclosure upcoming birthdays and dated reminders, with real leap-day projection, as an MCP tool
-  and CLI command;
-- organizations and time-aware affiliations;
-- separate facts, observations, traits, and concise interaction summaries;
-- bounded person timelines and a consolidation view that surfaces duplicate, reinforcing, and contradictory
-  knowledge, with atomic fact supersession that preserves the superseded row;
-- communication guidance grounded in traits, interaction friction, reminders, and user-authored philosophy;
-- reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate imports without retaining raw
-  source content;
-- optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval;
-- durable import receipts mapping each committed candidate to the record it produced, inspectable per source;
-- atomic audit plus replay changelog/HLC capture for every durable write;
-- data-quality findings and aggregate-only storage stats, both report-only;
-- merge, forget/redaction, unchanged JSON export, and safe Obsidian vault export;
-- single-file bootstrap sync bundle that restores onto a second device and refuses any non-empty target;
-- stdio by default and explicit unauthenticated loopback-only Streamable HTTP.
-
-## Demo
-
-A packaged fictional dataset is the fastest way to see identity resolution, graph traversal, and bounded
-context without touching real data:
-
-```bash
-uvx --from people-context pctx demo --reset
-```
-
-The demo always writes its own dedicated database at
-`{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`. It ignores `--db`, `PEOPLE_CONTEXT_DB`, the config
-file, and workspace discovery, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
-real database is never read or modified. Seeding writes audited fictional people, handles, affiliations, facts,
-interactions, and a connected relationship graph, then prints the path-targeted server command and concrete
-tool calls that use the ids it just created:
-
-```text
-Demo database: /home/you/.local/share/people-context/demo.db
-Start MCP server: people-context-mcp --db /home/you/.local/share/people-context/demo.db
-resolve_person {"query": "Amina Hassan"}
-get_relationship_graph {"person_id": "<amina-id>", "depth": 2}
-find_connection {"person_a": "<self-id>", "person_b": "<sofia-id>"}
-```
-
-Person ids are generated per seed, so the printed values differ from the placeholders above. Start the printed
-server command in an MCP client and run the printed calls verbatim. See
-[docs/cli.md](docs/cli.md#packaged-demo).
-
-## Quick start
-
-Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
-
-The fastest path from discovery to a working stdio server is a zero-clone, zero-install run of the published
-`people-context` distribution:
-
-```bash
-uvx --from people-context people-context
-```
-
-For a persistent installation of both the MCP server and the human-operated CLI:
-
-```bash
-uv tool install people-context
-people-context
-pctx --help
-```
-
-`people-context-mcp` remains an equivalent MCP server command for existing client configurations. `pctx` is the
-human-operated CLI.
-
-For local development:
-
-```bash
-git clone https://github.com/JinyangWang27/people-context.git
-cd people-context
-uv sync
-uv run people-context-mcp
-```
-
-Loopback HTTP is opt-in:
-
-```bash
-uv run people-context-mcp --http --host 127.0.0.1 --port 8765
-```
-
-The endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and must be treated as accessible to other
-local processes. Prefer stdio.
-
-## Example: graph-aware context and vault
-
-After recording people and relationships through MCP, inspect structure with `get_relationship_graph` or
-`find_connection`, then create a human-browsable vault:
-
-```bash
-uv run pctx export-vault --output ~/PeopleVault
-```
-
-The directory is accepted only when nonexistent, empty, or already marked with `.people-context-vault`.
-Re-export is byte-deterministic over unchanged data. Sensitive/restricted facts require the explicit
-`--include-sensitive` flag; exported files are outside server disclosure controls.
 
 ## Other MCP clients
 
