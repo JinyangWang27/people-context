@@ -144,13 +144,32 @@ def _precreate_owner_private_db(db_path: Path) -> None:
     database, and the `-wal` and `-shm` files SQLite derives from it inherit the
     same permissions.
 
+    The mode is applied to the *resolved* path. `O_EXCL` refuses to follow a
+    symlink and reports `FileExistsError` for a dangling one, so testing
+    `db_path` directly would read "already there", hand the path to SQLite, and
+    let SQLite follow the link and create the real target at its own `0o644`.
+    Resolving first means the file that actually holds the pages is the file that
+    gets the mode, whichever name it was reached by.
+
     An existing database keeps whatever mode it already has. Silently tightening
     a file the operator placed themselves would break a deliberate arrangement,
     so widening protection for existing stores stays an explicit `chmod`.
+
+    On Windows the `mode` argument sets the read-only attribute rather than an
+    owner-only ACL, so the file inherits its directory's ACL and this call
+    hardens nothing. That platform is documented as relying on the profile
+    directory's own permissions and on the encrypted extra instead.
     """
+    target = Path(os.path.realpath(db_path))
     try:
-        handle = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
+        handle = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
     except FileExistsError:
+        # A database is already there under that name; leave its mode alone.
+        return
+    except FileNotFoundError:
+        # The link points into a directory that does not exist. Inventing it here
+        # would create directories the caller never named, so defer to SQLite,
+        # which raises its own "unable to open database file" for the same path.
         return
     os.close(handle)
 

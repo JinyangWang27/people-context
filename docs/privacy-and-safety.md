@@ -197,12 +197,22 @@ resurrect an erased name through the metadata around it.
 
 ## Database file permissions
 
-A newly created database is `0600` — readable and writable only by the account that owns it. Left to itself
-SQLite creates a missing database with `0o666 & ~umask`, which under the common `022` umask would publish the
-single most sensitive file this project owns to every other local account, while every export projected *from*
-it is deliberately `0600`. The store is therefore pre-created as an empty `O_CREAT | O_EXCL` file with mode
-`0600` before SQLite opens it; a zero-length file is a valid empty database, and the `-wal` and `-shm`
-companions SQLite derives from it inherit the same mode.
+On Unix-like systems a newly created database is `0600` — readable and writable only by the account that owns
+it. Left to itself SQLite creates a missing database with `0o666 & ~umask`, which under the common `022` umask
+would publish the single most sensitive file this project owns to every other local account, while every export
+projected *from* it is deliberately `0600`. The store is therefore pre-created as an empty `O_CREAT | O_EXCL`
+file with mode `0600` before SQLite opens it; a zero-length file is a valid empty database, and the `-wal` and
+`-shm` companions SQLite derives from it inherit the same mode.
+
+The mode is applied to the resolved path. `O_EXCL` deliberately refuses to follow a symlink, so a `--db` value
+that points at one — a normal way to keep the store on another volume — is resolved first and the real target
+receives the mode, rather than the link being mistaken for an existing database and its target left to SQLite's
+default.
+
+**Windows is not covered by this.** The `mode` argument sets the read-only attribute there rather than
+installing an owner-only ACL, so a new database inherits the ACL of the directory holding it. Keep the database
+under your user profile, where the default ACL already excludes other standard accounts, rather than in a
+shared or root location — and prefer the encrypted extra if the machine has accounts you do not control.
 
 An existing database keeps whatever mode it already carries. Silently tightening a file the operator placed
 themselves could break a deliberate arrangement, so databases created before this behaviour shipped stay as
