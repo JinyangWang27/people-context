@@ -43,6 +43,11 @@ ENCRYPTED_EXTRA_PLATFORMS = "glibc-based Linux x86_64"
 #: even reached — and break every filesystem-backed open on that platform.
 _O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
+#: Attempts to secure the database file before refusing. Each retry answers an entry
+#: that vanished between the exclusive create and the inspection; a path that will not
+#: settle within this many rounds is being changed faster than it can be trusted.
+_PRECREATE_ATTEMPTS = 5
+
 
 class EncryptedDatabaseError(RuntimeError):
     """Raised when an encrypted database cannot be opened.
@@ -187,25 +192,37 @@ def _refuse_unsafe_directory(directory: Path) -> None:
     bit is exactly the rule that entries may only be renamed or removed by their
     owner, which is the capability the substitution needs.
 
+    Every ancestor is checked, not just the directory itself. A `0700` directory
+    is only as private as the chain above it: an account that can write a
+    non-sticky ancestor can rename the whole directory away, put one it controls
+    in its place while SQLite opens the path, and restore the original before any
+    later check runs. Mode bits on the leaf say nothing about that.
+
     POSIX mode bits do not describe Windows, where an inherited ACL governs
     instead; that platform is documented rather than checked here.
     """
     if os.name != "posix":
         return
-    try:
-        mode = os.stat(directory).st_mode
-    except OSError:
-        # Unreadable or missing: SQLite raises its own error for the same path.
-        return
-    if not mode & (stat.S_IWGRP | stat.S_IWOTH):
-        return
-    if mode & stat.S_ISVTX:
-        return
-    raise UnsafeDatabasePathError(
-        f"Refusing to use a database in {directory}: that directory is writable by other local "
-        "accounts, which can replace the database file while it is being opened. Move the database "
-        "somewhere only you can write, or restrict the directory's permissions."
-    )
+    for ancestor in [directory, *directory.parents]:
+        try:
+            mode = os.stat(ancestor).st_mode
+        except OSError:
+            # Unreadable or missing: SQLite raises its own error for the same path.
+            continue
+        if not mode & (stat.S_IWGRP | stat.S_IWOTH):
+            continue
+        if mode & stat.S_ISVTX:
+            continue
+        detail = (
+            "that directory is writable by other local accounts"
+            if ancestor == directory
+            else f"{ancestor} is writable by other local accounts, so that directory can be replaced"
+        )
+        raise UnsafeDatabasePathError(
+            f"Refusing to use a database in {directory}: {detail}, which allows the database file "
+            "to be substituted while it is being opened. Move the database somewhere only you can "
+            "write, or restrict the directory's permissions."
+        )
 
 
 def _refuse_foreign_owner(db_path: Path, existing: os.stat_result) -> None:
@@ -292,48 +309,65 @@ def _precreate_owner_private_db(db_path: Path) -> tuple[int, int] | None:
     a file the operator placed themselves would break a deliberate arrangement,
     so widening protection for existing stores stays an explicit `chmod`.
 
+    The whole sequence retries, because each answer can be invalidated by the
+    next step: an entry that exists when `O_EXCL` runs can be gone by the time it
+    is inspected. Returning "nothing to secure" there would hand SQLite an absent
+    path and let it create the database at its own default, so a vanished entry
+    re-attempts the secure creation instead, and a path that will not settle is
+    refused rather than opened.
+
     On Windows the `mode` argument sets the read-only attribute rather than an
     owner-only ACL, so the file inherits its directory's ACL and this call
     hardens nothing. That platform is documented as relying on the profile
     directory's own permissions and on the encrypted extra instead.
     """
-    try:
-        handle = os.open(
-            db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, PRIVATE_FILE_MODE
-        )
-    except FileExistsError:
-        # `db_path` is `realpath` output, so it cannot legitimately be a symlink:
-        # resolution follows every link and returns the final name. A symlink here
-        # therefore appeared *after* resolution, which in a directory another local
-        # account can write is the classic race — `O_EXCL` reports "exists", the
-        # database looks pre-existing, and SQLite follows the planted link and
-        # creates its target at the default `0o644`. Refuse instead: a caller who
-        # genuinely wants the store behind a symlink is unaffected, because their
-        # link was already resolved before this call.
-        if os.path.islink(db_path):
-            raise UnsafeDatabasePathError(
-                f"Refusing to open {db_path}: a symlink appeared at the resolved database path "
-                "while it was being prepared. Nothing was created or opened."
-            ) from None
-        # An ordinary database is already there; leave its mode alone, but still
-        # report which file it is so a later substitution is detectable.
+    for _ in range(_PRECREATE_ATTEMPTS):
         try:
-            existing = os.lstat(db_path)
-        except OSError:
+            handle = os.open(
+                db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, PRIVATE_FILE_MODE
+            )
+        except FileExistsError:
+            # `db_path` is `realpath` output, so it cannot legitimately be a symlink:
+            # resolution follows every link and returns the final name. A symlink here
+            # therefore appeared *after* resolution, which in a directory another local
+            # account can write is the classic race — `O_EXCL` reports "exists", the
+            # database looks pre-existing, and SQLite follows the planted link and
+            # creates its target at the default `0o644`.
+            if os.path.islink(db_path):
+                raise UnsafeDatabasePathError(
+                    f"Refusing to open {db_path}: a symlink appeared at the resolved database "
+                    "path while it was being prepared. Nothing was created or opened."
+                ) from None
+            try:
+                existing = os.lstat(db_path)
+            except FileNotFoundError:
+                # The entry was removed between the two calls. Retry the exclusive
+                # create: it now succeeds and produces a file this process secured.
+                continue
+            except OSError:
+                raise UnsafeDatabasePathError(
+                    f"Refusing to open {db_path}: the database path could not be inspected "
+                    "while it was being prepared. Nothing was created or opened."
+                ) from None
+            # An ordinary database is already there; leave its mode alone, but still
+            # report which file it is so a later substitution is detectable.
+            _refuse_foreign_owner(db_path, existing)
+            return (existing.st_dev, existing.st_ino)
+        except FileNotFoundError:
+            # The path points into a directory that does not exist. Inventing it here
+            # would create directories the caller never named, so defer to SQLite,
+            # which raises its own "unable to open database file" for the same path.
             return None
-        _refuse_foreign_owner(db_path, existing)
-        return (existing.st_dev, existing.st_ino)
-    except FileNotFoundError:
-        # The link points into a directory that does not exist. Inventing it here
-        # would create directories the caller never named, so defer to SQLite,
-        # which raises its own "unable to open database file" for the same path.
-        return None
-    try:
-        restrict_fd_to_owner(handle)
-        created = os.fstat(handle)
-    finally:
-        os.close(handle)
-    return (created.st_dev, created.st_ino)
+        try:
+            restrict_fd_to_owner(handle)
+            created = os.fstat(handle)
+        finally:
+            os.close(handle)
+        return (created.st_dev, created.st_ino)
+    raise UnsafeDatabasePathError(
+        f"Refusing to open {db_path}: the database path kept changing while it was being "
+        "prepared. Nothing was created or opened."
+    )
 
 
 def _configure_and_migrate(conn: sqlite3.Connection, *, is_memory: bool) -> None:

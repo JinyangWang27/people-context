@@ -381,3 +381,85 @@ def test_an_existing_database_the_owner_placed_is_still_opened(tmp_path: Path) -
 
     assert _mode(db_path) == 0o644
 
+
+def test_a_private_directory_under_a_shared_parent_is_refused(tmp_path: Path) -> None:
+    """A `0700` directory is only as private as the chain above it.
+
+    An account that can write a non-sticky ancestor can rename the whole directory away,
+    put one it controls in its place while SQLite opens the path, and restore the original
+    before any later check runs. Nothing about the leaf's own mode reveals that.
+    """
+    shared_parent = tmp_path / "shared"
+    shared_parent.mkdir()
+    private = shared_parent / "private"
+    private.mkdir()
+    private.chmod(0o700)
+    shared_parent.chmod(0o777)
+
+    with pytest.raises(UnsafeDatabasePathError, match="can be replaced"):
+        open_db(private / "people.db")
+
+
+def test_a_private_directory_under_a_sticky_parent_is_accepted(tmp_path: Path) -> None:
+    """Sticky ancestors cannot have their entries renamed by other accounts, so `/tmp/x/` is fine."""
+    sticky_parent = tmp_path / "tmpish"
+    sticky_parent.mkdir()
+    private = sticky_parent / "private"
+    private.mkdir()
+    private.chmod(0o700)
+    sticky_parent.chmod(0o1777)
+
+    conn = open_db(private / "people.db")
+    conn.close()
+
+    assert _mode(private / "people.db") == PRIVATE_FILE_MODE
+
+
+def test_an_entry_that_vanishes_mid_preparation_still_ends_up_owner_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A vanished entry must re-attempt the secure create, never fall through unsecured.
+
+    An attacker can pre-create an entry so the exclusive create reports `FileExistsError`,
+    then remove it before it is inspected. Treating that as "nothing to secure" would hand
+    SQLite an absent path and let it make the database at its own `0644`.
+    """
+    db_path = tmp_path / "people.db"
+    db_path.write_bytes(b"")
+    real_islink = os.path.islink
+    removed: list[bool] = []
+
+    def remove_entry_during_the_check(path: object) -> bool:
+        result = real_islink(path)
+        if not removed:
+            removed.append(True)
+            db_path.unlink()
+        return result
+
+    monkeypatch.setattr(os.path, "islink", remove_entry_during_the_check)
+
+    conn = open_db(db_path)
+    conn.close()
+
+    assert removed, "the vanishing branch was never exercised"
+    assert _mode(db_path) == PRIVATE_FILE_MODE
+
+
+def test_a_path_that_never_settles_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retrying is bounded: a path churned faster than it can be trusted is refused.
+
+    The entry is present for every exclusive create and gone for every inspection, which
+    is the pathological version of the vanishing race rather than a recoverable one.
+    """
+    db_path = tmp_path / "people.db"
+    db_path.write_bytes(b"")
+
+    def always_vanished(path: object, **kwargs: object) -> os.stat_result:
+        raise FileNotFoundError(2, "No such file or directory", str(path))
+
+    monkeypatch.setattr(os, "lstat", always_vanished)
+
+    with pytest.raises(UnsafeDatabasePathError, match="kept changing"):
+        open_db(db_path)

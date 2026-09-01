@@ -222,15 +222,22 @@ A directory writable by other local accounts is refused outright: an account tha
 prepared file away, let SQLite open a file it controls, and restore the original before any later check looks,
 and `sqlite3` accepts a path rather than a descriptor, so nothing in-process can bind the driver's open to a
 verified file. A sticky directory such as `/tmp` is accepted, because the sticky bit is precisely the rule that
-entries may only be renamed or removed by their owner — the capability the substitution requires. The default
-location and the Docker image's `/data` are owner-only already, so this refuses only a database deliberately
-placed somewhere shared.
+entries may only be renamed or removed by their owner — the capability the substitution requires. Every
+ancestor is checked and not just the directory itself, because a `0700` directory is only as private as the
+chain above it: an account able to write a non-sticky ancestor can rename the whole directory away and put one
+it controls in its place. The default location and the Docker image's `/data` are owner-only already, so this
+refuses only a database deliberately placed somewhere shared.
 
 A sticky directory still lets any account create a name that does not exist yet, so a database file found in
 place is accepted only if the current user owns it. An attacker who guesses the path can otherwise create it
 first as their own readable file, and it would be taken for an existing database and migrated into. The check
 is on *ownership* and never on mode: a database created before the owner-only default shipped is commonly
 `0644`, and refusing to open those would turn a hardening change into data loss.
+
+Preparing the file retries a bounded number of times, because each answer can be invalidated by the next step —
+an entry present when the exclusive create runs can be gone before it is inspected. A vanished entry re-attempts
+the secure creation rather than being treated as nothing to secure, which would hand SQLite an absent path and
+let it create the database at its own default. A path that will not settle is refused instead of opened.
 
 That check alone would only inspect a name, so the file's `(st_dev, st_ino)` identity is also re-checked once
 the driver has opened the path, before any pragma or migration runs. An account that presents an ordinary file
