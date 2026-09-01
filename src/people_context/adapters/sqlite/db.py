@@ -14,6 +14,7 @@ import os
 import re
 import socket
 import sqlite3
+import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
@@ -165,8 +166,46 @@ def _resolve_target(path: str | Path) -> tuple[str, bool, tuple[int, int] | None
     # the two steps, so the file that received `0600` and the file that ends up
     # holding the pages would not be the same file.
     target = Path(os.path.realpath(db_path))
+    _refuse_unsafe_directory(target.parent)
     identity = _precreate_owner_private_db(target)
     return str(target), False, identity
+
+
+def _refuse_unsafe_directory(directory: Path) -> None:
+    """Refuse a database directory that another local account can rewrite.
+
+    Everything else here defends a *name*: the file is secured, the path is
+    checked for a symlink, and the inode is re-checked after the driver opens it.
+    None of that can be made airtight, because `sqlite3.connect` accepts a path
+    rather than a descriptor, so an account able to mutate the directory can
+    rename the prepared file away, let the driver open a file it controls, and
+    restore the original before any later check looks. The guarantee therefore
+    rests on the directory: where only the owner can write it, no other account
+    can substitute anything and the whole class of races has no foothold.
+
+    A sticky directory is accepted. `/tmp` is the ordinary case, and the sticky
+    bit is exactly the rule that entries may only be renamed or removed by their
+    owner, which is the capability the substitution needs.
+
+    POSIX mode bits do not describe Windows, where an inherited ACL governs
+    instead; that platform is documented rather than checked here.
+    """
+    if os.name != "posix":
+        return
+    try:
+        mode = os.stat(directory).st_mode
+    except OSError:
+        # Unreadable or missing: SQLite raises its own error for the same path.
+        return
+    if not mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return
+    if mode & stat.S_ISVTX:
+        return
+    raise UnsafeDatabasePathError(
+        f"Refusing to use a database in {directory}: that directory is writable by other local "
+        "accounts, which can replace the database file while it is being opened. Move the database "
+        "somewhere only you can write, or restrict the directory's permissions."
+    )
 
 
 def _verify_same_file(target: str, identity: tuple[int, int] | None) -> None:

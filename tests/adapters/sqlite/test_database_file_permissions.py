@@ -282,3 +282,59 @@ def test_an_unswapped_open_passes_the_identity_check(tmp_path: Path) -> None:
 
     assert _mode(db_path) == PRIVATE_FILE_MODE
 
+
+def test_a_world_writable_directory_is_refused(tmp_path: Path) -> None:
+    """The ABA substitution has no answer inside the process, so remove its foothold.
+
+    An account that can write the directory can rename the prepared file away, let the
+    driver open one it controls, and restore the original before any later check looks —
+    the identity comparison then passes while the connection holds the attacker's file.
+    Nothing in-process closes that, because `sqlite3.connect` takes a path rather than a
+    descriptor, so the directory itself has to be trustworthy.
+    """
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    shared.chmod(0o777)
+
+    with pytest.raises(UnsafeDatabasePathError, match="writable by other local accounts"):
+        open_db(shared / "people.db")
+
+    assert not (shared / "people.db").exists()
+
+
+def test_a_group_writable_directory_is_refused(tmp_path: Path) -> None:
+    shared = tmp_path / "team"
+    shared.mkdir()
+    shared.chmod(0o775)
+
+    with pytest.raises(UnsafeDatabasePathError, match="writable by other local accounts"):
+        open_db(shared / "people.db")
+
+
+def test_a_sticky_directory_is_accepted(tmp_path: Path) -> None:
+    """`/tmp` is the ordinary case, and sticky is the rule the substitution needs broken.
+
+    Entries in a sticky directory may only be renamed or removed by their owner, which is
+    exactly the capability an ABA swap needs. Refusing these as well would break the
+    common ad-hoc database under `/tmp` without closing anything.
+    """
+    sticky = tmp_path / "tmpish"
+    sticky.mkdir()
+    sticky.chmod(0o1777)
+
+    conn = open_db(sticky / "people.db")
+    conn.close()
+
+    assert _mode(sticky / "people.db") == PRIVATE_FILE_MODE
+
+
+def test_an_owner_only_directory_is_accepted(tmp_path: Path) -> None:
+    private = tmp_path / "private"
+    private.mkdir()
+    private.chmod(0o700)
+
+    conn = open_db(private / "people.db")
+    conn.close()
+
+    assert _mode(private / "people.db") == PRIVATE_FILE_MODE
+

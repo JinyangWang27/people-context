@@ -217,6 +217,15 @@ arrived afterwards — the classic race for a database kept in a directory anoth
 link and create its target at the default `0644`. A store deliberately kept behind a symlink is unaffected,
 because that link is resolved before the check.
 
+None of that can be made airtight on its own, so the database's **directory** must be one only you can write.
+A directory writable by other local accounts is refused outright: an account that can write it can rename the
+prepared file away, let SQLite open a file it controls, and restore the original before any later check looks,
+and `sqlite3` accepts a path rather than a descriptor, so nothing in-process can bind the driver's open to a
+verified file. A sticky directory such as `/tmp` is accepted, because the sticky bit is precisely the rule that
+entries may only be renamed or removed by their owner — the capability the substitution requires. The default
+location and the Docker image's `/data` are owner-only already, so this refuses only a database deliberately
+placed somewhere shared.
+
 That check alone would only inspect a name, so the file's `(st_dev, st_ino)` identity is also re-checked once
 the driver has opened the path, before any pragma or migration runs. An account that presents an ordinary file
 for the symlink check and substitutes a link immediately afterwards is caught by the mismatch, and the
