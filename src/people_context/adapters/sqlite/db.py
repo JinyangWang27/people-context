@@ -208,6 +208,33 @@ def _refuse_unsafe_directory(directory: Path) -> None:
     )
 
 
+def _refuse_foreign_owner(db_path: Path, existing: os.stat_result) -> None:
+    """Refuse a database file that belongs to another local account.
+
+    A sticky directory stops entries being renamed or removed by anyone but their
+    owner, but it still lets any account create a name that does not exist yet.
+    So an attacker who can guess the path — `/tmp/people.db` is not a hard guess —
+    can create it first as their own readable file. Finding a regular file there,
+    the code above would take it for an existing database, leave its mode alone
+    precisely because touching an operator's file is the wrong thing to do, and
+    let SQLite migrate personal data into a store somebody else can read.
+
+    Ownership is what separates the two cases: a database placed by the operator
+    belongs to the operator. The check is deliberately about *ownership* and not
+    about mode, because a legitimate database created before the owner-only
+    default shipped is commonly `0644`, and refusing to open it would turn a
+    hardening change into data loss.
+    """
+    if os.name != "posix":
+        return
+    if existing.st_uid == os.geteuid():
+        return
+    raise UnsafeDatabasePathError(
+        f"Refusing to open {db_path}: that file belongs to another local account, so it is not "
+        "the database it appears to be. Nothing was opened or written."
+    )
+
+
 def _verify_same_file(target: str, identity: tuple[int, int] | None) -> None:
     """Refuse if the path no longer names the file that was secured.
 
@@ -294,6 +321,7 @@ def _precreate_owner_private_db(db_path: Path) -> tuple[int, int] | None:
             existing = os.lstat(db_path)
         except OSError:
             return None
+        _refuse_foreign_owner(db_path, existing)
         return (existing.st_dev, existing.st_ino)
     except FileNotFoundError:
         # The link points into a directory that does not exist. Inventing it here

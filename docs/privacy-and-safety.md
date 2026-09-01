@@ -226,6 +226,12 @@ entries may only be renamed or removed by their owner — the capability the sub
 location and the Docker image's `/data` are owner-only already, so this refuses only a database deliberately
 placed somewhere shared.
 
+A sticky directory still lets any account create a name that does not exist yet, so a database file found in
+place is accepted only if the current user owns it. An attacker who guesses the path can otherwise create it
+first as their own readable file, and it would be taken for an existing database and migrated into. The check
+is on *ownership* and never on mode: a database created before the owner-only default shipped is commonly
+`0644`, and refusing to open those would turn a hardening change into data loss.
+
 That check alone would only inspect a name, so the file's `(st_dev, st_ino)` identity is also re-checked once
 the driver has opened the path, before any pragma or migration runs. An account that presents an ordinary file
 for the symlink check and substitutes a link immediately afterwards is caught by the mismatch, and the

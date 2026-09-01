@@ -338,3 +338,46 @@ def test_an_owner_only_directory_is_accepted(tmp_path: Path) -> None:
 
     assert _mode(private / "people.db") == PRIVATE_FILE_MODE
 
+
+def test_a_database_file_owned_by_another_account_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sticky directory still lets anyone create a name that does not exist yet.
+
+    So an attacker who can guess the path — `/tmp/people.db` is not a hard guess — can
+    create it first as their own readable file. Without this check the file reads as an
+    existing database, its mode is deliberately left alone, and SQLite migrates personal
+    data into a store someone else can read. The foreign owner is simulated by moving
+    *our* identity rather than the file's, which needs no second account.
+    """
+    squatted = tmp_path / "people.db"
+    squatted.write_bytes(b"")
+    squatted.chmod(0o644)
+    monkeypatch.setattr(os, "geteuid", lambda: os.getuid() + 1)
+
+    with pytest.raises(UnsafeDatabasePathError, match="belongs to another local account"):
+        open_db(squatted)
+
+
+def test_an_existing_database_the_owner_placed_is_still_opened(tmp_path: Path) -> None:
+    """The check must key on ownership, never on mode.
+
+    A database created before the owner-only default shipped is commonly `0644`.
+    Refusing those would turn a hardening change into data loss for exactly the people
+    the documented `chmod` migration is written for.
+    """
+    db_path = tmp_path / "people.db"
+    conn = open_db(db_path)
+    conn.execute("CREATE TABLE probe (id INTEGER PRIMARY KEY)")
+    conn.commit()
+    conn.close()
+    db_path.chmod(0o644)
+
+    conn = open_db(db_path)
+    try:
+        assert conn.execute("SELECT count(*) FROM probe").fetchone()[0] == 0
+    finally:
+        conn.close()
+
+    assert _mode(db_path) == 0o644
+
