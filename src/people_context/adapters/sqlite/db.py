@@ -14,6 +14,7 @@ import os
 import re
 import socket
 import sqlite3
+import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
@@ -37,6 +38,16 @@ SQLCIPHER_MODULE = "sqlcipher3.dbapi2"
 #: `sqlcipher3` build itself.
 ENCRYPTED_EXTRA_PLATFORMS = "glibc-based Linux x86_64"
 
+#: `O_NOFOLLOW` is POSIX-only and absent on Windows, where referencing it directly
+#: would raise `AttributeError` while the flags are evaluated — before `os.open` is
+#: even reached — and break every filesystem-backed open on that platform.
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+#: Attempts to secure the database file before refusing. Each retry answers an entry
+#: that vanished between the exclusive create and the inspection; a path that will not
+#: settle within this many rounds is being changed faster than it can be trusted.
+_PRECREATE_ATTEMPTS = 5
+
 
 class EncryptedDatabaseError(RuntimeError):
     """Raised when an encrypted database cannot be opened.
@@ -46,16 +57,30 @@ class EncryptedDatabaseError(RuntimeError):
     """
 
 
+class UnsafeDatabasePathError(RuntimeError):
+    """Raised when the database path stopped being safe to create while resolving it.
+
+    The message names the path but never its contents: this fires before anything
+    is opened, so there is nothing else to disclose.
+    """
+
+
 def open_db(path: str | Path) -> sqlite3.Connection:
     """Open (creating if needed) a SQLite database and run pending migrations.
 
     Accepts ":memory:" as well as filesystem paths. Parent directories are
     created for real paths. Sets Row factory and foreign-key / WAL pragmas.
     """
-    target, is_memory = _resolve_target(path)
+    target, is_memory, identity = _resolve_target(path)
     conn = sqlite3.connect(target)
-    conn.row_factory = sqlite3.Row
-    _configure_and_migrate(conn, is_memory=is_memory)
+    try:
+        # Before any pragma or migration: a substituted file is then left empty.
+        _verify_same_file(target, identity)
+        conn.row_factory = sqlite3.Row
+        _configure_and_migrate(conn, is_memory=is_memory)
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -75,8 +100,13 @@ def open_encrypted_db(path: str | Path, key: str) -> sqlite3.Connection:
         raise EncryptedDatabaseError("Refusing to open an encrypted database with an empty key.")
 
     dbapi = _load_sqlcipher()
-    target, is_memory = _resolve_target(path)
+    target, is_memory, identity = _resolve_target(path)
     conn = dbapi.connect(target)
+    try:
+        _verify_same_file(target, identity)
+    except BaseException:
+        conn.close()
+        raise
     try:
         # SQLCipher requires the key before the header is read; nothing above
         # this line may touch schema metadata.
@@ -123,10 +153,16 @@ def _quote_key(key: str) -> str:
     return f"'{escaped}'"
 
 
-def _resolve_target(path: str | Path) -> tuple[str, bool]:
-    """Return the connect target and whether it is the in-memory database."""
+def _resolve_target(path: str | Path) -> tuple[str, bool, tuple[int, int] | None]:
+    """Return the connect target, whether it is in-memory, and the file identity seen.
+
+    The identity is the `(st_dev, st_ino)` pair of the file this call secured or
+    observed. `_verify_same_file` re-checks it after the driver has opened the
+    path, which is what makes the symlink guard something more than a check on a
+    name that can change afterwards.
+    """
     if str(path) == ":memory:":
-        return ":memory:", True
+        return ":memory:", True, None
     db_path = Path(path).expanduser()
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # Resolve once, then use that single answer for both securing the file and
@@ -135,11 +171,138 @@ def _resolve_target(path: str | Path) -> tuple[str, bool]:
     # the two steps, so the file that received `0600` and the file that ends up
     # holding the pages would not be the same file.
     target = Path(os.path.realpath(db_path))
-    _precreate_owner_private_db(target)
-    return str(target), False
+    _refuse_unsafe_directory(target.parent)
+    identity = _precreate_owner_private_db(target)
+    return str(target), False, identity
 
 
-def _precreate_owner_private_db(db_path: Path) -> None:
+def _refuse_unsafe_directory(directory: Path) -> None:
+    """Refuse a database directory that another local account can rewrite.
+
+    Everything else here defends a *name*: the file is secured, the path is
+    checked for a symlink, and the inode is re-checked after the driver opens it.
+    None of that can be made airtight, because `sqlite3.connect` accepts a path
+    rather than a descriptor, so an account able to mutate the directory can
+    rename the prepared file away, let the driver open a file it controls, and
+    restore the original before any later check looks. The guarantee therefore
+    rests on the directory: where only the owner can write it, no other account
+    can substitute anything and the whole class of races has no foothold.
+
+    Ownership is checked before the mode, because an owner is never constrained by
+    it: a directory belonging to another unprivileged account can be renamed
+    through by that account whatever its bits say, and removing owner-write does
+    not help, since the owner can restore it with `chmod`. Only root and the
+    current user are trusted at any level of the chain.
+
+    A sticky directory is then accepted on the bit. `/tmp` is the ordinary case
+    and belongs to root. Sticky narrows renaming and removal to an entry's own
+    owner, the directory's owner, and root — which is safe precisely because the
+    ownership rule above has already established that the owner is trusted.
+
+    Every ancestor is checked, not just the directory itself. A `0700` directory
+    is only as private as the chain above it: an account that can write a
+    non-sticky ancestor can rename the whole directory away, put one it controls
+    in its place while SQLite opens the path, and restore the original before any
+    later check runs. Mode bits on the leaf say nothing about that.
+
+    POSIX mode bits do not describe Windows, where an inherited ACL governs
+    instead; that platform is documented rather than checked here.
+    """
+    if os.name != "posix":
+        return
+    for ancestor in [directory, *directory.parents]:
+        try:
+            info = os.stat(ancestor)
+        except OSError:
+            # Unreadable or missing: SQLite raises its own error for the same path.
+            continue
+        if info.st_uid not in (0, os.geteuid()):
+            owned = (
+                "that directory is owned by another local account"
+                if ancestor == directory
+                else f"{ancestor} is owned by another local account, so that directory can be replaced"
+            )
+            raise UnsafeDatabasePathError(
+                f"Refusing to use a database in {directory}: {owned}, whose owner can substitute "
+                "it while the database is being opened regardless of its permissions. Move the "
+                "database somewhere only you own."
+            )
+        if not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            continue
+        if info.st_mode & stat.S_ISVTX:
+            continue
+        detail = (
+            "that directory is writable by other local accounts"
+            if ancestor == directory
+            else f"{ancestor} is writable by other local accounts, so that directory can be replaced"
+        )
+        raise UnsafeDatabasePathError(
+            f"Refusing to use a database in {directory}: {detail}, which allows the database file "
+            "to be substituted while it is being opened. Move the database somewhere only you can "
+            "write, or restrict the directory's permissions."
+        )
+
+
+def _refuse_foreign_owner(db_path: Path, existing: os.stat_result) -> None:
+    """Refuse a database file that belongs to another local account.
+
+    A sticky directory stops entries being renamed or removed by anyone but their
+    owner, but it still lets any account create a name that does not exist yet.
+    So an attacker who can guess the path — `/tmp/people.db` is not a hard guess —
+    can create it first as their own readable file. Finding a regular file there,
+    the code above would take it for an existing database, leave its mode alone
+    precisely because touching an operator's file is the wrong thing to do, and
+    let SQLite migrate personal data into a store somebody else can read.
+
+    Ownership is what separates the two cases: a database placed by the operator
+    belongs to the operator. The check is deliberately about *ownership* and not
+    about mode, because a legitimate database created before the owner-only
+    default shipped is commonly `0644`, and refusing to open it would turn a
+    hardening change into data loss.
+    """
+    if os.name != "posix":
+        return
+    if existing.st_uid == os.geteuid():
+        return
+    raise UnsafeDatabasePathError(
+        f"Refusing to open {db_path}: that file belongs to another local account, so it is not "
+        "the database it appears to be. Nothing was opened or written."
+    )
+
+
+def _verify_same_file(target: str, identity: tuple[int, int] | None) -> None:
+    """Refuse if the path no longer names the file that was secured.
+
+    `os.path.islink` alone is a check on a name. Where another local account owns
+    the directory, it can present an ordinary file for that check and swap in a
+    symlink before the driver opens the path, so the guard passes while the driver
+    follows the replacement. Comparing `(st_dev, st_ino)` afterwards catches the
+    substitution: a different inode means the name was re-pointed, whatever it
+    looked like in between.
+
+    This runs before any pragma or migration, so a substituted file is left empty
+    rather than populated. Python's `sqlite3` takes a path and not a descriptor, so
+    the driver's own open cannot be bound to a verified inode; detecting the
+    substitution and failing closed is the strongest guarantee available here, and
+    `docs/privacy-and-safety.md` states the residual limit rather than implying it
+    away.
+    """
+    if identity is None:
+        return
+    try:
+        current = os.stat(target)
+    except OSError as exc:
+        raise UnsafeDatabasePathError(
+            f"Refusing to use {target}: the database path could not be re-checked after opening it."
+        ) from exc
+    if (current.st_dev, current.st_ino) != identity:
+        raise UnsafeDatabasePathError(
+            f"Refusing to use {target}: the path stopped pointing at the file that was prepared "
+            "for it while it was being opened. Nothing was written to it."
+        )
+
+
+def _precreate_owner_private_db(db_path: Path) -> tuple[int, int] | None:
     """Create a missing database file with owner-only permissions.
 
     Left to itself SQLite creates a missing database with `0o666 & ~umask`, which
@@ -164,25 +327,65 @@ def _precreate_owner_private_db(db_path: Path) -> None:
     a file the operator placed themselves would break a deliberate arrangement,
     so widening protection for existing stores stays an explicit `chmod`.
 
+    The whole sequence retries, because each answer can be invalidated by the
+    next step: an entry that exists when `O_EXCL` runs can be gone by the time it
+    is inspected. Returning "nothing to secure" there would hand SQLite an absent
+    path and let it create the database at its own default, so a vanished entry
+    re-attempts the secure creation instead, and a path that will not settle is
+    refused rather than opened.
+
     On Windows the `mode` argument sets the read-only attribute rather than an
     owner-only ACL, so the file inherits its directory's ACL and this call
     hardens nothing. That platform is documented as relying on the profile
     directory's own permissions and on the encrypted extra instead.
     """
-    try:
-        handle = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, PRIVATE_FILE_MODE)
-    except FileExistsError:
-        # A database is already there under that name; leave its mode alone.
-        return
-    except FileNotFoundError:
-        # The link points into a directory that does not exist. Inventing it here
-        # would create directories the caller never named, so defer to SQLite,
-        # which raises its own "unable to open database file" for the same path.
-        return
-    try:
-        restrict_fd_to_owner(handle)
-    finally:
-        os.close(handle)
+    for _ in range(_PRECREATE_ATTEMPTS):
+        try:
+            handle = os.open(
+                db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, PRIVATE_FILE_MODE
+            )
+        except FileExistsError:
+            # `db_path` is `realpath` output, so it cannot legitimately be a symlink:
+            # resolution follows every link and returns the final name. A symlink here
+            # therefore appeared *after* resolution, which in a directory another local
+            # account can write is the classic race — `O_EXCL` reports "exists", the
+            # database looks pre-existing, and SQLite follows the planted link and
+            # creates its target at the default `0o644`.
+            if os.path.islink(db_path):
+                raise UnsafeDatabasePathError(
+                    f"Refusing to open {db_path}: a symlink appeared at the resolved database "
+                    "path while it was being prepared. Nothing was created or opened."
+                ) from None
+            try:
+                existing = os.lstat(db_path)
+            except FileNotFoundError:
+                # The entry was removed between the two calls. Retry the exclusive
+                # create: it now succeeds and produces a file this process secured.
+                continue
+            except OSError:
+                raise UnsafeDatabasePathError(
+                    f"Refusing to open {db_path}: the database path could not be inspected "
+                    "while it was being prepared. Nothing was created or opened."
+                ) from None
+            # An ordinary database is already there; leave its mode alone, but still
+            # report which file it is so a later substitution is detectable.
+            _refuse_foreign_owner(db_path, existing)
+            return (existing.st_dev, existing.st_ino)
+        except FileNotFoundError:
+            # The path points into a directory that does not exist. Inventing it here
+            # would create directories the caller never named, so defer to SQLite,
+            # which raises its own "unable to open database file" for the same path.
+            return None
+        try:
+            restrict_fd_to_owner(handle)
+            created = os.fstat(handle)
+        finally:
+            os.close(handle)
+        return (created.st_dev, created.st_ino)
+    raise UnsafeDatabasePathError(
+        f"Refusing to open {db_path}: the database path kept changing while it was being "
+        "prepared. Nothing was created or opened."
+    )
 
 
 def _configure_and_migrate(conn: sqlite3.Connection, *, is_memory: bool) -> None:

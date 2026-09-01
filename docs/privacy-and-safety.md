@@ -210,6 +210,48 @@ volume — is resolved once, and the file that receives the mode is the file tha
 Resolving for one step but connecting by the original name would leave a window in which the link could be
 repointed between the two. The path you asked for is still what `pctx db-path` and the startup log report.
 
+If a symlink appears at the resolved path between resolution and the open, the command refuses and exits
+non-zero without creating or opening anything. Resolution output is never legitimately a symlink, so one there
+arrived afterwards — the classic race for a database kept in a directory another local account can write, where
+`O_EXCL` would otherwise report "exists", the store would look pre-existing, and SQLite would follow the planted
+link and create its target at the default `0644`. A store deliberately kept behind a symlink is unaffected,
+because that link is resolved before the check.
+
+None of that can be made airtight on its own, so the database's **directory** must be one only you can write.
+A directory writable by other local accounts is refused outright: an account that can write it can rename the
+prepared file away, let SQLite open a file it controls, and restore the original before any later check looks,
+and `sqlite3` accepts a path rather than a descriptor, so nothing in-process can bind the driver's open to a
+verified file. A sticky directory owned by a trusted account — `/tmp`, which belongs to root — is accepted, because sticky
+narrows renaming and removal to an entry's own owner, the directory's owner, and root. Ownership is checked
+too, and not the bit alone: an account that creates its own `01777` directory owns it and may rename every
+entry inside, which is exactly the substitution the exemption was meant to exclude. Every
+ancestor is checked and not just the directory itself, because a `0700` directory is only as private as the
+chain above it: an account able to write a non-sticky ancestor can rename the whole directory away and put one
+it controls in its place. Ownership is checked before permissions at every level, because an owner is never
+constrained by the mode — a directory belonging to another unprivileged account can be renamed through by that
+account whatever its bits say, and clearing owner-write does not help because the owner can restore it with
+`chmod`. Only root and you are trusted anywhere in the chain. The default location and the Docker image's `/data` are owner-only already, so this
+refuses only a database deliberately placed somewhere shared.
+
+A sticky directory still lets any account create a name that does not exist yet, so a database file found in
+place is accepted only if the current user owns it. An attacker who guesses the path can otherwise create it
+first as their own readable file, and it would be taken for an existing database and migrated into. The check
+is on *ownership* and never on mode: a database created before the owner-only default shipped is commonly
+`0644`, and refusing to open those would turn a hardening change into data loss.
+
+Preparing the file retries a bounded number of times, because each answer can be invalidated by the next step —
+an entry present when the exclusive create runs can be gone before it is inspected. A vanished entry re-attempts
+the secure creation rather than being treated as nothing to secure, which would hand SQLite an absent path and
+let it create the database at its own default. A path that will not settle is refused instead of opened.
+
+That check alone would only inspect a name, so the file's `(st_dev, st_ino)` identity is also re-checked once
+the driver has opened the path, before any pragma or migration runs. An account that presents an ordinary file
+for the symlink check and substitutes a link immediately afterwards is caught by the mismatch, and the
+substituted file is left empty rather than populated. Python's `sqlite3` accepts a path and not a descriptor,
+so the driver's own open cannot be bound to an already-verified inode; detecting the substitution and refusing
+is the strongest guarantee available, and it is stated here rather than implied away. Keeping the database in a
+directory only you can write removes the precondition for the whole class of races.
+
 The mode is also set explicitly on the open descriptor rather than left to `os.open`. A `mode` argument is only
 a request that the process umask filters, and a umask clearing an owner bit — `0o200`, say — would otherwise
 produce a read-only `0400` database that the first migration could not write to.
