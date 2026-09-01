@@ -520,7 +520,7 @@ Check the matching box only in the PR that delivers it.
   - **Out:** `mbox` and `email` conversion, WhatsApp, MCP-path work, new sources/candidate types, any change to
     the M16 ceilings or to which candidates a source yields.
 
-- [ ] **M20.2 — Stream mbox messages and meter email address expansion**
+- [x] **M20.2 — Stream mbox messages and meter email address expansion**
   - **Scope:** Stop materializing `list(mbox)`; move mailbox-handle ownership into the extractor's scope so the
     mailbox is consumed lazily by the extraction loop, and pass the budget into `_correspondents` so one
     message's address expansion is metered while it is built rather than after `getaddresses` returns.
@@ -532,7 +532,7 @@ Check the matching box only in the PR that delivers it.
     `skipped_without_id` are byte-identical to the current implementation for the equivalence corpus.
   - **Out:** WhatsApp, MCP-path work, changing `mbox`'s path-only contract or the 64 MiB source budget.
 
-- [ ] **M20.3 — Bound WhatsApp resolution and extend the bound to `import_content`**
+- [x] **M20.3 — Bound WhatsApp resolution and extend the bound to `import_content`**
   - **Scope:** Replace WhatsApp's retain-every-`_Message` resolution with a bounded one, and extend the
     milestone's bound to the released MCP `import_content` path.
   - **Acceptance:** the chosen WhatsApp resolution is stated in the pull request with its reasoning. Preferred

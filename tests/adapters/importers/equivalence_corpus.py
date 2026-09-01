@@ -312,6 +312,33 @@ _WHATSAPP_UNRESOLVABLE = (
     b"01/02/2024, 09:01 - Ada Lovelace: one\n02/03/2024, 09:02 - Ada Lovelace: two\n"
 )
 
+# Ordering evidence appears on the first line and is consumed by a message four lines later,
+# which is exactly the whole-file dependency a naive stream would break.
+_WHATSAPP_MONTH_FIRST = (
+    b"01/31/2024, 08:00 - Ada Lovelace: month-first evidence\n"
+    b"02/03/2024, 08:01 - Grace Hopper: resolved as the third of February\n"
+    b"2024-04-05, 08:02 - Ada Lovelace: an ISO header is unaffected\n"
+    b"31/02/2024, 08:03 - Ada Lovelace: impossible in either order\n"
+)
+
+# The bracketed form, with a meridiem clock, an overlong sender, a body line quoting a
+# time-shaped value that must stay a continuation, and a bidi-marked phone label.
+_WHATSAPP_BRACKETED = (
+    b"[13/02/2024, 9:05:07\xe2\x80\xafAM] Ada Lovelace: narrow-space meridiem\n"
+    b"[13/02/2024, 11:00 p.m.] " + b"L" * 90 + b": an implausibly long label\n"
+    b"[13/02/2024, 99:99] not a message: a quoted body line\n"
+    b"[2024-02-14, 00:00] \xe2\x80\x8e+44 20 7946 0958: a number with a leading mark\n"
+)
+
+_WHATSAPP_BARE_CR = b"01/02/2024, 09:01 - Ada Lovelace: one\r13/02/2024, 09:02 - Ada Lovelace: two\r"
+
+_WHATSAPP_NO_TRAILING_NEWLINE = b"2024-03-01, 09:00 - Ada Lovelace: no trailing newline"
+
+_WHATSAPP_SELF_ONLY_DAY = (
+    b"2024-05-01, 09:00 - You: a day of nothing but my own messages\n"
+    b"2024-05-02, 09:01 - Ada Lovelace: a reply the next day\n"
+)
+
 CORPUS: tuple[SourceFixture, ...] = (
     SourceFixture("vcard-minimal", "vcard", _VCARD_MINIMAL, suffix=".vcf"),
     SourceFixture("vcard-rich", "vcard", _VCARD_RICH, suffix=".vcf"),
@@ -338,6 +365,18 @@ CORPUS: tuple[SourceFixture, ...] = (
     SourceFixture("mbox-three", "mbox", _MBOX, {"me@example.com"}, suffix=".mbox"),
     SourceFixture("whatsapp-chat", "whatsapp", _WHATSAPP_CHAT, self_sender="You", suffix=".txt"),
     SourceFixture("whatsapp-unresolvable", "whatsapp", _WHATSAPP_UNRESOLVABLE, self_sender="You", suffix=".txt"),
+    SourceFixture("whatsapp-month-first", "whatsapp", _WHATSAPP_MONTH_FIRST, self_sender="You", suffix=".txt"),
+    SourceFixture("whatsapp-bracketed", "whatsapp", _WHATSAPP_BRACKETED, self_sender="You", suffix=".txt"),
+    SourceFixture("whatsapp-bare-cr", "whatsapp", _WHATSAPP_BARE_CR, self_sender="You", suffix=".txt"),
+    SourceFixture(
+        "whatsapp-no-trailing-newline",
+        "whatsapp",
+        _WHATSAPP_NO_TRAILING_NEWLINE,
+        self_sender="You",
+        suffix=".txt",
+    ),
+    SourceFixture("whatsapp-empty", "whatsapp", b"", self_sender="You", suffix=".txt"),
+    SourceFixture("whatsapp-self-only-day", "whatsapp", _WHATSAPP_SELF_ONLY_DAY, self_sender="You", suffix=".txt"),
 )
 
 
