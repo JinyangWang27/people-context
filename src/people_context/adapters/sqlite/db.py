@@ -188,12 +188,16 @@ def _refuse_unsafe_directory(directory: Path) -> None:
     rests on the directory: where only the owner can write it, no other account
     can substitute anything and the whole class of races has no foothold.
 
-    A sticky directory is accepted when a trusted account owns it. `/tmp` is the
-    ordinary case and belongs to root. Sticky narrows renaming and removal to an
-    entry's own owner, *the directory's owner*, and root — so the bit alone is not
-    enough: an account that creates its own `01777` directory owns it, and may
-    rename every entry inside it. Ownership is what makes the exemption safe, not
-    the mode.
+    Ownership is checked before the mode, because an owner is never constrained by
+    it: a directory belonging to another unprivileged account can be renamed
+    through by that account whatever its bits say, and removing owner-write does
+    not help, since the owner can restore it with `chmod`. Only root and the
+    current user are trusted at any level of the chain.
+
+    A sticky directory is then accepted on the bit. `/tmp` is the ordinary case
+    and belongs to root. Sticky narrows renaming and removal to an entry's own
+    owner, the directory's owner, and root — which is safe precisely because the
+    ownership rule above has already established that the owner is trusted.
 
     Every ancestor is checked, not just the directory itself. A `0700` directory
     is only as private as the chain above it: an account that can write a
@@ -212,9 +216,20 @@ def _refuse_unsafe_directory(directory: Path) -> None:
         except OSError:
             # Unreadable or missing: SQLite raises its own error for the same path.
             continue
+        if info.st_uid not in (0, os.geteuid()):
+            owned = (
+                "that directory is owned by another local account"
+                if ancestor == directory
+                else f"{ancestor} is owned by another local account, so that directory can be replaced"
+            )
+            raise UnsafeDatabasePathError(
+                f"Refusing to use a database in {directory}: {owned}, whose owner can substitute "
+                "it while the database is being opened regardless of its permissions. Move the "
+                "database somewhere only you own."
+            )
         if not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             continue
-        if info.st_mode & stat.S_ISVTX and info.st_uid in (0, os.geteuid()):
+        if info.st_mode & stat.S_ISVTX:
             continue
         detail = (
             "that directory is writable by other local accounts"

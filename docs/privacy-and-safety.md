@@ -227,7 +227,10 @@ too, and not the bit alone: an account that creates its own `01777` directory ow
 entry inside, which is exactly the substitution the exemption was meant to exclude. Every
 ancestor is checked and not just the directory itself, because a `0700` directory is only as private as the
 chain above it: an account able to write a non-sticky ancestor can rename the whole directory away and put one
-it controls in its place. The default location and the Docker image's `/data` are owner-only already, so this
+it controls in its place. Ownership is checked before permissions at every level, because an owner is never
+constrained by the mode — a directory belonging to another unprivileged account can be renamed through by that
+account whatever its bits say, and clearing owner-write does not help because the owner can restore it with
+`chmod`. Only root and you are trusted anywhere in the chain. The default location and the Docker image's `/data` are owner-only already, so this
 refuses only a database deliberately placed somewhere shared.
 
 A sticky directory still lets any account create a name that does not exist yet, so a database file found in

@@ -354,7 +354,19 @@ def test_a_database_file_owned_by_another_account_is_refused(
     squatted = tmp_path / "people.db"
     squatted.write_bytes(b"")
     squatted.chmod(0o644)
-    monkeypatch.setattr(os, "geteuid", lambda: os.getuid() + 1)
+    # Move the *file's* owner, not ours: shifting our identity would also make the
+    # containing directory look foreign and refuse for the wrong reason.
+    real_lstat = os.lstat
+
+    def owned_by_someone_else(path: object, **kwargs: object) -> os.stat_result:
+        info = real_lstat(path, **kwargs)  # type: ignore[arg-type]
+        if str(path) == str(squatted):
+            fields = list(info)
+            fields[4] = os.getuid() + 1  # st_uid
+            return os.stat_result(fields)
+        return info
+
+    monkeypatch.setattr(os, "lstat", owned_by_someone_else)
 
     with pytest.raises(UnsafeDatabasePathError, match="belongs to another local account"):
         open_db(squatted)
@@ -479,9 +491,19 @@ def test_a_sticky_directory_owned_by_another_account_is_refused(
     hostile = tmp_path / "hostile"
     hostile.mkdir()
     hostile.chmod(0o1777)
-    monkeypatch.setattr(os, "geteuid", lambda: os.getuid() + 1)
+    real_stat = os.stat
 
-    with pytest.raises(UnsafeDatabasePathError, match="writable by other local accounts"):
+    def owned_by_someone_else(path: object, **kwargs: object) -> os.stat_result:
+        info = real_stat(path, **kwargs)  # type: ignore[arg-type]
+        if str(path) == str(hostile):
+            fields = list(info)
+            fields[4] = os.getuid() + 1  # st_uid
+            return os.stat_result(fields)
+        return info
+
+    monkeypatch.setattr(os, "stat", owned_by_someone_else)
+
+    with pytest.raises(UnsafeDatabasePathError, match="owned by another local account"):
         open_db(hostile / "people.db")
 
 
@@ -506,4 +528,47 @@ def test_a_sticky_directory_owned_by_root_is_accepted(
 
     conn = open_db(rootish / "people.db")
     conn.close()
+
+
+def test_a_private_directory_under_a_foreign_owned_ancestor_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An owner is never constrained by the mode bits on its own directory.
+
+    `/srv/attacker/alice` at `0755` passes a permission check and is still unsafe: the
+    account owning `/srv/attacker` has owner-write on it and can rename `alice` away
+    while SQLite opens the database. Removing owner-write does not help either, because
+    the owner can put it back with `chmod`. Ownership has to be checked, not permissions.
+    """
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    private = foreign / "private"
+    private.mkdir()
+    private.chmod(0o700)
+    real_stat = os.stat
+
+    def owned_by_someone_else(path: object, **kwargs: object) -> os.stat_result:
+        info = real_stat(path, **kwargs)  # type: ignore[arg-type]
+        if str(path) == str(foreign):
+            fields = list(info)
+            fields[4] = os.getuid() + 1  # st_uid
+            return os.stat_result(fields)
+        return info
+
+    monkeypatch.setattr(os, "stat", owned_by_someone_else)
+
+    with pytest.raises(UnsafeDatabasePathError, match="owned by another local account"):
+        open_db(private / "people.db")
+
+
+def test_a_root_owned_ancestor_is_accepted(tmp_path: Path) -> None:
+    """Every real path runs through root-owned ancestors, so those must stay usable."""
+    private = tmp_path / "private"
+    private.mkdir()
+    private.chmod(0o700)
+
+    conn = open_db(private / "people.db")
+    conn.close()
+
+    assert _mode(private / "people.db") == PRIVATE_FILE_MODE
 
