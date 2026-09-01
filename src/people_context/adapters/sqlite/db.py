@@ -188,9 +188,12 @@ def _refuse_unsafe_directory(directory: Path) -> None:
     rests on the directory: where only the owner can write it, no other account
     can substitute anything and the whole class of races has no foothold.
 
-    A sticky directory is accepted. `/tmp` is the ordinary case, and the sticky
-    bit is exactly the rule that entries may only be renamed or removed by their
-    owner, which is the capability the substitution needs.
+    A sticky directory is accepted when a trusted account owns it. `/tmp` is the
+    ordinary case and belongs to root. Sticky narrows renaming and removal to an
+    entry's own owner, *the directory's owner*, and root — so the bit alone is not
+    enough: an account that creates its own `01777` directory owns it, and may
+    rename every entry inside it. Ownership is what makes the exemption safe, not
+    the mode.
 
     Every ancestor is checked, not just the directory itself. A `0700` directory
     is only as private as the chain above it: an account that can write a
@@ -205,13 +208,13 @@ def _refuse_unsafe_directory(directory: Path) -> None:
         return
     for ancestor in [directory, *directory.parents]:
         try:
-            mode = os.stat(ancestor).st_mode
+            info = os.stat(ancestor)
         except OSError:
             # Unreadable or missing: SQLite raises its own error for the same path.
             continue
-        if not mode & (stat.S_IWGRP | stat.S_IWOTH):
+        if not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
             continue
-        if mode & stat.S_ISVTX:
+        if info.st_mode & stat.S_ISVTX and info.st_uid in (0, os.geteuid()):
             continue
         detail = (
             "that directory is writable by other local accounts"

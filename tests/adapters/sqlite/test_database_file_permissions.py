@@ -314,9 +314,10 @@ def test_a_group_writable_directory_is_refused(tmp_path: Path) -> None:
 def test_a_sticky_directory_is_accepted(tmp_path: Path) -> None:
     """`/tmp` is the ordinary case, and sticky is the rule the substitution needs broken.
 
-    Entries in a sticky directory may only be renamed or removed by their owner, which is
-    exactly the capability an ABA swap needs. Refusing these as well would break the
-    common ad-hoc database under `/tmp` without closing anything.
+    Sticky narrows renaming and removal to an entry's own owner, the directory's owner,
+    and root — so it closes the ABA swap for a directory a trusted account owns, which
+    `/tmp` is. Refusing those as well would break the common ad-hoc database without
+    closing anything.
     """
     sticky = tmp_path / "tmpish"
     sticky.mkdir()
@@ -463,3 +464,46 @@ def test_a_path_that_never_settles_is_refused(
 
     with pytest.raises(UnsafeDatabasePathError, match="kept changing"):
         open_db(db_path)
+
+
+def test_a_sticky_directory_owned_by_another_account_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The sticky bit alone does not make a shared directory safe.
+
+    POSIX lets an entry be renamed or removed by its own owner, *the directory's owner*,
+    or root. An account that creates its own `01777` directory therefore owns it and can
+    rename every entry inside — including the prepared database, which is the ABA swap the
+    sticky exemption was assumed to prevent. Ownership is what makes the exemption safe.
+    """
+    hostile = tmp_path / "hostile"
+    hostile.mkdir()
+    hostile.chmod(0o1777)
+    monkeypatch.setattr(os, "geteuid", lambda: os.getuid() + 1)
+
+    with pytest.raises(UnsafeDatabasePathError, match="writable by other local accounts"):
+        open_db(hostile / "people.db")
+
+
+def test_a_sticky_directory_owned_by_root_is_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`/tmp` is root-owned and sticky, and must keep working."""
+    rootish = tmp_path / "tmpish"
+    rootish.mkdir()
+    rootish.chmod(0o1777)
+    real_stat = os.stat
+
+    def owned_by_root(path: object, **kwargs: object) -> os.stat_result:
+        info = real_stat(path, **kwargs)  # type: ignore[arg-type]
+        if str(path) == str(rootish):
+            fields = list(info)
+            fields[4] = 0  # st_uid
+            return os.stat_result(fields)
+        return info
+
+    monkeypatch.setattr(os, "stat", owned_by_root)
+
+    conn = open_db(rootish / "people.db")
+    conn.close()
+

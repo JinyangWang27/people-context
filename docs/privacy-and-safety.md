@@ -221,8 +221,10 @@ None of that can be made airtight on its own, so the database's **directory** mu
 A directory writable by other local accounts is refused outright: an account that can write it can rename the
 prepared file away, let SQLite open a file it controls, and restore the original before any later check looks,
 and `sqlite3` accepts a path rather than a descriptor, so nothing in-process can bind the driver's open to a
-verified file. A sticky directory such as `/tmp` is accepted, because the sticky bit is precisely the rule that
-entries may only be renamed or removed by their owner — the capability the substitution requires. Every
+verified file. A sticky directory owned by a trusted account — `/tmp`, which belongs to root — is accepted, because sticky
+narrows renaming and removal to an entry's own owner, the directory's owner, and root. Ownership is checked
+too, and not the bit alone: an account that creates its own `01777` directory owns it and may rename every
+entry inside, which is exactly the substitution the exemption was meant to exclude. Every
 ancestor is checked and not just the directory itself, because a `0700` directory is only as private as the
 chain above it: an account able to write a non-sticky ancestor can rename the whole directory away and put one
 it controls in its place. The default location and the Docker image's `/data` are owner-only already, so this
