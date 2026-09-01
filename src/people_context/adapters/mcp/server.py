@@ -17,6 +17,7 @@ from pathlib import Path
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
+from people_context import __version__
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite.db import EncryptedDatabaseError
@@ -84,7 +85,7 @@ def build_server(
     runtime = build_runtime(db_path, warning=logger.warning, encrypted=encrypted, clock=clock)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
-    mcp = MCPServer(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+    mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=SERVER_INSTRUCTIONS)
     register_all(mcp, runtime.use_cases)
     return mcp
 
