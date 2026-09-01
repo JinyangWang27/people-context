@@ -13,6 +13,7 @@ on the profile directory's permissions and the encrypted extra instead.
 from __future__ import annotations
 
 import os
+import sqlite3
 import stat
 import sys
 from pathlib import Path
@@ -172,3 +173,22 @@ def test_the_database_opened_is_the_file_that_was_secured(tmp_path: Path) -> Non
 def test_resolving_the_in_memory_database_secures_nothing(tmp_path: Path) -> None:
     assert _resolve_target(":memory:") == (":memory:", True)
     assert list(tmp_path.iterdir()) == []
+
+
+def test_a_symlink_into_a_missing_directory_defers_to_sqlite(tmp_path: Path) -> None:
+    """Securing the file must not quietly invent directories the caller never named.
+
+    `mkdir` covers the parent of the path that was passed; a link pointing somewhere
+    else entirely is a different location, and creating it here would scatter empty
+    directories on a typo. SQLite raises for the same path anyway, so the pre-creation
+    step stands aside and lets that be the error the caller sees.
+    """
+    missing = tmp_path / "absent"
+    link = tmp_path / "people.db"
+    link.symlink_to(missing / "target.db")
+
+    with pytest.raises(sqlite3.OperationalError, match="unable to open database file"):
+        open_db(link)
+
+    assert not missing.exists()
+
