@@ -38,7 +38,7 @@ def atomic_write_private_text(path: str | Path, text: str) -> Path:
             os.close(handle)
             raise
         with stream:
-            _restrict_to_owner(stream.fileno())
+            restrict_fd_to_owner(stream.fileno())
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
@@ -54,8 +54,15 @@ def atomic_write_private_text(path: str | Path, text: str) -> Path:
     return destination
 
 
-def _restrict_to_owner(fd: int) -> None:
-    """Force owner-only permissions before the file becomes reachable by name."""
+def restrict_fd_to_owner(fd: int) -> None:
+    """Force owner-only permissions on an open descriptor.
+
+    `os.open`'s `mode` is only a request: the process umask masks it, and a umask
+    that clears an owner bit (`0o200`, say) yields `0o400` rather than the `0o600`
+    intended. Setting the mode explicitly on the descriptor restores exactly the
+    requested permissions, and doing it through the descriptor rather than the
+    path means no window where the name resolves to something else.
+    """
     if hasattr(os, "fchmod"):
         with suppress(OSError, NotImplementedError):
             os.fchmod(fd, PRIVATE_FILE_MODE)

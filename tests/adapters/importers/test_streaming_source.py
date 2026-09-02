@@ -68,6 +68,15 @@ class _RecordingBuffer:
     def tell(self) -> int:
         return self._stream.tell()
 
+    def flush(self) -> None:
+        """Absorb the flush `TextIOWrapper` issues when it is finalized.
+
+        The wrapper is read-only here, but closing one — including at garbage
+        collection — still reaches for `flush` on the object underneath. Without
+        it the call surfaces as an unraisable `AttributeError` from the metering
+        proxy long after the assertions have passed.
+        """
+
     def close(self) -> None:
         self._stream.close()
 
