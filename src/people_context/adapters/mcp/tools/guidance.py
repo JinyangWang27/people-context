@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
+from people_context.adapters.mcp.tools.references import resolve_reference
 from people_context.adapters.mcp.tools.tool_errors import call_action
 from people_context.app.context import SetCommunicationPhilosophyInput
 
@@ -22,9 +23,18 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register communication guidance and preference tools."""
 
     @mcp.tool(annotations=_READ_ONLY)
-    async def get_communication_guidance(person_id: str, situation: str | None = None) -> dict[str, Any]:
-        """Return sensitivity-gated signal for client-composed communication advice."""
-        return deps.get_communication_guidance.execute(person_id, situation=situation).model_dump(mode="json")
+    async def get_communication_guidance(
+        person_id: str | None = None, situation: str | None = None, person: str | None = None
+    ) -> dict[str, Any]:
+        """Return sensitivity-gated signal for client-composed communication advice.
+
+        Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve inline;
+        an ambiguous name returns candidates instead of guidance.
+        """
+        target = resolve_reference(deps, person_id=person_id, person=person)
+        if isinstance(target, dict):
+            return target
+        return deps.get_communication_guidance.execute(target, situation=situation).model_dump(mode="json")
 
     @mcp.tool(annotations=_WRITE)
     async def set_communication_philosophy(text: str) -> dict[str, Any]:

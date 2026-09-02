@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from people_context.adapters.runtime import ApplicationRuntime
+from people_context.app.capture import QuickCaptureInput
 from people_context.app.context import SetCommunicationPhilosophyInput
 from people_context.app.exports import render_person_index_json
 from people_context.app.people import AddAliasInput, EditPersonInput, PersonNameCollisionError
@@ -147,3 +149,34 @@ def cmd_delete(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     runtime.use_cases.forget.execute(person.id, "person", source="cli")
     print("Deleted.")
     return 0
+
+
+def cmd_remember(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """`pctx remember PERSON [NOTE]`: record one statement about one person in one audited transaction."""
+    result = runtime.use_cases.quick_capture.execute(
+        QuickCaptureInput(
+            person=args.person,
+            note=args.note,
+            kind=args.kind,
+            org=args.org,
+            role=args.role,
+            relationship=args.relationship,
+            predicate=args.predicate,
+            trait_category=args.trait_category,
+            sensitivity=args.sensitivity,
+            source="cli/remember",
+        )
+    )
+    if args.json:
+        print(json.dumps(result.model_dump(mode="json"), indent=2))
+        return 0 if result.status == "recorded" else 1
+    if result.status == "recorded":
+        verb = "Created" if result.created else "Matched"
+        print(f"{verb} {result.canonical_name} ({result.person_id})")
+        for record in result.recorded:
+            print(f"  + {record.kind}: {record.summary}  [{record.id}]")
+        return 0
+    print(result.message or result.status, file=sys.stderr)
+    for candidate in result.candidates:
+        print(f"  {candidate.score:.2f}  {candidate.canonical_name}  ({candidate.person_id})", file=sys.stderr)
+    return 2 if result.status in ("ambiguous", "unconfirmed") else 1

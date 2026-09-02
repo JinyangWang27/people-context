@@ -55,6 +55,7 @@ from people_context.adapters.sqlite.stats_reader import SqliteStatsReader
 from people_context.adapters.sqlite.timeline_reader import SqlitePersonTimelineReader
 from people_context.adapters.sqlite.trait_evidence import SqliteTraitEvidenceStore
 from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
+from people_context.app.capture import QuickCapture
 from people_context.app.context import (
     GetCommunicationGuidance,
     GetPersonContext,
@@ -143,6 +144,7 @@ class RuntimeUseCases:
     search_people: SearchPeople
     semantic_search: SemanticSearch
     remember_person: RememberPerson
+    quick_capture: QuickCapture
     edit_person: EditPerson
     add_alias: AddAlias
     set_relationship: SetRelationship
@@ -290,8 +292,22 @@ def build_runtime(
     get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
     get_communication_guidance = GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock)
 
+    resolve_person = ResolvePerson(repo, context_reader, runtime_clock)
+    quick_capture = QuickCapture(
+        repo,
+        resolve_person,
+        remember_person,
+        set_affiliation,
+        set_relationship,
+        record_fact,
+        record_trait,
+        record_interaction,
+        audit,
+    )
+
     use_cases = RuntimeUseCases(
-        resolve_person=ResolvePerson(repo, context_reader, runtime_clock),
+        resolve_person=resolve_person,
+        quick_capture=quick_capture,
         get_person_context=get_person_context,
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),

@@ -20,11 +20,13 @@ what encryption does and does not protect.
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
 | `init` | Safely seed or add to the self identity, optionally review a vCard import, and set a philosophy. |
 | `demo [--reset]` | Seed the isolated packaged fictional demo; refuse replacement unless `--reset` is supplied. |
+| `setup CLIENT [--scope user\|project] [--dry-run]` | Write the stdio server into one MCP client's configuration (`claude-desktop`, `claude-code`, `codex`, `cursor`, `windsurf`, `vscode`) or print the generic `json` snippet. |
 | `list [--all] [--limit N] [--json]` | List people; `--all` includes soft-deleted rows, `--json` emits the person index. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
+| `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; exits 2 with candidates when the name is ambiguous or only loosely matched. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
@@ -69,6 +71,31 @@ additive onboarding; it keeps that person's id and canonical name. Optional vCar
 stage/review/commit gate and commits only the candidate ids entered at the prompt. The self identity exists before
 the file is parsed, so a card matching a self handle is excluded with all its dependent candidates. The optional
 one-line communication philosophy is prompted last.
+
+## Connect a client
+
+```bash
+pctx setup claude-desktop
+pctx setup cursor --scope project --dry-run
+pctx setup json
+```
+
+`setup` writes the canonical `uvx --from people-context people-context` entry into the client's own MCP
+configuration so the copy-paste step disappears. File-configured clients (Claude Desktop, Cursor, Windsurf,
+VS Code) are edited in place: the existing file is parsed, only the `people-context` entry is added or
+replaced, every other server and key is preserved, the previous file is kept beside it as `<name>.bak`, and the
+result is written atomically. A symlink or a file that is not a JSON object is refused rather than overwritten.
+Clients that own their configuration through a CLI (Claude Code, Codex) are driven through `claude mcp add` /
+`codex mcp add` with the same server command, or the exact command is printed when that CLI is not on `PATH`.
+
+`--scope project` targets `.cursor/mcp.json` or `.vscode/mcp.json` in the current directory, or Claude Code's
+project scope; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints what would be written
+or run and changes nothing. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
+server resolves the path exactly as the CLI does. `--encrypted` adds the flag and never the key: the client must
+launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment.
+
+At a terminal, `init` ends by offering the same step, so a fresh install finishes with a client that can already
+call the server.
 
 ## Import
 

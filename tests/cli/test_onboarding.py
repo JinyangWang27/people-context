@@ -568,3 +568,32 @@ def test_init_reports_an_already_committed_vcard_instead_of_failing(
     assert "already imported" in output.out
     assert "Onboarding complete." in output.out
     assert "vCard import failed" not in output.err
+
+
+def test_init_offers_client_setup_only_at_a_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A person at a TTY is asked once; the answer `json` exercises the setup path without touching any file."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    _input_sequence(monkeypatch, ["Maya Chen", "", "", "", "json"])
+
+    assert cli.main(["--db", str(tmp_path / "fresh.db"), "init"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Connect an MCP client now?" not in out  # the prompt text goes to input(), not stdout
+    assert '"people-context"' in out and '"uvx"' in out
+    assert "pctx setup <client>" in out
+
+
+def test_init_skips_the_client_prompt_when_not_interactive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    _input_sequence(monkeypatch, ["Maya Chen", "", "", ""])  # one answer fewer: no client question
+
+    assert cli.main(["--db", str(tmp_path / "fresh.db"), "init"]) == 0
+    assert "pctx setup <client>" in capsys.readouterr().out
