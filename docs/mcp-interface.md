@@ -19,12 +19,12 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `get_person_context` | Bounded, sensitivity-gated person context. | `person_id` or `person` (a name), optional purpose / `include_communication`, `max_items` | Stable `PersonContextResult` with additive `withheld` counts. |
 | `get_communication_guidance` | Structured communication signals, not generated advice. | `person_id` or `person`, optional situation | Traits, relationships, roles, friction notes, reminders, philosophy. |
 | `list_reminders` | Pull-based reminder listing. | optional `person_id` or `person`, due/status filters | Ordered reminders. |
-| `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
+| `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id` or `person`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
 | `find_connection` | One deterministic shortest relationship path. | `person_a`, `person_b`, `max_depth=4` | Ordered perspective-rendered hops or not-connected. |
 | `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
 | `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` or `person` | Ordered entries and `skipped_unparseable`. |
 | `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id` or `person`, `limit=50` | Ordered entries, `found`, and `truncated`. |
-| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id`, `limit=50` | Facts, traits, observations, deterministic `signals`, and per-collection truncation. |
+| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id` or `person`, `limit=50` | Facts, traits, observations, deterministic `signals`, and per-collection truncation. |
 
 | `review_import` | Staged candidates and statuses for one batch. | `batch_id` | Candidate rows; inspection only. |
 
@@ -33,8 +33,10 @@ though it never mutated anything; correcting the annotation removes a spurious a
 
 ### Naming a person instead of passing an id
 
-Every read above that takes a `person_id` also accepts `person`: the name, nickname, or alias as the user said
-it. The tool resolves it through the same `resolve_person` pipeline and applies the same contract — an
+Every ordinary read above that takes a single `person_id` — `get_person_context`, `get_communication_guidance`,
+`list_reminders`, `get_relationship_graph`, `get_person_timeline`, `get_consolidation_context`, and
+`upcoming_dates` — also accepts `person`: the name, nickname, or alias as the user said it. `find_connection` and
+the operator-elevated `get_sensitive_person_context` take ids only. The tool resolves it through the same `resolve_person` pipeline and applies the same contract — an
 `ambiguous` resolution returns `{"error": "ambiguous_person", "candidates": [...]}` and reads nothing, no match
 returns `{"error": "person_not_found"}`, and neither argument returns `{"error": "missing_person"}`. Passing
 `person_id` keeps the previous behavior exactly; `person` is additive and saves the resolve round-trip when the
@@ -623,7 +625,12 @@ Response:
 ```
 
 `status` is one of `recorded`, `ambiguous` (several candidates close together), `unconfirmed` (one weak
-candidate), `no_self`, or `nothing_to_record` (a bare name). Every status other than `recorded` carries an
+candidate), `no_self`, `nothing_to_record` (a bare name), or `invalid_request`. The last covers a structural
+`kind` without its payload (`affiliation` without `org`, `relationship` without `relationship`, a note kind
+without `note`) and an elevated `sensitivity` combined with `org` or `relationship`: affiliations and
+relationships carry no sensitivity level and are disclosed by every ordinary read, so the call refuses rather
+than silently recording an ungated row — record the private statement as a `fact` instead. Both checks run
+before any resolution or write. Every status other than `recorded` carries an
 empty `recorded` list and writes nothing; `ambiguous` and `unconfirmed` return `candidates` so the agent can ask.
 All rows share one `transaction_id` in the audit log and changelog, exactly as the individual tools would have
 written them, and a failure anywhere rolls back everything including a person created moments earlier.

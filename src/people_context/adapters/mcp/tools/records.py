@@ -158,6 +158,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         evidence_note: str | None = None,
         confidence: float | None = None,
         sensitivity: Sensitivity | None = None,
+        evidence_ids: list[str] | None = None,
     ) -> dict[str, Any]:
         """Record a derived trait with validated category and provenance.
 
@@ -174,6 +175,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                     evidence_note=evidence_note,
                     confidence=confidence,
                     sensitivity=sensitivity if sensitivity is not None else Sensitivity.PERSONAL,
+                    evidence_ids=list(evidence_ids or []),
                 )
             )
         )

@@ -78,7 +78,9 @@ control.
   nobody matches, and records the note, affiliation, or relationship in one audited
   transaction. It never guesses between similar names: `status: ambiguous` or
   `unconfirmed` returns candidates and records nothing, so ask and call again with the
-  exact name. Set `sensitivity` to `sensitive` or `restricted` for private matters.
+  exact name. Set `sensitivity` to `sensitive` or `restricted` for private matters, as a
+  `note`; an elevated level with `org` or `relationship` is refused, because those rows
+  carry no sensitivity and every ordinary read discloses them.
 - Everything extracted from notes, prior conversation, or other agent-visible text —
   facts, affiliations, interactions, and newly mentioned people — goes through the
   staged capture flow, never through a direct write.

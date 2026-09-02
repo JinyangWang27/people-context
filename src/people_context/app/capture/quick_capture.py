@@ -133,7 +133,7 @@ class CapturedRecord(BaseModel):
 class QuickCaptureResult(BaseModel):
     """What happened. ``recorded`` is empty unless ``status`` is ``recorded``."""
 
-    status: Literal["recorded", "ambiguous", "unconfirmed", "no_self", "nothing_to_record"]
+    status: Literal["recorded", "ambiguous", "unconfirmed", "no_self", "nothing_to_record", "invalid_request"]
     person_id: str | None = None
     canonical_name: str | None = None
     created: bool = False
@@ -170,6 +170,31 @@ def classify_note(note: str) -> tuple[RecordedKind, TraitCategory | None]:
     return "fact", None
 
 
+def _validate(data: QuickCaptureInput, note: str | None) -> str | None:
+    """Refuse, before anything is resolved or created, a request that could not record what it means.
+
+    Two shapes are caught here. A structural ``kind`` without its payload would create the person
+    and then record nothing, reporting success. And an affiliation or relationship carries no
+    sensitivity field, so an elevated ``sensitivity`` on one would be silently dropped and the row
+    disclosed by every ordinary read — the exact outcome the level was meant to prevent.
+    """
+    if data.kind == "affiliation" and data.org is None:
+        return "kind=affiliation needs `org`; nothing was recorded."
+    if data.kind == "relationship" and data.relationship is None:
+        return "kind=relationship needs `relationship`; nothing was recorded."
+    if data.kind in ("fact", "trait", "interaction") and note is None:
+        return f"kind={data.kind} needs `note`; nothing was recorded."
+    if data.sensitivity in (Sensitivity.SENSITIVE, Sensitivity.RESTRICTED) and (
+        data.org is not None or data.relationship is not None
+    ):
+        return (
+            "Affiliations and relationships have no sensitivity level and are disclosed by every ordinary "
+            "read, so they cannot be recorded as sensitive or restricted; nothing was recorded. Record the "
+            "private statement as a fact instead (kind=fact), and leave the affiliation or relationship out."
+        )
+    return None
+
+
 class QuickCapture:
     """Resolve, create if needed, record once, commit once."""
 
@@ -203,6 +228,9 @@ class QuickCapture:
                 status="nothing_to_record",
                 message="Give a note, an org, or a relationship; a bare name records nothing.",
             )
+        invalid = _validate(data, note)
+        if invalid is not None:
+            return QuickCaptureResult(status="invalid_request", message=invalid)
         if data.relationship is not None and self._people.get_self() is None:
             return QuickCaptureResult(
                 status="no_self",

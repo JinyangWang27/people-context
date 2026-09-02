@@ -91,8 +91,9 @@ Clients that own their configuration through a CLI (Claude Code, Codex) are driv
 `--scope project` targets `.cursor/mcp.json` or `.vscode/mcp.json` in the current directory, or Claude Code's
 project scope; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints what would be written
 or run and changes nothing. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
-server resolves the path exactly as the CLI does. `--encrypted` adds the flag and never the key: the client must
-launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment.
+server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. `--encrypted` adds the flag and never
+the key: the client must launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment, and that reminder
+goes to stderr so `setup json` stays one JSON document on stdout.
 
 At a terminal, `init` ends by offering the same step, so a fresh install finishes with a client that can already
 call the server.

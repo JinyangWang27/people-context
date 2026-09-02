@@ -217,7 +217,7 @@ class TestWrite:
             )
         assert real.read_text() == "{}"
 
-    def test_encrypted_setup_explains_where_the_key_must_come_from(self, tmp_path: Path) -> None:
+    def test_encrypted_setup_adds_the_flag_and_never_a_key(self, tmp_path: Path) -> None:
         lines = run_setup(
             "cursor",
             scope="project",
@@ -229,7 +229,9 @@ class TestWrite:
             cwd=tmp_path,
         )
 
-        assert any("PEOPLE_CONTEXT_DB_KEY" in line for line in lines)
+        joined = "\n".join(lines)
+        assert '"--encrypted"' in joined
+        assert "PEOPLE_CONTEXT_DB_KEY" not in joined
 
 
 class TestClientClis:
@@ -292,3 +294,24 @@ class TestCommandLine:
         assert cli.main(["setup", "windsurf", "--scope", "project"]) == 1
 
         assert "Error:" in capsys.readouterr().err
+
+    def test_encrypted_json_stays_one_document_with_the_key_notice_on_stderr(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.setenv("PEOPLE_CONTEXT_DB_KEY", "secret")
+
+        assert cli.main(["--encrypted", "setup", "json"]) == 0
+
+        captured = capsys.readouterr()
+        document = json.loads(captured.out)
+        assert document["mcpServers"]["people-context"]["args"][-1] == "--encrypted"
+        assert "PEOPLE_CONTEXT_DB_KEY" in captured.err and "secret" not in captured.err
+
+    def test_relative_db_is_anchored_to_the_setup_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        entry = build_entry("data/people.db", encrypted=False)
+
+        assert entry.env == {"PEOPLE_CONTEXT_DB": str(tmp_path / "data" / "people.db")}

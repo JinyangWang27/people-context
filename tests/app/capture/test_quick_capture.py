@@ -176,3 +176,33 @@ class TestRecording:
             runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", note="moved to Berlin"))
 
         assert runtime.repo.list_people() == []
+
+
+class TestInvalidRequests:
+    """Refused before any resolution or write: the person is never created for a request that records nothing."""
+
+    @pytest.mark.parametrize(
+        "data",
+        [
+            QuickCaptureInput(person="Alice Ng", note="x", kind="affiliation"),
+            QuickCaptureInput(person="Alice Ng", note="x", kind="relationship"),
+            QuickCaptureInput(person="Alice Ng", org="Acme", kind="fact"),
+            QuickCaptureInput(person="Alice Ng", org="Mayo Clinic", role="patient", sensitivity=Sensitivity.SENSITIVE),
+            QuickCaptureInput(person="Alice Ng", relationship="friend_of", sensitivity=Sensitivity.RESTRICTED),
+        ],
+    )
+    def test_structural_kind_without_payload_or_with_elevated_sensitivity(
+        self, runtime: ApplicationRuntime, data: QuickCaptureInput
+    ) -> None:
+        result = runtime.use_cases.quick_capture.execute(data)
+
+        assert result.status == "invalid_request"
+        assert result.recorded == []
+        assert runtime.repo.list_people() == []
+
+    def test_sensitive_note_alone_is_still_fine(self, runtime: ApplicationRuntime) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="patient at Mayo Clinic", sensitivity=Sensitivity.SENSITIVE)
+        )
+
+        assert result.status == "recorded" and result.recorded[0].kind == "fact"

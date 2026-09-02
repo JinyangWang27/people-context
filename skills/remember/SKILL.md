@@ -59,8 +59,10 @@ records the statement through the same audited writes as the individual tools, a
 commits them together. It **never guesses between similar names**: a `status` of
 `ambiguous` or `unconfirmed` returns candidates and records nothing — surface them,
 ask, and call again with the exact canonical name or a unique alias. Set `sensitivity`
-to `sensitive` or `restricted` for health, financial, and other private matters, and
-pass `source` as `claude-code-remember`.
+to `sensitive` or `restricted` for health, financial, and other private matters — as a
+`note` (a fact), never with `org` or `relationship`, which carry no sensitivity and are
+refused at an elevated level (`status: invalid_request`) — and pass `source` as
+`claude-code-remember`.
 
 `remember` applies only to what the invocation states **directly**. Anything derived
 from prior context, and any request carrying several people or several separate

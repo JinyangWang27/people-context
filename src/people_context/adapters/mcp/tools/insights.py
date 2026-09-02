@@ -76,10 +76,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_READ_ONLY)
     async def get_consolidation_context(
-        person_id: str,
+        person_id: str | None = None,
         limit: int = DEFAULT_CONSOLIDATION_LIMIT,
+        person: str | None = None,
     ) -> dict[str, Any]:
         """Return one person's stored facts, traits, and observations plus how they relate.
+
+        Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve inline.
 
         Use this before proposing maintenance. `signals` names pairs of records that share a
         predicate or category and says how they stand — `duplicate_fact`, `restated_fact`,
@@ -93,9 +96,12 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         names only evidence that is itself ordinary. An unknown or removed person returns
         `found: false` rather than an error.
         """
+        target = resolve_reference(deps, person_id=person_id, person=person)
+        if isinstance(target, dict):
+            return target
         try:
             return deps.get_consolidation_context.execute(
-                person_id,
+                target,
                 limit=limit,
                 include_sensitive=False,
             ).model_dump(mode="json")

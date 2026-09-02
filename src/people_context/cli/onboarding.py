@@ -27,7 +27,7 @@ from people_context.cli.rendering import (
     print_import_review,
 )
 from people_context.cli.setup import CLIENTS as SETUP_CLIENTS
-from people_context.cli.setup import SetupError, run_setup
+from people_context.cli.setup import SetupError, encrypted_key_notice, run_setup
 from people_context.demo_seed import (
     DEMO_AFFILIATIONS,
     DEMO_FACTS,
@@ -41,7 +41,7 @@ from people_context.domain.shared import normalize_name
 _DEMO_FILENAME = "demo.db"
 
 
-def cmd_init(runtime: ApplicationRuntime, explicit_db_path: str | None = None) -> int:
+def cmd_init(runtime: ApplicationRuntime, explicit_db_path: str | None = None, encrypted: bool = False) -> int:
     """Run safe, additive onboarding through audited application use cases."""
     target, fresh, exit_code = _preflight_init(runtime)
     if exit_code != 0:
@@ -101,7 +101,7 @@ def cmd_init(runtime: ApplicationRuntime, explicit_db_path: str | None = None) -
         )
         print("Communication philosophy recorded.")
     print("Onboarding complete.")
-    _offer_client_setup(explicit_db_path)
+    _offer_client_setup(explicit_db_path, encrypted)
     print()
     print("Try these with your agent:")
     print('  "Who is <name>?"')
@@ -112,7 +112,7 @@ def cmd_init(runtime: ApplicationRuntime, explicit_db_path: str | None = None) -
     return 0
 
 
-def _offer_client_setup(explicit_db_path: str | None) -> None:
+def _offer_client_setup(explicit_db_path: str | None, encrypted: bool) -> None:
     """Offer to wire an MCP client, only when a person is at the terminal to answer.
 
     Scripted runs (a pipe, CI, a test feeding fixed answers) get the same printed hint every run gets and no
@@ -128,12 +128,14 @@ def _offer_client_setup(explicit_db_path: str | None) -> None:
         print(f"Unknown client {answer!r}; run `pctx setup <client>` later.")
         return
     try:
-        lines = run_setup(answer, scope="user", db_path=explicit_db_path, encrypted=False, dry_run=False)
+        lines = run_setup(answer, scope="user", db_path=explicit_db_path, encrypted=encrypted, dry_run=False)
     except SetupError as exc:
         print(f"Client setup failed: {exc}", file=sys.stderr)
         return
     for line in lines:
         print(line)
+    if encrypted:
+        print(encrypted_key_notice(), file=sys.stderr)
 
 
 def _preflight_init(runtime: ApplicationRuntime) -> tuple[Person | None, bool, int]:

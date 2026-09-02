@@ -127,3 +127,66 @@ def test_schemas_spell_out_the_vocabulary(tmp_path: Path) -> None:
     assert "org" in str(hints)
     assert tools["review_import"].annotations.read_only_hint is True
     assert tools["remember"].annotations.read_only_hint is False
+
+
+def test_graph_and_consolidation_accept_a_name_and_refuse_nothing(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "graph.db")
+
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+        await client.call_tool("remember", {"person": "Alice Ng", "note": "moved to Berlin"})
+        graph = await client.call_tool("get_relationship_graph", {"person": "Alice Ng"})
+        consolidation = await client.call_tool("get_consolidation_context", {"person": "alice ng"})
+        errors = []
+        for tool in ("get_relationship_graph", "get_consolidation_context"):
+            errors.append((await client.call_tool(tool, {})).structured_content["error"])
+        return graph.structured_content, consolidation.structured_content, errors
+
+    graph, consolidation, errors = _run(server, flow)
+
+    assert [node["name"] for node in graph["nodes"]] == ["Alice Ng"]
+    assert consolidation["found"] is True
+    assert errors == ["missing_person", "missing_person"]
+
+
+def test_record_trait_forwards_evidence_ids(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "evidence.db")
+
+    async def flow(client: Client) -> dict[str, Any]:
+        remembered = await client.call_tool(
+            "remember", {"person": "Alice Ng", "note": "met today, pushed back on the timeline"}
+        )
+        person_id = remembered.structured_content["person_id"]
+        interaction_id = remembered.structured_content["recorded"][0]["id"]
+        await client.call_tool(
+            "record_trait",
+            {
+                "person_id": person_id,
+                "category": "communication_style",
+                "value": "pushes back on timelines",
+                "evidence_note": "seen once",
+                "evidence_ids": [interaction_id],
+            },
+        )
+        context = await client.call_tool("get_person_context", {"person_id": person_id, "include_communication": True})
+        return context.structured_content
+
+    context = _run(server, flow)
+
+    assert len(context["traits"]) == 1
+    assert [link["evidence_type"] for link in context["trait_evidence"]] == ["interaction"]
+
+
+def test_elevated_structural_capture_is_refused(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "elevated.db")
+
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any]]:
+        refused = await client.call_tool(
+            "remember", {"person": "Alice Ng", "org": "Mayo Clinic", "role": "patient", "sensitivity": "sensitive"}
+        )
+        lookup = await client.call_tool("resolve_person", {"query": "Alice Ng"})
+        return refused.structured_content, lookup.structured_content
+
+    refused, lookup = _run(server, flow)
+
+    assert refused["status"] == "invalid_request" and refused["recorded"] == []
+    assert lookup["candidates"] == []

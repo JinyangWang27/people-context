@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     try:
         if args.command == "init":
-            return cmd_init(runtime, args.db)
+            return cmd_init(runtime, args.db, args.encrypted)
         handler = _COMMANDS.get(args.command)
         if handler is None:
             parser.error(f"unknown command: {args.command}")

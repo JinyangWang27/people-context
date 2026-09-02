@@ -97,7 +97,9 @@ def build_entry(db_path: str | None, *, encrypted: bool) -> ServerEntry:
     if encrypted:
         args.append("--encrypted")
     if db_path:
-        env["PEOPLE_CONTEXT_DB"] = str(Path(os.path.expanduser(db_path)))
+        # The client launches the server later and from its own directory, so a relative
+        # path is anchored to where setup ran rather than persisted as written.
+        env["PEOPLE_CONTEXT_DB"] = os.path.abspath(os.path.expanduser(db_path))
     return ServerEntry(command=SERVER_COMMAND, args=tuple(args), env=env)
 
 
@@ -281,12 +283,15 @@ def run_setup(
     else:
         target = file_target(client, scope, env=env, platform=platform, cwd=cwd)
         lines = write_file_target(target, entry, dry_run=dry_run)
-    if encrypted:
-        lines.append(
-            f"Encrypted mode: the client must launch the server with {DB_KEY_ENV} set. "
-            "The key is never written to a configuration file; add it to the client's environment yourself."
-        )
     return lines
+
+
+def encrypted_key_notice() -> str:
+    """The one thing setup cannot do for an encrypted store: put the key where the client will find it."""
+    return (
+        f"Encrypted mode: the client must launch the server with {DB_KEY_ENV} set. "
+        "The key is never written to a configuration file; add it to the client's environment yourself."
+    )
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
@@ -304,4 +309,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         return 1
     for line in lines:
         print(line)
+    if args.encrypted:
+        # Guidance, not output: stderr keeps `setup json` a single JSON document on stdout.
+        print(encrypted_key_notice(), file=sys.stderr)
     return 0
