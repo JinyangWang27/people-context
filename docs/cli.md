@@ -91,7 +91,7 @@ Clients that own their configuration through a CLI (Claude Code, Codex) are driv
 `codex mcp add` with the same server command, or the exact command is printed when that CLI is not on `PATH`.
 
 `--scope project` targets `.cursor/mcp.json` or `.vscode/mcp.json` in the current directory, or Claude Code's
-project scope; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints what would be written
+project scope; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints the target path, what the write does to it, and the `people-context` entry alone — never the other servers already in the file, whose `env` blocks routinely hold other tools' API keys. It prints what would be written
 or run and changes nothing; on Windows that command is quoted for PowerShell, whose single quotes are literal, since no `cmd.exe` rendering is safe for a path containing `&` or `%…%`. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
 server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. A database selected through `PEOPLE_CONTEXT_DB` or `OPENCLAW_WORKSPACE` is written into the entry too, because a client launched from the desktop inherits none of the shell's environment and would otherwise open the default database instead; a config-file or XDG default location is left unpinned, since the server resolves those itself. `--encrypted` also decides which command the client should run, because `uvx` builds a fresh isolated
 environment on every launch. On glibc Linux x86-64 the entry selects `people-context[encrypted]`, whose wheel

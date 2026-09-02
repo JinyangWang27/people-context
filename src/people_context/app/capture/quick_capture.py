@@ -46,9 +46,11 @@ from people_context.app.records import (
     SetAffiliationInput,
 )
 from people_context.app.relationships import SetRelationship, SetRelationshipInput
+from people_context.app.relationships.policy import relationship_display_type
 from people_context.domain.shared import Sensitivity, new_id
 from people_context.domain.trait import TraitCategory
 from people_context.ports.audit_log import AuditLog
+from people_context.ports.relationship_vocabulary import RelationshipVocabularyReader
 from people_context.ports.repository import PersonReader
 
 CaptureKind = Literal["auto", "fact", "trait", "interaction", "affiliation", "relationship"]
@@ -71,8 +73,9 @@ DEFAULT_PREDICATE = "note"
 #: one of these without an explicit `occurred_at` is refused rather than dated now, the same rule
 #: the staged import path states for its `interaction` candidates. The list errs towards refusing:
 #: an unnecessary question costs a round-trip, while a missed one silently backdates the answer to
-#: "when did I last speak to this person?". Bare "May" is left out because the month is far more
-#: often the verb, and a bare year needs a preposition so "the 2026 budget" is not read as a date.
+#: "when did I last speak to this person?". Both month branches require an adjacent day number, which
+#: is what makes "May" safe to include there while a bare "may" stays the verb, and a bare year needs
+#: a preposition so "the 2026 budget" is not read as a date.
 _PAST_CUE = re.compile(
     r"""
     \b(?:
@@ -83,7 +86,7 @@ _PAST_CUE = re.compile(
       | (?:in|back\ in|during)\ (?:19|20)\d{2}
       | \d{4}[-/]\d{1,2}[-/]\d{1,2}
       | \d{1,2}[/.]\d{1,2}[/.]\d{2,4}
-      | (?:jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\ \d{1,2}
+      | (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\ \d{1,2}
       | \d{1,2}(?:st|nd|rd|th)?\ (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*
     )\b
     """,
@@ -274,6 +277,7 @@ class QuickCapture:
         record_trait: RecordTrait,
         record_interaction: RecordInteraction,
         audit: AuditLog,
+        vocabulary: RelationshipVocabularyReader,
     ) -> None:
         self._people = people
         self._resolve = resolve_person
@@ -283,6 +287,7 @@ class QuickCapture:
         self._record_fact = record_fact
         self._record_trait = record_trait
         self._record_interaction = record_interaction
+        self._vocabulary = vocabulary
         self._uow = unit_of_work_for(audit)
 
     def execute(self, data: QuickCaptureInput) -> QuickCaptureResult:
@@ -376,9 +381,17 @@ class QuickCapture:
                 ),
                 transaction_id=transaction_id,
             )
-            recorded.append(
-                CapturedRecord(kind="relationship", id=relationship.id, summary=f"{relationship.type} (from you)")
+            # `SetRelationship` stores the canonical direction, which for an inverse type such as
+            # `manager_of` means swapping the endpoints and storing `reports_to` with the other
+            # person as subject. Echoing that stored type back would confirm the opposite of what
+            # was asked, so it is rendered from the user's side exactly as every read renders it.
+            display = relationship_display_type(
+                relationship.type,
+                queried_person_id=self_person.id,
+                subject_id=relationship.subject_id,
+                vocabulary=self._vocabulary,
             )
+            recorded.append(CapturedRecord(kind="relationship", id=relationship.id, summary=f"{display} (from you)"))
         # A structural `kind` never reaches here carrying a note: `_validate` refused that pairing.
         if note is None or kind in ("affiliation", "relationship"):
             return recorded

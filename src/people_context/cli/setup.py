@@ -289,18 +289,40 @@ def _write_atomically(path: Path, document: dict[str, object]) -> None:
 
 
 def write_file_target(target: FileTarget, entry: ServerEntry, *, dry_run: bool) -> list[str]:
-    """Merge the entry into the target file, or describe what would be written."""
+    """Merge the entry into the target file, or describe what would be written.
+
+    The preview shows only the entry being added. These files hold other tools' server definitions,
+    whose `env` blocks routinely carry API keys and tokens, and a preview is written to a terminal
+    that gets scrolled back, pasted into an issue, or captured by CI. Since what a preview has to
+    answer is "where, and what will you add", printing the merged document would disclose unrelated
+    credentials to answer a question that never needed them.
+    """
     existing = _read_existing(target.path)
     document = merged_config(existing, target, entry)
-    rendered = json.dumps(document, indent=2)
     if dry_run:
-        return [f"Would write {target.path}:", rendered]
+        return [f"Would write {target.path}: {_preview_summary(existing, target)}", _rendered_entry(target, entry)]
     _write_atomically(target.path, document)
     lines = [f"Wrote `{SERVER_NAME}` into {target.path}."]
     if existing is not None:
         lines.append(f"Previous file kept at {target.path}{BACKUP_SUFFIX}.")
     lines.append(target.restart_hint)
     return lines
+
+
+def _rendered_entry(target: FileTarget, entry: ServerEntry) -> str:
+    """The entry alone, under the key it will occupy, so the shape is still obvious."""
+    return json.dumps({target.root_key: {SERVER_NAME: entry.as_json(with_type=target.with_type)}}, indent=2)
+
+
+def _preview_summary(existing: Mapping[str, object] | None, target: FileTarget) -> str:
+    """Say what the write does to the file that is there, without quoting any of it."""
+    servers = existing.get(target.root_key) if existing else None
+    names = set(servers) if isinstance(servers, Mapping) else set()
+    verb = "replacing" if SERVER_NAME in names else "adding"
+    others = len(names - {SERVER_NAME})
+    if not others:
+        return f"{verb} `{SERVER_NAME}`."
+    return f"{verb} `{SERVER_NAME}`, leaving {others} other server{'s' if others > 1 else ''} untouched."
 
 
 def cli_command(client: str, scope: str, entry: ServerEntry) -> list[str]:

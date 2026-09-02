@@ -367,3 +367,49 @@ class TestHistoricalInteractions:
         result = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", note=note))
 
         assert result.status == "recorded"
+
+
+class TestRelationshipPerspective:
+    """The stored edge is canonical; the confirmation has to read from the user's side of it."""
+
+    def test_an_inverse_type_is_reported_from_the_users_side(self, runtime: ApplicationRuntime) -> None:
+        me = _seed(runtime, "Me", is_self=True)
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", relationship="manager_of")
+        )
+
+        # Stored canonically: Alice reports_to me, with Alice as the subject.
+        edges = runtime.context_reader.list_active_relationships(me, runtime.clock.now().date())
+        assert edges[0].relationship.type == "reports_to"
+        assert edges[0].relationship.subject_id == result.person_id
+        # Reported from my side, in the vocabulary's own spelling of that direction: `manager_of` is a
+        # synonym of `manages`, so this reads "you manage Alice", as `get_person_context` displays it.
+        assert result.recorded[0].summary == "manages (from you)"
+
+    def test_a_canonical_type_is_unchanged(self, runtime: ApplicationRuntime) -> None:
+        _seed(runtime, "Me", is_self=True)
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", relationship="reports_to")
+        )
+
+        assert result.recorded[0].summary == "reports_to (from you)"
+
+    def test_a_symmetric_type_is_unchanged(self, runtime: ApplicationRuntime) -> None:
+        _seed(runtime, "Me", is_self=True)
+
+        result = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", relationship="friend_of"))
+
+        assert result.recorded[0].summary == "friend_of (from you)"
+
+    def test_may_with_a_day_is_a_date_but_the_verb_is_not(self, runtime: ApplicationRuntime) -> None:
+        dated = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="met Alice on May 12")
+        )
+        verb = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Bob Reyes", note="talked, she may present the plan")
+        )
+
+        assert dated.status == "invalid_request"
+        assert verb.status == "recorded"

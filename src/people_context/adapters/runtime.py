@@ -303,6 +303,7 @@ def build_runtime(
         record_trait,
         record_interaction,
         audit,
+        relationship_vocabulary,
     )
 
     use_cases = RuntimeUseCases(

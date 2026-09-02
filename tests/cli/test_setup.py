@@ -479,3 +479,62 @@ class TestDatabasePinning:
 class TestPlainEntry:
     def test_the_plain_entry_is_unchanged(self) -> None:
         assert list(build_entry(None, encrypted=False).args) == list(SERVER_ARGS)
+
+
+class TestPreviewRedaction:
+    """These files hold other tools' credentials; a preview answers where and what, not what else."""
+
+    def test_dry_run_omits_other_servers_and_their_secrets(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        path = tmp_path / ".cursor" / "mcp.json"
+        path.parent.mkdir()
+        path.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "github": {"command": "x", "env": {"GITHUB_TOKEN": "ghp_supersecret"}},
+                        "linear": {"command": "y", "env": {"LINEAR_API_KEY": "lin_api_secret"}},
+                    }
+                }
+            )
+        )
+
+        lines = run_setup(
+            "cursor",
+            scope="user",
+            db_path=None,
+            encrypted=False,
+            dry_run=True,
+            env=_env(tmp_path),
+            platform="linux",
+            cwd=tmp_path,
+        )
+
+        joined = "\n".join(lines)
+        assert "ghp_supersecret" not in joined
+        assert "lin_api_secret" not in joined
+        assert "github" not in joined and "linear" not in joined
+        assert "leaving 2 other servers untouched" in lines[0]
+        # What it does show is the entry, under the key it will occupy.
+        assert json.loads("\n".join(lines[1:])) == {"mcpServers": {"people-context": CANONICAL}}
+        # And it is still a preview: the file is untouched.
+        assert "people-context" not in path.read_text()
+
+    def test_a_replacement_says_so(self, tmp_path: Path) -> None:
+        path = tmp_path / ".cursor" / "mcp.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"mcpServers": {"people-context": {"command": "old"}}}))
+
+        lines = run_setup(
+            "cursor",
+            scope="user",
+            db_path=None,
+            encrypted=False,
+            dry_run=True,
+            env=_env(tmp_path),
+            platform="linux",
+            cwd=tmp_path,
+        )
+
+        assert "replacing `people-context`." in lines[0]
