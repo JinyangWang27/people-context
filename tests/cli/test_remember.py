@@ -41,3 +41,22 @@ def test_ambiguous_exits_two_and_lists_candidates(tmp_path: Path, capsys: pytest
 def test_invalid_kind_is_rejected_by_the_parser(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         cli.main(["--db", str(tmp_path / "r.db"), "remember", "Alice", "x", "--kind", "poem"])
+
+
+def test_json_mode_reports_the_same_exit_codes_as_the_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Automation reading --json must tell an unresolved name (2) from any other refusal (1)."""
+    db = str(tmp_path / "r.db")
+    cli.main(["--db", db, "remember", "Priya Raman", "x"])
+    cli.main(["--db", db, "remember", "Priya Shah", "x"])
+    capsys.readouterr()
+
+    assert cli.main(["--db", db, "remember", "Priya", "moved", "--json"]) == 2
+    assert json.loads(capsys.readouterr().out)["status"] == "ambiguous"
+
+    assert cli.main(["--db", db, "remember", "Dana Ito", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["status"] == "nothing_to_record"
+
+    assert cli.main(["--db", db, "remember", "Dana Ito", "x", "--kind", "affiliation", "--json"]) == 1
+    assert json.loads(capsys.readouterr().out)["status"] == "invalid_request"

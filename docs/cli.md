@@ -26,7 +26,7 @@ what encryption does and does not protect.
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
-| `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; exits 2 with candidates when the name is ambiguous or only loosely matched. |
+| `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |

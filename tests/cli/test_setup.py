@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import stat
 from pathlib import Path
 
@@ -315,3 +316,21 @@ class TestCommandLine:
         entry = build_entry("data/people.db", encrypted=False)
 
         assert entry.env == {"PEOPLE_CONTEXT_DB": str(tmp_path / "data" / "people.db")}
+
+
+class TestPrintedCommandSafety:
+    def test_a_path_the_shell_would_expand_is_quoted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The printed command is documented as runnable verbatim, so it must survive the shell."""
+        monkeypatch.setattr(setup.shutil, "which", lambda _name: None)
+        monkeypatch.chdir(tmp_path)
+
+        lines = run_setup("claude-code", scope="user", db_path="$HOME/`id`.db", encrypted=False, dry_run=False)
+
+        rendered = lines[1]
+        assert "'" in rendered
+        assert rendered.split()[-1].startswith("people-context")
+        # Everything the shell would act on sits inside single quotes.
+        assert "PEOPLE_CONTEXT_DB=$HOME" not in rendered
+        assert shlex.split(rendered) == cli_command(
+            "claude-code", "user", build_entry("$HOME/`id`.db", encrypted=False)
+        )

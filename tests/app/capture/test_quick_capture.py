@@ -206,3 +206,46 @@ class TestInvalidRequests:
         )
 
         assert result.status == "recorded" and result.recorded[0].kind == "fact"
+
+
+class TestStructuralPayloadsAreIndependentOfNoteKind:
+    """`kind` says how to record the note; `org` and `relationship` record their own rows regardless."""
+
+    @pytest.mark.parametrize("kind", ["auto", "fact", "trait", "interaction"])
+    def test_org_is_recorded_alongside_any_note_kind(self, runtime: ApplicationRuntime, kind: str) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="prefers short emails", kind=kind, org="Acme")  # type: ignore[arg-type]
+        )
+
+        assert result.status == "recorded"
+        assert [record.kind for record in result.recorded][0] == "affiliation"
+        assert len(result.recorded) == 2
+
+    def test_relationship_is_recorded_alongside_an_explicit_note_kind(self, runtime: ApplicationRuntime) -> None:
+        _seed(runtime, "Me", is_self=True)
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="moved to Berlin", kind="fact", relationship="manager of")
+        )
+
+        assert {record.kind for record in result.recorded} == {"relationship", "fact"}
+
+    @pytest.mark.parametrize("kind", ["affiliation", "relationship"])
+    def test_a_structural_kind_carrying_a_note_is_refused_rather_than_dropping_it(
+        self, runtime: ApplicationRuntime, kind: str
+    ) -> None:
+        _seed(runtime, "Me", is_self=True)
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(
+                person="Alice Ng",
+                note="moved to Berlin",
+                kind=kind,  # type: ignore[arg-type]
+                org="Acme",
+                relationship="manager of",
+            )
+        )
+
+        assert result.status == "invalid_request"
+        assert "would not be" in (result.message or "")
+        assert runtime.repo.list_people() == [] or [p.canonical_name for p in runtime.repo.list_people()] == ["Me"]

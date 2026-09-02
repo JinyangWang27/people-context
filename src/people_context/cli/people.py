@@ -151,6 +151,11 @@ def cmd_delete(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     return 0
 
 
+#: Statuses that mean "the name did not resolve to one person"; the CLI reports those as exit 2,
+#: matching `show`, `brief`, and the other id-or-name commands.
+_AMBIGUOUS_STATUSES = frozenset({"ambiguous", "unconfirmed"})
+
+
 def cmd_remember(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """`pctx remember PERSON [NOTE]`: record one statement about one person in one audited transaction."""
     result = runtime.use_cases.quick_capture.execute(
@@ -167,16 +172,19 @@ def cmd_remember(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             source="cli/remember",
         )
     )
+    # The exit code is the contract in docs/cli.md and does not depend on how the result is
+    # rendered: an unresolved name exits 2 with its candidates, any other refusal exits 1.
+    exit_code = 0 if result.status == "recorded" else 2 if result.status in _AMBIGUOUS_STATUSES else 1
     if args.json:
         print(json.dumps(result.model_dump(mode="json"), indent=2))
-        return 0 if result.status == "recorded" else 1
+        return exit_code
     if result.status == "recorded":
         verb = "Created" if result.created else "Matched"
         print(f"{verb} {result.canonical_name} ({result.person_id})")
         for record in result.recorded:
             print(f"  + {record.kind}: {record.summary}  [{record.id}]")
-        return 0
+        return exit_code
     print(result.message or result.status, file=sys.stderr)
     for candidate in result.candidates:
         print(f"  {candidate.score:.2f}  {candidate.canonical_name}  ({candidate.person_id})", file=sys.stderr)
-    return 2 if result.status in ("ambiguous", "unconfirmed") else 1
+    return exit_code

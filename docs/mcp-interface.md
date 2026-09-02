@@ -625,12 +625,16 @@ Response:
 ```
 
 `status` is one of `recorded`, `ambiguous` (several candidates close together), `unconfirmed` (one weak
-candidate), `no_self`, `nothing_to_record` (a bare name), or `invalid_request`. The last covers a structural
-`kind` without its payload (`affiliation` without `org`, `relationship` without `relationship`, a note kind
-without `note`) and an elevated `sensitivity` combined with `org` or `relationship`: affiliations and
-relationships carry no sensitivity level and are disclosed by every ordinary read, so the call refuses rather
-than silently recording an ungated row — record the private statement as a `fact` instead. Both checks run
-before any resolution or write. Every status other than `recorded` carries an
+candidate), `no_self`, `nothing_to_record` (a bare name), or `invalid_request`. The last covers three shapes:
+a structural `kind` without its payload (`affiliation` without `org`, `relationship` without `relationship`, a
+note kind without `note`); a structural `kind` alongside a `note`, which `kind` cannot describe and which
+would therefore be dropped; and an elevated `sensitivity` combined with `org` or `relationship`, since
+affiliations and relationships carry no sensitivity level and are disclosed by every ordinary read — record
+that private statement as a `fact` instead. All three run before any resolution or write.
+
+`org` and `relationship` are payloads rather than classifications, so they record their own rows whatever
+`kind` says about the note: `remember(person="Alice", note="prefers short emails", kind="trait", org="Acme")`
+records both the affiliation and the trait. Every status other than `recorded` carries an
 empty `recorded` list and writes nothing; `ambiguous` and `unconfirmed` return `candidates` so the agent can ask.
 All rows share one `transaction_id` in the audit log and changelog, exactly as the individual tools would have
 written them, and a failure anywhere rolls back everything including a person created moments earlier.

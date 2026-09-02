@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -251,7 +252,14 @@ def run_cli_target(client: str, scope: str, entry: ServerEntry, *, dry_run: bool
 
 
 def _quote(part: str) -> str:
-    return part if all(ch.isalnum() or ch in "-_./=:@" for ch in part) else json.dumps(part)
+    """Quote one argument for a POSIX shell.
+
+    The rendered command is printed to be pasted and run verbatim, so it must survive the shell
+    rather than merely look right. JSON's double quotes do not: a database path containing `$`,
+    a backtick, or `$(...)` would be expanded by the shell and register a different path than the
+    one the user asked for.
+    """
+    return shlex.quote(part)
 
 
 def generic_json(entry: ServerEntry) -> list[str]:

@@ -61,3 +61,18 @@ def test_resources_and_prompts_are_listed_and_readable(tmp_path: Path) -> None:
     for tool in ("resolve_person", "get_person_context", "get_communication_guidance", "list_reminders"):
         assert f"`{tool}`" in result["prep"]
     assert "commit_import" not in result["prep"]
+
+
+def test_remember_prompt_matches_the_capture_rules_it_directs_clients_to_use(tmp_path: Path) -> None:
+    """Regression: the prompt once told clients to do what `_validate` refuses, so nothing was recorded."""
+    server = build_server(db_path=tmp_path / "prompt-rules.db")
+
+    async def flow(client: Client) -> str:
+        prompt = await client.get_prompt("remember", {"statement": "Alice is a patient at Mayo Clinic"})
+        return prompt.messages[0].content.text  # type: ignore[union-attr]
+
+    body = _run(server, flow)
+
+    assert "on a `note` only" in body
+    assert "refused" in body
+    assert "invalid_request" in body

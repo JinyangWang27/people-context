@@ -173,15 +173,22 @@ def classify_note(note: str) -> tuple[RecordedKind, TraitCategory | None]:
 def _validate(data: QuickCaptureInput, note: str | None) -> str | None:
     """Refuse, before anything is resolved or created, a request that could not record what it means.
 
-    Two shapes are caught here. A structural ``kind`` without its payload would create the person
-    and then record nothing, reporting success. And an affiliation or relationship carries no
-    sensitivity field, so an elevated ``sensitivity`` on one would be silently dropped and the row
-    disclosed by every ordinary read — the exact outcome the level was meant to prevent.
+    Three shapes are caught here. A structural ``kind`` without its payload would create the person
+    and then record nothing, reporting success. A structural ``kind`` alongside a note is a
+    contradiction — ``kind`` says how to record the note, and those two values do not describe a
+    note — so the note would be dropped rather than guessed at. And an affiliation or relationship
+    carries no sensitivity field, so an elevated ``sensitivity`` on one would be silently dropped
+    and the row disclosed by every ordinary read — the outcome the level exists to prevent.
     """
     if data.kind == "affiliation" and data.org is None:
         return "kind=affiliation needs `org`; nothing was recorded."
     if data.kind == "relationship" and data.relationship is None:
         return "kind=relationship needs `relationship`; nothing was recorded."
+    if data.kind in ("affiliation", "relationship") and note is not None:
+        return (
+            f"kind={data.kind} describes the structural record, not the note, so `note` would not be "
+            "recorded; nothing was recorded. Omit `kind` to record both, or drop `note`."
+        )
     if data.kind in ("fact", "trait", "interaction") and note is None:
         return f"kind={data.kind} needs `note`; nothing was recorded."
     if data.sensitivity in (Sensitivity.SENSITIVE, Sensitivity.RESTRICTED) and (
@@ -288,7 +295,9 @@ class QuickCapture:
         kind: RecordedKind | None = None if data.kind == "auto" else data.kind
         category = data.trait_category
 
-        if data.org is not None and kind in (None, "affiliation"):
+        # `org` and `relationship` are payloads, not classifications: they record their own rows
+        # whatever `kind` says about the note, so a combined statement never loses half of itself.
+        if data.org is not None:
             role = data.role or DEFAULT_ROLE
             affiliation = self._set_affiliation.execute(
                 SetAffiliationInput(
@@ -297,7 +306,7 @@ class QuickCapture:
                 transaction_id=transaction_id,
             )
             recorded.append(CapturedRecord(kind="affiliation", id=affiliation.id, summary=f"{role} at {data.org}"))
-        if data.relationship is not None and kind in (None, "relationship"):
+        if data.relationship is not None:
             self_person = self._people.get_self()
             assert self_person is not None  # checked in execute before the transaction opened
             relationship = self._set_relationship.execute(
@@ -312,6 +321,7 @@ class QuickCapture:
             recorded.append(
                 CapturedRecord(kind="relationship", id=relationship.id, summary=f"{relationship.type} (from you)")
             )
+        # A structural `kind` never reaches here carrying a note: `_validate` refused that pairing.
         if note is None or kind in ("affiliation", "relationship"):
             return recorded
 
