@@ -257,6 +257,7 @@ writing live in adapters. One composition root wires both stdio and HTTP. See
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and delivered local foundations |
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/mcp-registry.md](docs/mcp-registry.md) | MCP Registry namespace, `server.json`, and community-directory submission matrix |
+| [docs/distribution-checklist.md](docs/distribution-checklist.md) | Account-owner walkthrough: Registry publish, directories, awesome lists, Desktop directory, Obsidian |
 | [docs/desktop-and-editors.md](docs/desktop-and-editors.md) | Native-UV MCPB Desktop bundle and Cursor/Windsurf/VS Code snippets |
 | [docs/docker.md](docs/docker.md) | Optional non-root stdio Docker image, data volume, and GHCR publishing |
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
