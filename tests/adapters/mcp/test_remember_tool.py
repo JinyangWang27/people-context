@@ -39,7 +39,7 @@ def test_remember_then_read_by_name_is_two_calls(tmp_path: Path) -> None:
     assert context["identity"]["canonical_name"] == "Alice Ng"
     assert [item["organization_name"] for item in context["affiliations"]] == ["Acme"]
     assert [trait["category"] for trait in context["traits"]] == ["communication_style"]
-    assert context["withheld"] == {"sensitive": 0, "restricted": 0, "truncated": False}
+    assert context["truncated"] is False
     assert guidance["person_id"] == remembered["person_id"]
 
 
@@ -70,31 +70,36 @@ def test_read_without_id_or_name_is_a_structured_error(tmp_path: Path) -> None:
     assert _run(server, flow)["error"] == "missing_person"
 
 
-def test_withheld_counts_surface_gated_records(tmp_path: Path) -> None:
-    server = build_server(db_path=tmp_path / "withheld.db")
+def test_elevated_records_leave_no_trace_on_the_ordinary_surface(tmp_path: Path) -> None:
+    """The privacy contract: a person whose every assertion is elevated reads like a person with none."""
+    server = build_server(db_path=tmp_path / "gated.db")
 
-    async def flow(client: Client) -> dict[str, Any]:
-        remembered = await client.call_tool(
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any]]:
+        gated = await client.call_tool(
             "remember", {"person": "Alice Ng", "note": "in treatment", "kind": "fact", "sensitivity": "restricted"}
         )
         await client.call_tool(
             "record_fact",
             {
-                "person_id": remembered.structured_content["person_id"],
+                "person_id": gated.structured_content["person_id"],
                 "predicate": "x",
                 "value": "y",
                 "sensitivity": "sensitive",
             },
         )
-        context = await client.call_tool(
-            "get_person_context", {"person_id": remembered.structured_content["person_id"]}
-        )
-        return context.structured_content
+        await client.call_tool("remember_person", {"name": "Bob Reyes"})
+        with_gated = await client.call_tool("get_person_context", {"person": "Alice Ng"})
+        with_nothing = await client.call_tool("get_person_context", {"person": "Bob Reyes"})
+        return with_gated.structured_content, with_nothing.structured_content
 
-    context = _run(server, flow)
+    with_gated, with_nothing = _run(server, flow)
 
-    assert context["facts"] == []
-    assert context["withheld"] == {"sensitive": 1, "restricted": 1, "truncated": False}
+    assert with_gated["facts"] == [] and with_gated["truncated"] is False
+    # Byte-identical but for identity: no counter, flag, or field distinguishes the two.
+    for payload in (with_gated, with_nothing):
+        payload.pop("identity")
+        payload.pop("person_id")
+    assert with_gated == with_nothing
 
 
 def test_schemas_spell_out_the_vocabulary(tmp_path: Path) -> None:

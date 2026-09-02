@@ -184,18 +184,28 @@ def _read_existing(path: Path) -> dict[str, object] | None:
 
 
 def _write_atomically(path: Path, document: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        shutil.copy2(path, path.with_name(path.name + BACKUP_SUFFIX))
+    """Replace the file in one step, reporting a filesystem refusal the way every other one is.
+
+    A read-only directory, an undeletable backup, and a failed rename are ordinary outcomes here,
+    and both entry points handle exactly one error type: `cmd_setup` turns `SetupError` into an
+    exit code, and the `pctx init` offer catches it so a client that could not be wired never
+    discards the onboarding already committed. A bare `OSError` escapes both as a traceback.
+    """
     text = json.dumps(document, indent=2) + "\n"
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(temp_name, path)
-    except BaseException:
-        Path(temp_name).unlink(missing_ok=True)
-        raise
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            shutil.copy2(path, path.with_name(path.name + BACKUP_SUFFIX))
+        fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(text)
+            os.replace(temp_name, path)
+        except BaseException:
+            Path(temp_name).unlink(missing_ok=True)
+            raise
+    except OSError as exc:
+        raise SetupError(f"could not write {path}: {exc}") from exc
 
 
 def write_file_target(target: FileTarget, entry: ServerEntry, *, dry_run: bool) -> list[str]:

@@ -3,7 +3,7 @@
 from people_context.app.context.guidance import CommunicationGuidanceResult, GetCommunicationGuidance
 from people_context.app.context.models import PersonAffiliationContext, PersonRelationshipContext
 from people_context.app.context.preferences import SetCommunicationPhilosophy, SetCommunicationPhilosophyInput
-from people_context.app.context.query import GetPersonContext, PersonContextResult, PersonIdentity, WithheldSummary
+from people_context.app.context.query import GetPersonContext, PersonContextResult, PersonIdentity
 from people_context.app.context.stats import (
     STATS_FORMAT,
     STATS_VERSION,
@@ -27,7 +27,6 @@ __all__ = [
     "PeopleCounts",
     "PersonAffiliationContext",
     "PersonContextResult",
-    "WithheldSummary",
     "PersonIdentity",
     "PersonRelationshipContext",
     "ReportStoreStats",

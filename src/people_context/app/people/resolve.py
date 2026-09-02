@@ -15,6 +15,9 @@ from people_context.ports.repository import PersonReader
 #: treat it as a suggestion to confirm rather than an identification.
 FUZZY_MATCH_REASON = "fuzzy"
 
+#: `match_reason` of a candidate whose stored name or alias equals the query once normalized.
+EXACT_MATCH_REASON = "exact"
+
 _MIN_SCORE = 0.35
 _AMBIGUOUS_GAP = 0.2
 _MIN_FUZZY_QUERY_LENGTH = 3
@@ -169,6 +172,17 @@ class ResolvePerson:
         score = 1.0 if candidate.score == 1.0 else min(0.99, candidate.score + 0.15 * len(matched_kinds))
         suffix = "".join(f"+hint:{kind}" for kind in matched_kinds)
         return candidate.model_copy(update={"score": score, "match_reason": candidate.match_reason + suffix})
+
+
+def base_match_reason(match_reason: str) -> str:
+    """Return the stage that produced a candidate, with any hint suffixes removed.
+
+    A matched hint appends `+hint:<kind>` and adds 0.15 to the score, so neither the score nor an
+    equality test on the whole reason tells you which stage found the candidate: two matched hints
+    lift a 0.45 edit-distance guess to 0.75 under the reason `fuzzy+hint:org+hint:role`. Callers
+    deciding whether a single candidate is an identification ask this, not the score.
+    """
+    return match_reason.split("+", 1)[0]
 
 
 def _bounded_levenshtein(left: str, right: str, max_distance: int) -> int:

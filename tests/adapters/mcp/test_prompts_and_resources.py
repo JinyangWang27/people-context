@@ -76,3 +76,23 @@ def test_remember_prompt_matches_the_capture_rules_it_directs_clients_to_use(tmp
     assert "on a `note` only" in body
     assert "refused" in body
     assert "invalid_request" in body
+
+
+def test_resolve_then_read_prompts_stop_on_a_near_spelling(tmp_path: Path) -> None:
+    """The prompts drive resolve-then-id reads, which bypass the wrapper's own fuzzy guard."""
+    server = build_server(db_path=tmp_path / "prompt-fuzzy.db")
+
+    async def flow(client: Client) -> dict[str, str]:
+        return {
+            "who": (await client.get_prompt("who", {"name": "Danial"})).messages[0].content.text,  # type: ignore[union-attr]
+            "meeting_prep": (await client.get_prompt("meeting_prep", {"attendees": "Danial"})).messages[0].content.text,  # type: ignore[union-attr]
+            "maintenance_review": (await client.get_prompt("maintenance_review", {"name": "Danial"}))
+            .messages[0]
+            .content.text,  # type: ignore[union-attr]
+        }
+
+    prompts = _run(server, flow)
+
+    for name, body in prompts.items():
+        assert "fuzzy" in body, name
+        assert "ambiguous" in body, name

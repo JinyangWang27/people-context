@@ -9,7 +9,8 @@ import pytest
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.capture import CONFIDENT_WRITE_SCORE, QuickCaptureInput, classify_note
-from people_context.app.people import RememberPersonInput
+from people_context.app.people import RememberPersonInput, ResolutionHints
+from people_context.app.records import SetAffiliationInput
 from people_context.domain.shared import Sensitivity
 from people_context.domain.trait import TraitCategory
 
@@ -149,9 +150,10 @@ class TestRecording:
             QuickCaptureInput(person="Alice Ng", note="in treatment", sensitivity=Sensitivity.SENSITIVE)
         )
 
-        context = runtime.use_cases.get_person_context.execute(result.person_id or "")
-        assert context.facts == []
-        assert context.withheld.sensitive == 1
+        ordinary = runtime.use_cases.get_person_context.execute(result.person_id or "")
+        elevated = runtime.use_cases.get_person_context.execute(result.person_id or "", include_sensitive=True)
+        assert ordinary.facts == []
+        assert [fact.value for fact in elevated.facts] == ["in treatment"]
 
     def test_every_write_shares_one_transaction_id(self, runtime: ApplicationRuntime) -> None:
         result = runtime.use_cases.quick_capture.execute(
@@ -249,3 +251,36 @@ class TestStructuralPayloadsAreIndependentOfNoteKind:
         assert result.status == "invalid_request"
         assert "would not be" in (result.message or "")
         assert runtime.repo.list_people() == [] or [p.canonical_name for p in runtime.repo.list_people()] == ["Me"]
+
+
+class TestHintsDoNotLaunderAFuzzyMatch:
+    """Matched hints add 0.15 each and rewrite the reason, so a score test alone would admit a typo."""
+
+    def test_a_typo_with_matching_hints_is_refused(self, runtime: ApplicationRuntime) -> None:
+        alicia = _seed(runtime, "Alicia Stone")
+        runtime.use_cases.set_affiliation.execute(SetAffiliationInput(person_id=alicia, org="Acme", role="CTO"))
+
+        boosted = runtime.use_cases.resolve_person.execute(
+            "Alicja Stone", hints=ResolutionHints(org="Acme", role="CTO")
+        )
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alicja Stone", org="Acme", role="CTO", note="prefers short emails")
+        )
+
+        # The resolver really does present the typo above the write threshold.
+        assert boosted.candidates[0].score >= CONFIDENT_WRITE_SCORE
+        assert boosted.candidates[0].match_reason.startswith("fuzzy")
+        # The capture refuses it anyway, and nothing lands on Alicia's record.
+        assert result.status == "unconfirmed"
+        assert runtime.context_reader.list_facts(alicia) == []
+        assert runtime.context_reader.list_traits(alicia) == []
+
+    def test_an_exact_match_with_hints_still_writes(self, runtime: ApplicationRuntime) -> None:
+        alicia = _seed(runtime, "Alicia Stone")
+        runtime.use_cases.set_affiliation.execute(SetAffiliationInput(person_id=alicia, org="Acme", role="CTO"))
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alicia Stone", org="Acme", role="CTO", note="prefers short emails")
+        )
+
+        assert result.status == "recorded" and result.person_id == alicia

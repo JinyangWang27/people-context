@@ -13,11 +13,13 @@ from people_context.app.people.remember import (
     SelfAlreadyExistsError,
 )
 from people_context.app.people.resolve import (
+    EXACT_MATCH_REASON,
     FUZZY_MATCH_REASON,
     ResolutionCandidate,
     ResolutionHints,
     ResolutionResult,
     ResolvePerson,
+    base_match_reason,
 )
 from people_context.app.people.search import SearchPeople
 
@@ -26,12 +28,15 @@ __all__ = [
     "AddAliasInput",
     "AliasInput",
     "AmbiguousPersonError",
+    "base_match_reason",
     "EditPerson",
     "EditPersonInput",
+    "EXACT_MATCH_REASON",
     "Forget",
     "ForgetError",
     "ForgetPreview",
     "ForgetResult",
+    "FUZZY_MATCH_REASON",
     "MergeMovedCounts",
     "MergePeople",
     "MergePeopleError",
@@ -41,7 +46,6 @@ __all__ = [
     "RememberPerson",
     "RememberPersonInput",
     "RememberPersonResult",
-    "FUZZY_MATCH_REASON",
     "ResolutionCandidate",
     "ResolutionHints",
     "ResolutionResult",

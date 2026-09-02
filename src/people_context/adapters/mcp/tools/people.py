@@ -67,9 +67,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         narrow identity fields, active relationships and affiliations, and one ranked
         facts/interactions slice capped by `max_items`. Set `include_communication=true`
         (or a `purpose` mentioning communication) to include communication traits.
-        Sensitive and restricted records are never returned by this ordinary tool;
-        `withheld` counts how many were, so an empty section is not mistaken for an
-        empty record.
+        Sensitive and restricted records are never returned by this ordinary tool, and
+        leave no trace that they exist. `truncated` says the item budget cut the list.
         """
         target = resolve_reference(deps, person_id=person_id, person=person)
         if isinstance(target, dict):

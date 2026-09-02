@@ -353,3 +353,37 @@ class TestPrintedCommandSafety:
         assert shlex.split(posix) == command
         assert posix != windows
         assert "'PEOPLE_CONTEXT_DB=/tmp/a b.db'" in posix
+
+
+class TestFilesystemFailures:
+    """Both entry points handle SetupError only, so a filesystem refusal must arrive as one."""
+
+    def test_an_unwritable_target_is_a_setup_error_not_a_traceback(self, tmp_path: Path) -> None:
+        home = tmp_path / "home"
+        (home / ".cursor").mkdir(parents=True)
+        (home / ".cursor").chmod(0o500)
+        try:
+            with pytest.raises(SetupError, match="could not write"):
+                run_setup(
+                    "cursor",
+                    scope="user",
+                    db_path=None,
+                    encrypted=False,
+                    dry_run=False,
+                    env=_env(home),
+                    platform="linux",
+                    cwd=tmp_path,
+                )
+        finally:
+            (home / ".cursor").chmod(0o700)
+
+    def test_the_command_reports_it_and_exits_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def boom(*_args: object, **_kwargs: object) -> None:
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(setup.Path, "mkdir", boom)
+
+        assert cli.main(["setup", "cursor"]) == 1
+        assert "Error: could not write" in capsys.readouterr().err

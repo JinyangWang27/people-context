@@ -24,11 +24,14 @@ from pydantic import BaseModel, Field
 
 from people_context.app._mutation import unit_of_work_for
 from people_context.app.people import (
+    EXACT_MATCH_REASON,
+    FUZZY_MATCH_REASON,
     RememberPerson,
     RememberPersonInput,
     ResolutionCandidate,
     ResolutionHints,
     ResolvePerson,
+    base_match_reason,
 )
 from people_context.app.records import (
     RecordFact,
@@ -50,8 +53,8 @@ CaptureKind = Literal["auto", "fact", "trait", "interaction", "affiliation", "re
 RecordedKind = Literal["fact", "trait", "interaction", "affiliation", "relationship"]
 
 #: A non-exact top candidate must score at least this to receive a write. Search hits score
-#: ``0.4 + 0.4 * relevance``, so this admits a strong lexical match and excludes every fuzzy
-#: edit-distance match (``0.45`` at best) — those are fine to *show*, not to write against.
+#: ``0.4 + 0.4 * relevance``, so this admits a strong lexical match. It is a floor, not the whole
+#: test: an edit-distance candidate is refused by :func:`_is_confident` at any score.
 CONFIDENT_WRITE_SCORE = 0.7
 
 #: Role recorded for an affiliation when the caller named an organisation but no role.
@@ -170,6 +173,21 @@ def classify_note(note: str) -> tuple[RecordedKind, TraitCategory | None]:
     return "fact", None
 
 
+def _is_confident(candidate: ResolutionCandidate) -> bool:
+    """Whether one candidate identifies the person well enough to write to their record.
+
+    An exact name or alias always does. Anything else needs a strong score — and a candidate the
+    resolver reached only by edit distance never qualifies, however high its score climbed. That
+    last clause is the one that has to be said out loud: matched hints add 0.15 each and rewrite
+    the reason, so `remember(person="Alicja Stone", org="Acme", role="CTO")` presents a 0.45 guess
+    at 0.75, and a score test alone would file the note on the stored Alicia Stone.
+    """
+    reason = base_match_reason(candidate.match_reason)
+    if reason == EXACT_MATCH_REASON:
+        return True
+    return reason != FUZZY_MATCH_REASON and candidate.score >= CONFIDENT_WRITE_SCORE
+
+
 def _validate(data: QuickCaptureInput, note: str | None) -> str | None:
     """Refuse, before anything is resolved or created, a request that could not record what it means.
 
@@ -274,7 +292,7 @@ class QuickCapture:
             )
         if resolution.candidates:
             top = resolution.candidates[0]
-            if top.match_reason != "exact" and top.score < CONFIDENT_WRITE_SCORE:
+            if not _is_confident(top):
                 return QuickCaptureResult(
                     status="unconfirmed",
                     candidates=resolution.candidates,

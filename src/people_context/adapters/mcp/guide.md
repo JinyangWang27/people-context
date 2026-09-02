@@ -13,7 +13,13 @@ When the user names, nicknames, or partially references a person, call
 `resolve_person` returns an explainable result. When it reports an `ambiguous`
 outcome with a candidate list, preserve that contract: present or narrow the
 candidates and let the user choose. Never silently pick one candidate, and never
-fabricate an identity the pipeline did not return. Use `search_people` for broader
+fabricate an identity the pipeline did not return.
+
+Read `match_reason`, not just the score. A reason starting with `fuzzy` means no
+stored name matches what was typed and the resolver fell back to spelling distance,
+so a lone `fuzzy` candidate is a suggestion to confirm rather than an identification
+— treat it like `ambiguous`. A matched hint appends `+hint:…` and raises the score,
+so a high score alone does not make a near-spelling into a match. Use `search_people` for broader
 browsing when the user is exploring rather than pointing at one person.
 
 ## Read context, then guidance
@@ -22,8 +28,9 @@ These answer two different questions:
 
 - `get_person_context` answers **what is known** — a bounded, sensitivity-aware
   bundle of identity, relationships, affiliations, facts, and recent interactions.
-  Its `withheld` counts say how many records exist behind the sensitivity gate or the
-  item budget; report "some records are withheld" rather than "nothing is stored".
+  Its `truncated` flag says the item budget cut the list. Sensitive and restricted
+  records leave no trace at all, by design: what you get back is the intended
+  complete ordinary view, not a redacted one.
 - `get_communication_guidance` answers **how to communicate** — tone and approach
   derived from the stored communication philosophy.
 

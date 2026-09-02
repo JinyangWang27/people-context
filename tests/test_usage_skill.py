@@ -207,11 +207,20 @@ class TestQuickCaptureAndNameReads:
         # Extraction still stages; the quick path does not replace review.
         assert "goes through the staged capture flow, never through a direct write" in lowered
 
-    def test_withheld_counts_are_reported_not_ignored(self) -> None:
+    def test_elevated_records_are_framed_as_leaving_no_trace(self) -> None:
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
 
-        assert "`withheld` counts" in lowered
-        assert 'rather than "nothing is stored"' in lowered
+        # The ordinary bundle is the complete intended view, not a redacted one with a gap to probe.
+        assert "leave no trace at all" in lowered
+        assert "complete ordinary view" in lowered
+
+    def test_a_lone_fuzzy_candidate_is_treated_like_ambiguity(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "read `match_reason`, not just the score" in lowered
+        assert "spelling distance" in lowered
+        # Matched hints raise the score, so the score alone cannot be the test.
+        assert "a high score alone does not make a near-spelling into a match" in lowered
 
     def test_reads_accept_a_name_with_the_same_ambiguity_contract(self) -> None:
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())

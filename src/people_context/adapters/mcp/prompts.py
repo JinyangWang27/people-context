@@ -77,7 +77,9 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
             f"1. Call `resolve_person` with query {name!r}; put any organisation, role, or relationship "
             "detail in `hints` rather than in the query.\n"
             "2. If the result is `ambiguous`, list the candidates with their match reason and ask which "
-            "one is meant. Do not read context for a guessed identity.\n"
+            "one is meant. Do not read context for a guessed identity. Stop the same way when the only "
+            "candidate's `match_reason` starts with `fuzzy`: that means no stored name matches what was "
+            "typed and the resolver fell back to spelling distance, so confirm before reading.\n"
             "3. If there is a confident top candidate, call `get_person_context` with its `person_id` and "
             "answer from that bundle: who they are, how they relate to the user, affiliations, and what "
             "happened recently. `withheld` counts records the ordinary view did not disclose; mention that "
@@ -117,7 +119,8 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
         return (
             f"The user is about to meet: {attendees}\n\n"
             "For each attendee, one at a time:\n"
-            "1. `resolve_person` — on `ambiguous`, ask before reading anything.\n"
+            "1. `resolve_person` — on `ambiguous`, or on a lone candidate whose `match_reason` starts with "
+            "`fuzzy` (a near-spelling, not a match), ask before reading anything.\n"
             "2. `get_person_context` with `include_communication: true` for who they are and what happened last.\n"
             "3. `get_communication_guidance` for how to communicate; do not infer tone from context alone.\n"
             "4. `list_reminders` with their `person_id` for open follow-ups.\n\n"
@@ -148,7 +151,8 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
     def maintenance_review(name: str) -> str:
         return (
             f"The user wants to review what is stored about {name!r}.\n\n"
-            "1. `resolve_person`; an `ambiguous` result stops the review.\n"
+            "1. `resolve_person`; an `ambiguous` result stops the review, and so does a lone candidate whose "
+            "`match_reason` starts with `fuzzy` — maintaining the wrong person's records is worse than none.\n"
             "2. Read `get_person_context`, `get_person_timeline`, and `get_consolidation_context`.\n"
             "3. Read the `signals` (duplicate, restated, contradictory, succeeding facts; duplicate or "
             "divergent traits). They are evidence for your judgement, not a verdict.\n"

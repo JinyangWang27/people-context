@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from people_context.app.people import FUZZY_MATCH_REASON
+from people_context.app.people import FUZZY_MATCH_REASON, base_match_reason
 
 if TYPE_CHECKING:
     from people_context.adapters.runtime import RuntimeUseCases
@@ -42,7 +42,7 @@ def resolve_reference(deps: RuntimeUseCases, *, person_id: str | None, person: s
             "candidates": [candidate.model_dump(mode="json") for candidate in resolution.candidates],
         }
     top = resolution.candidates[0]
-    if top.match_reason == FUZZY_MATCH_REASON:
+    if base_match_reason(top.match_reason) == FUZZY_MATCH_REASON:
         return {
             "error": "unconfirmed_person",
             "message": (

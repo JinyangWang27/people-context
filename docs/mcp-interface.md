@@ -16,7 +16,7 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `resolve_person` | Explainable identity resolution without silent guessing. | `query`, optional org/role/relationship hints, `limit` | Ranked candidates and `ambiguous`. |
 | `search_people` | Broader lexical browsing. | `query`, optional filters | Candidate list. |
 | `semantic_search` | Optional multilingual cosine retrieval over eligible people/interactions. | `query`, kinds, limit | `ok`, `not_available`, or `model_mismatch`. |
-| `get_person_context` | Bounded, sensitivity-gated person context. | `person_id` or `person` (a name), optional purpose / `include_communication`, `max_items` | Stable `PersonContextResult` with additive `withheld` counts. |
+| `get_person_context` | Bounded, sensitivity-gated person context. | `person_id` or `person` (a name), optional purpose / `include_communication`, `max_items` | Stable `PersonContextResult` with an additive `truncated` flag. |
 | `get_communication_guidance` | Structured communication signals, not generated advice. | `person_id` or `person`, optional situation | Traits, relationships, roles, friction notes, reminders, philosophy. |
 | `list_reminders` | Pull-based reminder listing. | optional `person_id` or `person`, due/status filters | Ordered reminders. |
 | `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id` or `person`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
@@ -49,19 +49,18 @@ returns `{"error": "person_not_found"}`, and neither argument returns `{"error":
 `person_id` keeps the previous behavior exactly; `person` is additive and saves the resolve round-trip when the
 name is unambiguous.
 
-### `withheld`
+### `truncated`
 
-`get_person_context` adds one additive field:
+`get_person_context` adds one additive field, matching the flag the graph and timeline reads already carry:
 
 ```json
-{"withheld": {"sensitive": 1, "restricted": 0, "truncated": false}}
+{"truncated": false}
 ```
 
-`sensitive` and `restricted` count facts, interactions, and (when communication traits were requested) traits
-that exist but were not disclosed at the caller's level; `truncated` says the shared facts/interactions budget
-cut the ranked list. Counts only — never a predicate, value, or id — so an agent can say "something is withheld"
-instead of "nothing is stored". The elevated `get_sensitive_person_context` returns zero counts for what it
-discloses.
+It says the shared facts/interactions budget cut the ranked list. It is computed over the records the caller
+may see, so it cannot be used to detect an elevated one: a person whose every assertion is sensitive or
+restricted returns exactly what a person with no assertions returns, as
+[privacy-and-safety.md](privacy-and-safety.md) requires of every ordinary read.
 
 ## M7 graph contracts
 

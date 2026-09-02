@@ -44,19 +44,6 @@ class TraitEvidenceLink(BaseModel):
     evidence_id: str
 
 
-class WithheldSummary(BaseModel):
-    """How many records this bundle did not disclose, and why — counts only, never content.
-
-    An ordinary read that filters sensitive rows silently looks identical to an empty record, and an
-    agent then reports "nothing stored" in good faith. The counts say that something exists behind
-    the gate without saying what. ``truncated`` is the shared facts/interactions budget being hit.
-    """
-
-    sensitive: int = 0
-    restricted: int = 0
-    truncated: bool = False
-
-
 class PersonContextResult(BaseModel):
     """Stable response shape for person context, including not-found results.
 
@@ -64,6 +51,11 @@ class PersonContextResult(BaseModel):
     the records they were drawn from. It carries ids and types only — enough to look the evidence
     up through the ordinary reads, which apply their own disclosure rules — and never any part of
     a record's content.
+
+    ``truncated`` says the shared facts/interactions budget cut the ranked list, matching the field
+    the graph and timeline reads already carry. It is computed over the records this caller may
+    see, so it never becomes a way to detect that an elevated one exists: a person whose every
+    assertion is elevated returns exactly what a person with no assertions returns.
     """
 
     found: bool
@@ -77,7 +69,7 @@ class PersonContextResult(BaseModel):
     traits: list[Trait] = Field(default_factory=list)
     trait_evidence: list[TraitEvidenceLink] = Field(default_factory=list)
     reminders: list[Reminder] = Field(default_factory=list)
-    withheld: WithheldSummary = Field(default_factory=WithheldSummary)
+    truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -126,9 +118,8 @@ class GetPersonContext:
         affiliations = [
             affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
         ]
-        withheld = WithheldSummary()
-        facts, interactions = self._rank_disclosure_records(person_id, max_items, include_sensitive, withheld)
-        traits = self._communication_traits(person_id, purpose, include_sensitive, withheld)
+        facts, interactions, truncated = self._rank_disclosure_records(person_id, max_items, include_sensitive)
+        traits = self._communication_traits(person_id, purpose, include_sensitive)
         reminders = [
             reminder
             for reminder in self._context.list_active_reminders(person_id)
@@ -147,7 +138,7 @@ class GetPersonContext:
             traits=traits,
             trait_evidence=self._trait_evidence(person_id, traits, include_sensitive),
             reminders=reminders,
-            withheld=withheld,
+            truncated=truncated,
         )
 
     def _trait_evidence(
@@ -179,23 +170,23 @@ class GetPersonContext:
         ]
 
     def _rank_disclosure_records(
-        self, person_id: str, max_items: int, include_sensitive: bool, withheld: WithheldSummary
-    ) -> tuple[list[Fact], list[Interaction]]:
+        self, person_id: str, max_items: int, include_sensitive: bool
+    ) -> tuple[list[Fact], list[Interaction], bool]:
         # Ranking compares instants, so each stored timestamp is normalized to UTC first. The
         # write contract still accepts naive values, and `timestamp()` reads one in the host
         # timezone: without this the same database would rank records differently — and admit
         # different ones at the shared budget's cutoff — depending on the machine's TZ.
         eligible: list[tuple[Literal["fact", "interaction"], Fact | Interaction, datetime, float]] = []
-        for fact in self._context.list_facts(person_id):
-            if _can_disclose(fact.sensitivity, include_sensitive):
-                eligible.append(("fact", fact, as_utc(fact.recorded_at), fact.confidence))
-            else:
-                _count_withheld(withheld, fact.sensitivity)
-        for interaction in self._context.list_interactions(person_id):
-            if _can_disclose(interaction.sensitivity, include_sensitive):
-                eligible.append(("interaction", interaction, as_utc(interaction.occurred_at), 1.0))
-            else:
-                _count_withheld(withheld, interaction.sensitivity)
+        eligible.extend(
+            ("fact", fact, as_utc(fact.recorded_at), fact.confidence)
+            for fact in self._context.list_facts(person_id)
+            if _can_disclose(fact.sensitivity, include_sensitive)
+        )
+        eligible.extend(
+            ("interaction", interaction, as_utc(interaction.occurred_at), 1.0)
+            for interaction in self._context.list_interactions(person_id)
+            if _can_disclose(interaction.sensitivity, include_sensitive)
+        )
         eligible.sort(key=lambda item: (-item[2].timestamp(), item[0], item[1].id))
 
         denominator = max(1, len(eligible) - 1)
@@ -212,25 +203,20 @@ class GetPersonContext:
         ]
         ranked.sort(key=lambda item: (-item.score, -item.timestamp.timestamp(), item.kind, item.record.id))
         selected = ranked[:max_items]
-        withheld.truncated = len(ranked) > max_items
         facts = [item.record for item in selected if item.kind == "fact" and isinstance(item.record, Fact)]
         interactions = [
             item.record for item in selected if item.kind == "interaction" and isinstance(item.record, Interaction)
         ]
-        return facts, interactions
+        return facts, interactions, len(ranked) > max_items
 
-    def _communication_traits(
-        self, person_id: str, purpose: str | None, include_sensitive: bool, withheld: WithheldSummary
-    ) -> list[Trait]:
+    def _communication_traits(self, person_id: str, purpose: str | None, include_sensitive: bool) -> list[Trait]:
         if purpose is None or "communication" not in purpose.casefold():
             return []
-        disclosed: list[Trait] = []
-        for trait in self._context.list_traits(person_id):
-            if _can_disclose(trait.sensitivity, include_sensitive):
-                disclosed.append(trait)
-            else:
-                _count_withheld(withheld, trait.sensitivity)
-        return disclosed
+        return [
+            trait
+            for trait in self._context.list_traits(person_id)
+            if _can_disclose(trait.sensitivity, include_sensitive)
+        ]
 
 
 def _identity(person: Person) -> PersonIdentity:
@@ -246,9 +232,3 @@ def _identity(person: Person) -> PersonIdentity:
 def _can_disclose(sensitivity: Sensitivity, include_sensitive: bool) -> bool:
     return include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL)
 
-
-def _count_withheld(withheld: WithheldSummary, sensitivity: Sensitivity) -> None:
-    if sensitivity is Sensitivity.RESTRICTED:
-        withheld.restricted += 1
-    else:
-        withheld.sensitive += 1
