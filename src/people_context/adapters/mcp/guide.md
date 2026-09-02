@@ -1,8 +1,3 @@
----
-name: people-context-usage
-description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, shares information worth remembering about people, or asks to review, reconcile, or tidy what is already stored about someone. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, the review-before-commit approval flow, and correction vs. temporal supersession when maintaining stored knowledge.
----
-
 # Using people-context
 
 people-context is a local-first store of durable knowledge about the people in the

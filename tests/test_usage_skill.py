@@ -194,3 +194,27 @@ class TestUsageSkill:
         # Capture is best-effort proposal-only; it must not promise a mechanical commit.
         assert "best-effort" in lowered
         assert "never call `commit_import`" in lowered
+
+
+class TestQuickCaptureAndNameReads:
+    def test_remember_is_for_direct_statements_only(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "`remember` in a single call" in lowered
+        assert "states directly" in lowered
+        assert "never guesses between similar names" in lowered
+        # Extraction still stages; the quick path does not replace review.
+        assert "goes through the staged capture flow, never through a direct write" in lowered
+
+    def test_withheld_counts_are_reported_not_ignored(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "`withheld` counts" in lowered
+        assert 'rather than "nothing is stored"' in lowered
+
+    def test_reads_accept_a_name_with_the_same_ambiguity_contract(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "accept `person` (the name as said)" in lowered
+        assert "returns candidates instead of data" in lowered

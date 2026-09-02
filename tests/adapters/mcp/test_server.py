@@ -27,8 +27,13 @@ EXPECTED_SERVER_INSTRUCTIONS = (
     "After resolving an identity, use `get_person_context` for a bounded, sensitivity-aware context bundle. "
     "After resolving a person, use `get_communication_guidance` when communication help is requested. "
     "Use `search_people` for broader browsing and `remember_person` to record a new or updated person. "
+    "When the user states one durable thing about someone directly, call `remember` once: it resolves the "
+    "name, creates the person only if nobody matches, and records the note, affiliation, or relationship in "
+    "one audited transaction — never guessing between similar names. "
     "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
     "later user review and never committed automatically. "
+    "Read-only tools also accept `person` (a name) in place of `person_id`. "
+    "The full usage guide is the `people-context://guide` resource; `people-context://self` is the user's own record. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
 )
@@ -39,6 +44,7 @@ EXPECTED_TOOLS = {
     "search_people",
     "semantic_search",
     "remember_person",
+    "remember",
     # read-only stubs
     "get_person_context",
     "get_communication_guidance",
