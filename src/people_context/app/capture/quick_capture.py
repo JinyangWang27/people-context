@@ -65,15 +65,29 @@ DEFAULT_ROLE = "member"
 #: Predicate under which an unstructured statement is stored as a fact.
 DEFAULT_PREDICATE = "note"
 
-#: Markers that place a statement on an earlier day than the one it is said on. An interaction is
+#: Markers that place a statement on a day other than the one it is said on, whether relative
+#: ("yesterday", "a month ago") or absolute ("2026-08-20", "on Tuesday", "12 Aug"). An interaction is
 #: the store's recency signal — `get_stale_relationships` and the timeline both read its date — so
 #: one of these without an explicit `occurred_at` is refused rather than dated now, the same rule
-#: the staged import path states for its `interaction` candidates.
+#: the staged import path states for its `interaction` candidates. The list errs towards refusing:
+#: an unnecessary question costs a round-trip, while a missed one silently backdates the answer to
+#: "when did I last speak to this person?". Bare "May" is left out because the month is far more
+#: often the verb, and a bare year needs a preposition so "the 2026 budget" is not read as a date.
 _PAST_CUE = re.compile(
-    r"\b(?:yesterday"
-    r"|last (?:night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
-    r"|(?:\d+|a|an|few|couple of) (?:day|week|month|year)s? ago"
-    r"|back in \d{4})\b"
+    r"""
+    \b(?:
+        yesterday
+      | last\ (?:night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)
+      | on\ (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)
+      | (?:\d+|a|an|few|couple\ of)\ (?:day|week|month|year)s?\ ago
+      | (?:in|back\ in|during)\ (?:19|20)\d{2}
+      | \d{4}[-/]\d{1,2}[-/]\d{1,2}
+      | \d{1,2}[/.]\d{1,2}[/.]\d{2,4}
+      | (?:jan|feb|mar|apr|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\ \d{1,2}
+      | \d{1,2}(?:st|nd|rd|th)?\ (?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*
+    )\b
+    """,
+    re.VERBOSE,
 )
 
 # Keyword tables for ``classify_note``. Lowercase substrings; order of the checks matters and is

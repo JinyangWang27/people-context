@@ -16,8 +16,10 @@ command is printed when it is not installed.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
+import platform as platform_module
 import re
 import shlex
 import shutil
@@ -92,6 +94,25 @@ class FileTarget:
     restart_hint: str
 
 
+def encrypted_extra_covers(platform: str | None = None, machine: str | None = None, libc: str | None = None) -> bool:
+    """Whether `people-context[encrypted]` actually installs SQLCipher on this machine.
+
+    `sqlcipher3-binary` publishes manylinux x86-64 wheels and no source distribution, so the extra's
+    marker resolves to nothing on macOS, Windows and arm64, and on musl Linux the marker is true but
+    the wheel does not exist. Everywhere but glibc Linux x86-64, the documented route is a locally
+    built `sqlcipher3` — which an ephemeral `uvx` environment cannot see.
+    """
+    platform = sys.platform if platform is None else platform
+    machine = platform_module.machine() if machine is None else machine
+    libc = platform_module.libc_ver()[0] if libc is None else libc
+    return platform.startswith("linux") and machine == "x86_64" and libc == "glibc"
+
+
+def local_binding_importable() -> bool:
+    """Whether the interpreter running setup can already import SQLCipher."""
+    return importlib.util.find_spec("sqlcipher3") is not None
+
+
 def db_path_to_pin(explicit: str | None, env: Mapping[str, str] | None = None) -> str | None:
     """Return the database path the client has to be told about, or None when it can find it itself.
 
@@ -111,25 +132,56 @@ def db_path_to_pin(explicit: str | None, env: Mapping[str, str] | None = None) -
     return None
 
 
-def build_entry(db_path: str | None, *, encrypted: bool) -> ServerEntry:
+def build_entry(
+    db_path: str | None,
+    *,
+    encrypted: bool,
+    platform: str | None = None,
+    machine: str | None = None,
+    libc: str | None = None,
+    interpreter: str | None = None,
+) -> ServerEntry:
     """Build the server entry for the resolved options.
 
-    ``--encrypted`` selects the `encrypted` extra as well as passing the flag, because the flag alone
-    would leave the freshly created `uvx` environment without the SQLCipher binding it needs and the
-    server refuses to start rather than open anything in plaintext. The extra resolves to nothing on
-    platforms its marker excludes, which is where a locally built `sqlcipher3` is documented instead.
-    The key is never part of the entry: it is read from the server's own environment.
+    Plaintext is the zero-install `uvx` invocation. Encrypted mode needs a Python environment that
+    contains SQLCipher, and `uvx` builds a fresh isolated one on every launch, so which command is
+    correct depends on where that binding can come from:
+
+    * on glibc Linux x86-64 the `encrypted` extra installs it, so the `uvx` line stays and merely
+      selects the extra;
+    * anywhere else the extra installs nothing (or, on musl, asks for a wheel that does not exist),
+      and the documented route is a locally built `sqlcipher3`. An ephemeral environment cannot see
+      that, but the interpreter running setup can be pointed at directly — if it holds the binding,
+      the client launches the same environment the operator already proved works;
+    * and if it does not, no correct command exists to generate, so setup refuses rather than
+      writing one that fails at launch.
+
+    The key is never part of the entry either way: it is read from the server's own environment.
     """
-    requirement = f"{PACKAGE_NAME}[encrypted]" if encrypted else PACKAGE_NAME
-    args = ["--from", requirement, SERVER_ENTRY_POINT]
-    env: dict[str, str] = {}
+    command = SERVER_COMMAND
+    args = ["--from", PACKAGE_NAME, SERVER_ENTRY_POINT]
     if encrypted:
+        if encrypted_extra_covers(platform, machine, libc):
+            args = ["--from", f"{PACKAGE_NAME}[encrypted]", SERVER_ENTRY_POINT]
+        elif local_binding_importable():
+            command = sys.executable if interpreter is None else interpreter
+            args = ["-m", "people_context"]
+        else:
+            raise SetupError(
+                "encrypted mode needs SQLCipher, and on this platform the `people-context[encrypted]` extra "
+                "installs nothing — `sqlcipher3-binary` ships wheels only for glibc Linux x86-64 — so a client "
+                "launched through `uvx` would start a server that refuses to open the database. Build "
+                "`sqlcipher3` into an environment yourself (see "
+                "docs/privacy-and-safety.md#optional-at-rest-encryption), then run `pctx setup` from that "
+                "environment and it will point the client at it."
+            )
         args.append("--encrypted")
+    env: dict[str, str] = {}
     if db_path:
         # The client launches the server later and from its own directory, so a relative
         # path is anchored to where setup ran rather than persisted as written.
         env["PEOPLE_CONTEXT_DB"] = os.path.abspath(os.path.expanduser(db_path))
-    return ServerEntry(command=SERVER_COMMAND, args=tuple(args), env=env)
+    return ServerEntry(command=command, args=tuple(args), env=env)
 
 
 def _home(env: Mapping[str, str]) -> Path:
@@ -349,7 +401,7 @@ def run_setup(
     env = os.environ if env is None else env
     platform = sys.platform if platform is None else platform
     cwd = Path.cwd() if cwd is None else cwd
-    entry = build_entry(db_path, encrypted=encrypted)
+    entry = build_entry(db_path, encrypted=encrypted, platform=platform)
     if client == "json":
         lines = generic_json(entry)
     elif client in ("claude-code", "codex"):

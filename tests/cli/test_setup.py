@@ -46,13 +46,52 @@ class TestEntry:
         assert entry.env == {"PEOPLE_CONTEXT_DB": str(tmp_path / "people.db")}
         assert "--db" not in entry.args
 
-    def test_encrypted_adds_the_flag_but_never_a_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("PEOPLE_CONTEXT_DB_KEY", "secret")
-        entry = build_entry(None, encrypted=True)
+    def test_encrypted_on_glibc_linux_selects_the_extra(self) -> None:
+        """The one platform whose wheel exists: the zero-install line stays and asks for the extra."""
+        entry = build_entry(None, encrypted=True, platform="linux", machine="x86_64", libc="glibc")
 
-        assert entry.args[-1] == "--encrypted"
-        assert "secret" not in json.dumps(entry.as_json(with_type=False))
-        assert "PEOPLE_CONTEXT_DB_KEY" not in entry.env
+        assert entry.command == "uvx"
+        assert list(entry.args) == ["--from", "people-context[encrypted]", "people-context", "--encrypted"]
+
+    def test_encrypted_elsewhere_points_at_the_interpreter_that_has_the_binding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """uvx builds a fresh isolated environment, which cannot see a locally built sqlcipher3."""
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: True)
+
+        entry = build_entry(
+            None, encrypted=True, platform="darwin", machine="arm64", libc="", interpreter="/venv/bin/python"
+        )
+
+        assert entry.command == "/venv/bin/python"
+        assert list(entry.args) == ["-m", "people_context", "--encrypted"]
+
+    @pytest.mark.parametrize(
+        ("platform", "machine", "libc"),
+        [("darwin", "arm64", ""), ("win32", "AMD64", ""), ("linux", "aarch64", "glibc"), ("linux", "x86_64", "")],
+    )
+    def test_encrypted_refuses_when_no_command_would_work(
+        self, monkeypatch: pytest.MonkeyPatch, platform: str, machine: str, libc: str
+    ) -> None:
+        """Including musl (linux/x86_64 with no glibc), where the marker is true but no wheel exists."""
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: False)
+
+        with pytest.raises(SetupError, match="glibc Linux x86-64"):
+            build_entry(None, encrypted=True, platform=platform, machine=machine, libc=libc)
+
+    def test_no_encrypted_entry_carries_the_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("PEOPLE_CONTEXT_DB_KEY", "secret")
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: True)
+
+        entries = [
+            build_entry(None, encrypted=True, platform="linux", machine="x86_64", libc="glibc"),
+            build_entry(None, encrypted=True, platform="darwin", machine="arm64", libc=""),
+        ]
+
+        for entry in entries:
+            assert entry.args[-1] == "--encrypted"
+            assert "secret" not in json.dumps(entry.as_json(with_type=False))
+            assert "PEOPLE_CONTEXT_DB_KEY" not in entry.env
 
     def test_vscode_entry_names_the_transport(self) -> None:
         assert build_entry(None, encrypted=False).as_json(with_type=True)["type"] == "stdio"
@@ -220,7 +259,9 @@ class TestWrite:
             )
         assert real.read_text() == "{}"
 
-    def test_encrypted_setup_adds_the_flag_and_never_a_key(self, tmp_path: Path) -> None:
+    def test_encrypted_setup_writes_a_launchable_entry(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: True)
+
         lines = run_setup(
             "cursor",
             scope="project",
@@ -228,7 +269,7 @@ class TestWrite:
             encrypted=True,
             dry_run=True,
             env=_env(tmp_path),
-            platform="linux",
+            platform="darwin",
             cwd=tmp_path,
         )
 
@@ -302,6 +343,7 @@ class TestCommandLine:
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setenv("PEOPLE_CONTEXT_DB_KEY", "secret")
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: True)
 
         assert cli.main(["--encrypted", "setup", "json"]) == 0
 
@@ -434,12 +476,6 @@ class TestDatabasePinning:
         assert written["mcpServers"]["people-context"]["env"] == {"PEOPLE_CONTEXT_DB": str(chosen)}
 
 
-class TestEncryptedExtra:
-    def test_the_flag_brings_the_binding_it_needs(self) -> None:
-        """`--encrypted` refuses to open anything without SQLCipher, which only the extra installs."""
-        entry = build_entry(None, encrypted=True)
-
-        assert list(entry.args) == ["--from", "people-context[encrypted]", "people-context", "--encrypted"]
-
+class TestPlainEntry:
     def test_the_plain_entry_is_unchanged(self) -> None:
         assert list(build_entry(None, encrypted=False).args) == list(SERVER_ARGS)

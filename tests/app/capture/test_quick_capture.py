@@ -333,3 +333,37 @@ class TestHistoricalInteractions:
 
         assert result.status == "recorded"
         assert [record.kind for record in result.recorded] == ["fact"]
+
+    @pytest.mark.parametrize(
+        "note",
+        [
+            "met Alice on 2026-08-20",
+            "met her 20/08/2026",
+            "caught up on Tuesday",
+            "spoke on Aug 12",
+            "met 12 August",
+            "discussed the roadmap back in 2019",
+        ],
+    )
+    def test_an_absolute_date_is_recognised_too(self, runtime: ApplicationRuntime, note: str) -> None:
+        """The contract is any note placing the interaction earlier, not only relative phrasing."""
+        result = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", note=note))
+
+        assert result.status == "invalid_request"
+        assert runtime.repo.list_people() == []
+
+    def test_an_explicit_interaction_kind_is_held_to_the_same_rule(self, runtime: ApplicationRuntime) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="the review on 2026-08-20", kind="interaction")
+        )
+
+        assert result.status == "invalid_request"
+
+    @pytest.mark.parametrize(
+        "note",
+        ["had coffee today about the launch", "talked about the 2026 budget", "met at the conference"],
+    )
+    def test_a_note_without_a_date_is_not_refused(self, runtime: ApplicationRuntime, note: str) -> None:
+        result = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", note=note))
+
+        assert result.status == "recorded"
