@@ -70,3 +70,23 @@ def test_version_flag_reports_the_installed_package_version(capsys: pytest.Captu
 
     assert exit_info.value.code == 0
     assert capsys.readouterr().out.strip() == f"pctx {people_context.__version__}"
+
+
+def test_an_unparseable_occurred_at_is_a_usage_error_not_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--db", str(tmp_path / "r.db"), "remember", "Alice", "met", "--occurred-at", "not-a-date"])
+
+    assert exit_info.value.code == 2
+    assert "is not an ISO 8601 date" in capsys.readouterr().err
+
+
+def test_a_valid_occurred_at_dates_the_interaction(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db = str(tmp_path / "r.db")
+
+    assert cli.main(["--db", db, "remember", "Alice", "met Alice yesterday", "--occurred-at", "2026-08-20"]) == 0
+    assert "+ interaction:" in capsys.readouterr().out
+
+    assert cli.main(["--db", db, "timeline", "Alice"]) == 0
+    assert "2026-08-20" in capsys.readouterr().out

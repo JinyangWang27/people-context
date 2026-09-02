@@ -21,6 +21,7 @@ from people_context.cli.setup import (
     claude_desktop_config_path,
     cli_command,
     db_path_to_pin,
+    default_scope,
     file_target,
     merged_config,
     run_setup,
@@ -538,3 +539,27 @@ class TestPreviewRedaction:
         )
 
         assert "replacing `people-context`." in lines[0]
+
+
+class TestDefaultScope:
+    """The bare advertised command has to work for every client it offers."""
+
+    def test_vscode_defaults_to_the_only_scope_it_can_write(self) -> None:
+        assert default_scope("vscode") == "project"
+        assert default_scope("cursor") == "user"
+        assert default_scope("claude-desktop") == "user"
+
+    def test_the_bare_command_configures_vscode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        assert cli.main(["setup", "vscode", "--dry-run"]) == 0
+
+        out = capsys.readouterr().out
+        assert str(tmp_path / ".vscode" / "mcp.json") in out
+        assert json.loads("\n".join(out.splitlines()[1:]))["servers"]["people-context"]["type"] == "stdio"
+
+    def test_an_explicit_scope_still_wins(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        assert cli.main(["setup", "vscode", "--scope", "user", "--dry-run"]) == 1
+        assert "settings UI" in capsys.readouterr().err

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from typing import get_args
 
 from people_context import __version__
@@ -41,6 +42,16 @@ from people_context.domain.trait import TraitCategory
 from people_context.ports.vcard import SUPPORTED_VCARD_VERSIONS
 
 CAPTURE_KINDS: tuple[str, ...] = tuple(get_args(CaptureKind))
+
+
+def _timestamp(value: str) -> datetime:
+    """Parse an ISO 8601 argument, so a typo is argparse's usage error rather than a traceback."""
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not an ISO 8601 date or datetime (for example 2026-08-20 or 2026-08-20T15:00:00Z)"
+        ) from exc
 
 
 def _add_page_arguments(parser: argparse.ArgumentParser, subject: str) -> None:
@@ -122,6 +133,7 @@ def build_parser() -> argparse.ArgumentParser:
     remember.add_argument(
         "--occurred-at",
         default=None,
+        type=_timestamp,
         metavar="WHEN",
         help="When an interaction happened (ISO 8601); required when the note says it was earlier.",
     )
@@ -504,8 +516,11 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument(
         "--scope",
         choices=SCOPES,
-        default="user",
-        help="Where the entry lives: the user's own configuration (default) or the current project's.",
+        default=None,
+        help=(
+            "Where the entry lives: the user's own configuration or the current project's. "
+            "Defaults to user, except VS Code, which only exposes a workspace file to write."
+        ),
     )
     setup.add_argument("--dry-run", action="store_true", help="Print what would be written or run; change nothing.")
 

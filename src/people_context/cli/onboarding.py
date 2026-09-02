@@ -27,7 +27,13 @@ from people_context.cli.rendering import (
     print_import_review,
 )
 from people_context.cli.setup import CLIENTS as SETUP_CLIENTS
-from people_context.cli.setup import SetupError, db_path_to_pin, encrypted_key_notice, run_setup
+from people_context.cli.setup import (
+    SetupError,
+    db_path_to_pin,
+    default_scope,
+    encrypted_key_notice,
+    run_setup,
+)
 from people_context.demo_seed import (
     DEMO_AFFILIATIONS,
     DEMO_FACTS,
@@ -129,7 +135,11 @@ def _offer_client_setup(explicit_db_path: str | None, encrypted: bool) -> None:
         return
     try:
         lines = run_setup(
-            answer, scope="user", db_path=db_path_to_pin(explicit_db_path), encrypted=encrypted, dry_run=False
+            answer,
+            scope=default_scope(answer),
+            db_path=db_path_to_pin(explicit_db_path),
+            encrypted=encrypted,
+            dry_run=False,
         )
     except SetupError as exc:
         print(f"Client setup failed: {exc}", file=sys.stderr)

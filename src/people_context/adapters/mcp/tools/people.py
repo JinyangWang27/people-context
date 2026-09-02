@@ -11,9 +11,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
+from pydantic import ValidationError
 
 from people_context.adapters.mcp.security import SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 from people_context.adapters.mcp.tools.references import resolve_reference
+from people_context.adapters.mcp.tools.tool_errors import validation_error_payload
 from people_context.app.capture import CaptureKind, QuickCaptureInput
 from people_context.app.people import (
     AliasInput,
@@ -207,8 +209,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         extracted or inferred from a transcript rather than a direct statement, use
         `stage_candidates` so the user reviews it first.
         """
-        return deps.quick_capture.execute(
-            QuickCaptureInput(
+        try:
+            data = QuickCaptureInput(
                 person=person,
                 note=note,
                 kind=kind,
@@ -221,4 +223,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 sensitivity=sensitivity,
                 source=source,
             )
-        ).model_dump(mode="json")
+        except ValidationError as exc:
+            # Every other write tool maps a bad argument to this payload through `call_action`;
+            # raising here would surface a protocol error instead of something an agent can act on.
+            return validation_error_payload(exc)
+        return deps.quick_capture.execute(data).model_dump(mode="json")

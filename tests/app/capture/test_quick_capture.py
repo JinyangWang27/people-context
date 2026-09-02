@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.capture import CONFIDENT_WRITE_SCORE, QuickCaptureInput, classify_note
@@ -413,3 +414,46 @@ class TestRelationshipPerspective:
 
         assert dated.status == "invalid_request"
         assert verb.status == "recorded"
+
+
+class TestCueMatching:
+    """Cues are words. As substrings they silently change which record type a statement becomes."""
+
+    @pytest.mark.parametrize(
+        ("note", "kind"),
+        [
+            ("likely moving to Berlin", "fact"),
+            ("likes hiking", "trait"),
+            ("prefers short emails", "trait"),
+            ("metrics are his focus", "fact"),
+            ("had coffee today about the launch", "interaction"),
+            ("avoids the reorg topic", "trait"),
+        ],
+    )
+    def test_a_cue_inside_a_longer_word_does_not_classify(self, note: str, kind: str) -> None:
+        assert classify_note(note)[0] == kind
+
+    @pytest.mark.parametrize("note", ["met Alice two days ago", "caught up three weeks ago", "met several months ago"])
+    def test_spelled_out_quantities_are_dates(self, runtime: ApplicationRuntime, note: str) -> None:
+        result = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", note=note))
+
+        assert result.status == "invalid_request"
+        assert runtime.repo.list_people() == []
+
+
+class TestBlankNames:
+    @pytest.mark.parametrize("name", ["   ", "\t", " \n "])
+    def test_a_whitespace_name_is_refused_before_anything_is_created(
+        self, runtime: ApplicationRuntime, name: str
+    ) -> None:
+        with pytest.raises(ValidationError):
+            QuickCaptureInput(person=name, note="moved to Berlin")
+
+        assert runtime.repo.list_people() == []
+
+    def test_surrounding_whitespace_is_trimmed_rather_than_stored(self, runtime: ApplicationRuntime) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="  Alice Ng  ", note="moved to Berlin")
+        )
+
+        assert result.canonical_name == "Alice Ng"

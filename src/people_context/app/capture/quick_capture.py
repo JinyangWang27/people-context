@@ -22,7 +22,7 @@ import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from people_context.app._mutation import unit_of_work_for
 from people_context.app.people import (
@@ -82,7 +82,8 @@ _PAST_CUE = re.compile(
         yesterday
       | last\ (?:night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)
       | on\ (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)
-      | (?:\d+|a|an|few|couple\ of)\ (?:day|week|month|year)s?\ ago
+      | (?:\d+|a|an|few|several|couple\ of|one|two|three|four|five|six
+        |seven|eight|nine|ten|eleven|twelve)\ (?:day|week|month|year)s?\ ago
       | (?:in|back\ in|during)\ (?:19|20)\d{2}
       | \d{4}[-/]\d{1,2}[-/]\d{1,2}
       | \d{1,2}[/.]\d{1,2}[/.]\d{2,4}
@@ -93,56 +94,42 @@ _PAST_CUE = re.compile(
     re.VERBOSE,
 )
 
-# Keyword tables for ``classify_note``. Lowercase substrings; order of the checks matters and is
-# documented on the function. Kept small on purpose: the goal is a sensible default, not NLP.
-_INTERACTION_CUES = (
-    "met ",
-    "met.",
-    "talked",
-    "spoke",
-    "called ",
-    "chatted",
-    "had lunch",
-    "had coffee",
-    "had dinner",
-    "had a call",
-    "meeting with",
-    "discussed",
-    "caught up",
-    "yesterday",
-    "today",
-    "this morning",
-    "last week",
-    "last night",
+# Cue patterns for ``classify_note``. Word-bounded on purpose: matched as bare substrings, `like`
+# fires inside `likely` and turns "likely moving to Berlin" from a durable fact into a preference
+# trait, which then leaves ordinary context entirely. Kept small — this is a documented default that
+# an explicit `kind` overrides, not an attempt at understanding the sentence.
+_INTERACTION_CUE = re.compile(
+    r"\b(?:met|talked|spoke|call(?:ed|ing)|chatted|had\ (?:lunch|coffee|dinner|drinks|a\ call|a\ chat)"
+    r"|meeting\ with|discussed|caught\ up|today|this\ (?:morning|afternoon|evening)|tonight)\b"
 )
-_COMMUNICATION_CUES = (
-    "email",
-    "e-mail",
-    "call",
-    "phone",
-    "text",
-    "message",
-    "slack",
-    "whatsapp",
-    "reply",
-    "respond",
-    "tone",
-    "formal",
-    "blunt",
-    "direct",
-    "brief",
-    "concise",
-    "detail",
-    "small talk",
+_COMMUNICATION_CUE = re.compile(
+    r"\b(?:e-?mails?|calls?|phones?|texts?|messages?|slack|whatsapp|repl(?:y|ies)|respond(?:s|ing)?"
+    r"|tone|formal|blunt|direct|brief|concise|detail(?:s|ed)?|small\ talk)\b"
 )
-_PREFERENCE_CUES = ("prefer", "like", "dislike", "hate", "love", "enjoy", "favorite", "favourite", "allerg")
-_AVOID_CUES = ("avoid", "don't bring up", "do not bring up", "don't mention", "do not mention", "sore subject")
+_PREFERENCE_CUE = re.compile(r"\b(?:prefers?|likes?|dislikes?|hates?|loves?|enjoys?|favou?rite|allerg\w*)\b")
+_AVOID_CUE = re.compile(
+    r"\b(?:avoid(?:s|ing)?|don't\ bring\ up|do\ not\ bring\ up|don't\ mention|do\ not\ mention"
+    r"|sore\ subject)\b"
+)
 
 
 class QuickCaptureInput(BaseModel):
     """One statement about one person, named by the name the user used."""
 
     person: str = Field(min_length=1)
+
+    @field_validator("person")
+    @classmethod
+    def _require_a_name(cls, value: str) -> str:
+        """Reject a blank name before it becomes a person nobody can address.
+
+        ``min_length`` counts spaces, so `remember("   ", "moved to Berlin")` resolved nothing, created
+        a person whose canonical name was three spaces, and filed the note on it.
+        """
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("person must not be blank")
+        return stripped
     note: str | None = None
     kind: CaptureKind = "auto"
     occurred_at: datetime | None = None
@@ -181,7 +168,7 @@ def classify_note(note: str) -> tuple[RecordedKind, TraitCategory | None]:
 
     Checked in this order, first hit wins:
 
-    1. an interaction cue (``met``, ``talked``, ``had lunch``, ``yesterday`` …) → ``interaction``;
+    1. an interaction cue (``met``, ``talked``, ``had lunch``, ``today`` …) → ``interaction``;
     2. a topic-to-avoid cue (``avoid``, ``don't bring up`` …) with no communication cue →
        ``trait`` / ``topics_to_avoid``;
     3. a communication cue (``email``, ``call``, ``reply``, ``tone``, ``concise`` …) together with a
@@ -189,12 +176,12 @@ def classify_note(note: str) -> tuple[RecordedKind, TraitCategory | None]:
     4. a preference cue alone (``prefer``, ``likes``, ``allergic`` …) → ``trait`` / ``preference``;
     5. otherwise → ``fact`` under the ``note`` predicate.
     """
-    lowered = f" {note.casefold()} "
-    if any(cue in lowered for cue in _INTERACTION_CUES):
+    lowered = note.casefold()
+    if _INTERACTION_CUE.search(lowered):
         return "interaction", None
-    communication = any(cue in lowered for cue in _COMMUNICATION_CUES)
-    preference = any(cue in lowered for cue in _PREFERENCE_CUES)
-    avoid = any(cue in lowered for cue in _AVOID_CUES)
+    communication = bool(_COMMUNICATION_CUE.search(lowered))
+    preference = bool(_PREFERENCE_CUE.search(lowered))
+    avoid = bool(_AVOID_CUE.search(lowered))
     if avoid and not communication:
         return "trait", TraitCategory.TOPICS_TO_AVOID
     if communication and (preference or avoid):

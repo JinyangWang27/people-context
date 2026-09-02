@@ -270,3 +270,22 @@ def test_a_partial_name_still_reads_without_a_round_trip(tmp_path: Path) -> None
     assert context["found"] is True
     assert context["identity"]["canonical_name"] == "Amina Hassan"
     assert [item["organization_name"] for item in context["affiliations"]] == ["Open City Lab"]
+
+
+def test_a_bad_argument_is_a_structured_error_not_a_protocol_failure(tmp_path: Path) -> None:
+    """Every other write tool maps this through `call_action`; `remember` builds its input directly."""
+    server = build_server(db_path=tmp_path / "bad-args.db")
+
+    async def flow(client: Client) -> list[dict[str, Any]]:
+        return [
+            (
+                await client.call_tool("remember", {"person": "Alice", "note": "met", "occurred_at": "not-a-date"})
+            ).structured_content,
+            (await client.call_tool("remember", {"person": "   ", "note": "moved to Berlin"})).structured_content,
+        ]
+
+    bad_date, blank_name = _run(server, flow)
+
+    assert bad_date["error"] == "validation_error"
+    assert blank_name["error"] == "validation_error"
+    assert "must not be blank" in blank_name["message"]

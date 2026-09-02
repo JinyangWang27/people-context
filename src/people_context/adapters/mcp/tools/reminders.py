@@ -8,7 +8,7 @@ from mcp.types import ToolAnnotations
 from pydantic import ValidationError
 
 from people_context.adapters.mcp.tools.references import resolve_reference
-from people_context.adapters.mcp.tools.tool_errors import call_action
+from people_context.adapters.mcp.tools.tool_errors import call_action, validation_error_payload
 from people_context.app.records import CompleteReminderInput, ListRemindersInput, SetReminderInput
 from people_context.domain.reminder import ReminderKind, ReminderStatus
 
@@ -50,7 +50,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 status=status if status is not None else ReminderStatus.ACTIVE,
             )
         except ValidationError as exc:
-            return {"error": "validation_error", "message": str(exc), "details": exc.errors(include_url=False)}
+            return validation_error_payload(exc)
         return {"reminders": [item.model_dump(mode="json") for item in deps.list_reminders.execute(data)]}
 
     @mcp.tool(annotations=_WRITE)

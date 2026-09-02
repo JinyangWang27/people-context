@@ -57,6 +57,16 @@ CLIENTS: tuple[str, ...] = (
 
 SCOPES: tuple[str, ...] = ("user", "project")
 
+#: Where each client keeps a configuration this command can write. VS Code holds user-level servers
+#: in its own settings UI and only its workspace file is ours to edit, so `pctx setup vscode` with no
+#: scope means the project one — the alternative being an advertised command that always refuses.
+_DEFAULT_SCOPES: dict[str, str] = {"vscode": "project"}
+
+
+def default_scope(client: str) -> str:
+    """The scope to use when the operator did not name one."""
+    return _DEFAULT_SCOPES.get(client, "user")
+
 #: Suffix of the copy kept beside a configuration file before it is rewritten.
 BACKUP_SUFFIX = ".bak"
 
@@ -447,7 +457,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     try:
         lines = run_setup(
             args.client,
-            scope=args.scope,
+            scope=args.scope or default_scope(args.client),
             db_path=db_path_to_pin(args.db),
             encrypted=args.encrypted,
             dry_run=args.dry_run,
