@@ -44,6 +44,18 @@ from people_context.ports.vcard import SUPPORTED_VCARD_VERSIONS
 CAPTURE_KINDS: tuple[str, ...] = tuple(get_args(CaptureKind))
 
 
+def _person_name(value: str) -> str:
+    """Reject a blank name at the boundary, where the other bad arguments are already reported.
+
+    `remember` is the one person-addressed command that builds a validated model, so a blank name
+    reached Pydantic and printed its error where every sibling command prints a diagnostic.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise argparse.ArgumentTypeError("a person name is required; got only whitespace")
+    return stripped
+
+
 def _timestamp(value: str) -> datetime:
     """Parse an ISO 8601 argument, so a typo is argparse's usage error rather than a traceback."""
     try:
@@ -127,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
         "remember",
         help="Record one statement about one person: resolves the name, creates them if new, writes once.",
     )
-    remember.add_argument("person", help="Name or alias as you would say it.")
+    remember.add_argument("person", type=_person_name, help="Name or alias as you would say it.")
     remember.add_argument("note", nargs="?", default=None, help="What to remember; classified unless --kind is given.")
     remember.add_argument("--kind", choices=CAPTURE_KINDS, default="auto", help="Record kind (default: auto).")
     remember.add_argument(

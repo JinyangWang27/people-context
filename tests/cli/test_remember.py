@@ -90,3 +90,23 @@ def test_a_valid_occurred_at_dates_the_interaction(tmp_path: Path, capsys: pytes
 
     assert cli.main(["--db", db, "timeline", "Alice"]) == 0
     assert "2026-08-20" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("name", ["   ", "\t"])
+def test_a_blank_name_is_a_usage_error_not_a_pydantic_dump(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], name: str
+) -> None:
+    """`remember` is the one person-addressed command that builds a validated model."""
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--db", str(tmp_path / "r.db"), "remember", name, "moved to Berlin"])
+
+    err = capsys.readouterr().err
+    assert exit_info.value.code == 2
+    assert "a person name is required" in err
+    assert "pydantic" not in err
+
+
+def test_a_padded_name_is_trimmed_and_recorded(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["--db", str(tmp_path / "r.db"), "remember", "  Alice Ng  ", "moved to Berlin"]) == 0
+
+    assert capsys.readouterr().out.startswith("Created Alice Ng (")
