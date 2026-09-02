@@ -1,0 +1,65 @@
+name: Bug report
+description: Something behaves differently from what the docs promise.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Use **synthetic data only**: never paste a real database, raw import, token, or
+        personal information. `pctx demo --reset` gives you a fictional dataset to reproduce against.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `pctx --version` or `uv run pctx --version`, or the commit hash.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen?
+      multiple: true
+      options:
+        - MCP server (stdio)
+        - MCP server (loopback HTTP)
+        - pctx CLI
+        - Claude Code plugin
+        - Codex plugin
+        - Claude Desktop (.mcpb)
+        - Cursor / Windsurf / VS Code
+        - OpenClaw plugin
+        - Obsidian plugin
+        - Docker image
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Commands or tool calls, in order, against the demo database where possible.
+      placeholder: |
+        1. `uvx --from people-context pctx demo --reset`
+        2. call `resolve_person {"query": "Amina"}`
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Paste the exact output or error text. Redact anything private.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: OS and Python
+      placeholder: "macOS 15 / Python 3.12 / uv 0.8"
