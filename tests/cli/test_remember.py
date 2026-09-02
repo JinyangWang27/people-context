@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import people_context
 from people_context import cli
 
 
@@ -60,3 +61,12 @@ def test_json_mode_reports_the_same_exit_codes_as_the_summary(
 
     assert cli.main(["--db", db, "remember", "Dana Ito", "x", "--kind", "affiliation", "--json"]) == 1
     assert json.loads(capsys.readouterr().out)["status"] == "invalid_request"
+
+
+def test_version_flag_reports_the_installed_package_version(capsys: pytest.CaptureFixture[str]) -> None:
+    """The bug report form asks for this; argparse exits 0 from a version action."""
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["--version"])
+
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.strip() == f"pctx {people_context.__version__}"

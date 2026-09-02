@@ -36,7 +36,9 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         Filter by `person_id`, or by `person` (a name or alias) resolved inline; omit both for
         every person's reminders.
         """
-        if person and not person_id:
+        # `is not None`, not truthiness: an explicitly empty name is a caller mistake, and treating
+        # it as "no filter given" would answer a request scoped to one person with everyone's rows.
+        if person is not None and person_id is None:
             target = resolve_reference(deps, person_id=None, person=person)
             if isinstance(target, dict):
                 return target

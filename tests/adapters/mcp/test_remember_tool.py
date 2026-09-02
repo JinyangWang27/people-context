@@ -190,3 +190,35 @@ def test_elevated_structural_capture_is_refused(tmp_path: Path) -> None:
 
     assert refused["status"] == "invalid_request" and refused["recorded"] == []
     assert lookup["candidates"] == []
+
+
+def test_an_empty_name_filter_does_not_widen_a_scoped_read(tmp_path: Path) -> None:
+    """Regression: `person: ""` fell through the filter guard and returned every person's rows."""
+    server = build_server(db_path=tmp_path / "empty-filter.db")
+
+    async def flow(client: Client) -> dict[str, Any]:
+        for name in ("Alice Ng", "Bob Reyes"):
+            remembered = await client.call_tool("remember", {"person": name, "note": "moved to Berlin"})
+            await client.call_tool(
+                "set_reminder",
+                {
+                    "person_id": remembered.structured_content["person_id"],
+                    "text": f"follow up with {name}",
+                    "kind": "follow_up",
+                    "due_at": "2027-01-15T09:00:00Z",
+                },
+            )
+        return {
+            "unfiltered": (await client.call_tool("list_reminders", {})).structured_content,
+            "empty_name": (await client.call_tool("list_reminders", {"person": ""})).structured_content,
+            "empty_name_upcoming": (await client.call_tool("upcoming_dates", {"person": ""})).structured_content,
+        }
+
+    result = _run(server, flow)
+
+    # Omitting both arguments is still a legitimate unscoped read.
+    assert len(result["unfiltered"]["reminders"]) == 2
+    # Supplying an empty one is a caller mistake, answered as such rather than with everyone's rows.
+    assert result["empty_name"]["error"] == "missing_person"
+    assert "reminders" not in result["empty_name"]
+    assert result["empty_name_upcoming"]["error"] == "missing_person"

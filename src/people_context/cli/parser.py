@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import get_args
 
+from people_context import __version__
 from people_context.adapters.importers.router import SUPPORTED_IMPORT_SOURCES
 from people_context.app.capture import CaptureKind
 from people_context.app.exports import DEFAULT_VCARD_VERSION
@@ -64,6 +65,12 @@ def _add_page_arguments(parser: argparse.ArgumentParser, subject: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argparse parser and its subcommands."""
     parser = argparse.ArgumentParser(prog="pctx", description="Inspect and search your people data.")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Print the installed people-context version and exit.",
+    )
     parser.add_argument("--db", default=None, help="Explicit database path, overriding other resolution sources.")
     parser.add_argument(
         "--encrypted",

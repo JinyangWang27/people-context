@@ -5,6 +5,8 @@ curation, so validation, audit, HLC, and changelog capture match MCP writes.
 
 ## Global options
 
+`--version` prints the installed version and exits; it is the value to quote in a bug report.
+
 `--db PATH` explicitly selects the SQLite database and overrides every other location source.
 
 `--encrypted` opens that database through SQLCipher instead of plain SQLite, reading the key only from the

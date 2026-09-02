@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -232,10 +232,12 @@ def cli_command(client: str, scope: str, entry: ServerEntry) -> list[str]:
     raise SetupError(f"{client} is not configured through a client CLI.")
 
 
-def run_cli_target(client: str, scope: str, entry: ServerEntry, *, dry_run: bool) -> list[str]:
+def run_cli_target(
+    client: str, scope: str, entry: ServerEntry, *, dry_run: bool, platform: str | None = None
+) -> list[str]:
     """Drive the client's CLI, or print the exact command when it is not installed."""
     command = cli_command(client, scope, entry)
-    rendered = " ".join(_quote(part) for part in command)
+    rendered = render_command(command, platform=platform)
     if dry_run:
         return [f"Would run: {rendered}"]
     if shutil.which(command[0]) is None:
@@ -251,15 +253,21 @@ def run_cli_target(client: str, scope: str, entry: ServerEntry, *, dry_run: bool
     return lines
 
 
-def _quote(part: str) -> str:
-    """Quote one argument for a POSIX shell.
+def render_command(parts: Sequence[str], *, platform: str | None = None) -> str:
+    """Render an argv as one line the local shell parses back into that same argv.
 
-    The rendered command is printed to be pasted and run verbatim, so it must survive the shell
-    rather than merely look right. JSON's double quotes do not: a database path containing `$`,
-    a backtick, or `$(...)` would be expanded by the shell and register a different path than the
-    one the user asked for.
+    This line is printed to be pasted and run verbatim, so it has to survive the shell rather than
+    merely look right, and the two families disagree about how. A POSIX shell expands `$`, a
+    backtick and `$(...)` inside double quotes, so a database path containing any of them needs
+    `shlex.quote`'s single quotes. Windows does not read single quotes as quoting at all — `cmd.exe`
+    passes them through as literal characters and still splits the path on its spaces — so there the
+    line is rendered with the argv encoding Windows itself parses, which `subprocess.list2cmdline`
+    produces.
     """
-    return shlex.quote(part)
+    platform = sys.platform if platform is None else platform
+    if platform.startswith("win"):
+        return subprocess.list2cmdline(list(parts))
+    return " ".join(shlex.quote(part) for part in parts)
 
 
 def generic_json(entry: ServerEntry) -> list[str]:
@@ -287,7 +295,7 @@ def run_setup(
     if client == "json":
         lines = generic_json(entry)
     elif client in ("claude-code", "codex"):
-        lines = run_cli_target(client, scope, entry, dry_run=dry_run)
+        lines = run_cli_target(client, scope, entry, dry_run=dry_run, platform=platform)
     else:
         target = file_target(client, scope, env=env, platform=platform, cwd=cwd)
         lines = write_file_target(target, entry, dry_run=dry_run)

@@ -334,3 +334,22 @@ class TestPrintedCommandSafety:
         assert shlex.split(rendered) == cli_command(
             "claude-code", "user", build_entry("$HOME/`id`.db", encrypted=False)
         )
+
+    def test_windows_renders_the_argv_encoding_windows_parses(self) -> None:
+        """POSIX single quotes are literal characters to cmd.exe, which would still split on spaces."""
+        argv = ["claude", "mcp", "add", "--env", r"PEOPLE_CONTEXT_DB=C:\Users\Jane Doe\people.db"]
+
+        rendered = setup.render_command(argv, platform="win32")
+
+        assert '"PEOPLE_CONTEXT_DB=C:\\Users\\Jane Doe\\people.db"' in rendered
+        assert "'" not in rendered
+
+    def test_posix_and_windows_renderings_differ_for_the_same_argv(self) -> None:
+        command = cli_command("claude-code", "user", build_entry("/tmp/a b.db", encrypted=False))
+
+        posix = setup.render_command(command, platform="linux")
+        windows = setup.render_command(command, platform="win32")
+
+        assert shlex.split(posix) == command
+        assert posix != windows
+        assert "'PEOPLE_CONTEXT_DB=/tmp/a b.db'" in posix
