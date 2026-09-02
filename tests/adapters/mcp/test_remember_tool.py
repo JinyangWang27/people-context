@@ -222,3 +222,46 @@ def test_an_empty_name_filter_does_not_widen_a_scoped_read(tmp_path: Path) -> No
     assert result["empty_name"]["error"] == "missing_person"
     assert "reminders" not in result["empty_name"]
     assert result["empty_name_upcoming"]["error"] == "missing_person"
+
+
+def test_a_typo_is_confirmed_rather_than_read_as_another_person(tmp_path: Path) -> None:
+    """A fuzzy-only candidate means the store holds no such name; reading it would misattribute records."""
+    server = build_server(db_path=tmp_path / "typo.db")
+
+    async def flow(client: Client) -> dict[str, Any]:
+        await client.call_tool("remember", {"person": "Daniel Okafor", "note": "moved to Berlin"})
+        return {
+            tool: (await client.call_tool(tool, {"person": "Danial Okafor"})).structured_content
+            for tool in (
+                "get_person_context",
+                "get_communication_guidance",
+                "get_person_timeline",
+                "get_relationship_graph",
+                "get_consolidation_context",
+                "list_reminders",
+            )
+        }
+
+    results = _run(server, flow)
+
+    for tool, payload in results.items():
+        assert payload["error"] == "unconfirmed_person", tool
+        assert [candidate["canonical_name"] for candidate in payload["candidates"]] == ["Daniel Okafor"], tool
+        assert "facts" not in payload and "reminders" not in payload, tool
+
+
+def test_a_partial_name_still_reads_without_a_round_trip(tmp_path: Path) -> None:
+    """Regression guard on the fix above: `Who is Amina?` is the documented flow and must keep working."""
+    server = build_server(db_path=tmp_path / "partial.db")
+
+    async def flow(client: Client) -> dict[str, Any]:
+        await client.call_tool(
+            "remember", {"person": "Amina Hassan", "note": "moved to Berlin", "org": "Open City Lab"}
+        )
+        return (await client.call_tool("get_person_context", {"person": "Amina"})).structured_content
+
+    context = _run(server, flow)
+
+    assert context["found"] is True
+    assert context["identity"]["canonical_name"] == "Amina Hassan"
+    assert [item["organization_name"] for item in context["affiliations"]] == ["Open City Lab"]

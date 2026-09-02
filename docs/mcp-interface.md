@@ -36,7 +36,14 @@ though it never mutated anything; correcting the annotation removes a spurious a
 Every ordinary read above that takes a single `person_id` — `get_person_context`, `get_communication_guidance`,
 `list_reminders`, `get_relationship_graph`, `get_person_timeline`, `get_consolidation_context`, and
 `upcoming_dates` — also accepts `person`: the name, nickname, or alias as the user said it. `find_connection` and
-the operator-elevated `get_sensitive_person_context` take ids only. The tool resolves it through the same `resolve_person` pipeline and applies the same contract — an
+the operator-elevated `get_sensitive_person_context` take ids only.
+
+The name is followed only when the store really holds it: an exact name or alias, or a lexical hit such as
+`Amina` for `Amina Hassan`. A candidate the resolver reached only by edit distance — `Danial Okafor` for
+`Daniel Okafor` — returns `{"error": "unconfirmed_person", "candidates": [...]}` and reads nothing, because
+answering a question about one person with another person's records is the failure a typo would otherwise
+cause. Alongside `ambiguous_person`, `person_not_found`, and `missing_person`, this keeps every refusal a
+structured payload the agent can act on. The tool resolves it through the same `resolve_person` pipeline and applies the same contract — an
 `ambiguous` resolution returns `{"error": "ambiguous_person", "candidates": [...]}` and reads nothing, no match
 returns `{"error": "person_not_found"}`, and neither argument returns `{"error": "missing_person"}`. Passing
 `person_id` keeps the previous behavior exactly; `person` is additive and saves the resolve round-trip when the

@@ -31,8 +31,10 @@ Resolve the person first, then call the tool that matches the question. When the
 wants help writing to or preparing for someone, `get_communication_guidance` is the
 right tool; do not infer tone from raw context alone. Both reads, like `list_reminders`,
 `get_person_timeline`, and `upcoming_dates`, also accept `person` (the name as said)
-in place of `person_id`; an ambiguous name then returns candidates instead of data, so
-the resolution contract holds either way.
+in place of `person_id`; a name that is ambiguous, or that only a near-spelling
+matches, then returns candidates instead of data, so the resolution contract holds
+either way. Surface those candidates and let the user choose, exactly as you would
+for `resolve_person`.
 
 ## Preparing for a meeting or conversation
 

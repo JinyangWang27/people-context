@@ -10,6 +10,11 @@ from people_context.ports.clock import Clock
 from people_context.ports.context import PersonContextReader
 from people_context.ports.repository import PersonReader
 
+#: `match_reason` of a candidate found only by bounded edit distance. It is the one stage that
+#: matches a name the store does not actually contain, so callers that act on a single candidate
+#: treat it as a suggestion to confirm rather than an identification.
+FUZZY_MATCH_REASON = "fuzzy"
+
 _MIN_SCORE = 0.35
 _AMBIGUOUS_GAP = 0.2
 _MIN_FUZZY_QUERY_LENGTH = 3
@@ -119,7 +124,7 @@ class ResolvePerson:
                 )
                 distance = min(distances, default=3)
                 if distance in _FUZZY_SCORES:
-                    self._offer(best, _candidate(person, _FUZZY_SCORES[distance], "fuzzy"))
+                    self._offer(best, _candidate(person, _FUZZY_SCORES[distance], FUZZY_MATCH_REASON))
 
         if hints is not None and self._context_reader is not None and self._clock is not None:
             best = {person_id: self._boost_with_hints(candidate, hints) for person_id, candidate in best.items()}

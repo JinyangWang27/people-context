@@ -12,7 +12,13 @@ from people_context.app.people.remember import (
     RememberPersonResult,
     SelfAlreadyExistsError,
 )
-from people_context.app.people.resolve import ResolutionCandidate, ResolutionHints, ResolutionResult, ResolvePerson
+from people_context.app.people.resolve import (
+    FUZZY_MATCH_REASON,
+    ResolutionCandidate,
+    ResolutionHints,
+    ResolutionResult,
+    ResolvePerson,
+)
 from people_context.app.people.search import SearchPeople
 
 __all__ = [
@@ -35,6 +41,7 @@ __all__ = [
     "RememberPerson",
     "RememberPersonInput",
     "RememberPersonResult",
+    "FUZZY_MATCH_REASON",
     "ResolutionCandidate",
     "ResolutionHints",
     "ResolutionResult",
