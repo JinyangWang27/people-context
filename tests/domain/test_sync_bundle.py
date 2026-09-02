@@ -291,9 +291,7 @@ def test_an_entity_mapping_without_an_entity_id_is_rejected() -> None:
 
 def test_a_merged_away_mapping_naming_an_entity_is_rejected() -> None:
     payload = _document()
-    _imports(payload)["candidate_mappings"][0].update(
-        {"disposition": "merged_away", "entity_type": "relationship"}
-    )
+    _imports(payload)["candidate_mappings"][0].update({"disposition": "merged_away", "entity_type": "relationship"})
 
     with pytest.raises(ValidationError):
         SyncBundleDocument.model_validate(payload)
@@ -682,9 +680,7 @@ def test_a_reference_to_a_candidate_that_is_not_a_person_is_rejected() -> None:
 
 def test_a_reference_to_a_person_in_the_same_batch_is_accepted() -> None:
     payload = _document()
-    _imports(payload)["staging"].append(
-        _staged_fact("01J0000000000000000STAGE02", "01J0000000000000000STAGE01")
-    )
+    _imports(payload)["staging"].append(_staged_fact("01J0000000000000000STAGE02", "01J0000000000000000STAGE01"))
 
     validate_bundle_document(SyncBundleDocument.model_validate(payload))
 
@@ -964,9 +960,7 @@ def test_a_staged_trait_citing_a_durable_record_the_bundle_omits_is_rejected() -
         pytest.param("evidence_ids", ["x" * 257], id="overlong"),
     ],
 )
-def test_a_persisted_trait_breaking_the_evidence_contract_is_rejected(
-    candidate_field: str, value: list[str]
-) -> None:
+def test_a_persisted_trait_breaking_the_evidence_contract_is_rejected(candidate_field: str, value: list[str]) -> None:
     """The persisted shape is held to the staging boundary's own evidence rules: a repeated
     citation is a row the store refuses as a primary key, and an over-budget one makes a single
     trait's retrieval unbounded."""
@@ -984,12 +978,8 @@ def test_two_distinct_links_are_not_confused_by_a_separator_in_an_opaque_id() ->
     """Evidence ids are opaque and may contain any character, so the duplicate check compares
     the key as a tuple: any flattening would refuse a valid backup as carrying a duplicate."""
     payload = _document()
-    payload["snapshot"]["traits"].append(
-        {**payload["snapshot"]["traits"][0], "id": "a/observation/b"}
-    )
-    payload["snapshot"]["observations"].append(
-        {**payload["snapshot"]["observations"][0], "id": "c"}
-    )
+    payload["snapshot"]["traits"].append({**payload["snapshot"]["traits"][0], "id": "a/observation/b"})
+    payload["snapshot"]["observations"].append({**payload["snapshot"]["observations"][0], "id": "c"})
     payload["trait_evidence"] = [
         {
             "trait_id": "a",
@@ -1005,9 +995,7 @@ def test_two_distinct_links_are_not_confused_by_a_separator_in_an_opaque_id() ->
         },
     ]
     payload["snapshot"]["traits"].append({**payload["snapshot"]["traits"][0], "id": "a"})
-    payload["snapshot"]["observations"].append(
-        {**payload["snapshot"]["observations"][0], "id": "b/observation/c"}
-    )
+    payload["snapshot"]["observations"].append({**payload["snapshot"]["observations"][0], "id": "b/observation/c"})
 
     validate_bundle_document(SyncBundleDocument.model_validate(payload))
 
@@ -1045,9 +1033,7 @@ def test_a_mapping_claiming_a_record_its_candidate_never_produced_is_rejected() 
     with pytest.raises(InvalidBundleError) as excinfo:
         validate_bundle_document(SyncBundleDocument.model_validate(payload))
 
-    assert any(
-        "claims a interaction for a observation candidate" in detail for detail in excinfo.value.details
-    )
+    assert any("claims a interaction for a observation candidate" in detail for detail in excinfo.value.details)
 
 
 @pytest.mark.parametrize("field", ["evidence_candidate_ids", "evidence_ids"])
@@ -1107,9 +1093,7 @@ def _strict_models() -> list[type[BaseModel]]:
     return [
         value
         for value in vars(sync_bundle).values()
-        if isinstance(value, type)
-        and issubclass(value, StrictBundleModel)
-        and value is not StrictBundleModel
+        if isinstance(value, type) and issubclass(value, StrictBundleModel) and value is not StrictBundleModel
     ]
 
 
@@ -1436,9 +1420,7 @@ def test_dangling_vocabulary_references_are_rejected() -> None:
 
 def test_dangling_interaction_participant_is_rejected() -> None:
     payload = _document()
-    payload["snapshot"]["interactions"] = [
-        _interaction("01J000000000000000000INT01", ["01J0000000000000000MISSING"])
-    ]
+    payload["snapshot"]["interactions"] = [_interaction("01J000000000000000000INT01", ["01J0000000000000000MISSING"])]
 
     with pytest.raises(InvalidBundleError) as error:
         validate_bundle_document(_validated(payload))
@@ -1517,9 +1499,7 @@ def test_duplicate_alias_id_across_people_is_rejected() -> None:
 
 def test_duplicate_interaction_participant_is_rejected() -> None:
     payload = _document()
-    payload["snapshot"]["interactions"] = [
-        _interaction("01J000000000000000000INT01", [_PERSON_ID, _PERSON_ID])
-    ]
+    payload["snapshot"]["interactions"] = [_interaction("01J000000000000000000INT01", [_PERSON_ID, _PERSON_ID])]
 
     with pytest.raises(InvalidBundleError) as error:
         validate_bundle_document(_validated(payload))
@@ -1529,9 +1509,7 @@ def test_duplicate_interaction_participant_is_rejected() -> None:
 
 def test_duplicate_vocabulary_keys_are_rejected() -> None:
     payload = _document()
-    payload["relationship_vocabulary"]["types"].append(
-        copy.deepcopy(payload["relationship_vocabulary"]["types"][0])
-    )
+    payload["relationship_vocabulary"]["types"].append(copy.deepcopy(payload["relationship_vocabulary"]["types"][0]))
     payload["relationship_vocabulary"]["synonyms"].append(
         copy.deepcopy(payload["relationship_vocabulary"]["synonyms"][0])
     )

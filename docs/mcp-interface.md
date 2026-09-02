@@ -609,7 +609,9 @@ a fuzzy edit-distance match is never written against. When nobody matches, the p
   normal vocabulary and inverse handling; without a self record the call returns `status: no_self` and writes
   nothing;
 - `note` records one of `fact` (`predicate`, default `note`), `trait` (`trait_category`, default by rule or
-  `other`), or `interaction` (the person as sole participant, occurring now). `kind: auto` classifies the note by
+  `other`), or `interaction` (the person as sole participant, at `occurred_at` or now). A note that places an
+  interaction earlier — "met Alice yesterday" — without an `occurred_at` is refused as `invalid_request`
+  rather than dated today, because that date is the recency signal `get_stale_relationships` reads. `kind: auto` classifies the note by
   a fixed keyword table documented on `classify_note` in `app/capture/quick_capture.py`: interaction cues, then
   topics to avoid, then communication style, then preference, otherwise a fact.
 

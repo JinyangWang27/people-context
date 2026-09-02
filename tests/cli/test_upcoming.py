@@ -45,12 +45,8 @@ def _seed(db_path: Path) -> dict[str, Person]:
         for person in people.values():
             repo.save_person(person)
         facts = RecordFact(repo, records, audit, clock)
-        facts.execute(
-            RecordFactInput(person_id=people["alice"].id, predicate="birthday", value=_partial(_in_days(5)))
-        )
-        facts.execute(
-            RecordFactInput(person_id=people["bob"].id, predicate="birthday", value=_partial(_in_days(200)))
-        )
+        facts.execute(RecordFactInput(person_id=people["alice"].id, predicate="birthday", value=_partial(_in_days(5))))
+        facts.execute(RecordFactInput(person_id=people["bob"].id, predicate="birthday", value=_partial(_in_days(200))))
         facts.execute(
             RecordFactInput(
                 person_id=people["carol"].id,
@@ -59,9 +55,7 @@ def _seed(db_path: Path) -> dict[str, Person]:
                 sensitivity=Sensitivity.RESTRICTED,
             )
         )
-        facts.execute(
-            RecordFactInput(person_id=people["vague"].id, predicate="birthday", value="sometime in spring")
-        )
+        facts.execute(RecordFactInput(person_id=people["vague"].id, predicate="birthday", value="sometime in spring"))
         reminders = SetReminder(repo, records, audit, clock)
         reminders.execute(
             SetReminderInput(
@@ -120,9 +114,7 @@ def test_upcoming_accepts_a_resolvable_person_name(tmp_path: Path, capsys: pytes
     assert "Skipped" not in out
 
 
-def test_upcoming_reports_nothing_inside_a_zero_day_window(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_upcoming_reports_nothing_inside_a_zero_day_window(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 

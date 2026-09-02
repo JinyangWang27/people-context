@@ -44,13 +44,9 @@ def test_all_record_types_round_trip_and_field_update() -> None:
     orgs.save(organization)
 
     records = [
-        Relationship(
-            subject_id="p1", object_id="p2", type="friend_of", provenance=_PROVENANCE, created_at=_NOW
-        ),
+        Relationship(subject_id="p1", object_id="p2", type="friend_of", provenance=_PROVENANCE, created_at=_NOW),
         Affiliation(person_id="p2", org_id=organization.id, role="Engineer", provenance=_PROVENANCE, created_at=_NOW),
-        Fact(
-            person_id="p2", predicate="location", value="Dubai", provenance=_PROVENANCE, recorded_at=_NOW
-        ),
+        Fact(person_id="p2", predicate="location", value="Dubai", provenance=_PROVENANCE, recorded_at=_NOW),
         Observation(person_id="p2", text="Calm", provenance=_PROVENANCE, observed_at=_NOW),
         Trait(
             person_id="p2",
@@ -82,8 +78,7 @@ def test_all_record_types_round_trip_and_field_update() -> None:
 
     entity_types = ["relationship", "affiliation", "fact", "observation", "trait", "interaction", "reminder"]
     loaded = [
-        store.get_record(entity_type, record.id)
-        for entity_type, record in zip(entity_types, records, strict=True)
+        store.get_record(entity_type, record.id) for entity_type, record in zip(entity_types, records, strict=True)
     ]
 
     assert all(record is not None for record in loaded)

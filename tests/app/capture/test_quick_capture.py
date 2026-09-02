@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.capture import CONFIDENT_WRITE_SCORE, QuickCaptureInput, classify_note
 from people_context.app.people import RememberPersonInput, ResolutionHints
 from people_context.app.records import SetAffiliationInput
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Sensitivity, as_utc
 from people_context.domain.trait import TraitCategory
 
 
@@ -284,3 +285,51 @@ class TestHintsDoNotLaunderAFuzzyMatch:
         )
 
         assert result.status == "recorded" and result.person_id == alicia
+
+
+class TestHistoricalInteractions:
+    """An interaction's date is the recency signal itself, so it is never quietly set to now."""
+
+    @pytest.mark.parametrize(
+        "note",
+        [
+            "met Alice yesterday",
+            "caught up last week",
+            "had coffee a month ago",
+            "talked last night about the launch",
+        ],
+    )
+    def test_an_undated_historical_note_is_refused(self, runtime: ApplicationRuntime, note: str) -> None:
+        result = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Alice Ng", note=note))
+
+        assert result.status == "invalid_request"
+        assert "occurred_at" in (result.message or "")
+        assert runtime.repo.list_people() == []
+
+    def test_supplying_the_date_records_it(self, runtime: ApplicationRuntime) -> None:
+        when = datetime(2026, 8, 20, 15, 0, tzinfo=UTC)
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="met Alice yesterday", occurred_at=when)
+        )
+
+        interactions = runtime.context_reader.list_interactions(result.person_id or "")
+        assert result.status == "recorded"
+        assert [as_utc(item.occurred_at) for item in interactions] == [when]
+
+    def test_a_present_tense_interaction_still_defaults_to_now(self, runtime: ApplicationRuntime) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="had coffee today about the launch")
+        )
+
+        interactions = runtime.context_reader.list_interactions(result.person_id or "")
+        assert result.status == "recorded"
+        assert (datetime.now(UTC) - as_utc(interactions[0].occurred_at)).total_seconds() < 60
+
+    def test_a_historical_note_that_is_not_an_interaction_is_unaffected(self, runtime: ApplicationRuntime) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Alice Ng", note="moved to Berlin last year")
+        )
+
+        assert result.status == "recorded"
+        assert [record.kind for record in result.recorded] == ["fact"]

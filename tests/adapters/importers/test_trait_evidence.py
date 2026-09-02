@@ -468,9 +468,7 @@ def test_evidence_committed_in_an_earlier_partial_commit_still_grounds_the_trait
 
     assert result.unresolved_ids == []
     mappings = harness.committed(batch.batch_id)
-    assert harness.links() == [
-        (mappings[rows["trait"].id], "observation", mappings[rows["observation"].id])
-    ]
+    assert harness.links() == [(mappings[rows["trait"].id], "observation", mappings[rows["observation"].id])]
 
 
 def test_a_trait_whose_same_batch_evidence_was_not_accepted_stays_unresolved() -> None:
@@ -529,18 +527,14 @@ def test_a_stored_mapping_naming_a_record_no_trait_may_cite_leaves_it_unresolved
 def test_an_explicit_durable_evidence_id_is_used_exactly_as_supplied() -> None:
     """A restored non-ULID id is as addressable as a generated one: lookup is exact, not shaped."""
     harness = _Harness()
-    first = harness.stage_batch(
-        "planning-meeting", [_person("alice", "Alice Rivera"), _observation()]
-    )
+    first = harness.stage_batch("planning-meeting", [_person("alice", "Alice Rivera"), _observation()])
     rows = harness.rows(first.batch_id)
     harness.commit.execute(first.batch_id, [row.id for row in rows])
     observation_id = harness.conn.execute("SELECT id FROM observations").fetchone()["id"]
     harness.conn.execute("UPDATE observations SET id = 'obs-1' WHERE id = ?", (observation_id,))
     harness.conn.commit()
 
-    second = harness.stage_batch(
-        "follow-up", [_person("alice", "Alice Rivera"), _trait(evidence_ids=["obs-1"])]
-    )
+    second = harness.stage_batch("follow-up", [_person("alice", "Alice Rivera"), _trait(evidence_ids=["obs-1"])])
     second_rows = harness.rows(second.batch_id)
     result = harness.commit.execute(second.batch_id, [row.id for row in second_rows])
 
@@ -620,9 +614,7 @@ def test_a_mapped_citation_resolves_to_the_record_its_candidate_produced() -> No
     people = [row for row in harness.rows(batch.batch_id) if row.candidate["type"] == "person"]
     harness.commit.execute(batch.batch_id, [*(row.id for row in people), rows["interaction"].id])
     interaction_id = harness.conn.execute("SELECT id FROM interactions").fetchone()["id"]
-    bob = harness.conn.execute(
-        "SELECT id FROM persons WHERE canonical_name = 'Bob Chen'"
-    ).fetchone()["id"]
+    bob = harness.conn.execute("SELECT id FROM persons WHERE canonical_name = 'Bob Chen'").fetchone()["id"]
     # A restored store may legitimately hold an observation sharing that opaque id — and this one
     # is about somebody else, so resolving to it would either mis-ground the trait or strand it.
     harness.conn.execute(
@@ -686,9 +678,9 @@ def test_every_link_shares_the_commit_transaction_of_the_trait_it_grounds() -> N
         )
     }
     assert len(transactions) == 1
-    assert harness.conn.execute(
-        "SELECT COUNT(*) FROM changelog WHERE entity_type = 'trait_evidence'"
-    ).fetchone()[0] == 1
+    assert (
+        harness.conn.execute("SELECT COUNT(*) FROM changelog WHERE entity_type = 'trait_evidence'").fetchone()[0] == 1
+    )
 
 
 def test_an_unwired_commit_declines_a_trait_that_asks_for_grounding() -> None:

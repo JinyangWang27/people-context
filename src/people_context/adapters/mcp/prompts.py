@@ -82,8 +82,9 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
             "typed and the resolver fell back to spelling distance, so confirm before reading.\n"
             "3. If there is a confident top candidate, call `get_person_context` with its `person_id` and "
             "answer from that bundle: who they are, how they relate to the user, affiliations, and what "
-            "happened recently. `withheld` counts records the ordinary view did not disclose; mention that "
-            "something is withheld rather than reporting an empty record.\n"
+            "happened recently. What comes back is the complete ordinary view — sensitive and restricted "
+            "records leave no trace in it — so report it as what is known, never speculate about anything "
+            "behind a gate, and if a section is empty say so plainly.\n"
             "4. If nothing matches, say so and offer to remember them.\n"
         )
 

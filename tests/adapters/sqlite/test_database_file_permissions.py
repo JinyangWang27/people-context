@@ -196,9 +196,7 @@ def test_a_symlink_into_a_missing_directory_defers_to_sqlite(tmp_path: Path) -> 
     assert not missing.exists()
 
 
-def test_a_symlink_raced_into_the_resolved_path_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_symlink_raced_into_the_resolved_path_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`realpath` returns a name, and the name can be claimed before the open.
 
     In a directory another local account can write, that account can plant a symlink
@@ -241,9 +239,7 @@ def test_an_ordinary_existing_database_is_still_not_refused(tmp_path: Path) -> N
     assert _mode(db_path) == 0o644
 
 
-def test_a_file_substituted_after_the_symlink_check_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_file_substituted_after_the_symlink_check_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`islink` checks a name, and the name can still change before the driver opens it.
 
     Where another local account owns the directory it can present an ordinary file for
@@ -340,9 +336,7 @@ def test_an_owner_only_directory_is_accepted(tmp_path: Path) -> None:
     assert _mode(private / "people.db") == PRIVATE_FILE_MODE
 
 
-def test_a_database_file_owned_by_another_account_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_database_file_owned_by_another_account_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A sticky directory still lets anyone create a name that does not exist yet.
 
     So an attacker who can guess the path — `/tmp/people.db` is not a hard guess — can
@@ -458,9 +452,7 @@ def test_an_entry_that_vanishes_mid_preparation_still_ends_up_owner_only(
     assert _mode(db_path) == PRIVATE_FILE_MODE
 
 
-def test_a_path_that_never_settles_is_refused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_path_that_never_settles_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Retrying is bounded: a path churned faster than it can be trusted is refused.
 
     The entry is present for every exclusive create and gone for every inspection, which
@@ -507,9 +499,7 @@ def test_a_sticky_directory_owned_by_another_account_is_refused(
         open_db(hostile / "people.db")
 
 
-def test_a_sticky_directory_owned_by_root_is_accepted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_sticky_directory_owned_by_root_is_accepted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """`/tmp` is root-owned and sticky, and must keep working."""
     rootish = tmp_path / "tmpish"
     rootish.mkdir()
@@ -571,4 +561,3 @@ def test_a_root_owned_ancestor_is_accepted(tmp_path: Path) -> None:
     conn.close()
 
     assert _mode(private / "people.db") == PRIVATE_FILE_MODE
-

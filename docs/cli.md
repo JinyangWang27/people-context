@@ -92,8 +92,9 @@ Clients that own their configuration through a CLI (Claude Code, Codex) are driv
 
 `--scope project` targets `.cursor/mcp.json` or `.vscode/mcp.json` in the current directory, or Claude Code's
 project scope; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints what would be written
-or run and changes nothing. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
-server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. `--encrypted` adds the flag and never
+or run and changes nothing; on Windows that command is quoted for PowerShell, whose single quotes are literal, since no `cmd.exe` rendering is safe for a path containing `&` or `%…%`. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
+server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. A database selected through `PEOPLE_CONTEXT_DB` or `OPENCLAW_WORKSPACE` is written into the entry too, because a client launched from the desktop inherits none of the shell's environment and would otherwise open the default database instead; a config-file or XDG default location is left unpinned, since the server resolves those itself. `--encrypted` selects the `people-context[encrypted]` requirement as well as passing the flag, so the client's
+`uvx` environment actually contains SQLCipher, and never writes
 the key: the client must launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment, and that reminder
 goes to stderr so `setup json` stays one JSON document on stdout.
 

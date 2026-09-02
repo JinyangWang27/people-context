@@ -107,10 +107,7 @@ def test_merge_dedupes_overlapping_parallel_edges_and_keeps_history() -> None:
     result = MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
 
     assert result.duplicate_relationships_removed == 1
-    remaining = [
-        (row.type, str(row.period.valid_from))
-        for row in SqliteRelationshipStore(conn).list_relationships()
-    ]
+    remaining = [(row.type, str(row.period.valid_from)) for row in SqliteRelationshipStore(conn).list_relationships()]
     assert sorted(remaining) == [
         ("colleague_of", "None"),
         ("reports_to", "2019-01-01"),

@@ -22,9 +22,13 @@ def _seed(db_path: Path, name: str, **kwargs: object) -> Person:
     conn = open_db(db_path)
     try:
         repo = SqlitePeopleRepository(conn)
-        return RememberPerson(repo, repo, SqliteAuditLog(conn), SystemClock()).execute(
-            RememberPersonInput(name=name, **kwargs)  # type: ignore[arg-type]
-        ).person
+        return (
+            RememberPerson(repo, repo, SqliteAuditLog(conn), SystemClock())
+            .execute(
+                RememberPersonInput(name=name, **kwargs)  # type: ignore[arg-type]
+            )
+            .person
+        )
     finally:
         conn.close()
 
@@ -59,9 +63,7 @@ def test_init_fresh_creates_normalized_self_handles_and_philosophy(
         conn.close()
     assert person is not None
     assert person.canonical_name == "Maya Chen"
-    assert [(alias.value, alias.kind) for alias in person.aliases] == [
-        ("maya@example.com", AliasKind.HANDLE)
-    ]
+    assert [(alias.value, alias.kind) for alias in person.aliases] == [("maya@example.com", AliasKind.HANDLE)]
     assert philosophy is not None and philosophy[0] == '"Prefer concise written updates"'
 
 
@@ -84,9 +86,7 @@ def test_init_additive_keeps_existing_self_identity_and_adds_handles(
         conn.close()
     assert len(people) == 2
     assert self_person is not None and self_person.id == existing.id
-    assert [(alias.value, alias.kind) for alias in self_person.aliases] == [
-        ("self@example.com", AliasKind.HANDLE)
-    ]
+    assert [(alias.value, alias.kind) for alias in self_person.aliases] == [("self@example.com", AliasKind.HANDLE)]
 
 
 def test_init_additive_refuses_handle_owned_by_another_person_before_mutation(
@@ -124,6 +124,7 @@ def test_init_refuses_nonempty_state_without_one_unambiguous_self_before_prompt_
         _seed(db_path, "Other", aliases=[AliasInput(value="Existing Self")])
     else:
         self_person = _seed(db_path, "Existing Person")
+
     def unexpected_prompt(_: str) -> str:
         raise AssertionError("refused init must not prompt")
 
@@ -381,10 +382,13 @@ def test_init_rejects_unknown_candidate_ids_without_committing_contacts(
     try:
         assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM import_staging WHERE status = 'committed'").fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM user_preferences WHERE key = ?",
-            (PREF_COMMUNICATION_PHILOSOPHY,),
-        ).fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM user_preferences WHERE key = ?",
+                (PREF_COMMUNICATION_PHILOSOPHY,),
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         conn.close()
 

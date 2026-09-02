@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -27,14 +28,19 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from people_context.config import DB_KEY_ENV
+from people_context.config import DB_KEY_ENV, resolve_db_path
 
 #: The one server name every target registers under, so a re-run replaces rather than duplicates.
 SERVER_NAME = "people-context"
 
 #: The canonical zero-install invocation. Kept as data so tests can assert the documented command.
 SERVER_COMMAND = "uvx"
-SERVER_ARGS: tuple[str, ...] = ("--from", "people-context", "people-context")
+
+#: The published distribution and the console script it exposes; both are `people-context`, so the
+#: canonical invocation names it twice.
+PACKAGE_NAME = "people-context"
+SERVER_ENTRY_POINT = "people-context"
+SERVER_ARGS: tuple[str, ...] = ("--from", PACKAGE_NAME, SERVER_ENTRY_POINT)
 
 #: Targets accepted on the command line, in the order they are listed in help output.
 CLIENTS: tuple[str, ...] = (
@@ -86,14 +92,36 @@ class FileTarget:
     restart_hint: str
 
 
+def db_path_to_pin(explicit: str | None, env: Mapping[str, str] | None = None) -> str | None:
+    """Return the database path the client has to be told about, or None when it can find it itself.
+
+    The server resolves its own path, but only from sources the client process will actually have. A
+    config file and the XDG data directory travel with the machine, so a client that starts them
+    resolves exactly what the CLI did and pinning would only freeze a location the user may later
+    move. An environment variable does not travel: a GUI client launched from the desktop inherits
+    the shell's environment for none of it, so `PEOPLE_CONTEXT_DB=~/work.db pctx setup claude-desktop`
+    would otherwise wire a client that quietly opens the default database instead — an empty store
+    where the records just imported ought to be.
+    """
+    env = os.environ if env is None else env
+    if explicit:
+        return explicit
+    if env.get("PEOPLE_CONTEXT_DB") or env.get("OPENCLAW_WORKSPACE"):
+        return str(resolve_db_path(None, env))
+    return None
+
+
 def build_entry(db_path: str | None, *, encrypted: bool) -> ServerEntry:
     """Build the server entry for the resolved options.
 
-    ``PEOPLE_CONTEXT_DB`` is only pinned when the operator passed ``--db``; otherwise the server resolves the
-    path the same way the CLI does. ``--encrypted`` adds the flag but never the key: the key is read from the
-    server process environment only, which the caller must arrange in the client.
+    ``--encrypted`` selects the `encrypted` extra as well as passing the flag, because the flag alone
+    would leave the freshly created `uvx` environment without the SQLCipher binding it needs and the
+    server refuses to start rather than open anything in plaintext. The extra resolves to nothing on
+    platforms its marker excludes, which is where a locally built `sqlcipher3` is documented instead.
+    The key is never part of the entry: it is read from the server's own environment.
     """
-    args = list(SERVER_ARGS)
+    requirement = f"{PACKAGE_NAME}[encrypted]" if encrypted else PACKAGE_NAME
+    args = ["--from", requirement, SERVER_ENTRY_POINT]
     env: dict[str, str] = {}
     if encrypted:
         args.append("--encrypted")
@@ -251,7 +279,10 @@ def run_cli_target(
     if dry_run:
         return [f"Would run: {rendered}"]
     if shutil.which(command[0]) is None:
-        return [f"`{command[0]}` is not on PATH. Run this once it is:", f"  {rendered}"]
+        return [
+            f"`{command[0]}` is not on PATH. Run this in {shell_for(platform)} once it is:",
+            f"  {rendered}",
+        ]
     completed = subprocess.run(command, check=False, capture_output=True, text=True)  # noqa: S603
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
@@ -263,21 +294,38 @@ def run_cli_target(
     return lines
 
 
-def render_command(parts: Sequence[str], *, platform: str | None = None) -> str:
-    """Render an argv as one line the local shell parses back into that same argv.
+#: Characters PowerShell leaves alone, so an ordinary argument prints unquoted and stays readable.
+_POWERSHELL_SAFE = re.compile(r"\A[A-Za-z0-9_.:/\\@=+-]+\Z")
 
-    This line is printed to be pasted and run verbatim, so it has to survive the shell rather than
-    merely look right, and the two families disagree about how. A POSIX shell expands `$`, a
-    backtick and `$(...)` inside double quotes, so a database path containing any of them needs
-    `shlex.quote`'s single quotes. Windows does not read single quotes as quoting at all — `cmd.exe`
-    passes them through as literal characters and still splits the path on its spaces — so there the
-    line is rendered with the argv encoding Windows itself parses, which `subprocess.list2cmdline`
-    produces.
+
+def shell_for(platform: str | None = None) -> str:
+    """Name the shell the printed command is quoted for, so the instruction can say which."""
+    platform = sys.platform if platform is None else platform
+    return "PowerShell" if platform.startswith("win") else "your shell"
+
+
+def render_command(parts: Sequence[str], *, platform: str | None = None) -> str:
+    """Render an argv as one line that one named shell parses back into that same argv.
+
+    This line is printed to be pasted, so it has to survive a shell rather than merely look right,
+    and no single rendering survives all of them. A POSIX shell expands `$`, a backtick and `$(...)`
+    inside double quotes, so `shlex.quote`'s single quotes are the answer there. Windows is quoted
+    for PowerShell, whose single quotes are literal throughout — an embedded one is doubled and
+    nothing else is special — which `cmd.exe` rules cannot match: `subprocess.list2cmdline` encodes
+    argv for the C runtime rather than for a shell and leaves `&`, `|` and `%…%` untouched, so a
+    path like `C:\tmp\a&whoami.db` would split and run its suffix. `subprocess.run` is unaffected
+    either way; it is handed the argv directly and never a shell.
     """
     platform = sys.platform if platform is None else platform
     if platform.startswith("win"):
-        return subprocess.list2cmdline(list(parts))
+        return " ".join(_powershell_quote(part) for part in parts)
     return " ".join(shlex.quote(part) for part in parts)
+
+
+def _powershell_quote(part: str) -> str:
+    if part and _POWERSHELL_SAFE.match(part):
+        return part
+    return "'" + part.replace("'", "''") + "'"
 
 
 def generic_json(entry: ServerEntry) -> list[str]:
@@ -326,7 +374,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         lines = run_setup(
             args.client,
             scope=args.scope,
-            db_path=args.db,
+            db_path=db_path_to_pin(args.db),
             encrypted=args.encrypted,
             dry_run=args.dry_run,
         )

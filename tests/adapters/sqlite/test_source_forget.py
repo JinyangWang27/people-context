@@ -88,8 +88,7 @@ class _Harness:
 
     def mappings(self) -> dict[str, sqlite3.Row]:
         return {
-            row["candidate_id"]: row
-            for row in self.conn.execute("SELECT * FROM import_candidate_mappings").fetchall()
+            row["candidate_id"]: row for row in self.conn.execute("SELECT * FROM import_candidate_mappings").fetchall()
         }
 
     def staging_ids(self) -> set[str]:

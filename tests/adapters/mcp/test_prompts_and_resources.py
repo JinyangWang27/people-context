@@ -96,3 +96,16 @@ def test_resolve_then_read_prompts_stop_on_a_near_spelling(tmp_path: Path) -> No
     for name, body in prompts.items():
         assert "fuzzy" in body, name
         assert "ambiguous" in body, name
+
+
+def test_the_who_prompt_no_longer_asks_about_a_removed_field(tmp_path: Path) -> None:
+    """Regression: it named `withheld` and asked the model to announce that something was hidden."""
+    server = build_server(db_path=tmp_path / "who-prompt.db")
+
+    async def flow(client: Client) -> str:
+        return (await client.get_prompt("who", {"name": "Amina"})).messages[0].content.text  # type: ignore[union-attr]
+
+    body = _run(server, flow)
+
+    assert "withheld" not in body
+    assert "complete ordinary view" in body

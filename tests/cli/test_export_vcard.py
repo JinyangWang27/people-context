@@ -66,12 +66,8 @@ def _seed(db_path: Path) -> None:
         ).person
         affiliate.execute(SetAffiliationInput(person_id=alice.id, org="Acme", role="Engineer"))
         affiliate.execute(SetAffiliationInput(person_id=alice.id, org="Zenith", role="Advisor"))
-        record_fact.execute(
-            RecordFactInput(person_id=alice.id, predicate="birthday", value="1985-04-12")
-        )
-        record_fact.execute(
-            RecordFactInput(person_id=alice.id, predicate="dietary", value="vegetarian")
-        )
+        record_fact.execute(RecordFactInput(person_id=alice.id, predicate="birthday", value="1985-04-12"))
+        record_fact.execute(RecordFactInput(person_id=alice.id, predicate="dietary", value="vegetarian"))
 
         bob = remember.execute(RememberPersonInput(name="Bob")).person
         record_fact.execute(RecordFactInput(person_id=bob.id, predicate="birthday", value="--07-01"))
@@ -268,16 +264,10 @@ def test_reports_every_omission_as_an_aggregate_count(
     conn = open_db(db_path)
     try:
         repository = SqlitePeopleRepository(conn)
-        alice = next(
-            person for person in repository.list_people() if person.canonical_name == "Alice Zhang"
-        )
+        alice = next(person for person in repository.list_people() if person.canonical_name == "Alice Zhang")
         record_fact = RecordFact(repository, SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock())
-        record_fact.execute(
-            RecordFactInput(person_id=alice.id, predicate="birthday", value="1985-04-13")
-        )
-        record_fact.execute(
-            RecordFactInput(person_id=alice.id, predicate="birthday", value="sometime in April")
-        )
+        record_fact.execute(RecordFactInput(person_id=alice.id, predicate="birthday", value="1985-04-13"))
+        record_fact.execute(RecordFactInput(person_id=alice.id, predicate="birthday", value="sometime in April"))
     finally:
         conn.close()
 
@@ -320,9 +310,7 @@ def test_an_expired_affiliation_is_evaluated_as_of_today(tmp_path: Path) -> None
         repository = SqlitePeopleRepository(conn)
         audit = SqliteAuditLog(conn)
         clock = _Clock()
-        person = RememberPerson(repository, repository, audit, clock).execute(
-            RememberPersonInput(name="Alice")
-        ).person
+        person = RememberPerson(repository, repository, audit, clock).execute(RememberPersonInput(name="Alice")).person
         SetAffiliation(repository, SqliteOrganizationStore(conn), SqliteRecordStore(conn), audit, clock).execute(
             SetAffiliationInput(
                 person_id=person.id,

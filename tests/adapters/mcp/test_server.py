@@ -441,9 +441,7 @@ def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None
 
     async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "ics", "content": content})
-        reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structured_content["batch_id"]}
-        )
+        reviewed = await client.call_tool("review_import", {"batch_id": imported.structured_content["batch_id"]})
         return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
@@ -451,9 +449,7 @@ def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None
     assert imported["candidate_count"] == 3
     assert imported["skipped_cards"] == [{"index": 2, "reason": "floating_dtstart_unsupported"}]
     summaries = [
-        row["candidate"]["summary"]
-        for row in reviewed["candidates"]
-        if row["candidate"]["type"] == "interaction"
+        row["candidate"]["summary"] for row in reviewed["candidates"] if row["candidate"]["type"] == "interaction"
     ]
     assert summaries == ["Calendar event"]
     assert summary_sentinel not in str(reviewed)
@@ -473,9 +469,7 @@ def test_linkedin_import_stages_safe_rows_and_reports_invalid_neighbors(tmp_path
 
     async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "linkedin", "content": content})
-        reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structured_content["batch_id"]}
-        )
+        reviewed = await client.call_tool("review_import", {"batch_id": imported.structured_content["batch_id"]})
         return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
@@ -501,9 +495,7 @@ def test_outlook_import_stages_contacts_without_notes_or_web_pages(tmp_path: Pat
 
     async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "outlook", "content": content})
-        reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structured_content["batch_id"]}
-        )
+        reviewed = await client.call_tool("review_import", {"batch_id": imported.structured_content["batch_id"]})
         return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)

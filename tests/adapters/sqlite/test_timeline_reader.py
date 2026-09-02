@@ -72,12 +72,8 @@ class _Fixture:
         self.interactions = RecordInteraction(self.people, self.records, self.audit, self.clock)
         self.observations = RecordObservation(self.people, self.records, self.audit, self.clock)
         self.facts = RecordFact(self.people, self.records, self.audit, self.clock)
-        self.traits = RecordTrait(
-            self.people, self.records, self.audit, self.clock, self.trait_evidence
-        )
-        self.affiliations = SetAffiliation(
-            self.people, self.organizations, self.records, self.audit, self.clock
-        )
+        self.traits = RecordTrait(self.people, self.records, self.audit, self.clock, self.trait_evidence)
+        self.affiliations = SetAffiliation(self.people, self.organizations, self.records, self.audit, self.clock)
         self.relationships = SetRelationship(
             self.people,
             SqliteRelationshipStore(self.conn),
@@ -150,9 +146,7 @@ def test_every_record_type_reaches_the_timeline_with_its_own_basis() -> None:
     fixture.affiliations.execute(
         SetAffiliationInput(person_id=alice.id, org="Acme", role="Engineer", valid_from=date(2026, 2, 1))
     )
-    fixture.relationships.execute(
-        SetRelationshipInput(subject_id=alice.id, object_id=bob.id, type="colleague of")
-    )
+    fixture.relationships.execute(SetRelationshipInput(subject_id=alice.id, object_id=bob.id, type="colleague of"))
     fixture.traits.execute(
         RecordTraitInput(person_id=alice.id, category=TraitCategory.COMMUNICATION_STYLE, value="direct")
     )
@@ -305,9 +299,7 @@ def test_a_naive_stored_timestamp_is_normalized_as_utc_by_sqlite_too() -> None:
         RecordObservationInput(person_id=alice.id, text="naive", observed_at=datetime(2026, 6, 1, 12, 0))
     )
     fixture.observations.execute(
-        RecordObservationInput(
-            person_id=alice.id, text="aware", observed_at=datetime(2026, 6, 1, 13, 0, tzinfo=UTC)
-        )
+        RecordObservationInput(person_id=alice.id, text="aware", observed_at=datetime(2026, 6, 1, 13, 0, tzinfo=UTC))
     )
 
     assert [row.summary for row in fixture.rows(alice.id)] == ["aware", "naive"]
@@ -372,9 +364,7 @@ def test_a_relationship_is_reported_from_either_endpoint_and_names_the_counterpa
     fixture = _Fixture()
     alice = fixture.person("Alice")
     bob = fixture.person("Bob")
-    fixture.relationships.execute(
-        SetRelationshipInput(subject_id=bob.id, object_id=alice.id, type="colleague of")
-    )
+    fixture.relationships.execute(SetRelationshipInput(subject_id=bob.id, object_id=alice.id, type="colleague of"))
 
     alice_row = fixture.rows(alice.id)[0]
     bob_row = fixture.rows(bob.id)[0]
@@ -389,9 +379,7 @@ def test_an_asymmetric_edge_reads_from_each_persons_own_side() -> None:
     fixture = _Fixture()
     parent = fixture.person("Parent")
     child = fixture.person("Child")
-    fixture.relationships.execute(
-        SetRelationshipInput(subject_id=parent.id, object_id=child.id, type="parent of")
-    )
+    fixture.relationships.execute(SetRelationshipInput(subject_id=parent.id, object_id=child.id, type="parent of"))
 
     assert fixture.rows(parent.id)[0].summary == "parent_of"
     assert fixture.rows(child.id)[0].summary == "child_of"
@@ -401,9 +389,7 @@ def test_an_edge_to_a_removed_person_is_omitted_rather_than_reappearing_here() -
     fixture = _Fixture()
     alice = fixture.person("Alice")
     ghost = fixture.person("Ghost")
-    fixture.relationships.execute(
-        SetRelationshipInput(subject_id=alice.id, object_id=ghost.id, type="colleague of")
-    )
+    fixture.relationships.execute(SetRelationshipInput(subject_id=alice.id, object_id=ghost.id, type="colleague of"))
     fixture.people.save_person(ghost.model_copy(update={"deleted_at": datetime(2026, 1, 1, tzinfo=UTC)}))
 
     assert fixture.rows(alice.id) == []
@@ -519,9 +505,7 @@ def test_trait_evidence_is_ordered_stably_and_reads_one_row_past_the_limit() -> 
 def test_a_trait_without_evidence_reads_no_links() -> None:
     fixture = _Fixture()
     alice = fixture.person("Alice")
-    trait = fixture.traits.execute(
-        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
-    )
+    trait = fixture.traits.execute(RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour"))
 
     assert fixture.reader.list_trait_evidence(trait.id, limit=32, sensitivities=ORDINARY) == []
 
@@ -533,9 +517,7 @@ def test_reading_the_timeline_writes_nothing() -> None:
     fixture.observations.execute(
         RecordObservationInput(person_id=alice.id, text="note", observed_at=datetime(2026, 5, 1, tzinfo=UTC))
     )
-    trait = fixture.traits.execute(
-        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
-    )
+    trait = fixture.traits.execute(RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour"))
     before = fixture.counts()
 
     GetPersonTimeline(fixture.people, fixture.reader).execute(alice.id, include_sensitive=True)
@@ -626,9 +608,7 @@ def test_the_projection_only_emits_the_declared_vocabulary() -> None:
             valid_from=date(2025, 1, 1),
         )
     )
-    fixture.traits.execute(
-        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
-    )
+    fixture.traits.execute(RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour"))
 
     rows = fixture.rows(alice.id)
 
@@ -750,9 +730,7 @@ def test_a_citation_keeps_the_type_that_makes_its_id_resolvable() -> None:
         "VALUES (?, ?, ?, 'personal', 'agent')",
         (shared, "an interaction", "2026-05-02T00:00:00+00:00"),
     )
-    trait = fixture.traits.execute(
-        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
-    )
+    trait = fixture.traits.execute(RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour"))
     for evidence_type in ("observation", "interaction"):
         fixture.conn.execute(
             "INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at) "
@@ -772,9 +750,7 @@ def test_a_citation_whose_record_is_gone_is_excluded_rather_than_named() -> None
     """A dangling link matches no level, so it fails closed instead of naming an unaccounted id."""
     fixture = _Fixture()
     alice = fixture.person("Alice")
-    trait = fixture.traits.execute(
-        RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour")
-    )
+    trait = fixture.traits.execute(RecordTraitInput(person_id=alice.id, category=TraitCategory.VALUES, value="candour"))
     fixture.conn.execute(
         "INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at) "
         "VALUES (?, 'observation', 'no-such-observation', '2026-05-03T00:00:00+00:00')",

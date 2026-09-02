@@ -103,12 +103,10 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
             ClientSession(read_stream, write_stream) as client,
         ):
             await client.initialize()
-            me = (
-                await client.call_tool("remember_person", {"name": "Me", "is_self": True})
-            ).structured_content["person"]
-            alice = (
-                await client.call_tool("remember_person", {"name": "Alice Example"})
-            ).structured_content["person"]
+            me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structured_content[
+                "person"
+            ]
+            alice = (await client.call_tool("remember_person", {"name": "Alice Example"})).structured_content["person"]
             person_id = alice["id"]
             await client.call_tool(
                 "set_relationship",
@@ -123,9 +121,7 @@ def test_real_stdio_m2_full_write_read_guidance_round_trip(tmp_path: Path) -> No
                 {"person_id": person_id, "predicate": "location", "value": "Dubai", "sensitivity": "public"},
             )
             observation = (
-                await client.call_tool(
-                    "record_observation", {"person_id": person_id, "text": "Subjective and private"}
-                )
+                await client.call_tool("record_observation", {"person_id": person_id, "text": "Subjective and private"})
             ).structured_content
             await client.call_tool(
                 "record_trait",

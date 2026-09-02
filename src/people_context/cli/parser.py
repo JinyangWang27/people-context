@@ -119,6 +119,12 @@ def build_parser() -> argparse.ArgumentParser:
     remember.add_argument("person", help="Name or alias as you would say it.")
     remember.add_argument("note", nargs="?", default=None, help="What to remember; classified unless --kind is given.")
     remember.add_argument("--kind", choices=CAPTURE_KINDS, default="auto", help="Record kind (default: auto).")
+    remember.add_argument(
+        "--occurred-at",
+        default=None,
+        metavar="WHEN",
+        help="When an interaction happened (ISO 8601); required when the note says it was earlier.",
+    )
     remember.add_argument("--org", default=None, help="Organisation; records an affiliation.")
     remember.add_argument("--role", default=None, help="Role at --org (default: member).")
     remember.add_argument("--relationship", default=None, help="How you relate to them, e.g. manager_of.")

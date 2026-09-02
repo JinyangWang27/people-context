@@ -368,9 +368,7 @@ def test_changelog_entries_are_keyed_by_opaque_device_id_never_a_display_name() 
     try:
         ada = fixture.person("Ada")
         fixture.fact(ada, "city", "London", Sensitivity.PERSONAL)
-        device = fixture.conn.execute(
-            "SELECT id, display_name FROM devices WHERE retired_at IS NULL"
-        ).fetchone()
+        device = fixture.conn.execute("SELECT id, display_name FROM devices WHERE retired_at IS NULL").fetchone()
         # The seeded display name is the machine hostname; that is exactly what must not
         # appear as a grouping key.
         fixture.conn.execute("UPDATE devices SET display_name = ? WHERE id = ?", ("laptop-of-ada", device["id"]))
@@ -468,8 +466,7 @@ def test_storage_sums_the_main_file_and_its_wal_companions(tmp_path: Path) -> No
         assert storage.shm_bytes is not None
         assert storage.database_bytes == storage.main_bytes + storage.wal_bytes + storage.shm_bytes
         measured = {
-            suffix: (db_file.parent / f"{db_file.name}{suffix}").stat().st_size
-            for suffix in _COMPANION_SUFFIXES
+            suffix: (db_file.parent / f"{db_file.name}{suffix}").stat().st_size for suffix in _COMPANION_SUFFIXES
         }
         assert storage.wal_bytes == measured["-wal"]
         assert storage.shm_bytes == measured["-shm"]
@@ -617,10 +614,7 @@ def test_every_count_describes_the_same_snapshot_despite_a_concurrent_writer(tmp
     try:
         for _ in range(200):
             inventory = fixture.reader.read_inventory()
-            assert (
-                inventory.active_people + inventory.soft_deleted_people
-                == inventory.table_rows["persons"]
-            )
+            assert inventory.active_people + inventory.soft_deleted_people == inventory.table_rows["persons"]
             assert sum(inventory.alias_kinds.values()) == inventory.table_rows["aliases"]
     finally:
         stop.set()

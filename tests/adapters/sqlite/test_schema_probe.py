@@ -37,6 +37,7 @@ def _keyed_connection(path: Path) -> Any:
     conn.execute(f"PRAGMA key = '{KEY}'")
     return conn
 
+
 _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
 

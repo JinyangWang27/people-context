@@ -177,6 +177,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         person: str,
         note: str | None = None,
         kind: CaptureKind = "auto",
+        occurred_at: str | None = None,
         org: str | None = None,
         role: str | None = None,
         relationship: str | None = None,
@@ -194,7 +195,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         `relationship` records how the user relates to them (e.g. `manager_of`,
         `friend_of`, from the user's point of view), and `note` records the statement
         as a `fact`, `trait`, or `interaction`. Leave `kind` as `auto` to classify the
-        note by a fixed keyword rule, or set it explicitly when you know.
+        note by a fixed keyword rule, or set it explicitly when you know. Pass `occurred_at` when
+        the statement says an interaction happened earlier ("met Dana last week"); without it such
+        a note is refused rather than dated today, because that date is what the staleness report
+        reads.
 
         Identity is never guessed for a write: `status: ambiguous` or `unconfirmed`
         returns candidates and records nothing — ask the user, then call again with the
@@ -208,6 +212,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 person=person,
                 note=note,
                 kind=kind,
+                occurred_at=occurred_at,
                 org=org,
                 role=role,
                 relationship=relationship,

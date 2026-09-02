@@ -117,9 +117,7 @@ def test_reminders_of_another_person_are_excluded() -> None:
 def test_undated_reminders_sort_after_dated_ones_without_a_timezone_guess() -> None:
     harness = _Harness()
     person = harness.add_person()
-    naive = harness.add_reminder(
-        _reminder(person.id, "Naive", ReminderKind.FOLLOW_UP, datetime(2026, 5, 1, 9, 0))
-    )
+    naive = harness.add_reminder(_reminder(person.id, "Naive", ReminderKind.FOLLOW_UP, datetime(2026, 5, 1, 9, 0)))
     aware = harness.add_reminder(
         _reminder(person.id, "Aware", ReminderKind.FOLLOW_UP, datetime(2026, 4, 1, 9, 0, tzinfo=UTC))
     )
@@ -191,9 +189,7 @@ def test_include_sensitive_widens_context_but_never_guidance() -> None:
     # Guidance has no sensitivity parameter at all, so both modes see the same ordinary rows.
     for document in (ordinary, widened):
         assert document.guidance.disclosure is DisclosureLevel.ORDINARY
-        assert [trait.id for traits in document.guidance.traits.values() for trait in traits] == [
-            ordinary_trait.id
-        ]
+        assert [trait.id for traits in document.guidance.traits.values() for trait in traits] == [ordinary_trait.id]
         assert document.guidance.friction_notes == [ordinary_interaction.summary]
 
     assert ordinary.disclosure.context is DisclosureLevel.ORDINARY
@@ -347,9 +343,7 @@ def test_document_is_identical_under_a_non_utc_host_timezone(host_timezone) -> N
     # both the shared context budget and the friction-note limit through instant comparisons.
     harness = _Harness()
     person = harness.add_person()
-    for index, occurred_at in enumerate(
-        (datetime(2026, 1, 1, 23, 0), datetime(2026, 1, 2, 1, 0, tzinfo=UTC))
-    ):
+    for index, occurred_at in enumerate((datetime(2026, 1, 1, 23, 0), datetime(2026, 1, 2, 1, 0, tzinfo=UTC))):
         harness.context.interactions.append(
             Interaction(
                 summary=f"Row {index}",

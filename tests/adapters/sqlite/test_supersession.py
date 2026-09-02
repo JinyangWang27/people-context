@@ -54,9 +54,9 @@ class _Store:
         self.records = records
         self.people = people
         clock = _Clock()
-        self.person = RememberPerson(people, people, self.audit, clock).execute(
-            RememberPersonInput(name="Alice Rivera")
-        ).person
+        self.person = (
+            RememberPerson(people, people, self.audit, clock).execute(RememberPersonInput(name="Alice Rivera")).person
+        )
         self.record_fact = RecordFact(people, records, self.audit, clock)
         self.correct = CorrectRecord(records, records, self.audit, clock, people=people)
         self.supersede = SupersedeFact(records, records, self.audit, clock, people=people)

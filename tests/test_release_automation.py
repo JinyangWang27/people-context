@@ -44,9 +44,7 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     package = config["packages"]["."]
     assert package["package-name"] == "people-context"
 
-    entries = {
-        (entry["type"], entry["path"], entry.get("jsonpath")) for entry in package["extra-files"]
-    }
+    entries = {(entry["type"], entry["path"], entry.get("jsonpath")) for entry in package["extra-files"]}
     assert entries == {
         ("json", "server.json", "$.version"),
         ("json", "server.json", "$.packages[0].runtimeArguments[0].value"),

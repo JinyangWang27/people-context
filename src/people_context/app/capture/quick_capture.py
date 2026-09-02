@@ -18,6 +18,8 @@ name and not a strong search hit, returns the candidates and records nothing.
 
 from __future__ import annotations
 
+import re
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -62,6 +64,17 @@ DEFAULT_ROLE = "member"
 
 #: Predicate under which an unstructured statement is stored as a fact.
 DEFAULT_PREDICATE = "note"
+
+#: Markers that place a statement on an earlier day than the one it is said on. An interaction is
+#: the store's recency signal — `get_stale_relationships` and the timeline both read its date — so
+#: one of these without an explicit `occurred_at` is refused rather than dated now, the same rule
+#: the staged import path states for its `interaction` candidates.
+_PAST_CUE = re.compile(
+    r"\b(?:yesterday"
+    r"|last (?:night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+    r"|(?:\d+|a|an|few|couple of) (?:day|week|month|year)s? ago"
+    r"|back in \d{4})\b"
+)
 
 # Keyword tables for ``classify_note``. Lowercase substrings; order of the checks matters and is
 # documented on the function. Kept small on purpose: the goal is a sensible default, not NLP.
@@ -115,6 +128,7 @@ class QuickCaptureInput(BaseModel):
     person: str = Field(min_length=1)
     note: str | None = None
     kind: CaptureKind = "auto"
+    occurred_at: datetime | None = None
     org: str | None = None
     role: str | None = None
     relationship: str | None = None
@@ -191,12 +205,16 @@ def _is_confident(candidate: ResolutionCandidate) -> bool:
 def _validate(data: QuickCaptureInput, note: str | None) -> str | None:
     """Refuse, before anything is resolved or created, a request that could not record what it means.
 
-    Three shapes are caught here. A structural ``kind`` without its payload would create the person
+    Four shapes are caught here. A structural ``kind`` without its payload would create the person
     and then record nothing, reporting success. A structural ``kind`` alongside a note is a
     contradiction — ``kind`` says how to record the note, and those two values do not describe a
     note — so the note would be dropped rather than guessed at. And an affiliation or relationship
     carries no sensitivity field, so an elevated ``sensitivity`` on one would be silently dropped
-    and the row disclosed by every ordinary read — the outcome the level exists to prevent.
+    and the row disclosed by every ordinary read — the outcome the level exists to prevent. And a
+    note that says an interaction happened earlier — "met Alice yesterday" — would otherwise be
+    stored with the current time, which is not a small inaccuracy: the date is the whole content of
+    the recency signal, so the report meant to surface a lapsed relationship would show it as
+    current.
     """
     if data.kind == "affiliation" and data.org is None:
         return "kind=affiliation needs `org`; nothing was recorded."
@@ -209,6 +227,14 @@ def _validate(data: QuickCaptureInput, note: str | None) -> str | None:
         )
     if data.kind in ("fact", "trait", "interaction") and note is None:
         return f"kind={data.kind} needs `note`; nothing was recorded."
+    if note is not None and data.occurred_at is None and _PAST_CUE.search(note.casefold()):
+        kind = data.kind if data.kind != "auto" else classify_note(note)[0]
+        if kind == "interaction":
+            return (
+                "that note says the interaction happened earlier, and recording it as happening now would "
+                "misreport when you last spoke; nothing was recorded. Pass `occurred_at` with the date it "
+                "happened."
+            )
     if data.sensitivity in (Sensitivity.SENSITIVE, Sensitivity.RESTRICTED) and (
         data.org is not None or data.relationship is not None
     ):
@@ -379,6 +405,7 @@ class QuickCapture:
                 RecordInteractionInput(
                     summary=note,
                     participant_ids=[person_id],
+                    occurred_at=data.occurred_at,
                     sensitivity=data.sensitivity,
                     source=data.source,
                     session=data.session,

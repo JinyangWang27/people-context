@@ -163,6 +163,7 @@ def cmd_remember(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             person=args.person,
             note=args.note,
             kind=args.kind,
+            occurred_at=args.occurred_at,
             org=args.org,
             role=args.role,
             relationship=args.relationship,

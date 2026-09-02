@@ -6,6 +6,7 @@ import json
 import os
 import shlex
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from people_context.cli.setup import (
     build_entry,
     claude_desktop_config_path,
     cli_command,
+    db_path_to_pin,
     file_target,
     merged_config,
     run_setup,
@@ -335,23 +337,33 @@ class TestPrintedCommandSafety:
             "claude-code", "user", build_entry("$HOME/`id`.db", encrypted=False)
         )
 
-    def test_windows_renders_the_argv_encoding_windows_parses(self) -> None:
-        """POSIX single quotes are literal characters to cmd.exe, which would still split on spaces."""
-        argv = ["claude", "mcp", "add", "--env", r"PEOPLE_CONTEXT_DB=C:\Users\Jane Doe\people.db"]
+    def test_windows_quotes_the_metacharacters_cmd_would_have_acted_on(self) -> None:
+        """subprocess.list2cmdline encodes argv for the C runtime, not a shell, and leaves these bare."""
+        argv = ["claude", "--env", r"PEOPLE_CONTEXT_DB=C:\tmp\a&whoami.db", "--env", "X=%PATH%"]
 
         rendered = setup.render_command(argv, platform="win32")
 
-        assert '"PEOPLE_CONTEXT_DB=C:\\Users\\Jane Doe\\people.db"' in rendered
-        assert "'" not in rendered
+        assert r"'PEOPLE_CONTEXT_DB=C:\tmp\a&whoami.db'" in rendered
+        assert "'X=%PATH%'" in rendered
+        assert subprocess.list2cmdline(argv) != rendered
 
-    def test_posix_and_windows_renderings_differ_for_the_same_argv(self) -> None:
+    def test_windows_quotes_spaces_and_doubles_an_embedded_quote(self) -> None:
+        rendered = setup.render_command(["claude", r"C:\Users\Jane Doe\it's.db"], platform="win32")
+
+        assert rendered == "claude 'C:\\Users\\Jane Doe\\it''s.db'"
+
+    def test_an_ordinary_argument_prints_unquoted_on_both(self) -> None:
+        argv = ["claude", "mcp", "add", "people-context"]
+
+        assert setup.render_command(argv, platform="win32") == "claude mcp add people-context"
+        assert setup.render_command(argv, platform="linux") == "claude mcp add people-context"
+
+    def test_posix_rendering_round_trips_through_the_shell_parser(self) -> None:
         command = cli_command("claude-code", "user", build_entry("/tmp/a b.db", encrypted=False))
 
         posix = setup.render_command(command, platform="linux")
-        windows = setup.render_command(command, platform="win32")
 
         assert shlex.split(posix) == command
-        assert posix != windows
         assert "'PEOPLE_CONTEXT_DB=/tmp/a b.db'" in posix
 
 
@@ -387,3 +399,47 @@ class TestFilesystemFailures:
 
         assert cli.main(["setup", "cursor"]) == 1
         assert "Error: could not write" in capsys.readouterr().err
+
+
+class TestDatabasePinning:
+    """Pin what the client cannot resolve for itself; leave what it can."""
+
+    def test_an_environment_selected_database_is_pinned(self, tmp_path: Path) -> None:
+        chosen = tmp_path / "work.db"
+
+        assert db_path_to_pin(None, {"PEOPLE_CONTEXT_DB": str(chosen)}) == str(chosen)
+
+    def test_an_explicit_argument_still_wins(self, tmp_path: Path) -> None:
+        assert db_path_to_pin("/explicit.db", {"PEOPLE_CONTEXT_DB": str(tmp_path / "env.db")}) == "/explicit.db"
+
+    def test_a_default_location_is_left_for_the_server_to_resolve(self, tmp_path: Path) -> None:
+        assert db_path_to_pin(None, {"HOME": str(tmp_path)}) is None
+
+    def test_setup_writes_the_environment_database_into_the_client_entry(self, tmp_path: Path) -> None:
+        chosen = tmp_path / "work.db"
+        env = {"HOME": str(tmp_path), "PEOPLE_CONTEXT_DB": str(chosen)}
+
+        run_setup(
+            "cursor",
+            scope="user",
+            db_path=db_path_to_pin(None, env),
+            encrypted=False,
+            dry_run=False,
+            env=env,
+            platform="linux",
+            cwd=tmp_path,
+        )
+
+        written = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+        assert written["mcpServers"]["people-context"]["env"] == {"PEOPLE_CONTEXT_DB": str(chosen)}
+
+
+class TestEncryptedExtra:
+    def test_the_flag_brings_the_binding_it_needs(self) -> None:
+        """`--encrypted` refuses to open anything without SQLCipher, which only the extra installs."""
+        entry = build_entry(None, encrypted=True)
+
+        assert list(entry.args) == ["--from", "people-context[encrypted]", "people-context", "--encrypted"]
+
+    def test_the_plain_entry_is_unchanged(self) -> None:
+        assert list(build_entry(None, encrypted=False).args) == list(SERVER_ARGS)

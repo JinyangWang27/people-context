@@ -96,9 +96,7 @@ def test_the_path_is_redacted_by_default_and_included_only_on_request(
     assert f"Database: {db_file}" in included
 
 
-def test_the_json_document_redacts_the_path_by_default(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_json_document_redacts_the_path_by_default(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 
@@ -161,9 +159,7 @@ def test_the_json_document_is_the_whole_of_stdout_and_the_notice_goes_to_stderr(
     assert "inspect it before sharing" in captured.err.casefold()
 
 
-def test_the_disclosure_notice_precedes_the_human_report(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_disclosure_notice_precedes_the_human_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 
@@ -200,9 +196,7 @@ def test_an_in_memory_database_says_so_rather_than_reporting_zero_bytes(
     assert "0 bytes" not in out
 
 
-def test_an_empty_distribution_says_so_explicitly(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_an_empty_distribution_says_so_explicitly(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     conn = open_db(db_file)
     SqlitePeopleRepository(conn).save_person(Person(canonical_name="Me", is_self=True))
@@ -326,9 +320,7 @@ def test_a_legacy_database_is_refused_rather_than_migrated_and_measured(
     assert not (tmp_path / "people.db-wal").exists()
 
 
-def test_a_target_that_is_not_a_database_is_refused(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_target_that_is_not_a_database_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     not_a_database = tmp_path / "people.db"
     not_a_database.write_text("this is not a SQLite database", encoding="utf-8")
 
@@ -343,9 +335,7 @@ def test_a_target_that_is_not_a_database_is_refused(
     assert not_a_database.read_text(encoding="utf-8") == "this is not a SQLite database"
 
 
-def test_an_up_to_date_database_is_measured_normally(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_an_up_to_date_database_is_measured_normally(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The guard refuses only what opening would change; an ordinary store is unaffected."""
     db_file = tmp_path / "people.db"
     _seed(db_file)

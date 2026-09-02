@@ -91,9 +91,7 @@ def test_guidance_returns_exact_signal_bundle_with_privacy_gate_and_cap() -> Non
     philosophy = "上善若水"
     preferences.set(PREF_COMMUNICATION_PHILOSOPHY, philosophy)
 
-    result = GetCommunicationGuidance(people, context, preferences, clock).execute(
-        person.id, situation="Discuss scope"
-    )
+    result = GetCommunicationGuidance(people, context, preferences, clock).execute(person.id, situation="Discuss scope")
 
     assert result.found is True
     assert result.situation == "Discuss scope"
@@ -132,21 +130,17 @@ def test_guidance_treats_soft_deleted_person_as_not_found() -> None:
     person = Person(canonical_name="Deleted", deleted_at=_NOW)
     people.save_person(person)
 
-    result = GetCommunicationGuidance(
-        people, FakeContextReader(), FakePreferencesStore(), FakeClock(_NOW)
-    ).execute(person.id)
+    result = GetCommunicationGuidance(people, FakeContextReader(), FakePreferencesStore(), FakeClock(_NOW)).execute(
+        person.id
+    )
 
     assert result.found is False
 
 
 def test_list_reminders_filters_due_items_and_keeps_communication_notes_last() -> None:
     records = FakeRecordStore()
-    due_soon = Reminder(
-        person_id="p1", text="Soon", kind=ReminderKind.FOLLOW_UP, due_at=_NOW + timedelta(days=1)
-    )
-    due_later = Reminder(
-        person_id="p1", text="Later", kind=ReminderKind.FOLLOW_UP, due_at=_NOW + timedelta(days=5)
-    )
+    due_soon = Reminder(person_id="p1", text="Soon", kind=ReminderKind.FOLLOW_UP, due_at=_NOW + timedelta(days=1))
+    due_later = Reminder(person_id="p1", text="Later", kind=ReminderKind.FOLLOW_UP, due_at=_NOW + timedelta(days=5))
     note = Reminder(person_id="p1", text="Be kind", kind=ReminderKind.COMMUNICATION_NOTE)
     completed = Reminder(
         person_id="p1", text="Done", kind=ReminderKind.FOLLOW_UP, due_at=_NOW, status=ReminderStatus.COMPLETED
@@ -154,9 +148,7 @@ def test_list_reminders_filters_due_items_and_keeps_communication_notes_last() -
     for reminder in (note, due_later, completed, due_soon):
         records.save_reminder(reminder)
 
-    result = ListReminders(records).execute(
-        ListRemindersInput(person_id="p1", due_before=_NOW + timedelta(days=2))
-    )
+    result = ListReminders(records).execute(ListRemindersInput(person_id="p1", due_before=_NOW + timedelta(days=2)))
 
     assert [reminder.id for reminder in result] == [due_soon.id, note.id]
 

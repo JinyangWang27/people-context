@@ -66,9 +66,7 @@ class _Origin:
         self.audit = SqliteAuditLog(self.conn)
         self.staging = SqliteImportStagingStore(self.conn)
         self.sources = SqliteImportSourceStore(self.conn)
-        self.stage = StageCandidates(
-            CandidateStager(self.people, self.staging, clock, self.sources, self.audit)
-        )
+        self.stage = StageCandidates(CandidateStager(self.people, self.staging, clock, self.sources, self.audit))
         self.review = ReviewImport(self.staging)
         self.commit = CommitImport(
             self.people,
@@ -388,9 +386,7 @@ def test_a_merged_away_mapping_needs_no_live_entity(tmp_path: Path) -> None:
     document = _round_trip(origin.export())
     conn, outcome = _restore(document, tmp_path / "restored.db")
 
-    terminal = conn.execute(
-        "SELECT * FROM import_candidate_mappings WHERE disposition = 'merged_away'"
-    ).fetchall()
+    terminal = conn.execute("SELECT * FROM import_candidate_mappings WHERE disposition = 'merged_away'").fetchall()
     assert len(terminal) == 1
     assert terminal[0]["entity_id"] is None
     assert outcome.candidate_mappings == len(document.imports.candidate_mappings)
