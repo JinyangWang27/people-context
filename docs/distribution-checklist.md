@@ -5,8 +5,19 @@ packaged README, the `.mcpb` attached to every release, and the Obsidian release
 set of account-owner steps that need a browser session or an OAuth device flow. This document walks through
 them in the order that avoids rework: the official Registry first, because several directories consume it.
 
-Everything below assumes the `1.0.0` release (or later) is live on PyPI and the repository README that PyPI
-shows carries the marker `<!-- mcp-name: io.github.JinyangWang27/people-context -->`. Both are true today.
+Everything below assumes a release is live on PyPI whose packaged README carries the marker
+`<!-- mcp-name: io.github.JinyangWang27/people-context -->`.
+
+> **Prerequisite, not yet satisfied.** Releases up to and including `1.1.0` shipped the lowercase
+> `io.github.jinyangwang27` spelling of that marker, which the Registry rejects — the ownership check compares it
+> byte-for-byte against the `name` in [`server.json`](../server.json), and the grant issued by
+> `mcp-publisher login github` covers the GitHub login's own casing (`io.github.JinyangWang27/*`) only. The
+> corrected marker currently exists in this repository alone; publication to the Registry stays blocked until a
+> release built from it is live on PyPI. Confirm before starting step 1:
+>
+> ```bash
+> curl -s https://pypi.org/pypi/people-context/json | grep -o 'mcp-name: [^ ]*'
+> ```
 
 Budget: about two hours end to end, most of it waiting on forms and one PR review.
 
