@@ -5,8 +5,19 @@ packaged README, the `.mcpb` attached to every release, and the Obsidian release
 set of account-owner steps that need a browser session or an OAuth device flow. This document walks through
 them in the order that avoids rework: the official Registry first, because several directories consume it.
 
-Everything below assumes the `1.0.0` release (or later) is live on PyPI and the repository README that PyPI
-shows carries the marker `<!-- mcp-name: io.github.jinyangwang27/people-context -->`. Both are true today.
+Everything below assumes a release is live on PyPI whose packaged README carries the marker
+`<!-- mcp-name: io.github.JinyangWang27/people-context -->`.
+
+> **Prerequisite, not yet satisfied.** Releases up to and including `1.1.0` shipped the lowercase
+> `io.github.jinyangwang27` spelling of that marker, which the Registry rejects — the ownership check compares it
+> byte-for-byte against the `name` in [`server.json`](../server.json), and the grant issued by
+> `mcp-publisher login github` covers the GitHub login's own casing (`io.github.JinyangWang27/*`) only. The
+> corrected marker currently exists in this repository alone; publication to the Registry stays blocked until a
+> release built from it is live on PyPI. Confirm before starting step 1:
+>
+> ```bash
+> curl -s https://pypi.org/pypi/people-context/json | grep -o 'mcp-name: [^ ]*'
+> ```
 
 Budget: about two hours end to end, most of it waiting on forms and one PR review.
 
@@ -30,7 +41,7 @@ tar -xzf "$archive" mcp-publisher
 ```
 
 Publish. `login github` opens a device-code flow in the browser; sign in as `JinyangWang27`, which is what
-proves ownership of the `io.github.jinyangwang27` namespace:
+proves ownership of the `io.github.JinyangWang27` namespace:
 
 ```bash
 ./mcp-publisher login github
@@ -45,7 +56,7 @@ curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=people-conte
 rm -f mcp-publisher mcp-publisher_darwin_arm64.tar.gz
 ```
 
-Expected: one server named `io.github.jinyangwang27/people-context` at version `1.0.0` with a `pypi` package.
+Expected: one server named `io.github.JinyangWang27/people-context` at version `1.0.0` with a `pypi` package.
 
 Common failures:
 
@@ -97,7 +108,7 @@ PulseMCP ingests the official Registry and GitHub metadata, so do this after ste
 1. Open https://www.pulsemcp.com/submit. The form pauses periodically; if it says submissions are closed,
    the Registry entry is enough for their crawler to pick the server up, and you can move on.
 2. Submit the repository URL `https://github.com/JinyangWang27/people-context` and, if asked, the Registry
-   name `io.github.jinyangwang27/people-context`.
+   name `io.github.JinyangWang27/people-context`.
 
 ### mcp.so
 
@@ -140,7 +151,7 @@ Then:
 git commit -am "Add people-context to Knowledge & Memory"
 git push -u origin add-people-context
 gh pr create --title "Add people-context (Knowledge & Memory)" \
-  --body "Local-first MCP server + CLI giving agents durable context about the people in the user's life. Python, stdio, SQLite, no network. Repo: https://github.com/JinyangWang27/people-context — PyPI: https://pypi.org/project/people-context/ — Registry: io.github.jinyangwang27/people-context"
+  --body "Local-first MCP server + CLI giving agents durable context about the people in the user's life. Python, stdio, SQLite, no network. Repo: https://github.com/JinyangWang27/people-context — PyPI: https://pypi.org/project/people-context/ — Registry: io.github.JinyangWang27/people-context"
 ```
 
 Do the Glama claim first so the badge in the line renders a real score instead of "unknown".

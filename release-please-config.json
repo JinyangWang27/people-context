@@ -16,6 +16,11 @@
         {
           "type": "json",
           "path": "server.json",
+          "jsonpath": "$.packages[0].version"
+        },
+        {
+          "type": "json",
+          "path": "server.json",
           "jsonpath": "$.packages[0].runtimeArguments[0].value"
         },
         {

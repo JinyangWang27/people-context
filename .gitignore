@@ -28,3 +28,7 @@ node_modules/
 .vscode/
 
 tmp/
+
+# MCP Registry publisher CLI (downloaded locally, never committed)
+mcp-publisher
+mcp-publisher_*.tar.gz

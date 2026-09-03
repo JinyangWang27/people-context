@@ -1,6 +1,6 @@
 # people-context
 
-<!-- mcp-name: io.github.jinyangwang27/people-context -->
+<!-- mcp-name: io.github.JinyangWang27/people-context -->
 
 **Your agent already remembers your codebase. Now it can remember your people.**
 

@@ -47,6 +47,7 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     entries = {(entry["type"], entry["path"], entry.get("jsonpath")) for entry in package["extra-files"]}
     assert entries == {
         ("json", "server.json", "$.version"),
+        ("json", "server.json", "$.packages[0].version"),
         ("json", "server.json", "$.packages[0].runtimeArguments[0].value"),
         ("json", "mcpb/manifest.json", "$.version"),
         ("json", ".codex-plugin/plugin.json", "$.version"),
@@ -58,6 +59,8 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     server = _json(ROOT / "server.json")
     requirement = server["packages"][0]["runtimeArguments"][0]["value"]
     assert requirement == f"people-context=={server['version']}"
+    # The Registry requires a per-package version, so it is bumped alongside the rest.
+    assert server["packages"][0]["version"] == server["version"]
 
 
 def test_uv_lock_is_relocked_by_the_workflow_not_an_extra_file() -> None:
