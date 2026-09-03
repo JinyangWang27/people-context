@@ -1,356 +1,253 @@
 ---
 name: "people-context"
-description: "Install, start, and use the people-context MCP server via HTTP: resolve people, read context and guidance, capture new knowledge through the staged flow, maintain existing records, and connect the OpenClaw plugin. Covers install, server startup, MCP session init, and all tool patterns."
+description: "Install, start, and use the people-context MCP server via stdio or HTTP: resolve people, read context and guidance, capture new knowledge, maintain existing records, and connect the OpenClaw plugin. Covers install, pctx setup, transport, MCP session wiring, and raw tool call patterns."
 ---
 
 # people-context Skill
 
 ## When to use
 
-Any work involving the people-context MCP server through the loopback HTTP transport:
-installing or upgrading, starting the server, adding people, aliases, affiliations,
-relationships, facts, interactions, reminders — or querying existing records.
+Any work with the people-context MCP server: install/upgrade, client connection, people/aliases/affiliations/relationships/facts/interactions/reminders — or querying records.
 
-For agent-facing usage patterns (resolution, guided capture, transcript extraction,
-record maintenance) the upstream skills in
-`skills/people-context-usage/`, `skills/remember/`, and `skills/reminders/`
-hold the canonical rules. This skill handles install, transport, MCP session wiring,
-and the raw tool call patterns only.
+For agent-facing usage patterns see `skills/people-context-usage/`, `skills/remember/`, `skills/reminders/`. This skill covers install, transport, session wiring, and raw tool call patterns only.
 
 ---
 
 ## 1. Install / Upgrade
 
-Prefer `uvx` for zero-install ephemeral runs:
-
-```bash
-uvx --from people-context people-context-mcp --http --host 127.0.0.1 --port 8765
-```
-
-For a persistent install (recommended when the server runs in background):
-
 ```bash
 uv tool install people-context          # latest PyPI release
-# or latest tag from GitHub:
-gh release list --repo JinyangWang27/people-context
 uv tool install --force \
   "git+https://github.com/JinyangWang27/people-context.git@<tag>"
 ```
 
-Verify installed version:
-
-```bash
-python3 -c "import people_context; print(people_context.__version__)"
-```
+Zero-install: `uvx --from people-context people-context-mcp` (stdio) or add `--http --host 127.0.0.1 --port 8765`.
 
 ---
 
-## 2. Start the server
-
-HTTP transport is **opt-in** and loopback-only. Always bind to `127.0.0.1`.
+## 2. Connect an MCP client — `pctx setup`
 
 ```bash
-# Check if already running before starting
-pgrep -fa people-context
-
-# Start in background
-nohup people-context-mcp --http --host 127.0.0.1 --port 8765 \
-  > /tmp/people-context.log 2>&1 &
-sleep 2 && cat /tmp/people-context.log
+pctx setup claude-desktop   # writes/merges stdio entry into Claude Desktop config
+pctx setup cursor           # same for Cursor
+pctx setup windsurf         # same for Windsurf
+pctx setup vscode           # uses "servers" key with "type": "stdio"
+pctx setup claude-code      # drives: claude mcp add
+pctx setup codex            # drives: codex mcp add
 ```
 
-Wait for `Application startup complete` before any tool call.
-The startup log prints the active DB path (default:
-`~/.local/share/people-context/people-context.db`).
-
-> **Prefer stdio in production.** HTTP is unauthenticated and must be treated as
-> accessible to all local processes. Use it for interactive agent sessions; prefer
-> the stdio MCP server in automated pipelines.
+Backs up existing config, writes atomically, refuses symlinks and invalid JSON. `--dry-run` to preview.
+`pctx init` offers `pctx setup` at a TTY on first run.
 
 ---
 
-## 3. MCP session init (Python helper)
+## 3. Transport
 
-Every HTTP interaction requires an MCP session. Initialize once, reuse the
-`mcp-session-id` header for all subsequent calls in the same script.
+**stdio (default/preferred).** JSON-RPC on stdin/stdout; `pctx setup` wires this. No port/firewall concern.
+
+**HTTP (opt-in).** `--http --host 127.0.0.1 --port 8765`. Unauthenticated — interactive sessions only.
+Wait for `Application startup complete` in the log before any tool call.
+
+---
+
+## 4. MCP session init — Python helper (HTTP only)
 
 ```python
 import urllib.request, json
 
-BASE    = "http://127.0.0.1:8765/mcp"
-HEADERS = {
-    "Content-Type": "application/json",
-    "Accept":       "application/json, text/event-stream",
-}
-
+BASE = "http://127.0.0.1:8765/mcp"
+HEADERS = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
 _id = 0
 
 def _post(payload, session_id=None):
-    h = dict(HEADERS)
-    if session_id:
-        h["mcp-session-id"] = session_id
-    req = urllib.request.Request(
-        BASE, data=json.dumps(payload).encode(), headers=h, method="POST"
-    )
+    h = {**HEADERS, **({"mcp-session-id": session_id} if session_id else {})}
+    req = urllib.request.Request(BASE, json.dumps(payload).encode(), h, method="POST")
     with urllib.request.urlopen(req) as r:
-        sid  = r.headers.get("mcp-session-id")
-        body = r.read().decode()
-        for line in body.splitlines():
-            if line.startswith("data:"):
-                return json.loads(line[5:]), sid
+        sid = r.headers.get("mcp-session-id")
+        for line in r.read().decode().splitlines():
+            if line.startswith("data:"): return json.loads(line[5:]), sid
     return None, sid
 
-# Initialize once — S is the session id for this script run
-resp, S = _post({
-    "jsonrpc": "2.0", "id": 1, "method": "initialize",
-    "params": {
-        "protocolVersion": "2024-11-05",
-        "capabilities": {},
-        "clientInfo": {"name": "levey", "version": "1.0"},
-    },
-})
-
+resp, S = _post({"jsonrpc":"2.0","id":1,"method":"initialize",
+    "params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"levey","version":"1.0"}}})
 _id = 1
 
 def call(name, args):
-    """Call any people-context MCP tool. Raises on error or validation failure."""
-    global _id
-    _id += 1
-    r, _ = _post(
-        {"jsonrpc": "2.0", "id": _id, "method": "tools/call",
-         "params": {"name": name, "arguments": args}},
-        S,
-    )
-    res  = r["result"]
-    text = res.get("content", [{}])[0].get("text", "")
-    if res.get("isError"):
-        raise RuntimeError(f"{name} failed: {text}")
+    global _id; _id += 1
+    r, _ = _post({"jsonrpc":"2.0","id":_id,"method":"tools/call","params":{"name":name,"arguments":args}}, S)
+    res = r["result"]; text = res.get("content",[{}])[0].get("text","")
+    if res.get("isError"): raise RuntimeError(f"{name} failed: {text}")
     parsed = json.loads(text) if text else res.get("structuredContent")
-    # isError is NOT always set on validation errors (bug #117) — check body too
-    if isinstance(parsed, dict) and parsed.get("error") == "validation_error":
+    if isinstance(parsed, dict) and parsed.get("error") == "validation_error":  # bug #117
         raise RuntimeError(f"{name} validation: {parsed['message']}")
     return res.get("structuredContent") or parsed
 ```
 
 ---
 
-## 4. Resolve identity first — always
+## 5. Resolve identity first — always (for write tools)
 
-All write tools require `person_id` (a ULID string), **never** a name.
-Always call `resolve_person` first, and branch on its `ambiguous` boolean —
-not on the candidate count.
+Write tools require `person_id` (ULID), never a name. Branch on `ambiguous`:
 
 ```python
-def resolve(query, hints=None):
-    """Returns person_id when resolution is unambiguous, else None."""
-    args = {"query": query}
-    if hints:
-        args["hints"] = hints          # keys: org, role, relationship
-    r = call("resolve_person", args)
-    if r and not r.get("ambiguous") and r.get("candidates"):
-        return r["candidates"][0]["person_id"]
-    # ambiguous: surface candidates[]; no person_id: report not found
-    return None
+r = call("resolve_person", {"query": "Alice Ng", "hints": {"org": "Acme"}})
+if not r.get("ambiguous") and r.get("candidates"):
+    c = r["candidates"][0]
+    if not c.get("match_reason", "").startswith("fuzzy"):  # fuzzy = treat as ambiguous
+        pid = c["person_id"]
 ```
 
-Hints improve ranking but **do not break exact-score ties**. When resolution
-is `ambiguous`, surface the candidate list and let the user choose — never guess.
+When `ambiguous=true` or `match_reason` starts with `"fuzzy"`: surface candidates, confirm — never guess.
 
 ---
 
-## 5. remember_person
+## 6. `remember` — single-call capture (new in M21)
 
-Use for a pure identity assertion (name, summary, `is_self`). Do **not** fold
-affiliations, facts, or interactions into the summary — stage those separately.
+Resolves, optionally creates, and records one statement in one audited transaction. Use for direct
+statements in conversation. **Not for extracted/inferred material from transcripts** — use staged capture.
 
 ```python
-call("remember_person", {
-    "name":     "Jinyang Wang",
-    "is_self":  True,
-    "summary":  "PhD physicist, AI engineer, maintainer of Awesome Python.",
-})
+call("remember", {"person": "Alice Ng", "note": "prefers short emails", "org": "Acme", "role": "CTO"})
+call("remember", {"person": "Bob",      "kind": "affiliation", "org": "Etihad", "role": "Fleet Manager"})
+call("remember", {"person": "Jiaxin",   "relationship": "spouse"})
 ```
 
-Add aliases after creation with `add_alias` (see below). Do not pass `aliases`
-to `remember_person`.
+Check `status` — **nothing is written when status ≠ `recorded`**:
+
+| `status` | Meaning |
+|---|---|
+| `recorded` | `r["recorded"]` lists `{kind, id, summary}` |
+| `ambiguous` | Several close candidates — `r["candidates"]` |
+| `unconfirmed` | One fuzzy-only match — confirm before retrying |
+| `no_self` | Relationship needs a self record (none exists) |
+| `nothing_to_record` | Bare name, no note/org/relationship |
+| `invalid_request` | Structural mismatch — checked before any write |
+
+`kind: auto` classifies `note` by a fixed keyword table. `org` and `relationship` record their own rows
+whatever `kind` says. All rows share one `transaction_id`; any failure rolls back everything.
 
 ---
 
-## 6. add_alias
-
-`kind` **must be lowercase**. An uppercase value silently drops the alias
-(bug #117, no error returned).
-
-| Alias type | `kind` | Notes |
-|---|---|---|
-| Chinese / CJK characters | `native_script` | add `"script": "Hans"` (Simplified) or `"Hant"` (Traditional) |
-| Pinyin / romanisation | `transliteration` | |
-| Given name / short name | `nickname` | |
-| Social / email handle | `handle` | |
-| Previous name | `former_name` | |
-| Other | `other` | |
+## 7. remember_person + add_alias
 
 ```python
-pid = resolve("Jinyang Wang")
-call("add_alias", {"person_id": pid, "value": "Jinyang",      "kind": "nickname"})
-call("add_alias", {"person_id": pid, "value": "汪金洋",        "kind": "native_script", "script": "Hans"})
-call("add_alias", {"person_id": pid, "value": "Wāng Jīnyáng", "kind": "transliteration"})
+call("remember_person", {"name": "Jinyang Wang", "is_self": True,
+    "summary": "PhD physicist, AI engineer."})
+# Do NOT fold affiliations/facts into summary. Do NOT pass aliases here.
 ```
+
+`add_alias` — `kind` **must be lowercase** (uppercase silently drops the alias; bug #117):
+
+`kind` values: `native_script` (CJK; add `"script":"Hans"/"Hant"`) · `transliteration` · `nickname` · `handle` · `former_name` · `other`
 
 ---
 
-## 7. set_relationship
-
-Uses `subject_id`, `object_id`, and `type`. The server normalizes synonyms
-automatically (e.g. `"spouse"` → `"spouse_of"`, `"parent"` → `"parent_of"`).
+## 8. set_relationship / set_affiliation
 
 ```python
-call("set_relationship", {
-    "subject_id": pid_a,
-    "object_id":  pid_b,
-    "type":       "spouse",
-})
+call("set_relationship", {"subject_id": pid_a, "object_id": pid_b, "type": "spouse"})
+call("set_affiliation",  {"person_id": pid, "org": "Etihad Airways",  # "org", NOT "org_name"
+    "role": "Employee", "valid_from": "2026-09-01"})
 ```
 
 ---
 
-## 8. set_affiliation
+## 9. `person` name shortcut on read tools
 
-Field is `org` (string), **not** `org_name`. Also requires `role`.
-`valid_from` / `valid_to` are optional ISO-8601 dates.
+`get_person_context`, `get_communication_guidance`, `list_reminders`, `get_relationship_graph`,
+`get_person_timeline`, `get_consolidation_context`, and `upcoming_dates` accept `person` (name string)
+alongside `person_id`. Saves the resolve round-trip when the name is unambiguous.
 
-```python
-call("set_affiliation", {
-    "person_id":  pid,
-    "org":        "Etihad Airways",   # "org", not "org_name"
-    "role":       "Employee",
-    "valid_from": "2026-09-01",
-})
-```
+On error, returns a structured payload (not an exception):
+`{"error": "ambiguous_person"|"unconfirmed_person"|"person_not_found"|"missing_person", "candidates": [...]}`
 
----
-
-## 9. get_person_context
-
-The person record is under the `"***"` key in the response (not `"person"`).
+### get_person_context
 
 ```python
-r       = call("get_person_context", {"person_id": pid})
-person  = r["***"]               # ← "***", not "person"
-aliases = person.get("aliases", [])
-rels    = r.get("relationships", [])
-affils  = r.get("affiliations", [])
+r = call("get_person_context", {"person_id": pid, "include_communication": True})
+person = r["***"]           # ← "***", not "person"
+# r["truncated"] == True means facts/interactions budget was hit
 ```
 
 ---
 
 ## 10. Staged capture: propose → review → commit
 
-Facts, affiliations, and interactions must go through the three-step staged flow.
-**Never call `commit_import` automatically** — the commit is an explicit,
-user-approved step after review.
+For extracted/inferred content from transcripts, emails, or external sources. **Never auto-commit.**
 
-### Strict `stage_candidates` vocabulary
-
-| Candidate `type` | Required fields | Optional fields |
-|---|---|---|
-| `person` | `ref`, `name`, `aliases` (array of objects, may be `[]`) | `summary`, `message_id`, `date` |
-| `interaction` | `summary`, `participant_refs`, `date` | `channel`, `message_id`, `sensitivity`, `evidence_ref` |
-| `affiliation` | `person_ref`, `org`, `role` | `valid_from`, `valid_to`, `confidence` |
-| `fact` | `person_ref`, `predicate`, `value` | `valid_from`, `valid_to`, `confidence`, `sensitivity` |
-| `observation` | `person_ref`, `text` | `observed_at`, `sensitivity`, `evidence_ref` |
-| `trait` | `person_ref`, `category`, `value`, `evidence_note`, `confidence` | `evidence_refs`, `evidence_ids` |
-| `relationship` | `from_ref`, `to_ref`, `relationship_type` | `confidence` |
-
-`aliases` in a `person` candidate are **objects**, not bare strings:
-`{"value": "Al", "kind": "nickname"}` — a bare string list is rejected.
-
-### Minimal staged-capture example
+`aliases` in a `person` candidate are objects, not strings: `{"value": "Al", "kind": "nickname"}`.
 
 ```python
-call("stage_candidates", {
-    "source": "levey-2026-09-02",   # never use raw user text as source
+bid = call("stage_candidates", {
+    "source": "levey-2026-09-03",
     "candidates": [
-        {
-            "type": "person",
-            "ref":  "jiaxin",
-            "name": "Jiaxin",
-            "aliases": [{"value": "Jiaxin Wang", "kind": "other"}],
-            "summary": "Wife of Jinyang, joining Etihad Airways.",
-        },
-        {
-            "type": "affiliation",
-            "person_ref": "jiaxin",
-            "org":        "Etihad Airways",
-            "role":       "Flight Attendant",
-            "valid_from": "2026-08-01",
-        },
+        {"type": "person", "ref": "jiaxin", "name": "Jiaxin",
+         "aliases": [{"value": "Jiaxin Wang", "kind": "other"}]},
+        {"type": "affiliation", "person_ref": "jiaxin",
+         "org": "Etihad Airways", "role": "Flight Attendant", "valid_from": "2026-08-01"},
     ],
-})
-# → returns batch_id; tell user to review before committing
-```
+})["batch_id"]
 
-Review and commit (user-approved only):
-
-```python
-call("review_import", {"batch_id": batch_id})
-call("commit_import", {"batch_id": batch_id, "accept": [candidate_id, ...]})
+call("review_import", {"batch_id": bid})            # read-only, no approval needed
+call("commit_import", {"batch_id": bid, "accept": [cid, ...]})  # user-approved only
 ```
 
 ---
 
 ## 11. Record maintenance: correction vs. supersession
 
-| Scenario | Right tool |
+| Scenario | Tool |
 |---|---|
-| Stored value was **wrong** (typo, wrong date, misheard name) | `correct_record` — updates the row in-place |
-| Stored value was **right, then the world changed** | `supersede_fact` — closes old row, opens replacement; both commit atomically |
+| Stored value was **wrong** (typo, misheard) | `correct_record` — updates in-place |
+| Stored value was **right, world changed** | `supersede_fact` — closes old row, opens replacement atomically |
 
-Never use `correct_record` to update a historically correct fact — that erases
-the provenance that the old value was ever true.
-
-`supersede_fact` requires `effective_from` to fall within the old fact's validity
-window. If the server refuses it with a `reason`, report the reason and ask the user
-for the correct date.
+`supersede_fact` requires `effective_from` within the old fact's validity window. Report the `reason` if refused.
 
 ---
 
-## 12. Available tools (v1.0.0)
+## 12. Available tools (post-M21)
 
-**Read-only** (call freely):
+**Read-only** (`readOnlyHint=true`):
 `resolve_person` · `get_person_context` · `search_people` · `semantic_search` ·
 `get_communication_guidance` · `list_reminders` · `get_relationship_graph` ·
 `find_connection` · `get_stale_relationships` · `upcoming_dates` · `review_import` ·
 `get_person_timeline` · `get_consolidation_context`
 
-**Write** (normal approval flow):
-`remember_person` · `add_alias` · `set_relationship` · `set_affiliation` ·
+**Write**: `remember` · `remember_person` · `add_alias` · `set_relationship` · `set_affiliation` ·
 `record_fact` · `record_observation` · `record_trait` · `record_interaction` ·
 `set_reminder` · `complete_reminder` · `correct_record` · `supersede_fact` ·
-`merge_people` · `forget` · `stage_candidates` · `import_content` ·
-`commit_import` · `set_communication_philosophy`
+`merge_people` · `forget` · `stage_candidates` · `import_content` · `commit_import` · `set_communication_philosophy`
 
-**Gated** (not exposed by default; do not suggest enabling to work around a boundary):
-`get_sensitive_person_context` · `export_data`
+**Gated** (never suggest enabling to work around a boundary): `get_sensitive_person_context` · `export_data`
 
 ---
 
-## 13. Known issues (v1.0.0) — filed as #117
+## 13. Prompts and resources (new in M21)
 
-| Bug | Symptom | Workaround |
+| Kind | Name / URI | Purpose |
 |---|---|---|
-| `isError` not set on validation errors | `add_alias` with wrong `kind` returns `isError: false` but alias is silently dropped | Check body for `{"error":"validation_error"}` — handled in `call()` helper above |
-| `kind` enum missing from JSON schema | Clients can't validate `kind` values upfront | Use the enumerated values in §6 above |
+| resource | `people-context://guide` | Full usage skill body |
+| resource | `people-context://self` | User's own record, or `{"found": false}` |
+| prompt | `who(name)` | Resolve, then read context on confident match |
+| prompt | `remember(statement)` | `remember` for direct statements; `stage_candidates` for extracted |
+| prompt | `meeting_prep(attendees)` | Context + guidance per attendee; read-only |
+| prompt | `end_of_session_capture()` | Propose via `stage_candidates`; never commit |
+| prompt | `maintenance_review(name)` | Timeline + consolidation signals |
 
 ---
 
-## 14. OpenClaw plugin (quick start)
+## 14. Known issues (v1.0.x) — bug #117
+
+- `isError` not set on validation errors: `add_alias` with wrong `kind` silently drops the alias. Check body for `{"error":"validation_error"}` — handled in `call()` above.
+- `kind` enum missing from JSON schema: use enumerated values in §7.
+
+---
+
+## 15. OpenClaw plugin
 
 ```bash
 openclaw plugins install clawhub:openclaw-plugin-people-context
-openclaw plugins inspect people-context --runtime --json
 ```
 
-The plugin connects to the opt-in loopback HTTP server, which must be running
-separately (see §2). Sensitive-context and export wrappers are not exposed by default.
-See `docs/openclaw-plugin.md` in the upstream repo for configuration and security details.
+Connects to the opt-in loopback HTTP server (must be running; see §3).
+See `docs/openclaw-plugin.md` in the upstream repo for config and security details.
