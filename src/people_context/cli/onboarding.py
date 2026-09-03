@@ -20,7 +20,20 @@ from people_context.app.people import (
 from people_context.app.records import RecordFactInput, RecordInteractionInput, SetAffiliationInput
 from people_context.app.relationships import SetRelationshipInput
 from people_context.cli.imports import parse_candidate_selection, print_import_commit
-from people_context.cli.rendering import print_demo_instructions, print_import_review
+from people_context.cli.rendering import (
+    CLIENT_SETUP_HINT,
+    STAR_HINT,
+    print_demo_instructions,
+    print_import_review,
+)
+from people_context.cli.setup import CLIENTS as SETUP_CLIENTS
+from people_context.cli.setup import (
+    SetupError,
+    db_path_to_pin,
+    default_scope,
+    encrypted_key_notice,
+    run_setup,
+)
 from people_context.demo_seed import (
     DEMO_AFFILIATIONS,
     DEMO_FACTS,
@@ -34,7 +47,7 @@ from people_context.domain.shared import normalize_name
 _DEMO_FILENAME = "demo.db"
 
 
-def cmd_init(runtime: ApplicationRuntime) -> int:
+def cmd_init(runtime: ApplicationRuntime, explicit_db_path: str | None = None, encrypted: bool = False) -> int:
     """Run safe, additive onboarding through audited application use cases."""
     target, fresh, exit_code = _preflight_init(runtime)
     if exit_code != 0:
@@ -94,7 +107,47 @@ def cmd_init(runtime: ApplicationRuntime) -> int:
         )
         print("Communication philosophy recorded.")
     print("Onboarding complete.")
+    _offer_client_setup(explicit_db_path, encrypted)
+    print()
+    print("Try these with your agent:")
+    print('  "Who is <name>?"')
+    print('  "Remember that <name> from <organisation> prefers short emails."')
+    print('  "What should I know before my meeting with <name>?"')
+    print(CLIENT_SETUP_HINT)
+    print(STAR_HINT)
     return 0
+
+
+def _offer_client_setup(explicit_db_path: str | None, encrypted: bool) -> None:
+    """Offer to wire an MCP client, only when a person is at the terminal to answer.
+
+    Scripted runs (a pipe, CI, a test feeding fixed answers) get the same printed hint every run gets and no
+    extra question, so the existing prompt sequence stays exactly what it was.
+    """
+    if not sys.stdin.isatty():
+        return
+    choices = ", ".join(SETUP_CLIENTS)
+    answer = input(f"Connect an MCP client now? [{choices}, or blank to skip] ").strip().lower()
+    if not answer:
+        return
+    if answer not in SETUP_CLIENTS:
+        print(f"Unknown client {answer!r}; run `pctx setup <client>` later.")
+        return
+    try:
+        lines = run_setup(
+            answer,
+            scope=default_scope(answer),
+            db_path=db_path_to_pin(explicit_db_path),
+            encrypted=encrypted,
+            dry_run=False,
+        )
+    except SetupError as exc:
+        print(f"Client setup failed: {exc}", file=sys.stderr)
+        return
+    for line in lines:
+        print(line)
+    if encrypted:
+        print(encrypted_key_notice(), file=sys.stderr)
 
 
 def _preflight_init(runtime: ApplicationRuntime) -> tuple[Person | None, bool, int]:

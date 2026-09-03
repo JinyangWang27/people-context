@@ -357,9 +357,7 @@ class TestOrdering:
         fixture = _Fixture()
         alice = fixture.person("Alice")
         instant = datetime(2026, 6, 1, 12, 0, tzinfo=UTC)
-        ids = sorted(
-            fixture.observation(alice.id, text=f"note {index}", observed_at=instant).id for index in range(3)
-        )
+        ids = sorted(fixture.observation(alice.id, text=f"note {index}", observed_at=instant).id for index in range(3))
 
         rows = fixture.reader.list_consolidation_observations(alice.id, limit=10, sensitivities=ORDINARY)
 

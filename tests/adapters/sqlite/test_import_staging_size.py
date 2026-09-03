@@ -33,10 +33,7 @@ def _insert_rows(conn: sqlite3.Connection, batch_id: str, count: int, candidate_
     conn.executemany(
         """INSERT INTO import_staging (id, batch_id, source, candidate_json, status, created_at)
            VALUES (?, ?, ?, ?, 'pending', ?)""",
-        [
-            (f"{batch_id}-{index:07d}", batch_id, _SOURCE, candidate_json, _NOW.isoformat())
-            for index in range(count)
-        ],
+        [(f"{batch_id}-{index:07d}", batch_id, _SOURCE, candidate_json, _NOW.isoformat()) for index in range(count)],
     )
     conn.commit()
 
@@ -70,8 +67,7 @@ def test_the_batch_predicate_seeks_rather_than_scanning_every_staged_row() -> No
         _insert_rows(conn, "unrelated", 200, _person_json())
 
         plan = " ".join(
-            str(row["detail"])
-            for row in conn.execute(f"EXPLAIN QUERY PLAN {_MEASURE_BATCH_SQL}", ("wanted", 10))
+            str(row["detail"]) for row in conn.execute(f"EXPLAIN QUERY PLAN {_MEASURE_BATCH_SQL}", ("wanted", 10))
         )
         list_plan = " ".join(
             str(row["detail"])

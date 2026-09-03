@@ -38,9 +38,7 @@ def _locked_root_version() -> str:
 def _registry_requirement_pin() -> str:
     """Return the version pinned by the Registry package's ``--from`` runtime argument."""
     (from_argument,) = [
-        argument
-        for argument in registry_package().get("runtimeArguments", [])
-        if argument.get("name") == "--from"
+        argument for argument in registry_package().get("runtimeArguments", []) if argument.get("name") == "--from"
     ]
     name, separator, pinned = from_argument["value"].partition("==")
     assert (name, separator) == ("people-context", "=="), "the Registry primary must be pinned with =="

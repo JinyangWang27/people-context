@@ -80,11 +80,14 @@ def test_export_contains_soft_deleted_people_preferences_interactions_and_decode
 def test_cli_and_use_case_emit_byte_equivalent_payload_with_fixed_clock(capsys) -> None:
     ctx = build_runtime(":memory:", warning=lambda _message: None, clock=_Clock())
     export_reader = ctx.export_reader
-    expected = json.dumps(
-        ExportData(export_reader, _Clock()).execute().model_dump(mode="json"),
-        indent=2,
-        ensure_ascii=False,
-    ) + "\n"
+    expected = (
+        json.dumps(
+            ExportData(export_reader, _Clock()).execute().model_dump(mode="json"),
+            indent=2,
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
 
     try:
         assert cmd_export(ctx, argparse.Namespace(output=None)) == 0

@@ -24,9 +24,7 @@ def test_cli_export_file_is_owner_only(tmp_path: Path) -> None:
     output = tmp_path / "export.json"
     conn = open_db(db_path)
     repository = SqlitePeopleRepository(conn)
-    RememberPerson(repository, repository, SqliteAuditLog(conn), _Clock()).execute(
-        RememberPersonInput(name="Alice")
-    )
+    RememberPerson(repository, repository, SqliteAuditLog(conn), _Clock()).execute(RememberPersonInput(name="Alice"))
     conn.close()
 
     assert main(["--db", str(db_path), "export", "--output", str(output)]) == 0

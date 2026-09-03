@@ -11,8 +11,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
+from pydantic import ValidationError
 
 from people_context.adapters.mcp.security import SENSITIVE_CONTEXT_ENV, process_elevation_enabled
+from people_context.adapters.mcp.tools.references import resolve_reference
+from people_context.adapters.mcp.tools.tool_errors import validation_error_payload
+from people_context.app.capture import CaptureKind, QuickCaptureInput
 from people_context.app.people import (
     AliasInput,
     AmbiguousPersonError,
@@ -21,6 +25,8 @@ from people_context.app.people import (
     SelfAlreadyExistsError,
 )
 from people_context.app.semantic import SemanticSearchValidationError
+from people_context.domain.shared import Sensitivity
+from people_context.domain.trait import TraitCategory
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -35,7 +41,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the resolve/search/remember tools bound to the given use cases."""
 
     @mcp.tool(annotations=_READ_ONLY)
-    async def resolve_person(query: str, hints: dict[str, Any] | None = None, limit: int = 5) -> dict[str, Any]:
+    async def resolve_person(query: str, hints: ResolutionHints | None = None, limit: int = 5) -> dict[str, Any]:
         """Resolve a name, nickname, or partial reference to candidate people.
 
         Call this first whenever the user mentions someone, before asking who they
@@ -43,26 +49,36 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         more candidates are close, the result is flagged `ambiguous` and all are
         returned so you can disambiguate with extra context or a clarifying
         question. An empty candidate list means no confident match — use
-        `remember_person` to create a new record.
+        `remember` or `remember_person` to create a new record. Put distinguishing
+        context in `hints` (`org`, `role`, `relationship`) rather than in `query`.
         """
-        validated_hints = ResolutionHints.model_validate(hints) if hints is not None else None
-        return deps.resolve_person.execute(query, limit=limit, hints=validated_hints).model_dump(mode="json")
+        return deps.resolve_person.execute(query, limit=limit, hints=hints).model_dump(mode="json")
 
     @mcp.tool(annotations=_READ_ONLY)
     async def get_person_context(
-        person_id: str,
+        person_id: str | None = None,
         purpose: str | None = None,
         max_items: int = 10,
+        person: str | None = None,
+        include_communication: bool = False,
     ) -> dict[str, Any]:
         """Assemble a minimal-disclosure context bundle for one person.
 
-        Returns narrow identity fields, active relationships and affiliations, and
-        one ranked facts/interactions slice capped by `max_items`. Sensitive and
-        restricted records are never returned by this ordinary tool. Communication
-        traits require a purpose containing `communication`.
+        Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve
+        inline: an ambiguous name returns the candidates instead of context. Returns
+        narrow identity fields, active relationships and affiliations, and one ranked
+        facts/interactions slice capped by `max_items`. Set `include_communication=true`
+        (or a `purpose` mentioning communication) to include communication traits.
+        Sensitive and restricted records are never returned by this ordinary tool, and
+        leave no trace that they exist. `truncated` says the item budget cut the list.
         """
+        target = resolve_reference(deps, person_id=person_id, person=person)
+        if isinstance(target, dict):
+            return target
+        if include_communication and (purpose is None or "communication" not in purpose.casefold()):
+            purpose = f"{purpose}; communication" if purpose else "communication"
         return deps.get_person_context.execute(
-            person_id,
+            target,
             purpose=purpose,
             max_items=max_items,
             include_sensitive=False,
@@ -157,3 +173,58 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 "existing": {"person_id": exc.existing_id, "canonical_name": exc.existing_name},
             }
         return result.model_dump(mode="json")
+
+    @mcp.tool(annotations=_WRITE)
+    async def remember(
+        person: str,
+        note: str | None = None,
+        kind: CaptureKind = "auto",
+        occurred_at: str | None = None,
+        org: str | None = None,
+        role: str | None = None,
+        relationship: str | None = None,
+        predicate: str | None = None,
+        trait_category: TraitCategory | None = None,
+        sensitivity: Sensitivity = Sensitivity.PERSONAL,
+        source: str = "agent",
+    ) -> dict[str, Any]:
+        """Record one thing the user stated about one person, in a single call.
+
+        Use this when the user directly tells you something durable — "Alice from Acme
+        prefers short emails", "Bob is my manager", "I had coffee with Dana today".
+        `person` is the name as the user said it: it is resolved first, and a new
+        person is created only when nobody matches. `org`/`role` record an affiliation,
+        `relationship` records how the user relates to them (e.g. `manager_of`,
+        `friend_of`, from the user's point of view), and `note` records the statement
+        as a `fact`, `trait`, or `interaction`. Leave `kind` as `auto` to classify the
+        note by a fixed keyword rule, or set it explicitly when you know. Pass `occurred_at` when
+        the statement says an interaction happened earlier ("met Dana last week"); without it such
+        a note is refused rather than dated today, because that date is what the staleness report
+        reads.
+
+        Identity is never guessed for a write: `status: ambiguous` or `unconfirmed`
+        returns candidates and records nothing — ask the user, then call again with the
+        exact canonical name or a unique alias. Everything recorded commits in one
+        transaction and is audited like the individual tools. For material you
+        extracted or inferred from a transcript rather than a direct statement, use
+        `stage_candidates` so the user reviews it first.
+        """
+        try:
+            data = QuickCaptureInput(
+                person=person,
+                note=note,
+                kind=kind,
+                occurred_at=occurred_at,
+                org=org,
+                role=role,
+                relationship=relationship,
+                predicate=predicate,
+                trait_category=trait_category,
+                sensitivity=sensitivity,
+                source=source,
+            )
+        except ValidationError as exc:
+            # Every other write tool maps a bad argument to this payload through `call_action`;
+            # raising here would surface a protocol error instead of something an agent can act on.
+            return validation_error_payload(exc)
+        return deps.quick_capture.execute(data).model_dump(mode="json")

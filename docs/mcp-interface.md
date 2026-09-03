@@ -16,17 +16,51 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 | `resolve_person` | Explainable identity resolution without silent guessing. | `query`, optional org/role/relationship hints, `limit` | Ranked candidates and `ambiguous`. |
 | `search_people` | Broader lexical browsing. | `query`, optional filters | Candidate list. |
 | `semantic_search` | Optional multilingual cosine retrieval over eligible people/interactions. | `query`, kinds, limit | `ok`, `not_available`, or `model_mismatch`. |
-| `get_person_context` | Bounded, sensitivity-gated person context. | `person_id`, optional purpose, `max_items` | Stable `PersonContextResult`. |
-| `get_communication_guidance` | Structured communication signals, not generated advice. | `person_id`, optional situation | Traits, relationships, roles, friction notes, reminders, philosophy. |
-| `list_reminders` | Pull-based reminder listing. | optional person/due/status filters | Ordered reminders. |
-| `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
+| `get_person_context` | Bounded, sensitivity-gated person context. | `person_id` or `person` (a name), optional purpose / `include_communication`, `max_items` | Stable `PersonContextResult` with an additive `truncated` flag. |
+| `get_communication_guidance` | Structured communication signals, not generated advice. | `person_id` or `person`, optional situation | Traits, relationships, roles, friction notes, reminders, philosophy. |
+| `list_reminders` | Pull-based reminder listing. | optional `person_id` or `person`, due/status filters | Ordered reminders. |
+| `get_relationship_graph` | Minimal-disclosure structural neighborhood. | `person_id` or `person`, `depth=2`, optional canonical types | Nodes, canonical edges, `truncated`. |
 | `find_connection` | One deterministic shortest relationship path. | `person_a`, `person_b`, `max_depth=4` | Ordered perspective-rendered hops or not-connected. |
 | `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
-| `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` | Ordered entries and `skipped_unparseable`. |
-| `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id`, `limit=50` | Ordered entries, `found`, and `truncated`. |
-| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id`, `limit=50` | Facts, traits, observations, deterministic `signals`, and per-collection truncation. |
+| `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` or `person` | Ordered entries and `skipped_unparseable`. |
+| `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id` or `person`, `limit=50` | Ordered entries, `found`, and `truncated`. |
+| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id` or `person`, `limit=50` | Facts, traits, observations, deterministic `signals`, and per-collection truncation. |
 
-All twelve tools are annotated `readOnlyHint=true`.
+| `review_import` | Staged candidates and statuses for one batch. | `batch_id` | Candidate rows; inspection only. |
+
+All thirteen tools are annotated `readOnlyHint=true`. `review_import` was annotated as a write before M21 even
+though it never mutated anything; correcting the annotation removes a spurious approval prompt.
+
+### Naming a person instead of passing an id
+
+Every ordinary read above that takes a single `person_id` — `get_person_context`, `get_communication_guidance`,
+`list_reminders`, `get_relationship_graph`, `get_person_timeline`, `get_consolidation_context`, and
+`upcoming_dates` — also accepts `person`: the name, nickname, or alias as the user said it. `find_connection` and
+the operator-elevated `get_sensitive_person_context` take ids only.
+
+The name is followed only when the store really holds it: an exact name or alias, or a lexical hit such as
+`Amina` for `Amina Hassan`. A candidate the resolver reached only by edit distance — `Danial Okafor` for
+`Daniel Okafor` — returns `{"error": "unconfirmed_person", "candidates": [...]}` and reads nothing, because
+answering a question about one person with another person's records is the failure a typo would otherwise
+cause. Alongside `ambiguous_person`, `person_not_found`, and `missing_person`, this keeps every refusal a
+structured payload the agent can act on. The tool resolves it through the same `resolve_person` pipeline and applies the same contract — an
+`ambiguous` resolution returns `{"error": "ambiguous_person", "candidates": [...]}` and reads nothing, no match
+returns `{"error": "person_not_found"}`, and neither argument returns `{"error": "missing_person"}`. Passing
+`person_id` keeps the previous behavior exactly; `person` is additive and saves the resolve round-trip when the
+name is unambiguous.
+
+### `truncated`
+
+`get_person_context` adds one additive field, matching the flag the graph and timeline reads already carry:
+
+```json
+{"truncated": false}
+```
+
+It says the shared facts/interactions budget cut the ranked list. It is computed over the records the caller
+may see, so it cannot be used to detect an elevated one: a person whose every assertion is sensitive or
+restricted returns exactly what a person with no assertions returns, as
+[privacy-and-safety.md](privacy-and-safety.md) requires of every ordinary read.
 
 ## M7 graph contracts
 
@@ -475,6 +509,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 
 | Tool | Purpose |
 |---|---|
+| `remember` | One statement about one person in one call: resolve, create if new, record a fact/trait/interaction/affiliation/relationship, commit once. |
 | `remember_person` | Create/update a person and merge aliases/summary. |
 | `add_alias` | Add a normalized-deduplicated alias. |
 | `set_relationship` | Normalize vocabulary/direction and create or update one canonical active edge. |
@@ -545,6 +580,89 @@ inverse direction, orders symmetric endpoints, and updates an existing active ca
 inserting a duplicate. Unknown types remain legal. Staged `relationship` candidates commit through this same
 contract, and are ordinary-disclosure only because the durable relationship model carries no sensitivity
 field.
+
+## M21 quick-capture contract
+
+### `remember`
+
+```json
+{
+  "person": "Alice Ng",
+  "note": "prefers short emails",
+  "kind": "auto",
+  "org": "Acme",
+  "role": "CTO",
+  "relationship": null,
+  "predicate": null,
+  "trait_category": null,
+  "sensitivity": "personal"
+}
+```
+
+`person` is resolved through `resolve_person` with `org`/`role`/`relationship` as hints. The write proceeds
+only for an **exact** normalized-name match or a top candidate scoring at least `0.7` (a strong lexical hit);
+a fuzzy edit-distance match is never written against. When nobody matches, the person is created through
+`RememberPerson`. Then, in the same transaction:
+
+- `org` (with `role`, default `member`) records an affiliation through `SetAffiliation`;
+- `relationship` records an edge from the user's self record to the person through `SetRelationship` with the
+  normal vocabulary and inverse handling; without a self record the call returns `status: no_self` and writes
+  nothing;
+- `note` records one of `fact` (`predicate`, default `note`), `trait` (`trait_category`, default by rule or
+  `other`), or `interaction` (the person as sole participant, at `occurred_at` or now). A note that places an
+  interaction earlier — "met Alice yesterday", "met Alice on 2026-08-20" — without an `occurred_at` is refused as `invalid_request`
+  rather than dated today, because that date is the recency signal `get_stale_relationships` reads. `kind: auto` classifies the note by
+  a fixed keyword table documented on `classify_note` in `app/capture/quick_capture.py`: interaction cues, then
+  topics to avoid, then communication style, then preference, otherwise a fact.
+
+Response:
+
+```json
+{
+  "status": "recorded",
+  "person_id": "...",
+  "canonical_name": "Alice Ng",
+  "created": true,
+  "recorded": [
+    {"kind": "affiliation", "id": "...", "summary": "CTO at Acme"},
+    {"kind": "trait", "id": "...", "summary": "communication_style: prefers short emails"}
+  ],
+  "candidates": [],
+  "message": null
+}
+```
+
+`status` is one of `recorded`, `ambiguous` (several candidates close together), `unconfirmed` (one weak
+candidate), `no_self`, `nothing_to_record` (a bare name), or `invalid_request`. The last covers three shapes:
+a structural `kind` without its payload (`affiliation` without `org`, `relationship` without `relationship`, a
+note kind without `note`); a structural `kind` alongside a `note`, which `kind` cannot describe and which
+would therefore be dropped; and an elevated `sensitivity` combined with `org` or `relationship`, since
+affiliations and relationships carry no sensitivity level and are disclosed by every ordinary read — record
+that private statement as a `fact` instead. All three run before any resolution or write.
+
+`org` and `relationship` are payloads rather than classifications, so they record their own rows whatever
+`kind` says about the note: `remember(person="Alice", note="prefers short emails", kind="trait", org="Acme")`
+records both the affiliation and the trait. Every status other than `recorded` carries an
+empty `recorded` list and writes nothing; `ambiguous` and `unconfirmed` return `candidates` so the agent can ask.
+All rows share one `transaction_id` in the audit log and changelog, exactly as the individual tools would have
+written them, and a failure anywhere rolls back everything including a person created moments earlier.
+
+`remember` records what the user *stated*. Material extracted or inferred from transcripts, notes, or earlier
+conversation still goes through `stage_candidates` → `review_import` → `commit_import`.
+
+### Prompts and resources
+
+The server also exposes the packaged usage guidance through the protocol, for clients that do not load skills:
+
+| Kind | Name / URI | Purpose |
+|---|---|---|
+| resource | `people-context://guide` | The usage skill body: resolution first, context vs. guidance, meeting prep, propose-then-commit capture. |
+| resource | `people-context://self` | Narrow identity of the user's own record, or `{"found": false}`. |
+| prompt | `who(name)` | Resolve, then read context only on a confident match. |
+| prompt | `remember(statement)` | `remember` for a direct statement; `stage_candidates` for extracted material. |
+| prompt | `meeting_prep(attendees)` | Context, guidance, and reminders per attendee; read-only. |
+| prompt | `end_of_session_capture()` | Propose learnings with `stage_candidates`; never commit. |
+| prompt | `maintenance_review(name)` | Timeline and consolidation signals, then proposals awaiting approval. |
 
 ## Destructive tools
 

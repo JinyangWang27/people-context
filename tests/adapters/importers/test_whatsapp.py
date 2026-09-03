@@ -334,9 +334,7 @@ def test_whatsapp_reports_impossible_timestamps_and_unusable_sender_labels() -> 
         {"index": 4, "reason": "invalid_sender"},
     ]
     assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
-    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [
-        ["whatsapp-person-1"]
-    ]
+    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [["whatsapp-person-1"]]
 
 
 def test_whatsapp_impossible_components_do_not_bias_the_file_wide_date_order() -> None:
@@ -409,9 +407,7 @@ def test_whatsapp_matches_a_bare_self_phone_hint_against_a_plus_prefixed_label()
     extracted = _extract(content, self_sender="15551234567")
 
     assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
-    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [
-        ["whatsapp-person-1"]
-    ]
+    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [["whatsapp-person-1"]]
 
 
 def test_whatsapp_coalesces_phone_labels_that_differ_only_by_a_leading_plus() -> None:
@@ -457,9 +453,7 @@ def test_whatsapp_deduplicates_phone_senders_and_stages_a_compact_handle() -> No
             "date": None,
         }
     ]
-    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [
-        ["whatsapp-person-1"]
-    ]
+    assert [interaction["participant_refs"] for interaction in _interactions(extracted)] == [["whatsapp-person-1"]]
 
 
 def test_whatsapp_omits_self_by_alias_name_and_by_explicit_sender_hint() -> None:
@@ -476,9 +470,9 @@ def test_whatsapp_omits_self_by_alias_name_and_by_explicit_sender_hint() -> None
     extracted = _extract(content, self_names={"sam self"}, self_sender="You")
 
     assert [person["name"] for person in _people(extracted)] == ["Alice Example"]
-    assert [
-        (interaction["date"], interaction["participant_refs"]) for interaction in _interactions(extracted)
-    ] == [(datetime(2025, 2, 13, tzinfo=UTC), ["whatsapp-person-1"])]
+    assert [(interaction["date"], interaction["participant_refs"]) for interaction in _interactions(extracted)] == [
+        (datetime(2025, 2, 13, tzinfo=UTC), ["whatsapp-person-1"])
+    ]
     assert extracted.skipped_cards == []
 
 

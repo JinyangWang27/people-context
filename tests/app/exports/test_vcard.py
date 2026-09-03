@@ -242,9 +242,7 @@ def test_selects_the_most_confident_then_newest_full_birthday() -> None:
     older = _birthday(person, "1985-04-12", recorded_at=datetime(2020, 1, 1, tzinfo=UTC))
     newest = _birthday(person, "1985-04-13", recorded_at=datetime(2024, 1, 1, tzinfo=UTC))
 
-    projection, result = _export(
-        _snapshot(people=[person], facts=[low_confidence, newest, older])
-    )
+    projection, result = _export(_snapshot(people=[person], facts=[low_confidence, newest, older]))
 
     assert projection.contacts[0].birthday == date(1985, 4, 13)
     assert result.omitted_birthdays == 2
@@ -299,9 +297,7 @@ def test_a_birthday_outside_its_validity_period_is_neither_exported_nor_counted(
         provenance=_PROVENANCE,
     )
 
-    projection, result = _export(
-        _snapshot(people=[person], facts=[corrected, not_yet_active, unusable_but_closed])
-    )
+    projection, result = _export(_snapshot(people=[person], facts=[corrected, not_yet_active, unusable_but_closed]))
 
     assert projection.contacts[0].birthday is None
     assert result.omitted_birthdays == 0
@@ -434,10 +430,6 @@ def test_the_use_case_module_imports_no_adapter() -> None:
     source = Path(ExportVCard.__module__.replace(".", "/") + ".py")
     root = Path(__file__).parents[3] / "src"
     tree = ast.parse((root / source).read_text(encoding="utf-8"))
-    imported = {
-        node.module or ""
-        for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom)
-    }
+    imported = {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
 
     assert not any(module.startswith("people_context.adapters") for module in imported)

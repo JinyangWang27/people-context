@@ -304,9 +304,7 @@ def test_a_listing_cursor_carries_only_the_identifier_of_its_last_row() -> None:
 
 
 def test_a_redacted_row_ending_a_page_leaks_no_timestamp_through_the_cursor() -> None:
-    reader = FakeSourceInspectionReader(
-        [replace(_session(index), status=STATUS_REDACTED) for index in range(1, 4)]
-    )
+    reader = FakeSourceInspectionReader([replace(_session(index), status=STATUS_REDACTED) for index in range(1, 4)])
 
     page = ListImportSources(reader).execute(limit=1)
 

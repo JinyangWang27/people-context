@@ -164,9 +164,7 @@ def test_a_missing_transcript_refuses_rather_than_scoring_silence(
 ) -> None:
     suite = json.loads(SUITE_PATH.read_text(encoding="utf-8"))
     transcripts = json.loads((SUITE_PATH.parent / "stub-transcripts.json").read_text(encoding="utf-8"))
-    transcripts["transcripts"] = [
-        item for item in transcripts["transcripts"] if item["task_id"] != "relationship-path"
-    ]
+    transcripts["transcripts"] = [item for item in transcripts["transcripts"] if item["task_id"] != "relationship-path"]
     (tmp_path / "world.json").write_text(WORLD_PATH.read_text(encoding="utf-8"), encoding="utf-8")
     (tmp_path / "partial.json").write_text(json.dumps(transcripts), encoding="utf-8")
     suite["runners"]["stub"]["transcripts"] = "partial.json"

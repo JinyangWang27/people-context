@@ -51,9 +51,7 @@ def test_fresh_and_m6_database_apply_pending_migrations(tmp_path: Path) -> None:
 
     upgraded = open_db(path)
     assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 8
-    inverse = upgraded.execute(
-        "SELECT inverse FROM relationship_types WHERE type = 'reports_to'"
-    ).fetchone()[0]
+    inverse = upgraded.execute("SELECT inverse FROM relationship_types WHERE type = 'reports_to'").fetchone()[0]
     assert inverse == "manages"
     assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
 
@@ -66,12 +64,8 @@ def test_set_relationship_normalizes_deduplicates_and_renders_perspective() -> N
     audit = SqliteAuditLog(conn)
     use_case = SetRelationship(SqlitePeopleRepository(conn), store, audit, SystemClock(), vocabulary)
 
-    first = use_case.execute(
-        SetRelationshipInput(subject_id=b.id, object_id=a.id, type="manager of", label="first")
-    )
-    second = use_case.execute(
-        SetRelationshipInput(subject_id=a.id, object_id=b.id, type="reports to", label="updated")
-    )
+    first = use_case.execute(SetRelationshipInput(subject_id=b.id, object_id=a.id, type="manager of", label="first"))
+    second = use_case.execute(SetRelationshipInput(subject_id=a.id, object_id=b.id, type="reports to", label="updated"))
 
     assert second.id == first.id
     assert (second.subject_id, second.object_id, second.type, second.label) == (
@@ -106,9 +100,7 @@ def test_symmetric_and_unknown_relationship_types_round_trip() -> None:
 
     first = use_case.execute(SetRelationshipInput(subject_id=b.id, object_id=a.id, type="friend of"))
     repeated = use_case.execute(SetRelationshipInput(subject_id=a.id, object_id=b.id, type="friend_of", label="x"))
-    unknown = use_case.execute(
-        SetRelationshipInput(subject_id=a.id, object_id=b.id, type="Childhood Rival Of")
-    )
+    unknown = use_case.execute(SetRelationshipInput(subject_id=a.id, object_id=b.id, type="Childhood Rival Of"))
 
     assert repeated.id == first.id
     assert (first.subject_id, first.object_id) == tuple(sorted((a.id, b.id)))
@@ -174,14 +166,12 @@ def test_domain_seeded_vocabulary_matches_a_freshly_migrated_database(tmp_path: 
         for row in conn.execute("SELECT type, inverse, symmetric, category, canonical FROM relationship_types")
     }
     synonyms = {
-        row["synonym"]: row["type"]
-        for row in conn.execute("SELECT synonym, type FROM relationship_type_synonyms")
+        row["synonym"]: row["type"] for row in conn.execute("SELECT synonym, type FROM relationship_type_synonyms")
     }
     conn.close()
 
     assert types == {
-        key: (row.inverse, row.symmetric, row.category, row.canonical)
-        for key, row in SEEDED_RELATIONSHIP_TYPES.items()
+        key: (row.inverse, row.symmetric, row.category, row.canonical) for key, row in SEEDED_RELATIONSHIP_TYPES.items()
     }
     assert synonyms == dict(SEEDED_RELATIONSHIP_SYNONYMS)
     assert {synonym for row in SEEDED_RELATIONSHIP_TYPES.values() for synonym in row.synonyms} == set(synonyms)

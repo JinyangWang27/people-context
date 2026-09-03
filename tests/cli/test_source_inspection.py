@@ -29,8 +29,7 @@ def _linkedin(tmp_path: Path, name: str = "connections.csv", rows: int = 2) -> P
         "\n".join(
             [_LINKEDIN_HEADERS]
             + [
-                f"Person{index},Surname{index},{_URL},person{index}@example.com,"
-                f"Globex,Designer,23 Jul 2026,note"
+                f"Person{index},Surname{index},{_URL},person{index}@example.com,Globex,Designer,23 Jul 2026,note"
                 for index in range(rows)
             ]
         ),
@@ -197,9 +196,10 @@ def test_a_partial_commit_is_understandable_from_the_source(
     assert cli.main(["--db", str(db_file), "import", "review", batch["batch_id"], "--json"]) == 0
     review = _json(capsys)
     person_ids = [row["id"] for row in review["candidates"] if row["candidate"]["type"] == "person"]
-    assert cli.main(
-        ["--db", str(db_file), "import", "commit", batch["batch_id"], "--accept", person_ids[0], "--json"]
-    ) == 0
+    assert (
+        cli.main(["--db", str(db_file), "import", "commit", batch["batch_id"], "--accept", person_ids[0], "--json"])
+        == 0
+    )
     capsys.readouterr()
 
     document = _show(db_file, batch["source_session_id"], capsys)
@@ -243,9 +243,9 @@ def test_completed_source_mappings_survive_a_bootstrap_restore(
     assert cli.main(["--db", str(db_file), "sync", "push", "--output", str(outbox)]) == 0
     capsys.readouterr()
     restored = tmp_path / "restored.db"
-    assert cli.main(
-        ["--db", str(restored), "sync", "pull", "--input", str(outbox / SYNC_BUNDLE_FILENAME), "--yes"]
-    ) == 0
+    assert (
+        cli.main(["--db", str(restored), "sync", "pull", "--input", str(outbox / SYNC_BUNDLE_FILENAME), "--yes"]) == 0
+    )
     capsys.readouterr()
 
     document = _show(restored, batch["source_session_id"], capsys)
@@ -322,21 +322,24 @@ def test_a_fully_forgotten_digestless_source_has_no_row_to_inspect(
         json.dumps([{"type": "person", "ref": "p1", "name": "Priya Nair", "aliases": []}]),
         encoding="utf-8",
     )
-    assert cli.main(
-        [
-            "--db",
-            str(db_file),
-            "import",
-            "stage-candidates",
-            "--source",
-            "planning sync",
-            "--input",
-            str(candidates),
-            "--source-kind",
-            "meeting_transcript",
-            "--json",
-        ]
-    ) == 0
+    assert (
+        cli.main(
+            [
+                "--db",
+                str(db_file),
+                "import",
+                "stage-candidates",
+                "--source",
+                "planning sync",
+                "--input",
+                str(candidates),
+                "--source-kind",
+                "meeting_transcript",
+                "--json",
+            ]
+        )
+        == 0
+    )
     batch = _json(capsys)
     session_id = batch["source_session_id"]
     assert session_id is not None
@@ -419,9 +422,7 @@ def test_a_cursor_from_another_source_is_refused_rather_than_skipping_provenance
     borrowed = _show(db_file, second["source_session_id"], capsys, "--limit", "2")["next_cursor"]
     assert borrowed is not None
 
-    code = cli.main(
-        ["--db", str(db_file), "source", "show", first["source_session_id"], "--cursor", borrowed]
-    )
+    code = cli.main(["--db", str(db_file), "source", "show", first["source_session_id"], "--cursor", borrowed])
 
     assert code == 2
     captured = capsys.readouterr()
@@ -439,9 +440,7 @@ def test_a_listing_cursor_is_refused_by_a_mapping_page(
     listing_cursor = _sources(db_file, capsys, "--limit", "1")["next_cursor"]
     assert listing_cursor is not None
 
-    code = cli.main(
-        ["--db", str(db_file), "source", "show", batch["source_session_id"], "--cursor", listing_cursor]
-    )
+    code = cli.main(["--db", str(db_file), "source", "show", batch["source_session_id"], "--cursor", listing_cursor])
 
     assert code == 2
     assert "invalid_source_cursor" in capsys.readouterr().err
@@ -578,21 +577,24 @@ def test_human_output_for_a_digestless_source_says_it_promises_no_deduplication(
         json.dumps([{"type": "person", "ref": "p1", "name": "Priya Nair", "aliases": []}]),
         encoding="utf-8",
     )
-    assert cli.main(
-        [
-            "--db",
-            str(db_file),
-            "import",
-            "stage-candidates",
-            "--source",
-            "planning sync",
-            "--input",
-            str(candidates),
-            "--source-kind",
-            "meeting_transcript",
-            "--json",
-        ]
-    ) == 0
+    assert (
+        cli.main(
+            [
+                "--db",
+                str(db_file),
+                "import",
+                "stage-candidates",
+                "--source",
+                "planning sync",
+                "--input",
+                str(candidates),
+                "--source-kind",
+                "meeting_transcript",
+                "--json",
+            ]
+        )
+        == 0
+    )
     batch = _json(capsys)
 
     assert cli.main(["--db", str(db_file), "source", "show", batch["source_session_id"]]) == 0

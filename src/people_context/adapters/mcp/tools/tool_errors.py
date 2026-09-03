@@ -18,6 +18,20 @@ from people_context.app.records import (
 )
 
 
+def validation_error_payload(exc: ValidationError) -> dict[str, Any]:
+    """Render a rejected argument as a payload the transport can actually serialize.
+
+    ``errors()`` carries a ``ctx`` holding the original exception object whenever a field validator
+    raised one, and that is not JSON. Left in, the tool result fails to serialize and the caller gets
+    a protocol error in place of the structured refusal this function exists to give them.
+    """
+    return {
+        "error": "validation_error",
+        "message": str(exc),
+        "details": exc.errors(include_url=False, include_context=False),
+    }
+
+
 def call_action(action: Callable[[], BaseModel]) -> dict[str, Any]:
     """Execute one use case and map stable application errors to tool payloads."""
     try:
@@ -60,4 +74,4 @@ def call_action(action: Callable[[], BaseModel]) -> dict[str, Any]:
     except InvalidReminderError as exc:
         return {"error": "invalid_reminder", "message": str(exc)}
     except ValidationError as exc:
-        return {"error": "validation_error", "message": str(exc), "details": exc.errors(include_url=False)}
+        return validation_error_payload(exc)

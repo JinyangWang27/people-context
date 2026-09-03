@@ -85,9 +85,7 @@ def test_list_shows_seeded_person_and_hides_deleted_unless_all(
     assert "Mad Hatter [deleted]" in out
 
 
-def test_list_json_emits_the_versioned_person_index(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_list_json_emits_the_versioned_person_index(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     live = _seed(db_file, "Alice Wonderland", summary="A curious person from the story.")
     gone = _seed(db_file, "Mad Hatter")
@@ -120,9 +118,7 @@ def test_list_json_emits_the_versioned_person_index(
     ]
 
 
-def test_list_json_on_an_empty_store_is_still_a_document(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_list_json_on_an_empty_store_is_still_a_document(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
 
     assert cli.main(["--db", str(db_file), "list", "--json"]) == 0
@@ -250,9 +246,7 @@ def test_sync_log_hides_payloads_by_default_and_can_filter_and_reveal_them(
     assert "payload=" not in hidden
     assert sentinel not in hidden
 
-    assert cli.main(
-        ["--db", str(db_file), "sync-log", "--entity", person.id, "--payloads"]
-    ) == 0
+    assert cli.main(["--db", str(db_file), "sync-log", "--entity", person.id, "--payloads"]) == 0
     revealed = capsys.readouterr().out
     assert f"create  person:{person.id}" in revealed
     assert "payload=" in revealed
@@ -270,9 +264,7 @@ def test_edit_requires_a_field_updates_person_and_audits_before_after(
 
     assert cli.main(["--db", str(db_file), "edit", person.id]) == 2
     assert "requires" in capsys.readouterr().err
-    assert cli.main(
-        ["--db", str(db_file), "edit", person.id, "--name", "Alice Smith", "--summary", "New"]
-    ) == 0
+    assert cli.main(["--db", str(db_file), "edit", person.id, "--name", "Alice Smith", "--summary", "New"]) == 0
 
     conn = open_db(db_file)
     try:
@@ -309,14 +301,10 @@ def test_add_alias_and_set_preference_use_application_writes(
     db_file = tmp_path / "people.db"
     person = _seed(db_file, "Alice")
 
-    assert cli.main(
-        ["--db", str(db_file), "add-alias", person.id, "Ally", "--kind", "nickname", "--lang", "en"]
-    ) == 0
+    assert cli.main(["--db", str(db_file), "add-alias", person.id, "Ally", "--kind", "nickname", "--lang", "en"]) == 0
     assert cli.main(["--db", str(db_file), "set", "unsupported", "x"]) == 2
     assert "Unsupported" in capsys.readouterr().err
-    assert cli.main(
-        ["--db", str(db_file), "set", PREF_COMMUNICATION_PHILOSOPHY, "Prefer concise updates"]
-    ) == 0
+    assert cli.main(["--db", str(db_file), "set", PREF_COMMUNICATION_PHILOSOPHY, "Prefer concise updates"]) == 0
 
     conn = open_db(db_file)
     try:
@@ -325,9 +313,7 @@ def test_add_alias_and_set_preference_use_application_writes(
     finally:
         conn.close()
     assert updated is not None
-    assert [(alias.value, alias.kind.value, alias.lang) for alias in updated.aliases] == [
-        ("Ally", "nickname", "en")
-    ]
+    assert [(alias.value, alias.kind.value, alias.lang) for alias in updated.aliases] == [("Ally", "nickname", "en")]
     assert philosophy == "Prefer concise updates"
 
 

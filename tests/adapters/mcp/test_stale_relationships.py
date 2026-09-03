@@ -28,9 +28,7 @@ def test_stale_tool_reports_ordinary_recency_and_is_read_only(tmp_path: Path) ->
     server = build_server(tmp_path / "stale.db")
 
     async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], Any]:
-        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structured_content[
-            "person"
-        ]
+        me = (await client.call_tool("remember_person", {"name": "Me", "is_self": True})).structured_content["person"]
         ids: dict[str, str] = {"me": me["id"]}
         for name in ("Alice", "Bob", "Carol"):
             created = await client.call_tool("remember_person", {"name": name})

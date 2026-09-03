@@ -97,9 +97,7 @@ def test_all_person_targeted_writes_reject_unknown_person(write_deps: tuple) -> 
         ),
         (
             SetReminder(people, records, audit, clock),
-            SetReminderInput(
-                person_id="missing", text="follow up", kind=ReminderKind.FOLLOW_UP, due_at=_NOW
-            ),
+            SetReminderInput(person_id="missing", text="follow up", kind=ReminderKind.FOLLOW_UP, due_at=_NOW),
         ),
     ]
 
