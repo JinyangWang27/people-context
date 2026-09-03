@@ -7,13 +7,13 @@
     "source": "github",
     "id": "R_kgDOTan0Jg"
   },
-  "version": "1.1.0",
+  "version": "1.1.1",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "people-context",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -22,7 +22,7 @@
         {
           "type": "named",
           "name": "--from",
-          "value": "people-context==1.1.0"
+          "value": "people-context==1.1.1"
         }
       ]
     }

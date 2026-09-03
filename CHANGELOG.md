@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1](https://github.com/JinyangWang27/people-context/compare/v1.1.0...v1.1.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **mcp:** flag refusals as tool errors and publish the alias kind enum ([#124](https://github.com/JinyangWang27/people-context/issues/124)) ([a9d891f](https://github.com/JinyangWang27/people-context/commit/a9d891feac3a92bb9d7c4dac78fff50e32893932)), closes [#117](https://github.com/JinyangWang27/people-context/issues/117)
+* **registry:** match GitHub login casing and add package version ([#122](https://github.com/JinyangWang27/people-context/issues/122)) ([66dab47](https://github.com/JinyangWang27/people-context/commit/66dab47bf510fd8dc43e4882e0a42da176c2c1b8))
+
 ## [1.1.0](https://github.com/JinyangWang27/people-context/compare/v1.0.0...v1.1.0) (2026-09-03)
 
 
