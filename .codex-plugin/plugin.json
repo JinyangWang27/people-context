@@ -1,6 +1,6 @@
 {
   "name": "people-context",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Give Codex private, durable context about the people in your life through a local MCP server.",
   "author": {
     "name": "Jinyang Wang",

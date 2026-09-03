@@ -5,6 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/JinyangWang27/people-context/compare/v1.0.0...v1.1.0) (2026-09-03)
+
+
+### Features
+
+* adoption and onboarding — README pitch, pctx setup, one-call remember, prompts ([#116](https://github.com/JinyangWang27/people-context/issues/116)) ([ad9f3d9](https://github.com/JinyangWang27/people-context/commit/ad9f3d948fbe8ab98ebf65fa2e09eef1a8a8fb6d))
+* **cli:** expose the import lifecycle through bounded pctx commands (M16.1) ([#95](https://github.com/JinyangWang27/people-context/issues/95)) ([5c243fa](https://github.com/JinyangWang27/people-context/commit/5c243fa6cda00ebdddd6c96486e0cca6e43127cf))
+* **imports:** add durable source claims, commit mappings, and bootstrap v2 (M18.1) ([#99](https://github.com/JinyangWang27/people-context/issues/99)) ([7188878](https://github.com/JinyangWang27/people-context/commit/71888784c10edd7355ecd2c853644777850bd416))
+* **imports:** add the streaming source reader and parser-work budget (M20.1) ([#105](https://github.com/JinyangWang27/people-context/issues/105)) ([b43e075](https://github.com/JinyangWang27/people-context/commit/b43e07515dfa687b8d03e8551491720313dbea4b))
+* **imports:** expand and bound strict candidates to observation, trait, and relationship (M17.1) ([#97](https://github.com/JinyangWang27/people-context/issues/97)) ([f4515e7](https://github.com/JinyangWang27/people-context/commit/f4515e736f71c872c37313bcd12715b637d54f56))
+* **imports:** expose bounded source provenance and inspection (M18.2) ([dad64c9](https://github.com/JinyangWang27/people-context/commit/dad64c9cd7e0e20a50f0e08fc4b6ca5aec96e3a8))
+* **imports:** expose bounded source provenance and inspection (M18.2) ([#100](https://github.com/JinyangWang27/people-context/issues/100)) ([8bc2b3f](https://github.com/JinyangWang27/people-context/commit/8bc2b3f7491a90ca488fd165b4cb4075ceb4b16f))
+* **imports:** resolve WhatsApp exports in two bounded passes (M20.3) ([#111](https://github.com/JinyangWang27/people-context/issues/111)) ([6d7145c](https://github.com/JinyangWang27/people-context/commit/6d7145c78df5d36fec77898965b20ae512c8a77b))
+* **imports:** stage agent-extracted candidates from the CLI (M17.2) ([#98](https://github.com/JinyangWang27/people-context/issues/98)) ([7607473](https://github.com/JinyangWang27/people-context/commit/76074736251549acd129753ca6d211af0379ce4a))
+* **imports:** stream mbox messages and meter address expansion (M20.2) ([0f42d2d](https://github.com/JinyangWang27/people-context/commit/0f42d2dbae131240724f667143bf9aef393831ed))
+* **imports:** stream mbox messages and meter address expansion (M20.2) ([#108](https://github.com/JinyangWang27/people-context/issues/108)) ([7951dba](https://github.com/JinyangWang27/people-context/commit/7951dbaa4c45426f1cdedf3bd4d2b63a66bd4018))
+* **insights:** add bounded person timeline reads (M19.1) ([d421e4a](https://github.com/JinyangWang27/people-context/commit/d421e4a4d0e9eccfeec86cabfdaa373b17aecc2d))
+* **insights:** add bounded person timeline reads (M19.1) ([#102](https://github.com/JinyangWang27/people-context/issues/102)) ([c079ee6](https://github.com/JinyangWang27/people-context/commit/c079ee6c410cf898aaa8cd54030d0126e863beb3))
+* **insights:** add consolidation context and atomic fact supersession (M19.2) ([151074a](https://github.com/JinyangWang27/people-context/commit/151074a5905cf71c6359266390b151810764289c))
+* **insights:** add consolidation context and atomic fact supersession (M19.2) ([319f15e](https://github.com/JinyangWang27/people-context/commit/319f15ed02676cc2a9556681d7fd27470fd279f6))
+* **traits:** ground traits in durable evidence records and bootstrap v3 (M18.3) ([04aee5f](https://github.com/JinyangWang27/people-context/commit/04aee5f074f537be2e197326a160dbc9a63e9275))
+
+
+### Bug Fixes
+
+* advertise the server version and create databases owner-only ([#112](https://github.com/JinyangWang27/people-context/issues/112)) ([b5316c6](https://github.com/JinyangWang27/people-context/commit/b5316c672c2bd10106a150d3da34b32d7e21c512))
+* **imports:** bound the address parser's intermediate and free the source buffer ([fc3df13](https://github.com/JinyangWang27/people-context/commit/fc3df13a8a667087b91dc0e74c999edf244ef764))
+* **imports:** charge the unparsed header before the policy expands it ([ef8ab96](https://github.com/JinyangWang27/people-context/commit/ef8ab96cecf9e2ffd1eb0fb4122842fb0c3889f0))
+* **imports:** keep sort keys and identifier shape out of the cursor contract ([8ae178b](https://github.com/JinyangWang27/people-context/commit/8ae178b54c12e5fe7e91b7fea107efec4bcc836e))
+* **imports:** meter one header's address expansion before it is parsed ([bfcff65](https://github.com/JinyangWang27/people-context/commit/bfcff65bb6147c21a424f4938a2fe5d51bd6c416))
+* **imports:** scope inspection cursors and warn in both output modes ([c708bc7](https://github.com/JinyangWang27/people-context/commit/c708bc7c65130fd80bfa668a169a82a2ace10b05))
+* **imports:** seek the listing index and stop bounding identifiers ([a7c9b93](https://github.com/JinyangWang27/people-context/commit/a7c9b934a8fbc0dcda5b5ad377a896ed810cebde))
+* **insights:** keep timeline evidence resolvable and non-disclosing ([4a3e918](https://github.com/JinyangWang27/people-context/commit/4a3e9189dfe01ea01043913d0d846d89f323d232))
+* **insights:** order the timeline exactly and bound every branch ([eaa0e0d](https://github.com/JinyangWang27/people-context/commit/eaa0e0da978d583f97ece10ca045c1fe38bd675e))
+* **insights:** report stored provenance for every consolidation record ([b951fd3](https://github.com/JinyangWang27/people-context/commit/b951fd3a59f665cd20e173e4a6860114d6a263be))
+* refuse a symlink raced into the resolved database path ([#113](https://github.com/JinyangWang27/people-context/issues/113)) ([fe6cd56](https://github.com/JinyangWang27/people-context/commit/fe6cd5661d8a765ff37d44f34def873277a19a0a))
+
+
+### Documentation
+
+* **import:** describe both header expansions the budget charges ([4db7b07](https://github.com/JinyangWang27/people-context/commit/4db7b0757e7995511cfb834e95eeb1e14df86d77))
+
 ## [1.0.0](https://github.com/JinyangWang27/people-context/compare/v0.4.0...v1.0.0) (2026-08-25)
 
 

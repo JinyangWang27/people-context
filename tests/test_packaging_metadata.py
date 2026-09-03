@@ -9,7 +9,7 @@ from people_context import __version__ as package_version
 from tests.test_registry_metadata import registry_package
 
 ROOT = Path(__file__).parents[1]
-PRIMARY_RELEASE_VERSION = "1.0.0"  # x-release-please-version
+PRIMARY_RELEASE_VERSION = "1.1.0"  # x-release-please-version
 INTEGRATION_RELEASE_VERSION = "0.2.0"
 #: The MCPB manifest schema version is tooling metadata, never the application release.
 MCPB_MANIFEST_SCHEMA_VERSION = "0.4"
