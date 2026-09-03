@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
+from people_context.adapters.mcp.tools.tool_errors import flag_refusals
 from people_context.app.people import ForgetError, MergePeopleError
 from people_context.app.records import PersonNotFoundError, RecordNotFoundError
 
@@ -21,6 +22,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register implemented lifecycle tools."""
 
     @mcp.tool(annotations=_DESTRUCTIVE)
+    @flag_refusals
     async def merge_people(primary_id: str, duplicate_id: str) -> dict[str, Any]:
         """Merge a duplicate person into a primary person atomically."""
         try:
@@ -31,6 +33,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": exc.code, "message": str(exc)}
 
     @mcp.tool(annotations=_DESTRUCTIVE)
+    @flag_refusals
     async def forget(target: str, scope: str) -> dict[str, Any]:
         """Hard-delete a person or record and redact identifying audit history."""
         try:

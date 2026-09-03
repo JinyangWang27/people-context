@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.mcp.tools.references import resolve_reference
+from people_context.adapters.mcp.tools.tool_errors import flag_refusals
 from people_context.app.relationships.graph import GraphTraversalError
 
 if TYPE_CHECKING:
@@ -21,6 +22,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the two minimal-disclosure graph tools."""
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def get_relationship_graph(
         person_id: str | None = None,
         depth: int = 2,
@@ -40,6 +42,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_depth", "message": str(exc)}
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def find_connection(person_a: str, person_b: str, max_depth: int = 4) -> dict[str, Any]:
         """Return one shortest relationship path, or a structured not-connected result."""
         try:

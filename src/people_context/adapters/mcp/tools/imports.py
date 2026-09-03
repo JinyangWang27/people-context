@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.importers.email import ImportExtractionError
+from people_context.adapters.mcp.tools.tool_errors import flag_refusals
 from people_context.app.imports import ImportPipelineError
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register header-only extraction, review, and selective commit tools."""
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def import_content(
         source_type: str,
         content: str | None = None,
@@ -61,6 +63,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_path", "message": str(exc), "path": path}
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def stage_candidates(
         source: str,
         candidates: list[dict[str, Any]],
@@ -109,6 +112,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return _error(exc)
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def review_import(batch_id: str) -> dict[str, Any]:
         """Return staged candidates and statuses for one batch."""
         try:
@@ -117,6 +121,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return _error(exc)
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def commit_import(batch_id: str, accepted_ids: list[str]) -> dict[str, Any]:
         """Commit accepted people and resolvable interactions idempotently."""
         try:

@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from people_context.adapters.mcp.security import SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 from people_context.adapters.mcp.tools.references import resolve_reference
-from people_context.adapters.mcp.tools.tool_errors import validation_error_payload
+from people_context.adapters.mcp.tools.tool_errors import flag_refusals, validation_error_payload
 from people_context.app.capture import CaptureKind, QuickCaptureInput
 from people_context.app.people import (
     AliasInput,
@@ -41,6 +41,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the resolve/search/remember tools bound to the given use cases."""
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def resolve_person(query: str, hints: ResolutionHints | None = None, limit: int = 5) -> dict[str, Any]:
         """Resolve a name, nickname, or partial reference to candidate people.
 
@@ -55,6 +56,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return deps.resolve_person.execute(query, limit=limit, hints=hints).model_dump(mode="json")
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def get_person_context(
         person_id: str | None = None,
         purpose: str | None = None,
@@ -87,6 +89,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     if process_elevation_enabled(SENSITIVE_CONTEXT_ENV):
 
         @mcp.tool(annotations=_READ_ONLY)
+        @flag_refusals
         async def get_sensitive_person_context(
             person_id: str,
             purpose: str | None = None,
@@ -106,6 +109,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             ).model_dump(mode="json")
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def search_people(query: str, limit: int = 10) -> dict[str, Any]:
         """Free-text search over stored people for browsing or lookup.
 
@@ -116,6 +120,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return {"query": query, "results": [candidate.model_dump(mode="json") for candidate in results]}
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def semantic_search(
         query: str,
         kinds: list[str] | None = None,
@@ -132,6 +137,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": exc.code, "message": str(exc)}
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def remember_person(
         name: str,
         aliases: list[dict] | None = None,
@@ -175,6 +181,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return result.model_dump(mode="json")
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def remember(
         person: str,
         note: str | None = None,

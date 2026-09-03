@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.mcp.security import EXPORT_ENV, process_elevation_enabled
+from people_context.adapters.mcp.tools.tool_errors import flag_refusals
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -22,6 +23,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def export_data() -> dict[str, Any]:
         """Export the complete portable domain dataset.
 
