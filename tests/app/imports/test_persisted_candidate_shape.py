@@ -157,17 +157,11 @@ def _staged_candidates(*, strict_identity: bool) -> dict[str, list[dict[str, Any
     conn = open_db(":memory:")
     # An existing person, so a staged person candidate carries a real match outcome rather than
     # the empty one an unmatched candidate would produce.
-    RememberPerson(
-        SqlitePeopleRepository(conn), SqlitePeopleRepository(conn), SqliteAuditLog(conn), _Clock()
-    ).execute(
-        RememberPersonInput(
-            name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")]
-        )
+    RememberPerson(SqlitePeopleRepository(conn), SqlitePeopleRepository(conn), SqliteAuditLog(conn), _Clock()).execute(
+        RememberPersonInput(name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")])
     )
     batch = _stage(conn, strict_identity=strict_identity)
-    rows = conn.execute(
-        "SELECT candidate_json FROM import_staging WHERE batch_id = ?", (batch.batch_id,)
-    ).fetchall()
+    rows = conn.execute("SELECT candidate_json FROM import_staging WHERE batch_id = ?", (batch.batch_id,)).fetchall()
     conn.close()
 
     by_type: dict[str, list[dict[str, Any]]] = {}
@@ -231,12 +225,8 @@ def test_every_reference_the_stager_writes_names_a_row_of_the_kind_its_field_pro
     would refuse exactly the evidence rows the stager now writes.
     """
     conn = open_db(":memory:")
-    RememberPerson(
-        SqlitePeopleRepository(conn), SqlitePeopleRepository(conn), SqliteAuditLog(conn), _Clock()
-    ).execute(
-        RememberPersonInput(
-            name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")]
-        )
+    RememberPerson(SqlitePeopleRepository(conn), SqlitePeopleRepository(conn), SqliteAuditLog(conn), _Clock()).execute(
+        RememberPersonInput(name="Alice Ahmed", aliases=[AliasInput(value="alice@example.com", kind="handle")])
     )
     batch = _stage(conn, strict_identity=True)
     rows = conn.execute(
@@ -247,9 +237,7 @@ def test_every_reference_the_stager_writes_names_a_row_of_the_kind_its_field_pro
     candidates = {row["id"]: json.loads(row["candidate_json"]) for row in rows}
     persons = {row_id for row_id, candidate in candidates.items() if candidate["type"] == "person"}
     evidence = {
-        row_id
-        for row_id, candidate in candidates.items()
-        if candidate["type"] in EVIDENCE_CAPABLE_STAGED_TYPES
+        row_id for row_id, candidate in candidates.items() if candidate["type"] in EVIDENCE_CAPABLE_STAGED_TYPES
     }
     referenced: set[str] = set()
     evidence_referenced: set[str] = set()

@@ -2,6 +2,12 @@
 
 <!-- mcp-name: io.github.jinyangwang27/people-context -->
 
+**Your agent already remembers your codebase. Now it can remember your people.**
+
+`people-context` is a local-first [MCP](https://modelcontextprotocol.io) server and CLI that gives AI agents
+durable memory about the people in your life: who someone is, how you know them, what you last agreed, and how
+they like to be talked to. One SQLite file on your machine. No account, no cloud, no network calls.
+
 [![CI](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/JinyangWang27/people-context/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/JinyangWang27/people-context/graph/badge.svg)](https://codecov.io/gh/JinyangWang27/people-context)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/JinyangWang27/people-context/badge)](https://scorecard.dev/viewer/?uri=github.com/JinyangWang27/people-context)
@@ -11,77 +17,29 @@
 [![Python](https://img.shields.io/pypi/pyversions/people-context)](https://pypi.org/project/people-context/)
 [![License](https://img.shields.io/github/license/JinyangWang27/people-context)](https://github.com/JinyangWang27/people-context/blob/main/LICENSE)
 
-A local-first [MCP](https://modelcontextprotocol.io) server and CLI that give AI agents durable, user-owned
-context about the people in your life.
+![pctx demo: seed a fictional dataset, list people, and print a brief](docs/assets/demo.gif)
 
 ## Why
 
-A model can recognize a name but does not know who that person is in the user's life. `people-context`
-keeps identity, aliases, relationships, roles, durable facts, concise interactions, communication preferences,
-and follow-ups in a local SQLite file, then exposes narrow tools that resolve identity and disclose only what a
-request needs.
+Ask an assistant "how should I approach Priya about the reporting delay?" and it has nothing: it does not know
+which Priya, that she is your counterpart at a partner org, that you agreed a new deadline last week, or that she
+prefers a short email over a call. That knowledge lives in your head, your inbox, and a notes file the agent
+cannot see.
 
-## Agent plugins
+`people-context` keeps it in one place the agent can query through narrow tools:
 
-### Codex
+- **Who is this?** Explainable name resolution over names, nicknames, aliases, and handles. Two Priyas come back
+  as two candidates with a match reason, never a silent guess.
+- **What do I know?** Relationships, organisations and roles, durable facts, concise interaction summaries,
+  traits, reminders, and a per-person timeline, each disclosed only as far as the request needs.
+- **How do I talk to them?** Communication guidance grounded in recorded traits, past friction, open follow-ups,
+  and your own written philosophy.
+- **Who has gone quiet?** Stale-relationship and upcoming-date reports over what is already stored.
+- **Get data in safely.** Email, mbox, vCard, calendar, LinkedIn, Outlook, and WhatsApp exports are staged as
+  reviewable candidates. You approve what gets recorded; raw source content is never kept.
 
-Install the repository as a Codex marketplace and add the bundled plugin:
-
-```bash
-codex plugin marketplace add JinyangWang27/people-context
-codex plugin add people-context@people-context-plugins
-```
-
-Start a new Codex session after installation. The plugin launches the local stdio server, stores data outside
-the installed plugin copy, and keeps sensitive-context and full-export tools disabled by default. See
-[docs/codex-plugin.md](docs/codex-plugin.md) for runtime, update, validation, and publishing details.
-
-### Claude Code
-
-Install the repository as a Claude Code marketplace and add the bundled plugin:
-
-```bash
-claude plugin marketplace add JinyangWang27/people-context
-claude plugin install people-context@people-context-plugins
-```
-
-Restart Claude Code or run `/reload-plugins` after installation. The plugin launches the local stdio server,
-stores data outside the installed plugin copy, and keeps sensitive-context and full-export tools disabled by
-default. See [docs/claude-code-plugin.md](docs/claude-code-plugin.md) for runtime, update, validation, and
-publishing details.
-
-### OpenClaw
-
-Install the published plugin from ClawHub:
-
-```bash
-openclaw plugins install clawhub:openclaw-plugin-people-context
-openclaw plugins inspect people-context --runtime --json
-```
-
-The native OpenClaw plugin connects to the opt-in loopback HTTP server, which must be running separately.
-Persistent writes are optional, and sensitive-context and export wrappers are not exposed. See
-[docs/openclaw-plugin.md](docs/openclaw-plugin.md) for configuration, security, validation, and ClawHub publishing
-details.
-
-## Features
-
-- explainable exact/normalized/FTS/fuzzy identity resolution with aliases and ambiguity handling;
-- bounded person context with sensitivity and purpose gates;
-- canonical relationship vocabulary, synonyms, inverse pairs, symmetric types, and uncategorized extensions;
-- minimal-disclosure relationship graph and shortest-path MCP tools with explicit caps/truncation;
-- ordinary-disclosure staleness reporting over stored interaction recency, as an MCP tool and CLI command;
-- ordinary-disclosure upcoming birthdays and dated reminders, with real leap-day projection, as an MCP tool
-  and CLI command;
-- organizations and time-aware affiliations;
-- separate facts, observations, traits, and concise interaction summaries;
-- communication guidance grounded in traits, interaction friction, reminders, and user-authored philosophy;
-- reviewable email/mbox/vCard/calendar/LinkedIn/Outlook/WhatsApp/agent-candidate imports without retaining raw
-  source content;
-- optional pinned multilingual Model2Vec + `sqlite-vec` semantic retrieval;
-- atomic audit plus replay changelog/HLC capture for every durable write;
-- merge, forget/redaction, unchanged JSON export, and safe Obsidian vault export;
-- stdio by default and explicit unauthenticated loopback-only Streamable HTTP.
+It is opinionated about trust: writes are audited, `forget` is a real delete, sensitive records sit behind an
+operator-only gate that a prompt cannot open, and ordinary commands never touch the network.
 
 ## Demo
 
@@ -113,60 +71,44 @@ server command in an MCP client and run the printed calls verbatim. See
 
 ## Quick start
 
-Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/).
+Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Pick your client; each is one step.
 
-The fastest path from discovery to a working stdio server is a zero-clone, zero-install run of the published
-`people-context` distribution:
-
-```bash
-uvx --from people-context people-context
-```
-
-For a persistent installation of both the MCP server and the human-operated CLI:
+<details open>
+<summary><b>Claude Code</b></summary>
 
 ```bash
-uv tool install people-context
-people-context
-pctx --help
+claude plugin marketplace add JinyangWang27/people-context
+claude plugin install people-context@people-context-plugins
 ```
 
-`people-context-mcp` remains an equivalent MCP server command for existing client configurations. `pctx` is the
-human-operated CLI.
+Restart Claude Code or run `/reload-plugins`. You get the server plus `/people-context:who`,
+`/people-context:remember`, and `/people-context:reminders`. Details: [docs/claude-code-plugin.md](docs/claude-code-plugin.md).
+</details>
 
-For local development:
+<details>
+<summary><b>Claude Desktop</b></summary>
+
+Download `people-context.mcpb` from the
+[latest release](https://github.com/JinyangWang27/people-context/releases/latest) and open it. Claude Desktop
+installs the pinned release with its own `uv` runtime. Details: [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
+</details>
+
+<details>
+<summary><b>Codex</b></summary>
 
 ```bash
-git clone https://github.com/JinyangWang27/people-context.git
-cd people-context
-uv sync
-uv run people-context-mcp
+codex plugin marketplace add JinyangWang27/people-context
+codex plugin add people-context@people-context-plugins
 ```
 
-Loopback HTTP is opt-in:
+Start a new Codex session. Details: [docs/codex-plugin.md](docs/codex-plugin.md).
+</details>
 
-```bash
-uv run people-context-mcp --http --host 127.0.0.1 --port 8765
-```
+<details>
+<summary><b>Cursor, Windsurf, VS Code, or any MCP client</b></summary>
 
-The endpoint is `http://127.0.0.1:8765/mcp`. It is unauthenticated and must be treated as accessible to other
-local processes. Prefer stdio.
-
-## Example: graph-aware context and vault
-
-After recording people and relationships through MCP, inspect structure with `get_relationship_graph` or
-`find_connection`, then create a human-browsable vault:
-
-```bash
-uv run pctx export-vault --output ~/PeopleVault
-```
-
-The directory is accepted only when nonexistent, empty, or already marked with `.people-context-vault`.
-Re-export is byte-deterministic over unchanged data. Sensitive/restricted facts require the explicit
-`--include-sensitive` flag; exported files are outside server disclosure controls.
-
-## Other MCP clients
-
-Clients that support local stdio MCP servers can use:
+Add the stdio server to your client's MCP config (`.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`,
+`.vscode/mcp.json`, ...):
 
 ```json
 {
@@ -179,125 +121,108 @@ Clients that support local stdio MCP servers can use:
 }
 ```
 
-## Desktop app and editors
+Or let the CLI write it: `uvx --from people-context pctx setup cursor` (also `windsurf`, `vscode`,
+`claude-desktop`; add `--dry-run` to preview). VS Code uses a `servers` key with `"type": "stdio"`. Per-editor
+snippets: [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
+</details>
 
-A native-UV [MCPB](https://github.com/modelcontextprotocol/mcpb) bundle installs the server into MCP-aware
-desktop hosts (such as Claude Desktop) with one click; the host's `uv` runtime installs the pinned
-`people-context` release and runs the same stdio server. Build it with `mcpb/build.sh`.
-
-Cursor, Windsurf, and VS Code use the canonical `uvx --from people-context people-context` invocation with
-per-editor config files. See [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
-
-## Obsidian
-
-A desktop-only, read-only Obsidian plugin lives under [`obsidian-plugin/`](obsidian-plugin/). It renders a
-browsable person index and per-person briefs from `pctx list --json` and `pctx brief <person-id> --json` — it never
-opens SQLite, never writes, and never requests sensitive disclosure. Build and install it with:
+<details>
+<summary><b>OpenClaw</b></summary>
 
 ```bash
-cd obsidian-plugin && npm ci --no-audit --no-fund && npm run build
+openclaw plugins install clawhub:openclaw-plugin-people-context
 ```
 
-then copy `build/main.js`, `build/manifest.json`, and `build/styles.css` into
-`<vault>/.obsidian/plugins/people-context/`. Rendering into a synchronized vault takes that content outside this
-project's local-first perimeter. See [docs/obsidian-plugin.md](docs/obsidian-plugin.md) for settings, encrypted-database
-behavior, process-execution safety, and release mirroring.
+The native plugin talks to the opt-in loopback HTTP server. Details: [docs/openclaw-plugin.md](docs/openclaw-plugin.md).
+</details>
 
-## Docker (optional)
-
-An optional non-root container image runs the same stdio MCP server. It is a convenience distribution, not the
-default path and not a security sandbox: the server still runs local Python with your filesystem permissions.
-Mount storage at `/data`; the image sets `PEOPLE_CONTEXT_DB=/data/people.db`.
+<details>
+<summary><b>CLI only</b></summary>
 
 ```bash
-docker volume create people-context-data
-docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest
+uv tool install people-context
+pctx init        # seed your own record, optionally import a vCard, then connect a client
+pctx --help
 ```
 
-Loopback HTTP is not the container default, and the runtime makes no outbound network request. The published
-image is `linux/amd64`; on other architectures, build it locally. GHCR publishes packages privately at first, so
-anonymous pulls work only after the package is made public once. See [docs/docker.md](docs/docker.md) for
-bind-mount ownership, the CLI entrypoint, MCP client configuration, and publishing.
+`people-context` and `people-context-mcp` are the server commands; `pctx` is the human-operated CLI.
+</details>
+
+Then try, in your agent:
+
+> Who is Amina?
+>
+> Remember that Amina from Open City Lab prefers short emails and hates surprise calls.
+>
+> What should I know before my meeting with Daniel tomorrow?
+
+The second one is a single `remember` tool call: the name is resolved, the person is created only if nobody
+matches, and the affiliation and preference are recorded in one audited transaction. Ambiguous names come back
+as candidates, never a guess.
+
+Or, without an agent: `pctx remember "Amina Hassan" "prefers short emails" --org "Open City Lab"` and
+`pctx brief "Amina Hassan"`. Five worked scenarios live in [docs/use-cases](docs/use-cases/README.md).
+
+## What it remembers, and what it never does
+
+| It remembers | It never does |
+|---|---|
+| Names, nicknames, aliases, and handles | Upload anything, anywhere |
+| Relationships with a canonical, extensible vocabulary | Store raw imported emails, chats, or files |
+| Organisations, roles, and time-bounded affiliations | Let a model enable sensitive disclosure or full export |
+| Durable facts, observations, and traits with evidence | Commit imported or agent-extracted data without your review |
+| Concise interaction summaries and a per-person timeline | Log private values or keep a soft-deleted copy after `forget` |
+| Reminders, follow-ups, and your communication philosophy | Make a network request outside `pctx reindex --semantic` |
+
+## How it compares
+
+| | `people-context` | Assistant memory (ChatGPT, Claude) | Memory platforms (Mem0 and similar) |
+|---|---|---|---|
+| Where data lives | One SQLite file you own | Vendor account | Vendor platform or your own deployment |
+| Works offline | Yes | No | Self-hosted only |
+| Knows *people* as first-class records | Identity, relationships, roles, graph, guidance | Free-text notes | Free-text or vector memories |
+| Explains a match | Ranked candidates with a reason; ambiguity is surfaced | No | Similarity score |
+| Import review gate | Stage, review, commit | n/a | Automatic extraction |
+| Deletion | Hard delete plus audit redaction in one transaction | Request to vendor | API delete |
+| Backup and move | `pctx sync push` / `pull` bundle | n/a | Deployment-specific |
+
+The dated, sourced version with vendor documentation links is in
+[docs/privacy-and-safety.md](docs/privacy-and-safety.md#local-first-versus-cloud-hosted-memory-as-of-2026-08-05).
 
 ## Security model
 
-This project executes local Python with the launching user's filesystem permissions. The database is plaintext
-SQLite by default; rely on filesystem permissions and full-disk encryption, or opt into at-rest encryption as
-shown below. Ordinary MCP discovery excludes elevated
-sensitive context and full export. Operator-gated tools require process environment flags; models cannot enable
-them through arguments. Vault export is intentionally CLI-only. For a dated, sourced comparison with
-cloud-hosted memory tools on storage, breach and legal exposure, offline operation, and deletion, see
-[docs/privacy-and-safety.md](docs/privacy-and-safety.md#local-first-versus-cloud-hosted-memory-as-of-2026-08-05).
+This project executes local Python with the launching user's filesystem permissions. Ordinary MCP discovery
+excludes elevated sensitive context and full export. Operator-gated tools require process environment flags;
+models cannot enable them through arguments. Vault export is intentionally CLI-only.
 
-## Optional at-rest encryption
+The database is plaintext SQLite by default. On Unix-like systems a new one is created `0600`, so other local
+accounts cannot read it. That is a boundary between accounts, not encryption, so pair it with full-disk
+encryption or opt into SQLCipher at-rest encryption (`uv sync --extra encrypted`, key read only from
+`PEOPLE_CONTEXT_DB_KEY`). See
+[database file permissions](docs/privacy-and-safety.md#database-file-permissions) and
+[optional at-rest encryption](docs/privacy-and-safety.md#optional-at-rest-encryption).
 
-Plaintext SQLite remains the default. Opt into SQLCipher explicitly:
+## Going further
 
-```bash
-uv sync --extra encrypted
-export PEOPLE_CONTEXT_DB_KEY='your passphrase'
-uv run pctx --encrypted list
-uv run people-context-mcp --encrypted
-```
+- **Loopback HTTP** for clients that cannot spawn stdio: `people-context-mcp --http --host 127.0.0.1 --port 8765`.
+  Unauthenticated and local-only by design; prefer stdio. See [docs/cli.md](docs/cli.md).
+- **Semantic search**: `uv sync --extra semantic && pctx reindex --semantic` downloads a pinned multilingual
+  Model2Vec model once; server startup and search stay cache-only.
+- **Obsidian**: `pctx export-vault --output ~/PeopleVault` writes a deterministic, browsable vault, and a
+  read-only [Obsidian plugin](obsidian-plugin/) renders live briefs. See [docs/obsidian-plugin.md](docs/obsidian-plugin.md).
+- **Import**: `pctx import stage SOURCE PATH` then `review` and `commit`, over email, mbox, vCard, `.ics`,
+  LinkedIn, Outlook, and WhatsApp exports. Agents can stage extracted candidates the same way. See
+  [docs/import.md](docs/import.md).
+- **Reports and maintenance**: `pctx stale`, `pctx upcoming`, `pctx timeline`, `pctx doctor`, `pctx stats`.
+- **Backup and second device**: `pctx sync push --output DIR` and `pctx sync pull --input PATH`.
+- **Docker**: `docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest`.
+  A convenience image, not a sandbox. See [docs/docker.md](docs/docker.md).
+- **Database location**: `--db`, then `PEOPLE_CONTEXT_DB`, then the XDG config file, then an OpenClaw workspace,
+  then the XDG data directory. Inspect with `pctx db-path -v`.
 
-The key is read only from `PEOPLE_CONTEXT_DB_KEY` — never a flag value, config file, or log. Without a non-empty
-key the flag refuses to start and never falls back to plaintext, and losing the key means losing the data.
-Prebuilt wheels cover glibc-based Linux x86_64 only; macOS, Windows, arm64, and musl/Alpine need a locally built
-`sqlcipher3`. See
-[docs/privacy-and-safety.md](docs/privacy-and-safety.md#optional-at-rest-encryption) for what this protects.
-
-## Optional semantic search
-
-The base install downloads nothing. Opt in explicitly:
-
-```bash
-uv sync --extra semantic
-uv run pctx reindex --semantic
-```
-
-Only that reindex command may download the pinned multilingual model. Server startup/search are cache-only.
-
-## Database location
-
-Server and CLI use the first available source:
-
-1. explicit `--db`/server argument;
-2. `PEOPLE_CONTEXT_DB`;
-3. `db_path` in the XDG config file;
-4. `OPENCLAW_WORKSPACE` or `~/.openclaw/workspace`;
-5. the XDG data fallback.
-
-Inspect the selected path with `uv run pctx db-path -v`.
-
-## CLI overview
-
-```bash
-uv run pctx db-path [-v]
-uv run pctx list [--all]
-uv run pctx search <query>
-uv run pctx show <person>
-uv run pctx stale [--category C] [--threshold-days N] [--limit N]
-uv run pctx timeline PERSON [--limit N] [--include-sensitive] [--json]
-uv run pctx upcoming [--window-days N] [--person PERSON]
-uv run pctx doctor [--json] [--only CODE[,CODE...]]
-uv run pctx stats [--json] [--include-path]
-uv run pctx export [--output FILE]
-uv run pctx relationship-types
-uv run pctx relationship-types add TYPE --category C [--inverse T | --symmetric]
-uv run pctx normalize-relationships [--apply]
-uv run pctx export-vault --output DIR [--include-sensitive]
-uv run pctx export-vcard [--output FILE] [--include-sensitive] [--version 3.0|4.0]
-uv run pctx edit PERSON [--name NAME] [--summary TEXT]
-uv run pctx add-alias PERSON VALUE [--kind KIND]
-uv run pctx set communication_philosophy VALUE
-uv run pctx delete PERSON [--yes]
-uv run pctx sync push --output DIR
-uv run pctx sync pull --input PATH [--yes]
-uv run pctx sync-log [--limit N] [--entity ID] [--payloads]
-uv run pctx reindex [--semantic]
-```
-
-See [docs/cli.md](docs/cli.md).
+The full command reference is in [docs/cli.md](docs/cli.md); the MCP tool inventory and response contracts are
+in [docs/mcp-interface.md](docs/mcp-interface.md); what stays stable across releases is in
+[docs/compatibility.md](docs/compatibility.md).
 
 ## Architecture
 
@@ -314,7 +239,8 @@ domain (entities and values)
 ```
 
 Dependencies point inward. Vocabulary normalization and graph caps live in app/domain; recursive SQL and file
-writing live in adapters. One composition root wires both stdio and HTTP.
+writing live in adapters. One composition root wires both stdio and HTTP. See
+[docs/architecture.md](docs/architecture.md).
 
 ## Documentation
 
@@ -327,9 +253,11 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools and stable response contracts |
 | [docs/compatibility.md](docs/compatibility.md) | What stays stable across releases for MCP, DB, CLI, and JSON |
 | [docs/cli.md](docs/cli.md) | CLI commands and DB resolution |
+| [docs/import.md](docs/import.md) | Import sources, staging, review, and commit |
 | [docs/design/sync.md](docs/design/sync.md) | Sync design and delivered local foundations |
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/mcp-registry.md](docs/mcp-registry.md) | MCP Registry namespace, `server.json`, and community-directory submission matrix |
+| [docs/distribution-checklist.md](docs/distribution-checklist.md) | Account-owner walkthrough: Registry publish, directories, awesome lists, Desktop directory, Obsidian |
 | [docs/desktop-and-editors.md](docs/desktop-and-editors.md) | Native-UV MCPB Desktop bundle and Cursor/Windsurf/VS Code snippets |
 | [docs/docker.md](docs/docker.md) | Optional non-root stdio Docker image, data volume, and GHCR publishing |
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
@@ -344,8 +272,11 @@ writing live in adapters. One composition root wires both stdio and HTTP.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for issue and private-security reporting, architecture constraints,
-validation commands, and the pull-request review process.
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture rules,
+validation commands, and a list of good first issues. Questions and show-and-tell go to
+[Discussions](https://github.com/JinyangWang27/people-context/discussions).
+
+If `people-context` is useful to you, a star helps other people find it.
 
 ## License
 

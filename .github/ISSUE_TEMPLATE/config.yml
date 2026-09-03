@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or share how you use it
+    url: https://github.com/JinyangWang27/people-context/discussions
+    about: Questions, ideas, and show-and-tell go to Discussions.
+  - name: Report a security vulnerability
+    url: https://github.com/JinyangWang27/people-context/security/policy
+    about: Never file a vulnerability as a public issue. See SECURITY.md for private reporting.

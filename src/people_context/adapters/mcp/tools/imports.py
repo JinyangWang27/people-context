@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from people_context.adapters.runtime import RuntimeUseCases
 
+_READ_ONLY = ToolAnnotations(read_only_hint=True)
 _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
 
 
@@ -107,7 +108,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except ImportPipelineError as exc:
             return _error(exc)
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_READ_ONLY)
     async def review_import(batch_id: str) -> dict[str, Any]:
         """Return staged candidates and statuses for one batch."""
         try:

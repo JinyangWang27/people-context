@@ -181,8 +181,17 @@ def test_a_non_empty_evidence_table_refuses_every_accepted_version(tmp_path: Pat
     # Cascade would take them with the traits, so the deletions run with the constraint off:
     # this is constructing a destination state, not exercising one the application produces.
     destination.conn.execute("PRAGMA foreign_keys=OFF")
-    for table in ("traits", "observations", "interaction_participants", "interactions", "persons",
-                  "aliases", "person_search", "audit_log", "changelog"):
+    for table in (
+        "traits",
+        "observations",
+        "interaction_participants",
+        "interactions",
+        "persons",
+        "aliases",
+        "person_search",
+        "audit_log",
+        "changelog",
+    ):
         destination.conn.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed constants
     destination.conn.commit()
     destination.conn.close()
@@ -212,9 +221,7 @@ def test_a_link_to_another_persons_record_is_refused(tmp_path: Path) -> None:
     origin = _Origin(tmp_path / "origin.db")
     _grounded(origin)
     payload = json.loads(render_bundle_json(origin.export()))
-    bob = next(
-        person["id"] for person in payload["snapshot"]["people"] if person["canonical_name"] == "Bob Chen"
-    )
+    bob = next(person["id"] for person in payload["snapshot"]["people"] if person["canonical_name"] == "Bob Chen")
     payload["snapshot"]["observations"][0]["person_id"] = bob
 
     with pytest.raises(InvalidBundleError) as excinfo:
@@ -227,13 +234,9 @@ def test_a_link_to_an_interaction_the_subject_did_not_join_is_refused(tmp_path: 
     origin = _Origin(tmp_path / "origin.db")
     _grounded(origin)
     payload = json.loads(render_bundle_json(origin.export()))
-    alice = next(
-        person["id"] for person in payload["snapshot"]["people"] if person["canonical_name"] == "Alice Rivera"
-    )
+    alice = next(person["id"] for person in payload["snapshot"]["people"] if person["canonical_name"] == "Alice Rivera")
     interaction = payload["snapshot"]["interactions"][0]
-    interaction["participant_ids"] = [
-        person_id for person_id in interaction["participant_ids"] if person_id != alice
-    ]
+    interaction["participant_ids"] = [person_id for person_id in interaction["participant_ids"] if person_id != alice]
 
     with pytest.raises(InvalidBundleError) as excinfo:
         _parse(json.dumps(payload))

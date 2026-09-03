@@ -69,6 +69,22 @@ npm test
 npm run build
 ```
 
+## Good first issues
+
+Issues labelled [`good first issue`](https://github.com/JinyangWang27/people-context/labels/good%20first%20issue)
+are scoped so that one focused pull request closes them. Recurring shapes that fit well:
+
+- **A new import source.** Extractors live under `src/people_context/adapters/importers/` and are routed by
+  `router.py`; each one emits the same candidate vocabulary and never persists raw content. Copy the closest
+  existing extractor (Outlook CSV or LinkedIn CSV for tabular exports) and its tests.
+- **A `pctx setup` target** for another MCP client: a config path per OS plus a JSON template, with a merge test.
+- **Vocabulary in tool schemas.** Enumerations that the server already validates (sensitivity, trait categories,
+  reminder kinds) but that a tool description does not yet spell out.
+- **A use-case recipe** under `docs/use-cases/` that walks a real situation end to end with the demo dataset.
+
+If you want to work on one, comment on the issue first so nobody duplicates the effort. Questions go to
+[Discussions](https://github.com/JinyangWang27/people-context/discussions).
+
 ## Submit a pull request
 
 Open a pull request that explains the behavior and privacy impact, links relevant issues, and lists the commands

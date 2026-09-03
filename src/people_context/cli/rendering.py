@@ -176,6 +176,15 @@ def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) ->
     return f"{person_name} ({person_candidate_id})"
 
 
+#: Printed once at the end of onboarding and the demo. The project is found through GitHub search, so
+#: an honest, single-line request is the cheapest thing that helps the next person find it.
+CLIENT_SETUP_HINT = (
+    "Connect a client any time with `pctx setup <client>` "
+    "(claude-desktop, claude-code, codex, cursor, windsurf, vscode)."
+)
+STAR_HINT = "If this is useful, a star helps others find it: https://github.com/JinyangWang27/people-context"
+
+
 def print_demo_instructions(demo_path: Path, people: dict[str, Person]) -> None:
     """Print stable next steps for the fictional demo."""
     print(f"Demo database: {demo_path}")
@@ -186,3 +195,5 @@ def print_demo_instructions(demo_path: Path, people: dict[str, Person]) -> None:
         f'find_connection {{"person_a": "{people["self"].id}", '
         f'"person_b": "{people["sofia"].id}"}}'
     )
+    print()
+    print(STAR_HINT)

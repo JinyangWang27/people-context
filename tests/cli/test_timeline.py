@@ -161,9 +161,7 @@ def test_the_json_document_is_the_whole_of_stdout_and_carries_its_version(
     assert all(entry["entry_id"] for entry in document["entries"])
 
 
-def test_the_json_document_stays_byte_identical_across_runs(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_json_document_stays_byte_identical_across_runs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 
@@ -192,9 +190,7 @@ def test_the_sensitive_warning_does_not_contaminate_the_json_document(
     assert TIMELINE_SENSITIVE_WARNING in captured.err
 
 
-def test_a_bounded_page_says_that_more_entries_exist(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_bounded_page_says_that_more_entries_exist(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 
@@ -243,9 +239,7 @@ def test_an_unknown_person_exits_one_and_an_ambiguous_one_exits_two(
     assert "Ambiguous match" in ambiguous_err
 
 
-def test_a_person_with_no_records_reports_an_empty_timeline(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_person_with_no_records_reports_an_empty_timeline(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 

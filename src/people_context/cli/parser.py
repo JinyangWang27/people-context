@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
+from typing import get_args
 
+from people_context import __version__
 from people_context.adapters.importers.router import SUPPORTED_IMPORT_SOURCES
+from people_context.app.capture import CaptureKind
 from people_context.app.exports import DEFAULT_VCARD_VERSION
 from people_context.app.imports import (
     DEFAULT_SOURCE_PAGE_LIMIT,
@@ -31,8 +35,35 @@ from people_context.app.sync import (
     MAX_INTERVAL_SECONDS,
     MIN_INTERVAL_SECONDS,
 )
+from people_context.cli.setup import CLIENTS, SCOPES
 from people_context.domain.person import AliasKind
+from people_context.domain.shared import Sensitivity
+from people_context.domain.trait import TraitCategory
 from people_context.ports.vcard import SUPPORTED_VCARD_VERSIONS
+
+CAPTURE_KINDS: tuple[str, ...] = tuple(get_args(CaptureKind))
+
+
+def _person_name(value: str) -> str:
+    """Reject a blank name at the boundary, where the other bad arguments are already reported.
+
+    `remember` is the one person-addressed command that builds a validated model, so a blank name
+    reached Pydantic and printed its error where every sibling command prints a diagnostic.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise argparse.ArgumentTypeError("a person name is required; got only whitespace")
+    return stripped
+
+
+def _timestamp(value: str) -> datetime:
+    """Parse an ISO 8601 argument, so a typo is argparse's usage error rather than a traceback."""
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not an ISO 8601 date or datetime (for example 2026-08-20 or 2026-08-20T15:00:00Z)"
+        ) from exc
 
 
 def _add_page_arguments(parser: argparse.ArgumentParser, subject: str) -> None:
@@ -57,6 +88,12 @@ def _add_page_arguments(parser: argparse.ArgumentParser, subject: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argparse parser and its subcommands."""
     parser = argparse.ArgumentParser(prog="pctx", description="Inspect and search your people data.")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Print the installed people-context version and exit.",
+    )
     parser.add_argument("--db", default=None, help="Explicit database path, overriding other resolution sources.")
     parser.add_argument(
         "--encrypted",
@@ -97,6 +134,38 @@ def build_parser() -> argparse.ArgumentParser:
     search = subparsers.add_parser("search", help="Ranked search results for a name query.")
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=10, help="Maximum number of results.")
+
+    remember = subparsers.add_parser(
+        "remember",
+        help="Record one statement about one person: resolves the name, creates them if new, writes once.",
+    )
+    remember.add_argument("person", type=_person_name, help="Name or alias as you would say it.")
+    remember.add_argument("note", nargs="?", default=None, help="What to remember; classified unless --kind is given.")
+    remember.add_argument("--kind", choices=CAPTURE_KINDS, default="auto", help="Record kind (default: auto).")
+    remember.add_argument(
+        "--occurred-at",
+        default=None,
+        type=_timestamp,
+        metavar="WHEN",
+        help="When an interaction happened (ISO 8601); required when the note says it was earlier.",
+    )
+    remember.add_argument("--org", default=None, help="Organisation; records an affiliation.")
+    remember.add_argument("--role", default=None, help="Role at --org (default: member).")
+    remember.add_argument("--relationship", default=None, help="How you relate to them, e.g. manager_of.")
+    remember.add_argument("--predicate", default=None, help="Fact predicate (default: note).")
+    remember.add_argument(
+        "--trait-category",
+        choices=[category.value for category in TraitCategory],
+        default=None,
+        help="Trait category when the note is a trait.",
+    )
+    remember.add_argument(
+        "--sensitivity",
+        choices=[level.value for level in Sensitivity],
+        default=Sensitivity.PERSONAL.value,
+        help="Disclosure level of the recorded note (default: personal).",
+    )
+    remember.add_argument("--json", action="store_true", help="Print the result document instead of a summary.")
 
     show = subparsers.add_parser("show", help="Show a person's full record.")
     show.add_argument("person", help="A person id, or a name to resolve.")
@@ -453,6 +522,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser("init", help="Interactively seed self identity and optional contact data.")
+
+    setup = subparsers.add_parser("setup", help="Write the stdio server into an MCP client's configuration.")
+    setup.add_argument("client", choices=CLIENTS, help="Client to configure; `json` prints a generic snippet.")
+    setup.add_argument(
+        "--scope",
+        choices=SCOPES,
+        default=None,
+        help=(
+            "Where the entry lives: the user's own configuration or the current project's. "
+            "Defaults to user, except VS Code, which only exposes a workspace file to write."
+        ),
+    )
+    setup.add_argument("--dry-run", action="store_true", help="Print what would be written or run; change nothing.")
 
     demo = subparsers.add_parser("demo", help="Seed a dedicated fictional demonstration database.")
     demo.add_argument("--reset", action="store_true", help="Replace only the dedicated demo database.")

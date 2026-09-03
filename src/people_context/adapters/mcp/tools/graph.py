@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
+from people_context.adapters.mcp.tools.references import resolve_reference
 from people_context.app.relationships.graph import GraphTraversalError
 
 if TYPE_CHECKING:
@@ -21,13 +22,20 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_READ_ONLY)
     async def get_relationship_graph(
-        person_id: str,
+        person_id: str | None = None,
         depth: int = 2,
         types: list[str] | None = None,
+        person: str | None = None,
     ) -> dict[str, Any]:
-        """Return active relationship structure around one person, capped for bounded disclosure."""
+        """Return active relationship structure around one person, capped for bounded disclosure.
+
+        Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve inline.
+        """
+        target = resolve_reference(deps, person_id=person_id, person=person)
+        if isinstance(target, dict):
+            return target
         try:
-            return deps.get_relationship_graph.execute(person_id, depth=depth, types=types).model_dump(mode="json")
+            return deps.get_relationship_graph.execute(target, depth=depth, types=types).model_dump(mode="json")
         except GraphTraversalError as exc:
             return {"error": "invalid_depth", "message": str(exc)}
 

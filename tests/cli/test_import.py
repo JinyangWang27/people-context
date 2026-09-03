@@ -378,9 +378,7 @@ def test_review_caps_the_participants_it_names_for_one_interaction(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_file = tmp_path / "people.db"
-    attendees = "".join(
-        f"ATTENDEE;CN=Person {index}:mailto:p{index}@example.com\r\n" for index in range(9)
-    )
+    attendees = "".join(f"ATTENDEE;CN=Person {index}:mailto:p{index}@example.com\r\n" for index in range(9))
     event = tmp_path / "big.ics"
     event.write_text(
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTART:20260722T090000Z\r\n"
@@ -391,9 +389,7 @@ def test_review_caps_the_participants_it_names_for_one_interaction(
 
     assert cli.main(["--db", str(db_file), "import", "review", str(batch["batch_id"])]) == 0
 
-    interaction = next(
-        line for line in capsys.readouterr().out.splitlines() if "  interaction  " in line
-    )
+    interaction = next(line for line in capsys.readouterr().out.splitlines() if "  interaction  " in line)
     assert "+5 more" in interaction
     assert "Person 0" in interaction
     assert "Person 8" not in interaction
@@ -420,10 +416,7 @@ def test_review_renders_an_interaction_that_names_no_participants(
         ]
     )
 
-    assert (
-        "interaction-1  pending  interaction  Team retrospective · 2026-07-22 · in-person"
-        in capsys.readouterr().out
-    )
+    assert "interaction-1  pending  interaction  Team retrospective · 2026-07-22 · in-person" in capsys.readouterr().out
 
 
 def test_review_describes_extraction_candidates_well_enough_to_accept_them_by_id(
@@ -504,9 +497,7 @@ def test_review_describes_extraction_candidates_well_enough_to_accept_them_by_id
         "trait-1  pending  trait  communication_style=Prefers quantitative proposals "
         "(confidence 0.65) — Alice Rivera (person-1)"
     ) in out
-    assert (
-        "relationship-1  pending  relationship  Alice Rivera (person-1) —colleague→ Bob Chen (person-2)"
-    ) in out
+    assert ("relationship-1  pending  relationship  Alice Rivera (person-1) —colleague→ Bob Chen (person-2)") in out
 
 
 def test_an_undecodable_source_is_a_concise_refusal_rather_than_a_traceback(
@@ -606,9 +597,7 @@ def test_a_candidate_outside_the_batch_is_refused_without_committing(
     db_file = tmp_path / "people.db"
     batch = _staged_batch(db_file, _linkedin(tmp_path), capsys)
 
-    code = cli.main(
-        ["--db", str(db_file), "import", "commit", str(batch["batch_id"]), "--accept", "not-in-batch"]
-    )
+    code = cli.main(["--db", str(db_file), "import", "commit", str(batch["batch_id"]), "--accept", "not-in-batch"])
 
     assert code == 1
     assert "accepted candidate does not belong to batch" in capsys.readouterr().err

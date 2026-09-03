@@ -121,9 +121,7 @@ def test_people_are_split_by_lifecycle_state() -> None:
 
 
 def test_distributions_are_ordered_largest_first_then_by_key() -> None:
-    use_case, _ = _use_case(
-        _inventory(alias_kinds={"other": 4, "handle": 9, "native_script": 4, "nickname": 1})
-    )
+    use_case, _ = _use_case(_inventory(alias_kinds={"other": 4, "handle": 9, "native_script": 4, "nickname": 1}))
 
     report = use_case.execute()
 

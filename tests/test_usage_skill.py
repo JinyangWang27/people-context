@@ -194,3 +194,36 @@ class TestUsageSkill:
         # Capture is best-effort proposal-only; it must not promise a mechanical commit.
         assert "best-effort" in lowered
         assert "never call `commit_import`" in lowered
+
+
+class TestQuickCaptureAndNameReads:
+    def test_remember_is_for_direct_statements_only(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "`remember` in a single call" in lowered
+        assert "states directly" in lowered
+        assert "never guesses between similar names" in lowered
+        # Extraction still stages; the quick path does not replace review.
+        assert "goes through the staged capture flow, never through a direct write" in lowered
+
+    def test_elevated_records_are_framed_as_leaving_no_trace(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        # The ordinary bundle is the complete intended view, not a redacted one with a gap to probe.
+        assert "leave no trace at all" in lowered
+        assert "complete ordinary view" in lowered
+
+    def test_a_lone_fuzzy_candidate_is_treated_like_ambiguity(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "read `match_reason`, not just the score" in lowered
+        assert "spelling distance" in lowered
+        # Matched hints raise the score, so the score alone cannot be the test.
+        assert "a high score alone does not make a near-spelling into a match" in lowered
+
+    def test_reads_accept_a_name_with_the_same_ambiguity_contract(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "accept `person` (the name as said)" in lowered
+        assert "returns candidates instead of data" in lowered

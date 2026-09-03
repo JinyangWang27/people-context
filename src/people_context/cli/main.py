@@ -10,6 +10,7 @@ from pathlib import Path
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
+    UnsafeDatabasePathError,
     inspect_schema,
     latest_schema_version,
 )
@@ -23,6 +24,7 @@ from people_context.cli.people import (
     cmd_delete,
     cmd_edit,
     cmd_list,
+    cmd_remember,
     cmd_search,
     cmd_set,
     cmd_show,
@@ -38,6 +40,7 @@ from people_context.cli.portability import (
     cmd_sync_push,
 )
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
+from people_context.cli.setup import cmd_setup
 from people_context.cli.sources import cmd_source, cmd_sources
 from people_context.config import MissingDatabaseKeyError, resolve_db_key, resolve_db_path
 
@@ -59,6 +62,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "timeline": cmd_timeline,
     "upcoming": cmd_upcoming,
     "show": cmd_show,
+    "remember": cmd_remember,
     "doctor": cmd_doctor,
     "stats": cmd_stats,
     "brief": cmd_brief,
@@ -125,10 +129,12 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_db_path(args)
     if args.command == "demo":
         return cmd_demo(args)
+    if args.command == "setup":
+        return cmd_setup(args)
     if args.command == "stats":
         try:
             refusal = _unreadable_stats_target(args)
-        except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+        except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
         if refusal is not None:
@@ -149,13 +155,13 @@ def main(argv: list[str] | None = None) -> int:
             warning=lambda message: print(f"Warning: {message}", file=sys.stderr),
             encrypted=args.encrypted,
         )
-    except (MissingDatabaseKeyError, EncryptedDatabaseError) as exc:
+    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
         # Refuse with the reason only; the message never carries key material.
         print(f"Error: {exc}", file=sys.stderr)
         return 2
     try:
         if args.command == "init":
-            return cmd_init(runtime)
+            return cmd_init(runtime, args.db, args.encrypted)
         handler = _COMMANDS.get(args.command)
         if handler is None:
             parser.error(f"unknown command: {args.command}")

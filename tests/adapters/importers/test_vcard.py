@@ -238,9 +238,7 @@ def test_a_card_naming_an_unresolvable_charset_skips_without_blocking_its_neighb
     extracted = VCardImportExtractor().extract("vcard", content=content, path=None, self_addresses=set())
 
     assert extracted.skipped_cards == [{"index": 1, "reason": "malformed_card"}]
-    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
-        "Sofia Rossi"
-    ]
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == ["Sofia Rossi"]
 
 
 def test_an_unresolvable_charset_on_a_dependent_property_also_skips_the_card() -> None:
@@ -290,9 +288,7 @@ def test_mixed_invalid_cards_report_stable_one_based_reasons_and_keep_valid_card
         {"index": 2, "reason": "missing_fn"},
         {"index": 3, "reason": "malformed_card"},
     ]
-    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
-        "Valid Card"
-    ]
+    assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == ["Valid Card"]
 
 
 def test_all_invalid_cards_return_no_candidates_without_creating_batch() -> None:

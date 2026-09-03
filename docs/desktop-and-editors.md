@@ -61,7 +61,9 @@ repository. Acknowledge the local-permission note above before enabling it.
 
 ## Editor / IDE stdio configuration
 
-Every ordinary client uses one canonical invocation:
+`pctx setup <client>` writes the snippet below into the right file for you (`claude-desktop`, `cursor`,
+`windsurf`, `vscode`; `--dry-run` to preview). See [cli.md](cli.md#connect-a-client). By hand, every ordinary
+client uses one canonical invocation:
 
 ```text
 uvx --from people-context people-context

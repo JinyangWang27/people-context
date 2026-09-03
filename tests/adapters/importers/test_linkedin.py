@@ -77,9 +77,7 @@ def test_linkedin_accepts_bom_header_superset_dates_and_omits_raw_fields() -> No
         "Bob,Builder,https://example.test/bob,,Build Co,Foreman,2026-04-05,ordinary note",
     )
 
-    extracted = LinkedInImportExtractor().extract(
-        "linkedin", content=content, path=None, self_addresses=set()
-    )
+    extracted = LinkedInImportExtractor().extract("linkedin", content=content, path=None, self_addresses=set())
 
     people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
     assert [person["ref"] for person in people] == ["linkedin-person-1", "linkedin-person-2"]
@@ -104,9 +102,7 @@ def test_linkedin_discards_real_export_notes_preamble_before_canonical_header() 
         ]
     )
 
-    extracted = LinkedInImportExtractor().extract(
-        "linkedin", content=content, path=None, self_addresses=set()
-    )
+    extracted = LinkedInImportExtractor().extract("linkedin", content=content, path=None, self_addresses=set())
 
     assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
         "Alice Example"
@@ -123,9 +119,7 @@ def test_linkedin_coalesces_email_names_but_keeps_no_email_rows_distinct_and_ded
         "Pat,Lee,url,,Studio,Designer,,note",
     )
 
-    extracted = LinkedInImportExtractor().extract(
-        "linkedin", content=content, path=None, self_addresses=set()
-    )
+    extracted = LinkedInImportExtractor().extract("linkedin", content=content, path=None, self_addresses=set())
 
     people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
     assert [person["ref"] for person in people] == [
@@ -156,15 +150,13 @@ def test_linkedin_coalesces_email_names_but_keeps_no_email_rows_distinct_and_ded
 
 def test_linkedin_skips_invalid_rows_independently_with_stable_safe_reasons() -> None:
     content = _csv(
-        f',,https://example.test/{_URL_SENTINEL},,Secret,Text,04 Mar 2026,{_NOTE_SENTINEL}',
+        f",,https://example.test/{_URL_SENTINEL},,Secret,Text,04 Mar 2026,{_NOTE_SENTINEL}",
         "Bad,Email,url,not-an-email,Secret,Text,04 Mar 2026,note",
         "Bad,Date,url,bad-date@example.com,Secret,Text,March 4th 2026,note",
         "Good,Neighbor,url,good@example.com,Acme,Engineer,,note",
     )
 
-    extracted = LinkedInImportExtractor().extract(
-        "linkedin", content=content, path=None, self_addresses=set()
-    )
+    extracted = LinkedInImportExtractor().extract("linkedin", content=content, path=None, self_addresses=set())
 
     assert extracted.skipped_cards == [
         {"index": 1, "reason": "missing_name"},

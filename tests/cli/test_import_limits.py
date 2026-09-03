@@ -71,12 +71,15 @@ def test_the_cli_budget_is_the_documented_ceiling() -> None:
     assert MAX_CLI_STAGED_CANDIDATES == 100_000
     assert MAX_CLI_STAGED_PAYLOAD_BYTES == 64 * 1024 * 1024
     assert MAX_CLI_CANDIDATE_JSON_BYTES == 1024 * 1024
-    assert ImportBudget(
-        max_source_bytes=MAX_CLI_SOURCE_BYTES,
-        max_candidates=MAX_CLI_STAGED_CANDIDATES,
-        max_staged_payload_bytes=MAX_CLI_STAGED_PAYLOAD_BYTES,
-        max_retained_parse_records=MAX_CLI_RETAINED_PARSE_RECORDS,
-    ) == CLI_IMPORT_BUDGET
+    assert (
+        ImportBudget(
+            max_source_bytes=MAX_CLI_SOURCE_BYTES,
+            max_candidates=MAX_CLI_STAGED_CANDIDATES,
+            max_staged_payload_bytes=MAX_CLI_STAGED_PAYLOAD_BYTES,
+            max_retained_parse_records=MAX_CLI_RETAINED_PARSE_RECORDS,
+        )
+        == CLI_IMPORT_BUDGET
+    )
 
 
 def test_the_parser_work_backstop_cannot_narrow_what_the_byte_ceiling_admits() -> None:
@@ -209,9 +212,7 @@ def test_extraction_stops_instead_of_accumulating_past_the_candidate_ceiling(tmp
     millions of candidates first, so the ceiling has to reach extraction itself.
     """
     source = tmp_path / "dense.csv"
-    rows = "\n".join(
-        f"Person{index},Surname{index},u,p{index}@example.com,,,," for index in range(200)
-    )
+    rows = "\n".join(f"Person{index},Surname{index},u,p{index}@example.com,,,," for index in range(200))
     source.write_text(f"{_LINKEDIN_HEADERS}\n{rows}\n", encoding="utf-8")
 
     with open_db(":memory:") as conn:
@@ -246,8 +247,7 @@ def test_extraction_stops_instead_of_accumulating_past_the_candidate_ceiling(tmp
             "vcard",
             "contacts.vcf",
             "".join(
-                f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Person {i}\r\nEMAIL:p{i}@e.com\r\nEND:VCARD\r\n"
-                for i in range(40)
+                f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Person {i}\r\nEMAIL:p{i}@e.com\r\nEND:VCARD\r\n" for i in range(40)
             ),
         ),
         (
@@ -306,9 +306,7 @@ def test_one_calendar_event_cannot_fan_out_past_the_candidate_ceiling(tmp_path: 
     Accounting only once the event is complete would let that one event expand unbounded,
     so the ceiling has to apply inside the attendee fan-out.
     """
-    attendees = "".join(
-        f"ATTENDEE;CN=Person {index}:mailto:p{index}@example.com\r\n" for index in range(200)
-    )
+    attendees = "".join(f"ATTENDEE;CN=Person {index}:mailto:p{index}@example.com\r\n" for index in range(200))
     source = tmp_path / "one-big-event.ics"
     source.write_text(
         "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:e1\r\nDTSTART:20260722T090000Z\r\n"
@@ -556,8 +554,7 @@ def _import_content(conn: sqlite3.Connection) -> ImportContent:
 
 def _person_candidates(count: int) -> list[dict[str, Any]]:
     return [
-        {"type": "person", "ref": f"person-{index}", "name": f"Person {index}", "aliases": []}
-        for index in range(count)
+        {"type": "person", "ref": f"person-{index}", "name": f"Person {index}", "aliases": []} for index in range(count)
     ]
 
 

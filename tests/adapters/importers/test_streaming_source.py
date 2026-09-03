@@ -68,6 +68,15 @@ class _RecordingBuffer:
     def tell(self) -> int:
         return self._stream.tell()
 
+    def flush(self) -> None:
+        """Absorb the flush `TextIOWrapper` issues when it is finalized.
+
+        The wrapper is read-only here, but closing one — including at garbage
+        collection — still reaches for `flush` on the object underneath. Without
+        it the call surfaces as an unraisable `AttributeError` from the metering
+        proxy long after the assertions have passed.
+        """
+
     def close(self) -> None:
         self._stream.close()
 
@@ -305,15 +314,18 @@ def test_a_streamed_content_string_still_loses_its_byte_order_mark() -> None:
 
 
 def test_the_streaming_reader_still_requires_exactly_one_input() -> None:
-    with pytest.raises(ImportExtractionError) as refusal, open_source_stream(
-        content="a",
-        content_bytes=None,
-        path="b",
-        encoding="utf-8",
-        max_bytes=None,
-        source_label="vcard",
-        universal_newlines=True,
-    ) as lines:
+    with (
+        pytest.raises(ImportExtractionError) as refusal,
+        open_source_stream(
+            content="a",
+            content_bytes=None,
+            path="b",
+            encoding="utf-8",
+            max_bytes=None,
+            source_label="vcard",
+            universal_newlines=True,
+        ) as lines,
+    ):
         list(lines)
 
     assert refusal.value.code == "invalid_source"
@@ -328,15 +340,18 @@ def test_an_undecodable_byte_refuses_wherever_the_reader_chunked(offset: int, tm
     source = tmp_path / "latin1.vcf"
     source.write_bytes(b"a" * offset + b"\xe9" + b"b" * 4_096)
 
-    with pytest.raises(ImportExtractionError) as refusal, open_source_stream(
-        content=None,
-        content_bytes=None,
-        path=str(source),
-        encoding="utf-8",
-        max_bytes=None,
-        source_label="vcard",
-        universal_newlines=True,
-    ) as lines:
+    with (
+        pytest.raises(ImportExtractionError) as refusal,
+        open_source_stream(
+            content=None,
+            content_bytes=None,
+            path=str(source),
+            encoding="utf-8",
+            max_bytes=None,
+            source_label="vcard",
+            universal_newlines=True,
+        ) as lines,
+    ):
         list(lines)
 
     assert refusal.value.code == UNDECODABLE_SOURCE
@@ -380,15 +395,18 @@ def test_a_streamed_path_past_the_byte_ceiling_is_refused_for_being_oversized(tm
     """An oversized source is refused as oversized, not as whatever a partial parse hits first."""
     source = _sparse_file(tmp_path / "over.vcf", MAX_CLI_SOURCE_BYTES + 1)
 
-    with pytest.raises(ImportExtractionError) as refusal, open_source_stream(
-        content=None,
-        content_bytes=None,
-        path=str(source),
-        encoding="utf-8",
-        max_bytes=MAX_CLI_SOURCE_BYTES,
-        source_label="vcard",
-        universal_newlines=True,
-    ) as lines:
+    with (
+        pytest.raises(ImportExtractionError) as refusal,
+        open_source_stream(
+            content=None,
+            content_bytes=None,
+            path=str(source),
+            encoding="utf-8",
+            max_bytes=MAX_CLI_SOURCE_BYTES,
+            source_label="vcard",
+            universal_newlines=True,
+        ) as lines,
+    ):
         list(lines)
 
     assert refusal.value.code == SOURCE_TOO_LARGE
@@ -399,15 +417,18 @@ def test_a_streamed_path_that_outgrows_its_budget_while_read_is_still_refused(tm
     source = tmp_path / "grown.vcf"
     source.write_bytes(b"line\n" * 64)
 
-    with pytest.raises(ImportExtractionError) as refusal, open_source_stream(
-        content=None,
-        content_bytes=None,
-        path=str(source),
-        encoding="utf-8",
-        max_bytes=320,
-        source_label="vcard",
-        universal_newlines=True,
-    ) as lines:
+    with (
+        pytest.raises(ImportExtractionError) as refusal,
+        open_source_stream(
+            content=None,
+            content_bytes=None,
+            path=str(source),
+            encoding="utf-8",
+            max_bytes=320,
+            source_label="vcard",
+            universal_newlines=True,
+        ) as lines,
+    ):
         for _ in lines:
             source.write_bytes(b"line\n" * 4_096)
 

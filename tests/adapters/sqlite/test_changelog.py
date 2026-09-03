@@ -360,9 +360,7 @@ def test_unbounded_list_entries_applies_the_entity_filter() -> None:
     assert [entry.op_id for entry in changelog.list_entries(entity_id=target)] == expected[:100]
 
 
-def _append_synthetic_entries(
-    conn: sqlite3.Connection, changelog: SqliteChangelog, count: int
-) -> list[ChangelogEntry]:
+def _append_synthetic_entries(conn: sqlite3.Connection, changelog: SqliteChangelog, count: int) -> list[ChangelogEntry]:
     """Append deterministic entries, including HLC ties broken by ``op_id``."""
     device_id = conn.execute("SELECT id FROM devices WHERE retired_at IS NULL").fetchone()["id"]
     entries = [

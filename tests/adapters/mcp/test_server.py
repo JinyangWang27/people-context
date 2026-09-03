@@ -9,6 +9,7 @@ import anyio
 import pytest
 from mcp.client import Client
 
+from people_context import __version__ as package_version
 from people_context.adapters import runtime as runtime_module
 from people_context.adapters.mcp.server import build_server
 from people_context.adapters.model2vec_embeddings import MODEL_ID
@@ -26,8 +27,14 @@ EXPECTED_SERVER_INSTRUCTIONS = (
     "After resolving an identity, use `get_person_context` for a bounded, sensitivity-aware context bundle. "
     "After resolving a person, use `get_communication_guidance` when communication help is requested. "
     "Use `search_people` for broader browsing and `remember_person` to record a new or updated person. "
+    "When the user states one durable thing about someone directly, call `remember` once: it resolves the "
+    "name, creates the person only if nobody matches, and records the note, affiliation, or relationship in "
+    "one audited transaction — never guessing between similar names. "
     "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
     "later user review and never committed automatically. "
+    "Ordinary read tools that take a `person_id` also accept `person` (a name) in its place; "
+    "`find_connection` and the operator-elevated tools take ids only. "
+    "The full usage guide is the `people-context://guide` resource; `people-context://self` is the user's own record. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
 )
@@ -38,6 +45,7 @@ EXPECTED_TOOLS = {
     "search_people",
     "semantic_search",
     "remember_person",
+    "remember",
     # read-only stubs
     "get_person_context",
     "get_communication_guidance",
@@ -70,6 +78,29 @@ def _run(server: Any, coro_factory: Any) -> Any:
             return await coro_factory(client)
 
     return anyio.run(main)
+
+
+def test_initialize_advertises_the_released_package_version(tmp_path: Path) -> None:
+    """The handshake must name a version, and the same one the package ships under.
+
+    `MCPServer` defaults `version` to the empty string, so forgetting to pass it is
+    silent: clients and directory listings simply show a nameless build. Binding the
+    assertion to `people_context.__version__` — which release automation bumps beside
+    `pyproject.toml`, `server.json`, and the MCPB manifest — keeps this surface in step
+    with the other released version values instead of adding one more to hand-maintain.
+    """
+    server = build_server(db_path=tmp_path / "version.db")
+
+    async def initialize() -> Any:
+        async with Client(server) as client:
+            return client.server_info
+
+    server_info = anyio.run(initialize)
+
+    assert server_info is not None
+    assert server_info.name == "people-context"
+    assert server_info.version == package_version
+    assert server_info.version != ""
 
 
 def test_initialize_returns_safe_tool_composition_instructions(tmp_path: Path) -> None:
@@ -410,9 +441,7 @@ def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None
 
     async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "ics", "content": content})
-        reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structured_content["batch_id"]}
-        )
+        reviewed = await client.call_tool("review_import", {"batch_id": imported.structured_content["batch_id"]})
         return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
@@ -420,9 +449,7 @@ def test_ics_import_stages_attendees_and_omits_free_text(tmp_path: Path) -> None
     assert imported["candidate_count"] == 3
     assert imported["skipped_cards"] == [{"index": 2, "reason": "floating_dtstart_unsupported"}]
     summaries = [
-        row["candidate"]["summary"]
-        for row in reviewed["candidates"]
-        if row["candidate"]["type"] == "interaction"
+        row["candidate"]["summary"] for row in reviewed["candidates"] if row["candidate"]["type"] == "interaction"
     ]
     assert summaries == ["Calendar event"]
     assert summary_sentinel not in str(reviewed)
@@ -442,9 +469,7 @@ def test_linkedin_import_stages_safe_rows_and_reports_invalid_neighbors(tmp_path
 
     async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "linkedin", "content": content})
-        reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structured_content["batch_id"]}
-        )
+        reviewed = await client.call_tool("review_import", {"batch_id": imported.structured_content["batch_id"]})
         return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
@@ -470,9 +495,7 @@ def test_outlook_import_stages_contacts_without_notes_or_web_pages(tmp_path: Pat
 
     async def flow(client: Client) -> Any:
         imported = await client.call_tool("import_content", {"source_type": "outlook", "content": content})
-        reviewed = await client.call_tool(
-            "review_import", {"batch_id": imported.structured_content["batch_id"]}
-        )
+        reviewed = await client.call_tool("review_import", {"batch_id": imported.structured_content["batch_id"]})
         return imported.structured_content, reviewed.structured_content
 
     imported, reviewed = _run(server, flow)
