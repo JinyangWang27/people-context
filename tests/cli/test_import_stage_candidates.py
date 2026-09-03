@@ -587,14 +587,10 @@ def test_the_cli_bounds_count_source_and_strings_even_without_an_m17_candidate(
         {"type": "person", "ref": f"r{index}", "name": f"N{index}", "aliases": []}
         for index in range(MAX_EXTRACTION_CANDIDATES + 1)
     ]
-    assert "500" in _refusal(
-        db_file, ["--source", "sync", "--input", str(_input_file(tmp_path, too_many))], capsys
-    )
+    assert "500" in _refusal(db_file, ["--source", "sync", "--input", str(_input_file(tmp_path, too_many))], capsys)
 
     long_label = "x" * (MAX_EXTRACTION_SOURCE_CHARS + 1)
-    assert "128" in _refusal(
-        db_file, ["--source", long_label, "--input", str(_input_file(tmp_path, legacy))], capsys
-    )
+    assert "128" in _refusal(db_file, ["--source", long_label, "--input", str(_input_file(tmp_path, legacy))], capsys)
 
     oversized_string = [
         {

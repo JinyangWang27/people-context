@@ -20,10 +20,7 @@ from people_context.ports.imports import ExtractedImport
 _LINKEDIN_HEADER = "First Name,Last Name,URL,Email Address,Company,Position,Connected On,Notes\n"
 _LINKEDIN_ROW = "Sofia,Rossi,https://example.invalid/in/sr,sofia@example.com,Acme,Engineer,23 Jul 2026,note\n"
 
-_CHAT = (
-    "[2026-07-20, 09:00:00] You: morning\n"
-    "[2026-07-20, 09:01:00] Priya Nair: morning!\n"
-)
+_CHAT = "[2026-07-20, 09:00:00] You: morning\n[2026-07-20, 09:01:00] Priya Nair: morning!\n"
 
 
 def _linkedin(tmp_path: Path, rows: str = _LINKEDIN_ROW) -> Path:
@@ -356,7 +353,5 @@ def test_a_chat_export_stages_the_expected_participant_through_a_snapshot(tmp_pa
         self_sender="You",
     )
 
-    names = sorted(
-        candidate["name"] for candidate in stable.extracted.candidates if candidate["type"] == "person"
-    )
+    names = sorted(candidate["name"] for candidate in stable.extracted.candidates if candidate["type"] == "person")
     assert names == ["Priya Nair"]

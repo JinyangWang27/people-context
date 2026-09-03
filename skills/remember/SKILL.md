@@ -1,6 +1,6 @@
 ---
 name: remember
-description: Record durable knowledge about a person with the people-context tools. Invoke as /people-context:remember <description> to make an explicit person assertion via remember_person, or to stage extracted facts, affiliations, and interactions for later review.
+description: Record durable knowledge about a person with the people-context tools. Invoke as /people-context:remember <description> to record one direct statement via remember, make an explicit person assertion via remember_person, or stage extracted facts, affiliations, and interactions for later review.
 disable-model-invocation: true
 argument-hint: <what to remember about a person>
 ---
@@ -36,16 +36,39 @@ person is updated, not duplicated.
 
 **Precedence between the paths.** A single request can carry both an identity assertion
 and a structured record — for example `Alice is an engineer at Acme` is both a person
-and an affiliation. When the request contains any fact, affiliation, or interaction the
-staged schema can represent, route that structured content through **path 2 (staging)**
-so it is reviewable and queryable. Never fold it into a `remember_person` `summary`,
+and an affiliation. When that is one direct statement about one person, path 1a's
+`remember` records both halves in one call. Otherwise, when the request contains any
+fact, affiliation, or interaction the staged schema can represent, route that
+structured content through **path 2 (staging)** so it is reviewable and queryable. Never fold it into a `remember_person` `summary`,
 which would bypass review and leave affiliation/fact queries unaware of the record. The
 path-1 summary fast path applies only to a pure identity assertion with no such
 structured content. For a combined identity-and-structured request targeting one of
 several identically-named people, do not imply that staging can apply both portions:
 the dependent-only path below can record the structured portion only.
 
-### 1. Explicit person assertion → `remember_person`
+### 1a. One direct statement about one person → `remember`
+
+When the invocation itself states **one** durable thing about **one** person — a fact
+("Alice moved to Berlin"), a preference or communication trait ("Alice prefers short
+emails"), an affiliation ("Alice is CTO at Acme"), how the user relates to them ("Bob
+is my manager"), or something that happened ("I had coffee with Dana today") — call the
+`remember` tool once. Pass `person` as the name the user used, and `note`, `org`/`role`,
+or `relationship` as stated; leave `kind` as `auto` unless the classification is
+obvious. It resolves the name itself, creates the person only when nobody matches,
+records the statement through the same audited writes as the individual tools, and
+commits them together. It **never guesses between similar names**: a `status` of
+`ambiguous` or `unconfirmed` returns candidates and records nothing — surface them,
+ask, and call again with the exact canonical name or a unique alias. Set `sensitivity`
+to `sensitive` or `restricted` for health, financial, and other private matters — as a
+`note` (a fact), never with `org` or `relationship`, which carry no sensitivity and are
+refused at an elevated level (`status: invalid_request`) — and pass `source` as
+`claude-code-remember`.
+
+`remember` applies only to what the invocation states **directly**. Anything derived
+from prior context, and any request carrying several people or several separate
+statements, stays on path 2 so it is reviewable as a batch.
+
+### 1b. Explicit person assertion → `remember_person`
 
 When the description is a pure identity assertion **stated directly in this invocation**
 (not extracted from prior context) that a specific person exists or should be recorded —
@@ -201,13 +224,14 @@ cannot write to one of several identically-named people.
 
 ### 3. Anything that fits neither path → report the limitation, do not force it
 
-Some requests fit neither `remember_person` nor the strict staging vocabulary. A
-**relationship** ("Alice is my sister") is the common case: staging has no
-relationship candidate type, so emitting one fails validation, and flattening it into
-a generic fact hides the edge from the relationship graph. Do **not** force such a
-request into staging. Tell the user plainly that this workflow records people
-(`remember_person`) and facts/affiliations/interactions (staged for review) only, and
-that relationships and other unsupported data are not captured here.
+Some requests fit none of the paths above. A **relationship stated directly** ("Alice
+is my sister") is path 1a: `remember` with `relationship` records the edge from the
+user's self record with the normal vocabulary. A relationship *derived from prior
+context* is different: staging's `relationship` candidate carries it for review, and
+flattening it into a generic fact would hide the edge from the relationship graph. Do
+**not** force a request into a shape that loses its meaning. When something genuinely
+fits nowhere, tell the user plainly what this workflow records and that the rest was
+not captured here.
 
 ## Staging stays a proposal
 
@@ -218,8 +242,8 @@ batch. Never commit automatically or in the same breath as staging.
 
 ## Boundaries
 
-- Uses only `resolve_person`, `remember_person`, and `stage_candidates` (and
-  `review_import` for inspection). It never calls `commit_import`.
+- Uses only `resolve_person`, `remember`, `remember_person`, and `stage_candidates`
+  (and `review_import` for inspection). It never calls `commit_import`.
 - It never calls or suggests enabling the gated `get_sensitive_person_context` or
   `export_data` tools.
 - It does not misuse `remember_person` to encode facts, relationships, or

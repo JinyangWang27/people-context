@@ -100,9 +100,7 @@ def test_routes_linkedin_content_to_linkedin_extractor() -> None:
         ]
     )
 
-    extracted = ImportExtractorRouter().extract(
-        "linkedin", content=content, path=None, self_addresses=set()
-    )
+    extracted = ImportExtractorRouter().extract("linkedin", content=content, path=None, self_addresses=set())
 
     assert [candidate["name"] for candidate in extracted.candidates if candidate["type"] == "person"] == [
         "Alice Example"

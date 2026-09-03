@@ -18,7 +18,13 @@ When the user names, nicknames, or partially references a person, call
 `resolve_person` returns an explainable result. When it reports an `ambiguous`
 outcome with a candidate list, preserve that contract: present or narrow the
 candidates and let the user choose. Never silently pick one candidate, and never
-fabricate an identity the pipeline did not return. Use `search_people` for broader
+fabricate an identity the pipeline did not return.
+
+Read `match_reason`, not just the score. A reason starting with `fuzzy` means no
+stored name matches what was typed and the resolver fell back to spelling distance,
+so a lone `fuzzy` candidate is a suggestion to confirm rather than an identification
+— treat it like `ambiguous`. A matched hint appends `+hint:…` and raises the score,
+so a high score alone does not make a near-spelling into a match. Use `search_people` for broader
 browsing when the user is exploring rather than pointing at one person.
 
 ## Read context, then guidance
@@ -27,12 +33,20 @@ These answer two different questions:
 
 - `get_person_context` answers **what is known** — a bounded, sensitivity-aware
   bundle of identity, relationships, affiliations, facts, and recent interactions.
+  Its `truncated` flag says the item budget cut the list. Sensitive and restricted
+  records leave no trace at all, by design: what you get back is the intended
+  complete ordinary view, not a redacted one.
 - `get_communication_guidance` answers **how to communicate** — tone and approach
   derived from the stored communication philosophy.
 
 Resolve the person first, then call the tool that matches the question. When the user
 wants help writing to or preparing for someone, `get_communication_guidance` is the
-right tool; do not infer tone from raw context alone.
+right tool; do not infer tone from raw context alone. Both reads, like `list_reminders`,
+`get_person_timeline`, and `upcoming_dates`, also accept `person` (the name as said)
+in place of `person_id`; a name that is ambiguous, or that only a near-spelling
+matches, then returns candidates instead of data, so the resolution contract holds
+either way. Surface those candidates and let the user choose, exactly as you would
+for `resolve_person`.
 
 ## Preparing for a meeting or conversation
 
@@ -67,6 +81,15 @@ control.
 
 - An explicit, well-formed person assertion ("remember my colleague Dana Okafor,
   dana@example.com") fits `remember_person` directly.
+- One durable thing the user **states directly** about one person — "Dana from Acme
+  prefers short emails", "Bob is my manager", "I had coffee with Dana today" — fits
+  `remember` in a single call: it resolves the name, creates the person only when
+  nobody matches, and records the note, affiliation, or relationship in one audited
+  transaction. It never guesses between similar names: `status: ambiguous` or
+  `unconfirmed` returns candidates and records nothing, so ask and call again with the
+  exact name. Set `sensitivity` to `sensitive` or `restricted` for private matters, as a
+  `note`; an elevated level with `org` or `relationship` is refused, because those rows
+  carry no sensitivity and every ordinary read discloses them.
 - Everything extracted from notes, prior conversation, or other agent-visible text —
   facts, affiliations, interactions, and newly mentioned people — goes through the
   staged capture flow, never through a direct write.

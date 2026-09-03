@@ -378,9 +378,7 @@ def test_the_json_document_keeps_its_declared_versioned_shape() -> None:
     for finding in document["findings"]:
         for action in finding["actions"]:
             expected = (
-                {"surface", "argv"}
-                if action["surface"] == "cli"
-                else {"surface", "tool", "arguments", "requires"}
+                {"surface", "argv"} if action["surface"] == "cli" else {"surface", "tool", "arguments", "requires"}
             )
             assert set(action) == expected
 

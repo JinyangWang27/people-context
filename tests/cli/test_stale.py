@@ -120,9 +120,7 @@ def test_stale_truncates_and_says_so(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert "More people qualify; raise --limit to see them." in out
 
 
-def test_stale_reports_nothing_when_no_person_qualifies(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_stale_reports_nothing_when_no_person_qualifies(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 

@@ -163,15 +163,9 @@ def test_observation_trait_and_relationship_commit_through_their_own_audited_use
     assert trait["provenance_source"] == "import/agent:planning-meeting"
 
     # Every write is audited by the use case that owns it — import adds no privileged path.
-    audited = {
-        row["entity_type"]
-        for row in conn.execute("SELECT DISTINCT entity_type FROM audit_log").fetchall()
-    }
+    audited = {row["entity_type"] for row in conn.execute("SELECT DISTINCT entity_type FROM audit_log").fetchall()}
     assert {"observation", "trait", "relationship"} <= audited
-    changed = {
-        row["entity_type"]
-        for row in conn.execute("SELECT DISTINCT entity_type FROM changelog").fetchall()
-    }
+    changed = {row["entity_type"] for row in conn.execute("SELECT DISTINCT entity_type FROM changelog").fetchall()}
     assert {"observation", "trait", "relationship"} <= changed
 
 

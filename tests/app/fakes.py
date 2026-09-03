@@ -209,9 +209,7 @@ class FakeRecencyReader:
 
     def list_recency_signals(self, *, as_of: date, category: str | None = None) -> list[RecencySignal]:
         self.calls.append((as_of, category))
-        return [
-            signal for signal in self.signals if category is None or category in signal.categories
-        ]
+        return [signal for signal in self.signals if category is None or category in signal.categories]
 
 
 class FakePersonTimelineReader:

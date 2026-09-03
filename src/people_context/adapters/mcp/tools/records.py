@@ -20,6 +20,7 @@ from people_context.app.records import (
 from people_context.app.relationships import SetRelationshipInput
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import Sensitivity
+from people_context.domain.trait import TraitCategory
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
@@ -109,9 +110,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         valid_from: str | None = None,
         valid_to: str | None = None,
         confidence: float | None = None,
-        sensitivity: str | None = None,
+        sensitivity: Sensitivity | None = None,
     ) -> dict[str, Any]:
-        """Record a time-aware fact about an existing person."""
+        """Record a time-aware fact about an existing person.
+
+        `sensitivity` defaults to `personal`; `sensitive` and `restricted` records are withheld from
+        ordinary reads. Prefer `remember` for a single statement named by a person's name.
+        """
         return call_action(
             lambda: deps.record_fact.execute(
                 RecordFactInput(
@@ -131,7 +136,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         person_id: str,
         text: str,
         observed_at: str | None = None,
-        sensitivity: str | None = None,
+        sensitivity: Sensitivity | None = None,
     ) -> dict[str, Any]:
         """Record a subjective observation, separate from disclosed context."""
         return call_action(
@@ -148,13 +153,19 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     @mcp.tool(annotations=_WRITE)
     async def record_trait(
         person_id: str,
-        category: str,
+        category: TraitCategory,
         value: str,
         evidence_note: str | None = None,
         confidence: float | None = None,
-        sensitivity: str | None = None,
+        sensitivity: Sensitivity | None = None,
+        evidence_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Record a derived trait with validated category and provenance."""
+        """Record a derived trait with validated category and provenance.
+
+        `category` is one of `communication_style`, `temperament`, `values`, `preference`,
+        `topics_to_avoid`, or `other`. Cite the observation or interaction it rests on in
+        `evidence_note` or `evidence_ids` where you can.
+        """
         return call_action(
             lambda: deps.record_trait.execute(
                 RecordTraitInput(
@@ -164,6 +175,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                     evidence_note=evidence_note,
                     confidence=confidence,
                     sensitivity=sensitivity if sensitivity is not None else Sensitivity.PERSONAL,
+                    evidence_ids=list(evidence_ids or []),
                 )
             )
         )
@@ -174,7 +186,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         participant_ids: list[str],
         occurred_at: str | None = None,
         channel: str | None = None,
-        sensitivity: str | None = None,
+        sensitivity: Sensitivity | None = None,
     ) -> dict[str, Any]:
         """Record a concise interaction summary after validating all participants."""
         return call_action(
@@ -204,7 +216,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         new_value: str,
         effective_from: str,
         confidence: float | None = None,
-        sensitivity: str | None = None,
+        sensitivity: Sensitivity | None = None,
     ) -> dict[str, Any]:
         """Close a fact that was true and open its replacement from an effective date.
 

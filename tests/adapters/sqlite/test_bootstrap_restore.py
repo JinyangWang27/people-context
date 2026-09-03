@@ -91,9 +91,7 @@ def _source_bundle(db_path: Path) -> SyncBundleDocument:
             synonyms=["cofounder"],
         )
     )
-    use_cases.set_relationship.execute(
-        SetRelationshipInput(subject_id=me.id, object_id=alice.id, type="co_founder_of")
-    )
+    use_cases.set_relationship.execute(SetRelationshipInput(subject_id=me.id, object_id=alice.id, type="co_founder_of"))
     use_cases.set_affiliation.execute(
         SetAffiliationInput(person_id=alice.id, org="Acme", role="Engineer", valid_from=date(2024, 1, 1))
     )
@@ -183,15 +181,11 @@ def test_restore_writes_every_collection_verbatim(tmp_path: Path, bundle: SyncBu
     assert _count(conn, "user_preferences") == len(snapshot.user_preferences)
     assert outcome.people == len(snapshot.people)
 
-    person = conn.execute(
-        "SELECT * FROM persons WHERE id = ?", (snapshot.people[0].id,)
-    ).fetchone()
+    person = conn.execute("SELECT * FROM persons WHERE id = ?", (snapshot.people[0].id,)).fetchone()
     assert person["canonical_name"] == snapshot.people[0].canonical_name
     assert person["created_at"] == snapshot.people[0].created_at.isoformat()
     assert _count(conn, "aliases") == sum(len(row.aliases) for row in snapshot.people)
-    assert _count(conn, "interaction_participants") == sum(
-        len(row.participant_ids) for row in snapshot.interactions
-    )
+    assert _count(conn, "interaction_participants") == sum(len(row.participant_ids) for row in snapshot.interactions)
     conn.close()
 
 
@@ -312,9 +306,9 @@ def test_restore_stamps_an_unretired_origin_with_the_bundle_creation_time(
 
     _restorer(conn).restore(bundle)
 
-    retired_at = conn.execute(
-        "SELECT retired_at FROM devices WHERE id = ?", (bundle.origin_device_id,)
-    ).fetchone()["retired_at"]
+    retired_at = conn.execute("SELECT retired_at FROM devices WHERE id = ?", (bundle.origin_device_id,)).fetchone()[
+        "retired_at"
+    ]
     assert retired_at == bundle.created_at.isoformat()
     conn.close()
 
@@ -330,9 +324,7 @@ def test_restore_advances_the_local_clock_past_all_imported_history(
     local = (outcome.local_watermark.physical_ms, outcome.local_watermark.logical_counter)
     assert local > (bundle.watermark.hlc_physical_ms, bundle.watermark.hlc_logical)
     assert all(local > (entry.hlc_physical_ms, entry.hlc_logical) for entry in bundle.changelog)
-    persisted = conn.execute(
-        "SELECT hlc_physical_ms, hlc_logical FROM devices WHERE retired_at IS NULL"
-    ).fetchone()
+    persisted = conn.execute("SELECT hlc_physical_ms, hlc_logical FROM devices WHERE retired_at IS NULL").fetchone()
     assert (persisted["hlc_physical_ms"], persisted["hlc_logical"]) == local
     conn.close()
 
@@ -350,9 +342,7 @@ def test_restore_rebuilds_search_rows_for_active_people_only(
     assert _count(conn, "person_search") == active_names
     indexed = {row["person_id"] for row in conn.execute("SELECT person_id FROM person_search").fetchall()}
     assert _DELETED_PERSON_ID not in indexed
-    assert [hit.person.canonical_name for hit in SqlitePeopleRepository(conn).search_names("Ali")] == [
-        "Alice Zhang"
-    ]
+    assert [hit.person.canonical_name for hit in SqlitePeopleRepository(conn).search_names("Ali")] == ["Alice Zhang"]
     conn.close()
 
 
@@ -616,9 +606,7 @@ def test_a_bundled_synonym_already_claimed_by_a_type_is_rejected(
     """`colleague_of` is a seeded type with no self-synonym; a synonym row pointing elsewhere lies."""
     conn = open_db(tmp_path / "target.db")
     local = _local_device_id(conn)
-    bundle.relationship_vocabulary.synonyms.append(
-        BundleRelationshipSynonym(synonym="colleague_of", type="friend_of")
-    )
+    bundle.relationship_vocabulary.synonyms.append(BundleRelationshipSynonym(synonym="colleague_of", type="friend_of"))
 
     with pytest.raises(InvalidBundleError) as error:
         _restorer(conn).restore(bundle)
@@ -745,8 +733,7 @@ def test_a_writer_starting_after_the_reservation_cannot_interleave(
 
     assert blocked, "a second writer must not acquire the reserved write lock"
     assert not any(
-        row["canonical_name"] == "Intruder"
-        for row in conn.execute("SELECT canonical_name FROM persons").fetchall()
+        row["canonical_name"] == "Intruder" for row in conn.execute("SELECT canonical_name FROM persons").fetchall()
     )
     concurrent.close()
     conn.close()

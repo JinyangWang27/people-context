@@ -22,9 +22,13 @@ def _seed(db_path: Path, name: str, **kwargs: object) -> Person:
     conn = open_db(db_path)
     try:
         repo = SqlitePeopleRepository(conn)
-        return RememberPerson(repo, repo, SqliteAuditLog(conn), SystemClock()).execute(
-            RememberPersonInput(name=name, **kwargs)  # type: ignore[arg-type]
-        ).person
+        return (
+            RememberPerson(repo, repo, SqliteAuditLog(conn), SystemClock())
+            .execute(
+                RememberPersonInput(name=name, **kwargs)  # type: ignore[arg-type]
+            )
+            .person
+        )
     finally:
         conn.close()
 
@@ -59,9 +63,7 @@ def test_init_fresh_creates_normalized_self_handles_and_philosophy(
         conn.close()
     assert person is not None
     assert person.canonical_name == "Maya Chen"
-    assert [(alias.value, alias.kind) for alias in person.aliases] == [
-        ("maya@example.com", AliasKind.HANDLE)
-    ]
+    assert [(alias.value, alias.kind) for alias in person.aliases] == [("maya@example.com", AliasKind.HANDLE)]
     assert philosophy is not None and philosophy[0] == '"Prefer concise written updates"'
 
 
@@ -84,9 +86,7 @@ def test_init_additive_keeps_existing_self_identity_and_adds_handles(
         conn.close()
     assert len(people) == 2
     assert self_person is not None and self_person.id == existing.id
-    assert [(alias.value, alias.kind) for alias in self_person.aliases] == [
-        ("self@example.com", AliasKind.HANDLE)
-    ]
+    assert [(alias.value, alias.kind) for alias in self_person.aliases] == [("self@example.com", AliasKind.HANDLE)]
 
 
 def test_init_additive_refuses_handle_owned_by_another_person_before_mutation(
@@ -124,6 +124,7 @@ def test_init_refuses_nonempty_state_without_one_unambiguous_self_before_prompt_
         _seed(db_path, "Other", aliases=[AliasInput(value="Existing Self")])
     else:
         self_person = _seed(db_path, "Existing Person")
+
     def unexpected_prompt(_: str) -> str:
         raise AssertionError("refused init must not prompt")
 
@@ -381,10 +382,13 @@ def test_init_rejects_unknown_candidate_ids_without_committing_contacts(
     try:
         assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM import_staging WHERE status = 'committed'").fetchone()[0] == 0
-        assert conn.execute(
-            "SELECT COUNT(*) FROM user_preferences WHERE key = ?",
-            (PREF_COMMUNICATION_PHILOSOPHY,),
-        ).fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM user_preferences WHERE key = ?",
+                (PREF_COMMUNICATION_PHILOSOPHY,),
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         conn.close()
 
@@ -568,3 +572,32 @@ def test_init_reports_an_already_committed_vcard_instead_of_failing(
     assert "already imported" in output.out
     assert "Onboarding complete." in output.out
     assert "vCard import failed" not in output.err
+
+
+def test_init_offers_client_setup_only_at_a_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A person at a TTY is asked once; the answer `json` exercises the setup path without touching any file."""
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    _input_sequence(monkeypatch, ["Maya Chen", "", "", "", "json"])
+
+    assert cli.main(["--db", str(tmp_path / "fresh.db"), "init"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Connect an MCP client now?" not in out  # the prompt text goes to input(), not stdout
+    assert '"people-context"' in out and '"uvx"' in out
+    assert "pctx setup <client>" in out
+
+
+def test_init_skips_the_client_prompt_when_not_interactive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False)
+    _input_sequence(monkeypatch, ["Maya Chen", "", "", ""])  # one answer fewer: no client question
+
+    assert cli.main(["--db", str(tmp_path / "fresh.db"), "init"]) == 0
+    assert "pctx setup <client>" in capsys.readouterr().out

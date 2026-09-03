@@ -1,0 +1,29 @@
+name: New import source
+description: Ask for a contact or conversation export format to be supported by `pctx import stage`.
+labels: ["enhancement", "importer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Importers stage **reviewable candidates** and never persist raw content. Adding one is a contained change
+        under `src/people_context/adapters/importers/` and a good first contribution.
+  - type: input
+    id: source
+    attributes:
+      label: Source and export path
+      placeholder: "Google Contacts → Export → Google CSV"
+    validations:
+      required: true
+  - type: textarea
+    id: sample
+    attributes:
+      label: Anonymized sample
+      description: The header row plus one or two fully fictional records, so the field layout is clear.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: fields
+    attributes:
+      label: Which fields matter?
+      description: Names, emails, phones, organisations, roles, birthdays, dates of contact, relationships...

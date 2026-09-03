@@ -48,9 +48,7 @@ def _seed(db_path: Path, *, second_person: str | None = None) -> str:
         if second_person is not None:
             repository.save_person(Person(canonical_name=second_person))
         record_fact = RecordFact(repository, records, audit, _Clock())
-        record_fact.execute(
-            RecordFactInput(person_id=person.id, predicate="role", value="Engineer", source="cli")
-        )
+        record_fact.execute(RecordFactInput(person_id=person.id, predicate="role", value="Engineer", source="cli"))
         record_fact.execute(
             RecordFactInput(
                 person_id=person.id,

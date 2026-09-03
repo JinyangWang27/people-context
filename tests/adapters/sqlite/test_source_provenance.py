@@ -114,9 +114,7 @@ def test_a_receipt_stores_no_path_or_source_body(tmp_path: Path, capsys: pytest.
     _import_and_commit(db_file, "mbox", source, capsys)
 
     stored = " ".join(
-        str(value)
-        for row in _rows(db_file, "SELECT * FROM import_source_sessions")
-        for value in tuple(row)
+        str(value) for row in _rows(db_file, "SELECT * FROM import_source_sessions") for value in tuple(row)
     )
     assert str(source) not in stored
     assert "mail.mbox" not in stored

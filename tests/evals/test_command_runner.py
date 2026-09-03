@@ -229,9 +229,7 @@ def test_output_beyond_the_cap_is_refused_rather_than_scored_truncated(tmp_path:
 
 def test_a_runaway_agent_is_killed_before_it_fills_the_disk(tmp_path: Path) -> None:
     """Regression: the cap was applied only after exit, so an output loop was unbounded."""
-    runner = CommandAgentRunner(
-        _config(_agent(tmp_path, _RUNAWAY_AGENT), max_output_bytes=1024, timeout_seconds=30)
-    )
+    runner = CommandAgentRunner(_config(_agent(tmp_path, _RUNAWAY_AGENT), max_output_bytes=1024, timeout_seconds=30))
 
     with pytest.raises(EvalHarnessError, match="exceeded the 1024 byte output cap"):
         runner.run(_request(tmp_path, "without_mcp"))
@@ -239,7 +237,7 @@ def test_a_runaway_agent_is_killed_before_it_fills_the_disk(tmp_path: Path) -> N
 
 def test_the_agent_runs_in_the_run_directory_not_the_checkout(tmp_path: Path) -> None:
     """An agent CLI started in the checkout would load the project's own .mcp.json."""
-    script = _agent(tmp_path, 'import os\nprint(os.getcwd())\n')
+    script = _agent(tmp_path, "import os\nprint(os.getcwd())\n")
     workdir = tmp_path / "work"
     workdir.mkdir()
     runner = CommandAgentRunner(
@@ -277,9 +275,7 @@ print("2.4.1 (Claude Code)")
 def test_the_client_version_is_recorded_when_the_suite_configures_a_probe(tmp_path: Path) -> None:
     """A published score should name the client build that produced it."""
     probe = _agent(tmp_path, _VERSION_AGENT, name="version.py")
-    runner = CommandAgentRunner(
-        _config(_agent(tmp_path, _ECHO_AGENT), version_argv=[sys.executable, str(probe)])
-    )
+    runner = CommandAgentRunner(_config(_agent(tmp_path, _ECHO_AGENT), version_argv=[sys.executable, str(probe)]))
 
     assert runner.probe_client_version() == "2.4.1 (Claude Code)"
 
@@ -301,8 +297,6 @@ def test_a_failing_probe_never_fails_the_evaluation(tmp_path: Path) -> None:
 
 def test_a_probe_that_exits_non_zero_records_nothing(tmp_path: Path) -> None:
     probe = _agent(tmp_path, _FAILING_AGENT, name="version.py")
-    runner = CommandAgentRunner(
-        _config(_agent(tmp_path, _ECHO_AGENT), version_argv=[sys.executable, str(probe)])
-    )
+    runner = CommandAgentRunner(_config(_agent(tmp_path, _ECHO_AGENT), version_argv=[sys.executable, str(probe)]))
 
     assert runner.probe_client_version() is None

@@ -61,9 +61,7 @@ def test_forget_and_merge_record_the_caller_source() -> None:
     Forget(people, forget_store, clock, audit).execute(doomed.id, "person", source="cli")
     forget_audit = next(entry for entry in audit.list_entries() if entry.op == "forget")
     assert forget_audit.source == "cli"
-    changelog_forget = next(
-        entry for entry in SqliteChangelog(conn).list_entries() if entry.op_kind == "forget"
-    )
+    changelog_forget = next(entry for entry in SqliteChangelog(conn).list_entries() if entry.op_kind == "forget")
     assert changelog_forget.actor["source"] == "cli"
 
 

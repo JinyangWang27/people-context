@@ -1,0 +1,34 @@
+name: Feature request
+description: A tool, command, or behavior you wish existed.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the situation, not the solution. "Before a meeting I want to..." works better than "add a flag".
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What would the agent or CLI do? Which existing tools or commands does it touch?
+  - type: dropdown
+    id: privacy
+    attributes:
+      label: Does it read or write personal data in a new way?
+      options:
+        - "No — read-only over data already stored"
+        - "Yes — records something new (say what, and whether it can be sensitive)"
+        - "Yes — exports or discloses data (say where it goes)"
+        - "Not sure"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I looked at [docs/roadmap.md](https://github.com/JinyangWang27/people-context/blob/main/docs/roadmap.md) and this is not already planned.
+        - label: I would be willing to open a pull request for this.

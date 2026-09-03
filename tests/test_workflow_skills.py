@@ -403,3 +403,29 @@ class TestRemindersWorkflow:
 
         assert "not on candidate count" in lowered
         assert "candidates[0]" in lowered
+
+
+class TestRememberQuickCapture:
+    """Path 1a: one direct statement goes through the `remember` tool, never a guessed identity."""
+
+    def test_direct_statement_routes_to_remember_tool(self) -> None:
+        body = _skill_path("remember").read_text(encoding="utf-8")
+        lowered = body.lower()
+
+        assert "`remember` tool" in body
+        assert "one direct statement about one person" in lowered
+        assert "never guesses between similar names" in lowered
+        assert "`ambiguous` or `unconfirmed`" in body
+        assert "records nothing" in lowered
+
+    def test_prior_context_still_stages(self) -> None:
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "applies only to what the invocation states" in lowered
+        assert "derived from prior context" in lowered and "path 2" in lowered
+
+    def test_directly_stated_relationship_is_supported(self) -> None:
+        lowered = _skill_path("remember").read_text(encoding="utf-8").lower()
+
+        assert "relationship stated directly" in lowered
+        assert "`remember` with `relationship`" in lowered

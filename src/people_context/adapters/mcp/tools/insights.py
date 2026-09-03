@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
+from people_context.adapters.mcp.tools.references import resolve_reference
 from people_context.app.insights import (
     DEFAULT_CONSOLIDATION_LIMIT,
     DEFAULT_STALE_LIMIT,
@@ -47,10 +48,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_READ_ONLY)
     async def get_person_timeline(
-        person_id: str,
+        person_id: str | None = None,
         limit: int = DEFAULT_TIMELINE_LIMIT,
+        person: str | None = None,
     ) -> dict[str, Any]:
         """Return one person's recent history, newest first, as a bounded chronology.
+
+        Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve inline.
 
         Entries project durable records — interactions, observations, facts, affiliations,
         relationships, and traits — with the stored timestamp each was placed by and which field
@@ -58,9 +62,12 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         trait names only evidence that is itself ordinary. An unknown or removed person returns
         `found: false` rather than an error.
         """
+        target = resolve_reference(deps, person_id=person_id, person=person)
+        if isinstance(target, dict):
+            return target
         try:
             return deps.get_person_timeline.execute(
-                person_id,
+                target,
                 limit=limit,
                 include_sensitive=False,
             ).model_dump(mode="json")
@@ -69,10 +76,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_READ_ONLY)
     async def get_consolidation_context(
-        person_id: str,
+        person_id: str | None = None,
         limit: int = DEFAULT_CONSOLIDATION_LIMIT,
+        person: str | None = None,
     ) -> dict[str, Any]:
         """Return one person's stored facts, traits, and observations plus how they relate.
+
+        Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve inline.
 
         Use this before proposing maintenance. `signals` names pairs of records that share a
         predicate or category and says how they stand — `duplicate_fact`, `restated_fact`,
@@ -86,9 +96,12 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         names only evidence that is itself ordinary. An unknown or removed person returns
         `found: false` rather than an error.
         """
+        target = resolve_reference(deps, person_id=person_id, person=person)
+        if isinstance(target, dict):
+            return target
         try:
             return deps.get_consolidation_context.execute(
-                person_id,
+                target,
                 limit=limit,
                 include_sensitive=False,
             ).model_dump(mode="json")
@@ -99,8 +112,19 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     async def upcoming_dates(
         window_days: int = DEFAULT_WINDOW_DAYS,
         person_id: str | None = None,
+        person: str | None = None,
     ) -> dict[str, Any]:
-        """Return ordinary birthdays and dated active reminders inside an inclusive upcoming window."""
+        """Return ordinary birthdays and dated active reminders inside an inclusive upcoming window.
+
+        Optionally narrow to one person by `person_id` or by `person` (a name or alias).
+        """
+        # `is not None`, not truthiness: an explicitly empty name is a caller mistake, and treating
+        # it as "no filter given" would answer a request scoped to one person with everyone's rows.
+        if person is not None and person_id is None:
+            target = resolve_reference(deps, person_id=None, person=person)
+            if isinstance(target, dict):
+                return target
+            person_id = target
         try:
             return deps.list_upcoming_dates.execute(
                 window_days=window_days,

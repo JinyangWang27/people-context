@@ -289,7 +289,7 @@ def test_a_hedged_attribution_does_not_score_as_a_confident_one() -> None:
 
 
 def test_a_salutation_is_not_treated_as_preamble() -> None:
-    """"No preamble" forbids background, not a greeting; the rubric must not confuse them."""
+    """ "No preamble" forbids background, not a greeting; the rubric must not confuse them."""
     task = _task("guided-drafting")
 
     score = score_task(
@@ -379,9 +379,7 @@ def test_declining_the_question_never_scores_as_an_attribution(answer: str) -> N
     """Regression: the refusal list covered canned wording but not the "not sure" family."""
     score = score_task(_task("identity-disambiguation"), answer)
 
-    assert "asserts-rather-than-hedges" in [
-        criterion.id for criterion in score.criteria if not criterion.passed
-    ]
+    assert "asserts-rather-than-hedges" in [criterion.id for criterion in score.criteria if not criterion.passed]
 
 
 def test_an_assertion_with_ordinary_detail_still_scores_full() -> None:

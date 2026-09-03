@@ -12,9 +12,7 @@ class Vocabulary:
             "reports_to": RelationshipType(
                 type="reports_to", inverse="manages", category="professional", canonical=True
             ),
-            "manages": RelationshipType(
-                type="manages", inverse="reports_to", category="professional", canonical=False
-            ),
+            "manages": RelationshipType(type="manages", inverse="reports_to", category="professional", canonical=False),
             "friend_of": RelationshipType(type="friend_of", symmetric=True, category="social"),
             "manager_of": RelationshipType(
                 type="manages", inverse="reports_to", category="professional", canonical=False
@@ -40,6 +38,7 @@ def test_normalizes_inverse_symmetric_and_unknown_types() -> None:
     assert (inverse.subject_id, inverse.object_id, inverse.type) == ("A", "B", "reports_to")
     assert (symmetric.subject_id, symmetric.object_id, symmetric.type) == ("A", "B", "friend_of")
     assert (unknown.type, unknown.category) == ("childhood_rival_of", "uncategorized")
-    assert relationship_display_type(
-        "reports_to", queried_person_id="B", subject_id="A", vocabulary=vocabulary
-    ) == "manages"
+    assert (
+        relationship_display_type("reports_to", queried_person_id="B", subject_id="A", vocabulary=vocabulary)
+        == "manages"
+    )

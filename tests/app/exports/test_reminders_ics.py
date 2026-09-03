@@ -27,11 +27,7 @@ class _FakeReminderReader:
 
     def get_record(self, entity_type: str, entity_id: str) -> Reminder | None:
         return next(
-            (
-                reminder
-                for reminder in self.reminders
-                if entity_type == "reminder" and reminder.id == entity_id
-            ),
+            (reminder for reminder in self.reminders if entity_type == "reminder" and reminder.id == entity_id),
             None,
         )
 
@@ -44,8 +40,7 @@ class _FakeReminderReader:
         return [
             reminder
             for reminder in self.reminders
-            if (person_id is None or reminder.person_id == person_id)
-            and (status is None or reminder.status == status)
+            if (person_id is None or reminder.person_id == person_id) and (status is None or reminder.status == status)
         ]
 
 

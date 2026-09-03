@@ -103,8 +103,7 @@ def test_bundle_reader_returns_every_collection_from_the_active_origin_device(tm
         row["synonym"] for row in bundle.relationship_synonyms
     )
     assert all(
-        isinstance(row["symmetric"], bool) and isinstance(row["canonical"], bool)
-        for row in bundle.relationship_types
+        isinstance(row["symmetric"], bool) and isinstance(row["canonical"], bool) for row in bundle.relationship_types
     )
 
 

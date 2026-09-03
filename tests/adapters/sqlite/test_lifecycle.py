@@ -149,9 +149,7 @@ def test_forget_person_deletes_graph_orphan_interactions_and_redacts_audits() ->
         created_at=_NOW,
     )
     records.save_relationship(relationship)
-    orphaned = Interaction(
-        summary="Only me", occurred_at=_NOW, participant_ids=[forgotten.id], provenance=_PROVENANCE
-    )
+    orphaned = Interaction(summary="Only me", occurred_at=_NOW, participant_ids=[forgotten.id], provenance=_PROVENANCE)
     shared = Interaction(
         summary="Both", occurred_at=_NOW, participant_ids=[forgotten.id, other.id], provenance=_PROVENANCE
     )
@@ -191,14 +189,10 @@ def test_forget_record_removes_only_target_and_interaction_participations() -> N
     records = SqliteRecordStore(conn)
     person = _person("Alice")
     people.save_person(person)
-    interaction = Interaction(
-        summary="Meeting", occurred_at=_NOW, participant_ids=[person.id], provenance=_PROVENANCE
-    )
+    interaction = Interaction(summary="Meeting", occurred_at=_NOW, participant_ids=[person.id], provenance=_PROVENANCE)
     records.save_interaction(interaction)
 
-    result = Forget(people, SqliteForgetStore(conn), _Clock()).execute(
-        f"interaction:{interaction.id}", "record"
-    )
+    result = Forget(people, SqliteForgetStore(conn), _Clock()).execute(f"interaction:{interaction.id}", "record")
 
     assert result.deleted == {"interactions": 1, "interaction_participations": 1}
     assert people.get(person.id) is not None

@@ -129,9 +129,7 @@ def test_the_disclosure_notice_precedes_the_evidence_it_warns_about(
     assert out.index("Inspect it before sharing") < out.index("Berlin")
 
 
-def test_a_clean_store_prints_no_disclosure_notice(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_clean_store_prints_no_disclosure_notice(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """With no findings there is no stored personal value on screen to warn about."""
     db_file = tmp_path / "people.db"
     conn = open_db(db_file)
@@ -190,9 +188,7 @@ def test_the_human_report_renders_copyable_actions_addressed_by_id(
         assert not {"Alice", "Zhang", "alice", "zhang"}.intersection(line.split())
 
 
-def test_handle_precedence_reports_the_shared_pair_once(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_handle_precedence_reports_the_shared_pair_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     people = _seed(db_file)
 
@@ -246,9 +242,7 @@ def test_the_json_document_is_the_whole_of_stdout_and_the_notice_goes_to_stderr(
     assert "inspect it before sharing" in captured.err.casefold()
 
 
-def test_the_report_never_prints_interaction_content(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_report_never_prints_interaction_content(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)
 

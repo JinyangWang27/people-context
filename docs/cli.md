@@ -5,6 +5,8 @@ curation, so validation, audit, HLC, and changelog capture match MCP writes.
 
 ## Global options
 
+`--version` prints the installed version and exits; it is the value to quote in a bug report.
+
 `--db PATH` explicitly selects the SQLite database and overrides every other location source.
 
 `--encrypted` opens that database through SQLCipher instead of plain SQLite, reading the key only from the
@@ -20,11 +22,13 @@ what encryption does and does not protect.
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
 | `init` | Safely seed or add to the self identity, optionally review a vCard import, and set a philosophy. |
 | `demo [--reset]` | Seed the isolated packaged fictional demo; refuse replacement unless `--reset` is supplied. |
+| `setup CLIENT [--scope user\|project] [--dry-run]` | Write the stdio server into one MCP client's configuration (`claude-desktop`, `claude-code`, `codex`, `cursor`, `windsurf`, `vscode`) or print the generic `json` snippet. |
 | `list [--all] [--limit N] [--json]` | List people; `--all` includes soft-deleted rows, `--json` emits the person index. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
+| `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
@@ -69,6 +73,36 @@ additive onboarding; it keeps that person's id and canonical name. Optional vCar
 stage/review/commit gate and commits only the candidate ids entered at the prompt. The self identity exists before
 the file is parsed, so a card matching a self handle is excluded with all its dependent candidates. The optional
 one-line communication philosophy is prompted last.
+
+## Connect a client
+
+```bash
+pctx setup claude-desktop
+pctx setup cursor --scope project --dry-run
+pctx setup json
+```
+
+`setup` writes the canonical `uvx --from people-context people-context` entry into the client's own MCP
+configuration so the copy-paste step disappears. File-configured clients (Claude Desktop, Cursor, Windsurf,
+VS Code) are edited in place: the existing file is parsed, only the `people-context` entry is added or
+replaced, every other server and key is preserved, the previous file is kept beside it as `<name>.bak`, and the
+result is written atomically. A symlink or a file that is not a JSON object is refused rather than overwritten.
+Clients that own their configuration through a CLI (Claude Code, Codex) are driven through `claude mcp add` /
+`codex mcp add` with the same server command, or the exact command is printed when that CLI is not on `PATH`.
+
+`--scope project` targets `.cursor/mcp.json` or `.vscode/mcp.json` in the current directory, or Claude Code's
+project scope. Omitting it means user scope, except for VS Code, which keeps user-level servers in its own
+settings UI and exposes only the workspace file to write, so `pctx setup vscode` defaults to the project one; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints the target path, what the write does to it, and the `people-context` entry alone — never the other servers already in the file, whose `env` blocks routinely hold other tools' API keys. It prints what would be written
+or run and changes nothing; on Windows that command is quoted for PowerShell, whose single quotes are literal, since no `cmd.exe` rendering is safe for a path containing `&` or `%…%`. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
+server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. A database selected through `PEOPLE_CONTEXT_DB` or `OPENCLAW_WORKSPACE` is written into the entry too, because a client launched from the desktop inherits none of the shell's environment and would otherwise open the default database instead; a config-file or XDG default location is left unpinned, since the server resolves those itself. `--encrypted` also decides which command the client should run, because `uvx` builds a fresh isolated
+environment on every launch. On glibc Linux x86-64 the entry selects `people-context[encrypted]`, whose wheel
+exists. Elsewhere the extra installs nothing, so the entry points at the interpreter running setup when that
+interpreter can already import `sqlcipher3`, and setup refuses rather than writing an entry that cannot start
+when it cannot. The key is never written: the client must launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment, and that reminder
+goes to stderr so `setup json` stays one JSON document on stdout.
+
+At a terminal, `init` ends by offering the same step, so a fresh install finishes with a client that can already
+call the server.
 
 ## Import
 
