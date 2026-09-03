@@ -78,8 +78,8 @@ def call(name, args):
     res = r["result"]; text = res.get("content",[{}])[0].get("text","")
     if res.get("isError"): raise RuntimeError(f"{name} failed: {text}")
     parsed = json.loads(text) if text else res.get("structuredContent")
-    if isinstance(parsed, dict) and parsed.get("error") == "validation_error":  # bug #117
-        raise RuntimeError(f"{name} validation: {parsed['message']}")
+    if isinstance(parsed, dict) and parsed.get("error"):  # servers <= 1.1.0 left isError unset
+        raise RuntimeError(f"{name} refused: {parsed.get('message', parsed['error'])}")
     return res.get("structuredContent") or parsed
 ```
 
@@ -136,7 +136,7 @@ call("remember_person", {"name": "Jinyang Wang", "is_self": True,
 # Do NOT fold affiliations/facts into summary. Do NOT pass aliases here.
 ```
 
-`add_alias` — `kind` **must be lowercase** (uppercase silently drops the alias; bug #117):
+`add_alias` — `kind` is a lowercase enum published in the tool schema; an unlisted value (`"OTHER"`) is refused, not recorded:
 
 `kind` values: `native_script` (CJK; add `"script":"Hans"/"Hant"`) · `transliteration` · `nickname` · `handle` · `former_name` · `other`
 
@@ -236,14 +236,7 @@ call("commit_import", {"batch_id": bid, "accept": [cid, ...]})  # user-approved 
 
 ---
 
-## 14. Known issues (v1.0.x) — bug #117
-
-- `isError` not set on validation errors: `add_alias` with wrong `kind` silently drops the alias. Check body for `{"error":"validation_error"}` — handled in `call()` above.
-- `kind` enum missing from JSON schema: use enumerated values in §7.
-
----
-
-## 15. OpenClaw plugin
+## 14. OpenClaw plugin
 
 ```bash
 openclaw plugins install clawhub:openclaw-plugin-people-context

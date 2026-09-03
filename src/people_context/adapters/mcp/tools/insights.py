@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.mcp.tools.references import resolve_reference
+from people_context.adapters.mcp.tools.tool_errors import flag_refusals
 from people_context.app.insights import (
     DEFAULT_CONSOLIDATION_LIMIT,
     DEFAULT_STALE_LIMIT,
@@ -31,6 +32,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the read-only insight tools."""
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def get_stale_relationships(
         category: str | None = None,
         threshold_days: int = DEFAULT_THRESHOLD_DAYS,
@@ -47,6 +49,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_parameter", "message": str(exc)}
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def get_person_timeline(
         person_id: str | None = None,
         limit: int = DEFAULT_TIMELINE_LIMIT,
@@ -75,6 +78,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_parameter", "message": str(exc)}
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def get_consolidation_context(
         person_id: str | None = None,
         limit: int = DEFAULT_CONSOLIDATION_LIMIT,
@@ -109,6 +113,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": "invalid_parameter", "message": str(exc)}
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def upcoming_dates(
         window_days: int = DEFAULT_WINDOW_DAYS,
         person_id: str | None = None,

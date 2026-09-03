@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.mcp.tools.references import resolve_reference
-from people_context.adapters.mcp.tools.tool_errors import call_action
+from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refusals
 from people_context.app.context import SetCommunicationPhilosophyInput
 
 if TYPE_CHECKING:
@@ -23,6 +23,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register communication guidance and preference tools."""
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def get_communication_guidance(
         person_id: str | None = None, situation: str | None = None, person: str | None = None
     ) -> dict[str, Any]:
@@ -37,6 +38,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return deps.get_communication_guidance.execute(target, situation=situation).model_dump(mode="json")
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def set_communication_philosophy(text: str) -> dict[str, Any]:
         """Store communication philosophy verbatim while auditing lengths only."""
         return call_action(

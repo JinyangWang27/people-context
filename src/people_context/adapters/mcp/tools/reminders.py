@@ -8,7 +8,7 @@ from mcp.types import ToolAnnotations
 from pydantic import ValidationError
 
 from people_context.adapters.mcp.tools.references import resolve_reference
-from people_context.adapters.mcp.tools.tool_errors import call_action, validation_error_payload
+from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refusals, validation_error_payload
 from people_context.app.records import CompleteReminderInput, ListRemindersInput, SetReminderInput
 from people_context.domain.reminder import ReminderKind, ReminderStatus
 
@@ -25,6 +25,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register reminder tools with their locked schemas."""
 
     @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
     async def list_reminders(
         person_id: str | None = None,
         due_before: str | None = None,
@@ -54,6 +55,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         return {"reminders": [item.model_dump(mode="json") for item in deps.list_reminders.execute(data)]}
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def set_reminder(
         person_id: str,
         text: str,
@@ -79,6 +81,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def complete_reminder(reminder_id: str) -> dict[str, Any]:
         """Transition one active reminder to completed."""
         return call_action(lambda: deps.complete_reminder.execute(CompleteReminderInput(reminder_id=reminder_id)))

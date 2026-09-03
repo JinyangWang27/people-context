@@ -9,6 +9,19 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 - default write annotation: clients should apply normal write approval.
 - `destructiveHint=true`: irreversible/restructuring operations (`merge_people`, `forget`).
 
+## Refusals
+
+A refusal is a structured `{"error": <code>, "message": ...}` payload rather than a protocol error, so the model
+reads an actionable reason instead of a stack trace. Every such result also sets `isError: true`, and the payload
+is carried both as `structuredContent` and as the JSON text block, so a client applying the standard MCP check
+and a client reading the payload agree that nothing was recorded or returned. A tool that did its work never
+sets the flag. `remember` is the exception to the payload shape: its outcome is the `status` field documented
+below, and only its argument refusals carry an `error` code.
+
+Arguments that do not match a tool's published schema — an unlisted enum value, a missing required field — are
+refused by the SDK before the tool runs, also with `isError: true`, with the validation message as the text
+block and no structured payload.
+
 ## Read-only tools
 
 | Tool | Purpose | Main parameters | Result |
@@ -511,7 +524,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 |---|---|
 | `remember` | One statement about one person in one call: resolve, create if new, record a fact/trait/interaction/affiliation/relationship, commit once. |
 | `remember_person` | Create/update a person and merge aliases/summary. |
-| `add_alias` | Add a normalized-deduplicated alias. |
+| `add_alias` | Add a normalized-deduplicated alias. `kind` is the `AliasKind` enum (`nickname`, `native_script`, `transliteration`, `handle`, `former_name`, `other`; default `other`), published in the tool schema. |
 | `set_relationship` | Normalize vocabulary/direction and create or update one canonical active edge. |
 | `set_affiliation` | Create a role at an existing or get/created organization. |
 | `record_fact` | Record an objective time-aware fact. |

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
-from people_context.adapters.mcp.tools.tool_errors import call_action
+from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refusals
 from people_context.app.people import AddAliasInput
 from people_context.app.records import (
     CorrectRecordInput,
@@ -34,14 +34,20 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register record-oriented write tools with their locked schemas."""
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def add_alias(
         person_id: str,
         value: str,
-        kind: str | None = None,
+        kind: AliasKind | None = None,
         lang: str | None = None,
         script: str | None = None,
     ) -> dict[str, Any]:
-        """Add a normalized-deduplicated alias to an existing person."""
+        """Add a normalized-deduplicated alias to an existing person.
+
+        `kind` is one of `nickname`, `native_script`, `transliteration`, `handle`, `former_name`, or
+        `other`, and defaults to `other`. The published schema carries the enum, so an unlisted value
+        is refused before the alias is built rather than dropped.
+        """
         return call_action(
             lambda: deps.add_alias.execute(
                 AddAliasInput(
@@ -55,6 +61,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def set_relationship(
         subject_id: str,
         object_id: str,
@@ -80,6 +87,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def set_affiliation(
         person_id: str,
         org: str,
@@ -103,6 +111,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def record_fact(
         person_id: str,
         predicate: str,
@@ -132,6 +141,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def record_observation(
         person_id: str,
         text: str,
@@ -151,6 +161,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def record_trait(
         person_id: str,
         category: TraitCategory,
@@ -181,6 +192,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def record_interaction(
         summary: str,
         participant_ids: list[str],
@@ -202,6 +214,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def correct_record(entity_type: str, entity_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         """Correct whitelisted assertion fields in place with before/after audit."""
         return call_action(
@@ -211,6 +224,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @flag_refusals
     async def supersede_fact(
         fact_id: str,
         new_value: str,

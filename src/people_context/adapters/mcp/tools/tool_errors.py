@@ -1,10 +1,13 @@
-"""Shared application-error mapping for MCP mutation tools."""
+"""Shared application-error mapping and refusal flagging for MCP tools."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+import functools
+from collections.abc import Awaitable, Callable
+from typing import Any, ParamSpec
 
+import pydantic_core
+from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ValidationError
 
 from people_context.app.records import (
@@ -16,6 +19,43 @@ from people_context.app.records import (
     RecordNotFoundError,
     ReminderNotActiveError,
 )
+
+_ToolPayload = dict[str, Any]
+_P = ParamSpec("_P")
+
+
+def flag_refusals(
+    tool: Callable[_P, Awaitable[_ToolPayload]],
+) -> Callable[_P, Awaitable[_ToolPayload | CallToolResult]]:
+    """Report a refusal payload as an MCP tool error while keeping the payload intact.
+
+    Every tool answers a refusal with a structured ``{"error": <code>, ...}`` payload rather than a
+    protocol error, so the model reads an actionable reason instead of a stack trace. Returned as an
+    ordinary result it leaves ``isError`` false, and a client applying the standard MCP check reads a
+    dropped write as a successful one. Only the refusal branch is wrapped: the payload still ships as
+    ``structuredContent`` and as the same JSON text block the SDK would have rendered, now with
+    ``isError`` set so both kinds of caller agree on what happened.
+
+    The wrapper is registered in place of the tool, so ``functools.wraps`` matters twice over:
+    ``inspect.signature`` unwraps it to derive the published input schema from the real signature,
+    and the description the model reads is the tool's own docstring.
+    """
+
+    @functools.wraps(tool)
+    async def flagged(*args: _P.args, **kwargs: _P.kwargs) -> _ToolPayload | CallToolResult:
+        payload = await tool(*args, **kwargs)
+        if not payload.get("error"):
+            return payload
+        # Mirrors the SDK's own dict-to-text rendering, so flagging a refusal leaves the text block
+        # a client already displays for it unchanged.
+        text = pydantic_core.to_json(payload, fallback=str, indent=2).decode()
+        return CallToolResult(
+            content=[TextContent(type="text", text=text)],
+            structured_content=payload,
+            is_error=True,
+        )
+
+    return flagged
 
 
 def validation_error_payload(exc: ValidationError) -> dict[str, Any]:
