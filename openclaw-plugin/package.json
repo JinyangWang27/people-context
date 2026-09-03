@@ -45,7 +45,7 @@
   },
   "devDependencies": {
     "fast-check": "4.9.0",
-    "openclaw": "^2026.7.1",
+    "openclaw": "^2026.8.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   },
