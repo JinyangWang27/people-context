@@ -14,16 +14,16 @@ listings reuse those descriptions; this document does not restate them.
 The durable public identity is the reverse-DNS namespace:
 
 ```
-io.github.jinyangwang27/people-context
+io.github.JinyangWang27/people-context
 ```
 
 This is a deliberate, recorded choice because the Registry namespace becomes permanent public identity. The
-`io.github.*` namespace is the GitHub-hosted-project namespace; ownership of `io.github.jinyangwang27/*` is proven
+`io.github.*` namespace is the GitHub-hosted-project namespace; ownership of `io.github.JinyangWang27/*` is proven
 by GitHub authentication of the `JinyangWang27` account at publication time and by the ownership marker committed to
 the packaged README:
 
 ```
-<!-- mcp-name: io.github.jinyangwang27/people-context -->
+<!-- mcp-name: io.github.JinyangWang27/people-context -->
 ```
 
 The marker is in the repository-root [README.md](../README.md), which is the file packaged as the PyPI project's
@@ -34,10 +34,16 @@ long description, so the ownership proof ships inside the published distribution
 [`server.json`](../server.json) at the repository root follows the pinned official Registry schema
 (`https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json`). It declares:
 
-- the server `name` `io.github.jinyangwang27/people-context` and a top-level `version` that tracks the application
+- the server `name` `io.github.JinyangWang27/people-context` and a top-level `version` that tracks the application
   release (`project.version` in [pyproject.toml](../pyproject.toml));
-- a single PyPI `packages` entry;
+- a single PyPI `packages` entry carrying its own `version` (the Registry rejects a PyPI package entry without
+  one), kept equal to the top-level `version`;
 - a `stdio` package transport (not an arbitrary command/args description).
+
+The namespace segment is **case-sensitive** and must match the GitHub login exactly as GitHub records it
+(`JinyangWang27`, not `jinyangwang27`). The publisher's OAuth grant covers `io.github.JinyangWang27/*` only, and
+the PyPI ownership check compares the `mcp-name:` marker byte-for-byte against this `name` — a lowercase marker in
+an already-published distribution cannot be reconciled without cutting a new release.
 
 ### Package-aligned entrypoint
 
@@ -135,7 +141,7 @@ uses this order:
    ```
 
 `mcp-publisher login github` performs the GitHub OAuth device flow that proves control of the
-`io.github.jinyangwang27` namespace. `publish` is run by the account owner only after the marker-bearing PyPI
+`io.github.JinyangWang27` namespace. `publish` is run by the account owner only after the marker-bearing PyPI
 artifact is live.
 
 ## Community-directory submission matrix
@@ -146,7 +152,7 @@ alone; entries marked *repository* are driven by files committed here.
 
 | Directory | Primary documentation | Submission path | Required in-repo metadata | Package / transport representation | Ownership / auth step | Live publication |
 |---|---|---|---|---|---|---|
-| **MCP Registry** | https://github.com/modelcontextprotocol/registry (`docs/`) | Repository metadata + `mcp-publisher` | [`server.json`](../server.json) (schema `2025-12-11`) and the `mcp-name:` marker in the packaged README | PyPI `stdio` entry; `uvx --from people-context==<server version> people-context` | GitHub OAuth via `mcp-publisher login github` proves `io.github.jinyangwang27` | Manual `mcp-publisher publish` after the marker-bearing PyPI artifact is live |
+| **MCP Registry** | https://github.com/modelcontextprotocol/registry (`docs/`) | Repository metadata + `mcp-publisher` | [`server.json`](../server.json) (schema `2025-12-11`) and the `mcp-name:` marker in the packaged README | PyPI `stdio` entry; `uvx --from people-context==<server version> people-context` | GitHub OAuth via `mcp-publisher login github` proves `io.github.JinyangWang27` | Manual `mcp-publisher publish` after the marker-bearing PyPI artifact is live |
 | **Smithery** | https://smithery.ai/docs | Manual (authenticated GitHub claim; Smithery indexes the repo/README) | None required for a local `stdio` server; the canonical invocation and description come from README/`server.json` | Documented as local `uvx` stdio; Smithery's hosted-deployment model does not apply to this local-first server | Claim the server in the Smithery dashboard using the `JinyangWang27` GitHub account | Manual claim/listing by the account owner |
 | **PulseMCP** | https://www.pulsemcp.com/submit | Manual (submission form / crawler) | None; PulseMCP ingests GitHub and Registry metadata | Reuses the Registry `server.json` package/transport once published | Submit the GitHub URL from the `JinyangWang27` account | Manual form submission by the account owner |
 | **mcp.so** | https://mcp.so/submit | Manual (submission form; consumes Registry) | None; mcp.so consumes the published Registry entry and README | Reuses the Registry `server.json` package/transport once published | Submit the GitHub/Registry URL | Manual form submission by the account owner |

@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 
-REGISTRY_NAMESPACE = "io.github.jinyangwang27/people-context"
+REGISTRY_NAMESPACE = "io.github.JinyangWang27/people-context"
 SERVER_SCHEMA_URL = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json"
 PRIMARY_PACKAGE_IDENTIFIER = "people-context"
 
@@ -51,6 +51,21 @@ def test_server_version_tracks_project_version() -> None:
 
     # The server release tracks the application version.
     assert server["version"] == project_version
+
+
+def test_package_version_tracks_project_version() -> None:
+    """The Registry rejects a PyPI package entry without its own ``version``."""
+    package = registry_package()
+
+    assert package["version"] == _project_version() == _server_json()["version"]
+
+
+def test_registry_namespace_matches_github_login_casing() -> None:
+    """Namespace casing is significant: the publish grant and the PyPI ownership
+    check both compare the server name byte-for-byte against the GitHub login."""
+    owner = _server_json()["repository"]["url"].removeprefix("https://github.com/").split("/")[0]
+
+    assert f"io.github.{owner}/people-context" == REGISTRY_NAMESPACE
 
 
 def test_single_pypi_package_entry() -> None:
