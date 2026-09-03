@@ -1,6 +1,6 @@
 [project]
 name = "people-context"
-version = "1.0.0"
+version = "1.1.0"
 description = "Local-first MCP server giving AI agents contextual knowledge about the people in your life"
 readme = "README.md"
 requires-python = ">=3.11"

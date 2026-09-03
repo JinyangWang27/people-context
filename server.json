@@ -7,7 +7,7 @@
     "source": "github",
     "id": "R_kgDOTan0Jg"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "packages": [
     {
       "registryType": "pypi",
@@ -21,7 +21,7 @@
         {
           "type": "named",
           "name": "--from",
-          "value": "people-context==1.0.0"
+          "value": "people-context==1.1.0"
         }
       ]
     }

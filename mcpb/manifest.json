@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "people-context",
   "display_name": "People Context",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Local-first MCP server giving AI agents contextual knowledge about the people in your life",
   "long_description": "people-context stores durable, local-first knowledge about the people in your life and exposes narrow MCP tools that resolve identity and disclose only what a request needs. This bundle runs the server with the host's UV runtime, which installs the pinned people-context release from PyPI. It executes local Python with your own filesystem permissions and is not a sandbox: the SQLite database is plaintext, so rely on filesystem permissions and full-disk encryption. Elevated sensitive-context and full-export tools stay disabled unless you opt in through process environment flags.",
   "author": {
