@@ -126,8 +126,7 @@ class TestObsidianPluginReadContract:
 
     def test_never_requests_sensitive_disclosure_or_deleted_people(self) -> None:
         sources = "\n".join(
-            _source(f"src/{name}")
-            for name in ("settings.ts", "client.ts", "bridge.ts", "documents.ts", "render.ts")
+            _source(f"src/{name}") for name in ("settings.ts", "client.ts", "bridge.ts", "documents.ts", "render.ts")
         )
 
         # Anything rendered into a synchronized vault has left the disclosure perimeter, so the
@@ -148,9 +147,7 @@ class TestObsidianPluginReadContract:
             assert field in settings
 
     def test_release_requires_a_plugin_tag_for_every_event(self) -> None:
-        workflow = (REPOSITORY_ROOT / ".github/workflows/obsidian-plugin-release.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = (REPOSITORY_ROOT / ".github/workflows/obsidian-plugin-release.yml").read_text(encoding="utf-8")
 
         # The mirror job replaces the distribution repository's tree and cuts a release from
         # it, so a branch dispatch must not be able to publish untagged code. The tag gate is
@@ -162,9 +159,7 @@ class TestObsidianPluginReadContract:
         assert gate < install, "the tag gate must run before anything is built"
 
     def test_mirror_release_is_retryable(self) -> None:
-        workflow = (REPOSITORY_ROOT / ".github/workflows/obsidian-plugin-release.yml").read_text(
-            encoding="utf-8"
-        )
+        workflow = (REPOSITORY_ROOT / ".github/workflows/obsidian-plugin-release.yml").read_text(encoding="utf-8")
 
         # The workflow is dispatchable from an existing tag, so a retry after a partially
         # completed mirror must finish rather than fail on the release it created itself.
@@ -180,9 +175,9 @@ class TestObsidianPluginReadContract:
         # moved into the base dependencies, that instruction would silently become wrong.
         assert "encrypted" in extras
         assert any(requirement.startswith("sqlcipher3-binary") for requirement in extras["encrypted"])
-        assert not any(
-            requirement.startswith("sqlcipher3") for requirement in project["dependencies"]
-        ), "SQLCipher is opt-in; the encrypted docs exist because it is not a base dependency"
+        assert not any(requirement.startswith("sqlcipher3") for requirement in project["dependencies"]), (
+            "SQLCipher is opt-in; the encrypted docs exist because it is not a base dependency"
+        )
 
         for guide in ("docs/obsidian-plugin.md", "obsidian-plugin/README.md"):
             text = (REPOSITORY_ROOT / guide).read_text(encoding="utf-8")
@@ -233,7 +228,7 @@ class TestObsidianPluginReadContract:
         # a leaf and rebuilds one left behind, carrying its serialized state over.
         assert "isUsable()" in views
         assert "this.owns(" in main
-        assert "setViewState({ type: \"empty\" })" in main
+        assert 'setViewState({ type: "empty" })' in main
         assert "leaf.getViewState()" in main
 
         # Every path that drives panes has to repair a left-behind one, not just the path that

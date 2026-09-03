@@ -19,10 +19,7 @@ from people_context.cli.parser import build_parser
 _LINKEDIN_HEADERS = "First Name,Last Name,URL,Email Address,Company,Position,Connected On,Notes"
 _URL = "https://example.invalid/in/sr"
 
-_CHAT = (
-    "[2026-07-20, 09:00:00] You: morning\n"
-    "[2026-07-20, 09:01:00] Priya Nair: morning!\n"
-)
+_CHAT = "[2026-07-20, 09:00:00] You: morning\n[2026-07-20, 09:01:00] Priya Nair: morning!\n"
 
 
 def _linkedin(tmp_path: Path, name: str = "connections.csv") -> Path:

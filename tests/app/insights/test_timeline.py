@@ -368,9 +368,7 @@ def test_the_default_limit_is_used_when_the_caller_says_nothing() -> None:
 
 
 def test_the_document_is_the_result_plus_its_declared_version() -> None:
-    use_case, _ = _use_case(
-        _row(ENTRY_INTERACTION, "i1", datetime(2026, 3, 1, tzinfo=UTC), summary="Coffee")
-    )
+    use_case, _ = _use_case(_row(ENTRY_INTERACTION, "i1", datetime(2026, 3, 1, tzinfo=UTC), summary="Coffee"))
 
     document = person_timeline_document(use_case.execute(ALICE.id))
 

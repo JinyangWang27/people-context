@@ -72,9 +72,7 @@ class _Fixture:
         )
 
     def signals(self, *, category: str | None = None):
-        return {
-            signal.person_id: signal for signal in self.reader.list_recency_signals(as_of=AS_OF, category=category)
-        }
+        return {signal.person_id: signal for signal in self.reader.list_recency_signals(as_of=AS_OF, category=category)}
 
 
 def test_only_ordinary_interactions_contribute_to_recency() -> None:
@@ -156,9 +154,7 @@ def test_a_sub_millisecond_tie_across_offsets_picks_the_later_instant_and_its_da
     # but the -05:00 row is the later instant by 99 microseconds. Since the age is
     # measured from the selected timestamp's own date, picking wrong moves days_since.
     earlier_instant_later_date = datetime(2026, 6, 2, 0, 0, 0, 123400, tzinfo=UTC)
-    later_instant_earlier_date = datetime(
-        2026, 6, 1, 19, 0, 0, 123499, tzinfo=timezone(timedelta(hours=-5))
-    )
+    later_instant_earlier_date = datetime(2026, 6, 1, 19, 0, 0, 123499, tzinfo=timezone(timedelta(hours=-5)))
     fixture.interaction(person, earlier_instant_later_date)
     fixture.interaction(person, later_instant_earlier_date)
 

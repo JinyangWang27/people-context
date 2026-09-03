@@ -51,6 +51,11 @@ class PersonContextResult(BaseModel):
     the records they were drawn from. It carries ids and types only — enough to look the evidence
     up through the ordinary reads, which apply their own disclosure rules — and never any part of
     a record's content.
+
+    ``truncated`` says the shared facts/interactions budget cut the ranked list, matching the field
+    the graph and timeline reads already carry. It is computed over the records this caller may
+    see, so it never becomes a way to detect that an elevated one exists: a person whose every
+    assertion is elevated returns exactly what a person with no assertions returns.
     """
 
     found: bool
@@ -64,6 +69,7 @@ class PersonContextResult(BaseModel):
     traits: list[Trait] = Field(default_factory=list)
     trait_evidence: list[TraitEvidenceLink] = Field(default_factory=list)
     reminders: list[Reminder] = Field(default_factory=list)
+    truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -112,7 +118,7 @@ class GetPersonContext:
         affiliations = [
             affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
         ]
-        facts, interactions = self._rank_disclosure_records(person_id, max_items, include_sensitive)
+        facts, interactions, truncated = self._rank_disclosure_records(person_id, max_items, include_sensitive)
         traits = self._communication_traits(person_id, purpose, include_sensitive)
         reminders = [
             reminder
@@ -132,6 +138,7 @@ class GetPersonContext:
             traits=traits,
             trait_evidence=self._trait_evidence(person_id, traits, include_sensitive),
             reminders=reminders,
+            truncated=truncated,
         )
 
     def _trait_evidence(
@@ -164,7 +171,7 @@ class GetPersonContext:
 
     def _rank_disclosure_records(
         self, person_id: str, max_items: int, include_sensitive: bool
-    ) -> tuple[list[Fact], list[Interaction]]:
+    ) -> tuple[list[Fact], list[Interaction], bool]:
         # Ranking compares instants, so each stored timestamp is normalized to UTC first. The
         # write contract still accepts naive values, and `timestamp()` reads one in the host
         # timezone: without this the same database would rank records differently — and admit
@@ -200,7 +207,7 @@ class GetPersonContext:
         interactions = [
             item.record for item in selected if item.kind == "interaction" and isinstance(item.record, Interaction)
         ]
-        return facts, interactions
+        return facts, interactions, len(ranked) > max_items
 
     def _communication_traits(self, person_id: str, purpose: str | None, include_sensitive: bool) -> list[Trait]:
         if purpose is None or "communication" not in purpose.casefold():
@@ -224,3 +231,4 @@ def _identity(person: Person) -> PersonIdentity:
 
 def _can_disclose(sensitivity: Sensitivity, include_sensitive: bool) -> bool:
     return include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL)
+

@@ -30,8 +30,7 @@ from people_context.app.records import (
 from people_context.app.relationships import SetRelationship
 
 _HEADERS = (
-    "First Name,Middle Name,Last Name,Nickname,E-mail Address,Company,Department,Job Title,"
-    "Web Page,Birthday,Notes"
+    "First Name,Middle Name,Last Name,Nickname,E-mail Address,Company,Department,Job Title,Web Page,Birthday,Notes"
 )
 _NOTE_SENTINEL = "OUTLOOK-NOTE-MUST-NOT-LEAK-3f19"
 _URL_SENTINEL = "OUTLOOK-URL-MUST-NOT-LEAK-8a02"
@@ -86,9 +85,7 @@ def test_outlook_accepts_bom_header_superset_and_omits_raw_columns() -> None:
     affiliations = [candidate for candidate in extracted.candidates if candidate["type"] == "affiliation"]
     assert [(item["org"], item["role"]) for item in affiliations] == [("Acme", "Engineer"), ("Build Co", "Foreman")]
     facts = [candidate for candidate in extracted.candidates if candidate["type"] == "fact"]
-    assert facts == [
-        {"type": "fact", "person_ref": "outlook-person-1", "predicate": "birthday", "value": "1985-01-23"}
-    ]
+    assert facts == [{"type": "fact", "person_ref": "outlook-person-1", "predicate": "birthday", "value": "1985-01-23"}]
     assert extracted.skipped_cards == []
     assert _NOTE_SENTINEL not in repr(extracted)
     assert _URL_SENTINEL not in repr(extracted)

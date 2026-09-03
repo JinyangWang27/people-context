@@ -18,6 +18,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context import __version__
+from people_context.adapters.mcp.prompts import register_prompts
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite.db import EncryptedDatabaseError, UnsafeDatabasePathError
@@ -35,8 +36,14 @@ SERVER_INSTRUCTIONS = (
     "After resolving an identity, use `get_person_context` for a bounded, sensitivity-aware context bundle. "
     "After resolving a person, use `get_communication_guidance` when communication help is requested. "
     "Use `search_people` for broader browsing and `remember_person` to record a new or updated person. "
+    "When the user states one durable thing about someone directly, call `remember` once: it resolves the "
+    "name, creates the person only if nobody matches, and records the note, affiliation, or relationship in "
+    "one audited transaction — never guessing between similar names. "
     "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
     "later user review and never committed automatically. "
+    "Ordinary read tools that take a `person_id` also accept `person` (a name) in its place; "
+    "`find_connection` and the operator-elevated tools take ids only. "
+    "The full usage guide is the `people-context://guide` resource; `people-context://self` is the user's own record. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
 )
@@ -87,6 +94,7 @@ def build_server(
 
     mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=SERVER_INSTRUCTIONS)
     register_all(mcp, runtime.use_cases)
+    register_prompts(mcp, runtime.repo)
     return mcp
 
 

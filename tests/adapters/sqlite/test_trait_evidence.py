@@ -222,9 +222,7 @@ def test_the_context_reader_reports_each_link_with_the_cited_records_own_level(
     """The disclosure decision belongs to the evidence, so the reader carries its level."""
     store = _Store(tmp_path / "people.db")
     alice = store.person("Alice Rivera")
-    open_observation = store.observe.execute(
-        RecordObservationInput(person_id=alice, text="Asked for metrics")
-    )
+    open_observation = store.observe.execute(RecordObservationInput(person_id=alice, text="Asked for metrics"))
     private = store.observe.execute(
         RecordObservationInput(person_id=alice, text="Mentioned the reorganisation", sensitivity="restricted")
     )
@@ -273,9 +271,7 @@ def test_a_reader_offering_an_unsupported_record_type_is_refused(tmp_path: Path)
     person = store.person("Alice Rivera")
 
     with pytest.raises(TraitEvidenceError) as excinfo:
-        resolve_trait_evidence(
-            _FakeEvidenceReader(person, "fact"), person, [EvidenceReference("fact-1")]
-        )
+        resolve_trait_evidence(_FakeEvidenceReader(person, "fact"), person, [EvidenceReference("fact-1")])
 
     assert excinfo.value.code == "unsupported_evidence_type"
 
@@ -287,15 +283,11 @@ def test_recording_evidence_without_a_store_is_a_wiring_error_not_a_silent_drop(
     store = _Store(tmp_path / "people.db")
     person = store.person("Alice Rivera")
     observation = store.observe.execute(RecordObservationInput(person_id=person, text="Asked for metrics"))
-    unwired = RecordTrait(
-        SqlitePeopleRepository(store.conn), SqliteRecordStore(store.conn), store.audit, _Clock()
-    )
+    unwired = RecordTrait(SqlitePeopleRepository(store.conn), SqliteRecordStore(store.conn), store.audit, _Clock())
 
     with pytest.raises(RuntimeError):
         unwired.execute(
-            RecordTraitInput(
-                person_id=person, category="other", value="Direct", evidence_ids=[observation.id]
-            )
+            RecordTraitInput(person_id=person, category="other", value="Direct", evidence_ids=[observation.id])
         )
 
     assert store.conn.execute("SELECT COUNT(*) FROM traits").fetchone()[0] == 0
@@ -431,9 +423,9 @@ def test_a_removed_link_is_named_in_the_replay_manifest_and_its_history_redacted
 
     store.forget.execute(f"trait:{trait_id}", "record")
 
-    tombstone = store.conn.execute(
-        "SELECT payload_json FROM changelog WHERE op_kind = 'forget'"
-    ).fetchone()["payload_json"]
+    tombstone = store.conn.execute("SELECT payload_json FROM changelog WHERE op_kind = 'forget'").fetchone()[
+        "payload_json"
+    ]
     assert link_entity in tombstone
     # The link's own accountability and replay history no longer describes what it cited.
     payloads = [
@@ -471,9 +463,7 @@ def test_two_links_differing_only_by_evidence_type_erase_independently(tmp_path:
         "UPDATE interaction_participants SET interaction_id = ? WHERE interaction_id = ?",
         (shared, interaction.id),
     )
-    store.conn.execute(
-        "UPDATE trait_evidence SET evidence_id = ? WHERE trait_id = ?", (shared, trait.id)
-    )
+    store.conn.execute("UPDATE trait_evidence SET evidence_id = ? WHERE trait_id = ?", (shared, trait.id))
     store.conn.execute(
         """INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at)
            VALUES (?, 'interaction', ?, ?)""",
@@ -486,9 +476,9 @@ def test_two_links_differing_only_by_evidence_type_erase_independently(tmp_path:
 
     assert result.deleted["trait_evidence"] == 1
     assert store.links() == [(trait.id, "interaction", shared)]
-    tombstone = store.conn.execute(
-        "SELECT payload_json FROM changelog WHERE op_kind = 'forget'"
-    ).fetchone()["payload_json"]
+    tombstone = store.conn.execute("SELECT payload_json FROM changelog WHERE op_kind = 'forget'").fetchone()[
+        "payload_json"
+    ]
     assert trait_evidence_key(trait.id, "observation", shared) in tombstone
     assert trait_evidence_key(trait.id, "interaction", shared) not in tombstone
 

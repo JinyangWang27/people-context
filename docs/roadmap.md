@@ -363,6 +363,35 @@ source-byte, candidate, staged-payload, or batch-read ceilings.
 
 **Status:** Planned.
 
+## M21 — Adoption & agent ergonomics
+
+**Goals:** cut the distance from "found the repo" to "my agent remembers people" — for a person reading the
+README, for a fresh install, and for an agent that has to use the tool surface correctly on the first try.
+
+**Deliverables:**
+
+- a README that opens with the problem and a reproducible 20-second demo (`docs/assets/demo.tape` → `demo.gif`),
+  one install block per client, a what-it-remembers / what-it-never-does table, and a comparison with hosted
+  memory; repository topics, description, Discussions, issue and pull-request templates, a Code of Conduct, and
+  a good-first-issues section in `CONTRIBUTING.md`;
+- `pctx setup <client>`: merges the canonical stdio entry into Claude Desktop, Cursor, Windsurf, or VS Code
+  configuration (backup, atomic write, symlink and invalid-JSON refusal) or drives `claude mcp add` /
+  `codex mcp add`; `pctx init` offers it at a terminal;
+- the `remember` MCP tool and `pctx remember`: one statement about one person resolved, created if new, and
+  recorded as a fact, trait, interaction, affiliation, or relationship in one audited transaction, refusing to
+  write against an ambiguous or weakly matched name;
+- `person` (a name) accepted alongside `person_id` on every read tool with the same ambiguity contract;
+  additive `withheld` counts on `get_person_context`; sensitivity, trait-category, and reminder-kind
+  vocabularies exposed as enums in tool schemas; typed `resolve_person` hints; `review_import` annotated
+  read-only;
+- MCP prompts (`who`, `remember`, `meeting_prep`, `end_of_session_capture`, `maintenance_review`) and
+  resources (`people-context://guide`, `people-context://self`) so clients without skills get the same
+  guidance; the packaged guide is asserted identical to the Claude Code usage skill.
+
+**Status:** Delivered in the repository. Directory publication (MCP Registry, Glama, Smithery, PulseMCP,
+mcp.so, awesome-mcp-servers, the Claude Desktop extension directory, Obsidian community plugins) and a recorded
+real-model evaluation run remain account-owner steps.
+
 ## Post-roadmap candidates
 
 The following remain candidates, not commitments:

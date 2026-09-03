@@ -260,9 +260,7 @@ def test_runtime_without_the_flag_still_opens_plaintext(tmp_path: Path, monkeypa
 
 
 @requires_sqlcipher
-def test_a_failed_migration_closes_the_encrypted_connection(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_failed_migration_closes_the_encrypted_connection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A partially set-up encrypted database must not leak an open handle."""
     import sqlcipher3.dbapi2 as dbapi
 

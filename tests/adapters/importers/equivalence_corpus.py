@@ -308,9 +308,7 @@ _WHATSAPP_CHAT = (
     b"not a message line at all\n"
 )
 
-_WHATSAPP_UNRESOLVABLE = (
-    b"01/02/2024, 09:01 - Ada Lovelace: one\n02/03/2024, 09:02 - Ada Lovelace: two\n"
-)
+_WHATSAPP_UNRESOLVABLE = b"01/02/2024, 09:01 - Ada Lovelace: one\n02/03/2024, 09:02 - Ada Lovelace: two\n"
 
 # Ordering evidence appears on the first line and is consumed by a message four lines later,
 # which is exactly the whole-file dependency a naive stream would break.
