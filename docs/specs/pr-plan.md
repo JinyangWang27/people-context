@@ -548,3 +548,104 @@ Check the matching box only in the PR that delivers it.
   - **Out:** new rejection thresholds on any released MCP input, changes to the `pctx import` ceilings, new
     sources or candidate types, and any change to what a source extracts beyond the explicitly renegotiated and
     documented WhatsApp option.
+
+## M22–M24 supplemental plan and dependencies
+
+These planned additions supplement the historical M8–M20 checklist and its unchanged total of 42 PRs.
+Existing text, statuses, and checkboxes remain historical; M21 stays documented in the roadmap without
+introducing or renumbering historical PR entries here.
+
+| Milestone | Theme | Additional PRs |
+|---|---|---:|
+| M22 | Source-grounded CV and background capture | 2 |
+| M23 | Explainable person briefs and history | 1 |
+| M24 | Conservative CV update review | 2 |
+| **Supplemental total** | | **5** |
+
+- Delivered M17 staging and M18 provenance/source receipts → M22.1/M22.2.
+- M22.1 → M22.2: the CV capture workflow exercises optional candidate attribution.
+- Delivered M14.1 brief and M19.1 timeline → M23.1; M23 is independent of M22 and M24.
+- M22 → M24: grounded capture and its date/attribution rules precede reviewed CV updates.
+- Delivered M19.2 consolidation context and fact supersession → M24.1/M24.2.
+- M24.1 → M24.2: affiliation comparison uses the bounded extended consolidation context.
+
+The shared principle is to store attributed knowledge, preserve uncertainty and change, and assemble useful
+views from those records. Structured partial-date storage, dedicated life events, automated belief revision,
+semantic deduplication, and generic batch mutation are deferred, not implicit capabilities of these workflows.
+
+## M22 — Source-grounded CV and background capture
+
+**Spec:** [M22 — Source-grounded person capture](m22-source-grounded-person-capture.md).
+
+- [ ] **M22.1 — Preserve attribution in extracted claims**
+  - **Scope:** Add optional `stated_by` to fact and affiliation candidates and forward it through existing
+    provenance fields across staging, review, and commit.
+  - **Acceptance:** old candidates remain valid; provided attribution survives the existing lifecycle and reads.
+    A source assertion is not independent verification: “describes herself as analytical” stays an attributed
+    claim rather than an inferred temperament. Existing validation, provenance/session meanings, sensitivity,
+    review gates, and source-receipt semantics remain intact.
+  - **Out:** new primary table, candidate vocabulary, personality assessment, internal LLM, raw-document storage.
+
+- [ ] **M22.2 — Document and exercise agent CV capture**
+  - **Scope:** Extend shared agent guidance and fictional end-to-end examples for agent-read CVs, biographies,
+    and notes through stage → review → explicit commit.
+  - **Acceptance:** employment/education use affiliations where representable; qualifications/skills/background
+    use facts; observations/traits keep their meanings. Exact dates use existing validity fields; year-only,
+    month-only, approximate, and unknown dates remain explicit in concise claim text, never invented January 1
+    dates or import-as-event dates. Unknown historical roles do not become apparently current unbounded
+    affiliations. Background and sensitive details stay out of the unrestricted summary; use protected facts
+    when affiliation/relationship sensitivity cannot be enforced. Examples cover attribution, unreadable/partial
+    documents, ambiguous identity, repeated/conflicting claims, concurrent roles, disclosure, preserved history,
+    and available source receipts without a completeness or semantic-deduplication claim.
+  - **Out:** native PDF/DOCX parsing, internal LLM, raw documents, structured partial dates, dedicated life events.
+
+## M23 — Explainable person briefs and history
+
+**Spec:** [M23 — Explainable person history](m23-explainable-person-history.md).
+
+- [ ] **M23.1 — Add explicitly requested history to briefs**
+  - **Scope:** Compose an opt-in history section from the existing timeline into the existing brief, retaining
+    timeline default limit 50 and range 1–200, with additive history/disclosure/truncation/source metadata.
+  - **Acceptance:** current brief defaults and existing JSON fields retain their meanings; no implicit history
+    read is needed when history is not requested. Show validity periods, timestamp basis, available source
+    references, and truncation; distinguish recorded assertions, subjective traits, and available evidence.
+    Recording dates are not event dates, approximate dates remain uncertain, and bounded/filtered reads never
+    imply complete history. Filter records and evidence independently, keeping communication guidance ordinary
+    even with explicit local sensitivity opt-in. Ambiguous identity is refused; conflicting/repeated claims and
+    concurrent roles remain explainable without history rewriting. Agents compose profiles using existing MCP
+    reads; changes after a read require a fresh read rather than treating the brief as authoritative current state.
+  - **Out:** second profile model, durable biography, all-purpose profile endpoint, dedicated life events,
+    unbounded history export, confidence recomputation.
+
+## M24 — Conservative CV update review
+
+**Spec:** [M24 — Reviewed person updates](m24-reviewed-person-updates.md).
+
+- [ ] **M24.1 — Include affiliations in bounded consolidation context**
+  - **Scope:** Add affiliation records, dates, available provenance/source references, and an explicit
+    affiliation truncation flag to the existing person-scoped consolidation context.
+  - **Acceptance:** deterministic bounded reads retain existing fields, limits, ordering, signals, and disclosure
+    semantics; affiliations use the existing per-collection default 50/range 1–200. Partial reads are explicit,
+    historical and concurrent roles remain visible within the bound, missing provenance is not invented, and
+    record/evidence filtering remains independent. Affiliations have no sensitivity controls; do not imply
+    this read adds them or expose protected fallback facts through another collection. Reads write nothing.
+  - **Out:** new primary table, automatic affiliation contradiction verdicts, semantic deduplication, new
+    sensitivity model, generic profile endpoint.
+
+- [ ] **M24.2 — Add the reviewed CV-update workflow**
+  - **Scope:** Extend shared agent guidance and fictional scenarios to resolve identity, compare incoming claims
+    with available records, propose specific actions, obtain acceptance, apply supported operations, and reread.
+  - **Acceptance:** each proposal explains attribution, evidence, dates, target ids, and one outcome: add,
+    already represented, correct an error, record a supported temporal transition, or leave unresolved.
+    Omission never implies deletion or a role ending. Concurrent jobs, multiple skills, and different traits
+    are not inherently contradictory; repeated sources do not automatically raise confidence. Supersession
+    requires a known effective date strictly after any old start and no later than any old end, closes the old
+    inclusive period the prior day, and preserves its historical value/provenance and the replacement's inherited
+    original end. Unsupported transitions stay unresolved; in-place correction is only for erroneous data.
+    Recheck affected records before applying accepted changes; changed targets require renewed review. Partial
+    reads cannot justify absence claims, and separate tool calls are not an atomic update transaction. Report
+    committed, failed, and unresolved actions accurately, including reread failures, without blind retries.
+    Scenarios cover ambiguous identity, approximate dates, repeated/conflicting CVs, concurrent roles, disclosure,
+    changed targets, partial completion, and preserved history.
+  - **Out:** replacement-profile import, omission-driven deletion, automated belief revision, generic batch
+    mutation, semantic deduplication, unsupported affiliation/trait supersession, structured partial-date storage.
