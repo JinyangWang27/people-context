@@ -85,6 +85,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         request using `observation`, `trait`, or `relationship` is bounded to 500 candidates, a 128-character
         `source`, 1 MiB of candidate JSON, and 8 KiB per string.
 
+        A `fact` or `affiliation` may record who asserted it in an optional `stated_by` of at most 256
+        characters: a person, a document, or a role. Attribution is not verification. A CV saying someone is
+        analytical is that person's own claim about themselves, so stage it as a fact whose value says so and
+        whose `stated_by` names them, never as an inferred `trait`. `stated_by` is separate from `source`, which
+        names the process that wrote the row, and from `source_kind` below, which receipts the artifact read.
+        Omit it when the attribution is unknown rather than guessing at a speaker.
+
         A trait may name the records it was drawn from. Give a supporting `observation` or `interaction` any
         short `evidence_ref` label of your own and list those labels in the trait's `evidence_refs`; use
         `evidence_ids` for records already stored. Evidence must be about the trait's own person, and one trait

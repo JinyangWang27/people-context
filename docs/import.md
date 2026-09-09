@@ -234,6 +234,32 @@ downgraded. Such a relationship stays out of People Context until relationship s
 contract. Sensitive information that *is* enforceable still has a home in facts, observations, traits, and
 interactions.
 
+### Attributing a claim to who made it (M22)
+
+A CV, a biography, or a page of notes supplies assertions from a source. Its contents are not independently
+verified truth merely because an agent could read them. M22.1 adds an optional `stated_by` to the **fact** and
+**affiliation** candidates so an extraction can say who asserted the claim, and commit forwards it into the
+record's existing `Provenance.stated_by` through the ordinary `RecordFact` and `SetAffiliation` paths — the same
+value the changelog actor carries. No new table, no new candidate type, no new durable provenance schema.
+
+Attribution is the fourth distinct thing in a staged batch's provenance, and the distinction is the point:
+
+| Field | Means |
+|---|---|
+| `stated_by` | who asserted the claim |
+| `source` | the process that wrote the row |
+| `session` | the process run it belonged to |
+| `source_session_id` | the M18 receipt for the artifact that was read |
+
+A source assertion is not independent verification. A CV describing someone as analytical yields a fact whose
+value records the self-description and whose `stated_by` names them; it never becomes an inferred **trait**, and
+a receipt proving the file was processed proves nothing about whether its claims are true. Unknown attribution
+stays absent — do not invent a speaker, and do not put processing metadata there instead.
+
+Candidates that omit `stated_by`, including every batch staged before M22.1, remain valid and commit exactly as
+they did. Because the bootstrap bundle forbids unknown fields inside a staged candidate, carrying attribution in
+an incomplete batch advances the bundle to **version 4**; see [docs/compatibility.md](compatibility.md).
+
 ### Grounding a trait in the records it was drawn from
 
 A trait's `evidence_note` says what the inference rests on in words. M18.3 adds the id-based half, so a trait
@@ -315,6 +341,12 @@ smuggle a transcript through a released field. The new fields are tighter still:
 trait `value` and `evidence_note` at 2 KiB each, and relationship type, batch-local references, evidence
 references, and durable evidence ids at 256 characters. `source` is bounded as a privacy invariant as much as a
 resource one — `StageCandidates` copies that label into every staged row and every later provenance record.
+
+The M22.1 `stated_by` field is bounded differently, and deliberately: at **256 characters on the model itself**,
+for every request rather than only an extraction one. The limits above are conditional, selected by a batch that
+names an M17 type, so a legacy fact-only batch would otherwise carry an unbounded attribution — and attribution
+is exactly where a copied document passage would sit. A field with no released unbounded history is simply
+bounded.
 
 Every one of these is checked before validation and before any staging row exists, and a refusal names only
 the limit: the rejected payload is untrusted extraction output and is never echoed back. The limits are

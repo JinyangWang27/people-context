@@ -140,6 +140,7 @@ class StagedAffiliation(StrictStagedModel):
     valid_from: date | None = None
     valid_to: date | None = None
     confidence: Confidence | None = None
+    stated_by: NonBlank | None = None
 
 
 class StagedFact(StrictStagedModel):
@@ -153,6 +154,7 @@ class StagedFact(StrictStagedModel):
     valid_to: date | None = None
     confidence: Confidence | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    stated_by: NonBlank | None = None
 
 
 class StagedObservation(StrictStagedModel):
@@ -255,23 +257,42 @@ def parse_staged_candidate(candidate: dict[str, Any]) -> Any:
 #: version-2 document had no evidence relation to resolve these against.
 EVIDENCE_STAGED_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids", "evidence_ids")
 
+#: The field M22.1 added to the persisted fact and affiliation candidates.
+#:
+#: Gated for the same reason as the evidence fields above: a bundle version that predates the
+#: field must still reject it. Assertion attribution is not decoration a reader may ignore — a
+#: version-3 reader would restore the candidate and then commit it, silently dropping the very
+#: attribution that keeps a source's claim from being read as verified fact.
+ATTRIBUTION_STAGED_FIELDS: Final[tuple[str, ...]] = ("stated_by",)
 
-def staged_candidate_error(candidate: dict[str, Any], *, evidence_allowed: bool = True) -> str | None:
+
+def staged_candidate_error(
+    candidate: dict[str, Any],
+    *,
+    evidence_allowed: bool = True,
+    attribution_allowed: bool = True,
+) -> str | None:
     """Return why a persisted candidate is unacceptable, naming no value it carries.
 
     Pydantic's own message quotes rejected input, and a staged candidate is the one place a
     caller's raw source text would sit. The report is therefore built from the location and the
     error type only — enough to find the offending field, never enough to leak what was in it.
 
-    ``evidence_allowed`` is how an older bundle version keeps its released shape. The models here
-    describe what this installation persists *today*; validating a version-2 document through them
-    unchanged would accept an M18.3 field under a declaration that predates it, which is exactly
-    the silent upgrade the per-version contract exists to prevent.
+    ``evidence_allowed`` and ``attribution_allowed`` are how an older bundle version keeps its
+    released shape. The models here describe what this installation persists *today*; validating a
+    version-2 document through them unchanged would accept an M18.3 field under a declaration that
+    predates it, and a version-3 document an M22.1 one, which is exactly the silent upgrade the
+    per-version contract exists to prevent. The flags are independent because the versions are:
+    version 2 predates both fields, version 3 only the attribution.
     """
+    forbidden: tuple[str, ...] = ()
     if not evidence_allowed:
-        present = sorted(field for field in EVIDENCE_STAGED_FIELDS if field in candidate)
-        if present:
-            return "; ".join(f"{field} (extra_forbidden)" for field in present)
+        forbidden += EVIDENCE_STAGED_FIELDS
+    if not attribution_allowed:
+        forbidden += ATTRIBUTION_STAGED_FIELDS
+    present = sorted(field for field in forbidden if field in candidate)
+    if present:
+        return "; ".join(f"{field} (extra_forbidden)" for field in present)
     try:
         parse_staged_candidate(candidate)
     except ValidationError as exc:

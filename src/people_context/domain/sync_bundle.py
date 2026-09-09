@@ -44,12 +44,15 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: The version this release emits. The bundle is deliberately not additively extensible within a
 #: version — a reader that accepts a field must understand it — so each round of new primary state
 #: has taken a new version rather than optional fields on the last one: version 2 for M18.1's
-#: durable source receipts, candidate commit mappings, and incomplete staging, and version 3 for
-#: M18.3's trait-evidence relations.
-SYNC_BUNDLE_VERSION = 3
+#: durable source receipts, candidate commit mappings, and incomplete staging, version 3 for
+#: M18.3's trait-evidence relations, and version 4 for M22.1's assertion attribution on staged
+#: fact and affiliation candidates. Version 4 adds no collection — the new field sits inside a
+#: staging row's candidate — but the rule is about fields, not collections: a version-3 reader
+#: forbids unknown keys there and would fail closed on a document carrying one.
+SYNC_BUNDLE_VERSION = 4
 
 #: Versions restore accepts. A released version stays readable; only emission moves forward.
-SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3)
+SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4)
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -467,18 +470,33 @@ class BundleStagingRow(StrictBundleModel):
         return self
 
 
-class BundleStagingRowV2(BundleStagingRow):
-    """The version-2 staging row: the same shape, minus the evidence fields M18.3 added.
+class BundleStagingRowV3(BundleStagingRow):
+    """The version-3 staging row: the same shape, minus the attribution field M22.1 added.
 
     A released version is a closed shape, and the persisted-candidate models describe what this
-    installation stores *today*. Validating a version-2 document through them unchanged would
+    installation stores *today*. Validating a version-3 document through them unchanged would
+    accept `stated_by` under a declaration that predates it, and a version-3 reader would then
+    commit the candidate having dropped the attribution — turning a source's own claim into an
+    unattributed record, which is precisely the distinction M22 exists to keep.
+    """
+
+    @model_validator(mode="after")
+    def _check_candidate(self) -> BundleStagingRowV3:
+        check_staged_candidate(self.candidate, attribution_allowed=False)
+        return self
+
+
+class BundleStagingRowV2(BundleStagingRow):
+    """The version-2 staging row: minus the evidence fields M18.3 added and M22.1's attribution.
+
+    Version 2 predates both, so it forbids both. Validating it through the current models would
     accept an M18.3 dependency field under a declaration that predates the relation resolving it —
     the same silent upgrade the top-level per-version parsing exists to prevent.
     """
 
     @model_validator(mode="after")
     def _check_candidate(self) -> BundleStagingRowV2:
-        check_staged_candidate(self.candidate, evidence_allowed=False)
+        check_staged_candidate(self.candidate, evidence_allowed=False, attribution_allowed=False)
         return self
 
 
@@ -510,6 +528,26 @@ class BundleImportStateV2(StrictBundleModel):
 
     def current(self) -> BundleImportState:
         """Return this state in the current shape; every row already validated as a v2 row."""
+        return BundleImportState(
+            source_sessions=self.source_sessions,
+            candidate_mappings=self.candidate_mappings,
+            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
+        )
+
+
+class BundleImportStateV3(StrictBundleModel):
+    """Version 3's import state, whose staging rows predate assertion attribution.
+
+    Declared as a sibling rather than a subclass for the same reason `BundleImportStateV2` is: a
+    list field is invariant, so narrowing `staging` in a subclass would be an unsound override.
+    """
+
+    source_sessions: list[BundleSourceSession]
+    candidate_mappings: list[BundleCandidateMapping]
+    staging: list[BundleStagingRowV3]
+
+    def current(self) -> BundleImportState:
+        """Return this state in the current shape; every row already validated as a v3 row."""
         return BundleImportState(
             source_sessions=self.source_sessions,
             candidate_mappings=self.candidate_mappings,
@@ -598,6 +636,44 @@ class SyncBundleDocumentV2(StrictBundleModel):
         )
 
 
+class SyncBundleDocumentV3(StrictBundleModel):
+    """The M18.3 version-3 bundle, still accepted by restore and no longer emitted."""
+
+    format: Literal["people-context-sync-bundle"]
+    version: Literal[3]
+    created_at: UtcDatetime
+    origin_device_id: Identifier
+    watermark: BundleWatermark
+    devices: list[BundleDevice]
+    snapshot: BundleSnapshot
+    relationship_vocabulary: BundleRelationshipVocabulary
+    changelog: list[BundleChangelogEntry]
+    imports: BundleImportStateV3
+    trait_evidence: list[BundleTraitEvidence]
+
+    def upgraded(self) -> SyncBundleDocument:
+        """Return this document in the current in-memory shape.
+
+        Version 3 carries every collection version 4 does; the two differ only in whether a staged
+        candidate may name who asserted it. A v3 document's rows genuinely carry no attribution,
+        so nothing is defaulted in here — the field is simply absent, as it is on every candidate
+        staged before M22.1.
+        """
+        return SyncBundleDocument(
+            format=self.format,
+            version=SYNC_BUNDLE_VERSION,
+            created_at=self.created_at,
+            origin_device_id=self.origin_device_id,
+            watermark=self.watermark,
+            devices=self.devices,
+            snapshot=self.snapshot,
+            relationship_vocabulary=self.relationship_vocabulary,
+            changelog=self.changelog,
+            imports=self.imports.current(),
+            trait_evidence=self.trait_evidence,
+        )
+
+
 class SyncBundleDocument(StrictBundleModel):
     """One complete, point-in-time bootstrap bundle.
 
@@ -607,7 +683,7 @@ class SyncBundleDocument(StrictBundleModel):
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[3]
+    version: Literal[4]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark
@@ -632,6 +708,8 @@ def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
         return SyncBundleDocumentV1.model_validate(payload).upgraded()
     if declared == 2:
         return SyncBundleDocumentV2.model_validate(payload).upgraded()
+    if declared == 3:
+        return SyncBundleDocumentV3.model_validate(payload).upgraded()
     return SyncBundleDocument.model_validate(payload)
 
 

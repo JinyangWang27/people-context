@@ -113,6 +113,7 @@ def _every_type() -> list[dict[str, Any]]:
             "valid_from": "2026-01-01",
             "valid_to": "2026-12-31",
             "confidence": 0.8,
+            "stated_by": "Alice Ahmed",
         },
         {
             "type": "fact",
@@ -123,6 +124,7 @@ def _every_type() -> list[dict[str, Any]]:
             "valid_to": "2026-12-31",
             "confidence": 0.9,
             "sensitivity": "personal",
+            "stated_by": "Alice Ahmed",
         },
         {
             "type": "observation",

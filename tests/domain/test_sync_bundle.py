@@ -1069,6 +1069,95 @@ def test_a_version_two_document_without_those_fields_still_parses() -> None:
     assert len(document.imports.staging) == 1
 
 
+def _staged_attribution(payload: dict[str, Any], candidate_type: str) -> None:
+    """Add a fact or affiliation staging row naming who asserted it."""
+    candidate: dict[str, Any] = (
+        {
+            "type": "fact",
+            "person_candidate_id": "01J0000000000000000STAGE01",
+            "predicate": "qualification",
+            "value": "MSc Structural Engineering",
+            "stated_by": "her CV",
+        }
+        if candidate_type == "fact"
+        else {
+            "type": "affiliation",
+            "person_candidate_id": "01J0000000000000000STAGE01",
+            "org": "Globex",
+            "role": "Structural Engineer",
+            "stated_by": "her CV",
+        }
+    )
+    _imports(payload)["staging"].append(
+        {
+            "id": "01J0000000000000000STAGE09",
+            "batch_id": _BATCH_ID,
+            "source": "import/agent:nadia-cv",
+            "candidate": candidate,
+            "status": "pending",
+            "created_at": "2026-07-03T00:00:00Z",
+        }
+    )
+
+
+@pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
+def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(candidate_type: str) -> None:
+    """Version 4 is what M22.1 attribution travels in."""
+    payload = _document()
+    _staged_attribution(payload, candidate_type)
+
+    document = parse_bundle_payload(payload)
+
+    assert document.version == SYNC_BUNDLE_VERSION == 4
+    assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
+
+
+@pytest.mark.parametrize("version", [2, 3])
+@pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
+def test_a_document_predating_m22_1_rejects_a_staged_candidate_carrying_attribution(
+    version: int, candidate_type: str
+) -> None:
+    """A released version is a closed shape, and dropping this field is not a safe degradation.
+
+    A reader that accepted the row would restore it and then commit it, writing the record with
+    the attribution silently gone — recording a source's own claim as though nobody had made it.
+
+    Version 1 is absent here because it carries no `imports` collection to put a staging row in;
+    it refuses the whole collection, which the version-1 shape tests already cover.
+    """
+    payload = _document()
+    _staged_attribution(payload, candidate_type)
+    payload["version"] = version
+    if version < 3:
+        payload.pop("trait_evidence")
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_a_version_three_document_without_attribution_still_parses() -> None:
+    """The narrowing is exactly one field; everything else a v3 bundle carries is untouched."""
+    payload = _document()
+    payload["version"] = 3
+
+    document = parse_bundle_payload(payload)
+
+    assert document.version == SYNC_BUNDLE_VERSION
+    assert len(document.imports.staging) == 1
+    assert len(document.trait_evidence) == 1
+
+
+def test_a_version_two_document_rejects_attribution_as_well_as_evidence() -> None:
+    """Version 2 predates both fields, so it forbids both rather than only the older pair."""
+    payload = _document()
+    _staged_attribution(payload, "fact")
+    payload["version"] = 2
+    payload.pop("trait_evidence")
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
 def test_a_link_naming_a_trait_the_bundle_omits_is_rejected() -> None:
     payload = _document()
     payload["trait_evidence"][0]["trait_id"] = "01J000000000000000MISSING3"
@@ -1119,7 +1208,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 4, "3"])
+@pytest.mark.parametrize("version", [0, 5, "4"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version

@@ -92,6 +92,16 @@ MAX_RELATIONSHIP_TYPE_CHARS: Final = 256
 #: Characters a batch-local person reference on an M17 candidate may carry.
 MAX_CANDIDATE_REF_CHARS: Final = 256
 
+#: Characters a fact or affiliation candidate may carry in `stated_by`.
+#:
+#: This one is bounded on the model rather than by the extraction budgets, because those budgets
+#: are conditional: `contains_extraction_candidate` selects them only for a batch that names an
+#: M17 type, so a legacy fact-only batch would carry an unbounded attribution. `stated_by` names
+#: who asserted a claim — a person, a document, a role — and M22 requires attribution to stay
+#: concise rather than become somewhere a copied document passage could sit. A field with no
+#: released unbounded history is simply bounded, as every M17 and M18.3 field was.
+MAX_STATED_BY_CHARS: Final = 256
+
 #: Characters a batch-local evidence reference or a durable evidence id may carry.
 #:
 #: A durable id is *format-opaque*: the ceiling bounds what one request may submit and nothing
@@ -135,6 +145,10 @@ TraitEvidenceNote = Annotated[NonBlank, AfterValidator(_within_bytes(MAX_TRAIT_E
 CandidateRef = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CANDIDATE_REF_CHARS),
+]
+StatedBy = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_STATED_BY_CHARS),
 ]
 RelationshipTypeText = Annotated[
     str,
@@ -217,6 +231,9 @@ class AffiliationCandidateInput(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
     confidence: Confidence | None = None
+    #: Who asserted this affiliation, forwarded into the record's existing provenance.
+    #: See `FactCandidateInput.stated_by`; absent when the attribution is unknown.
+    stated_by: StatedBy | None = None
 
 
 class FactCandidateInput(BaseModel):
@@ -232,6 +249,14 @@ class FactCandidateInput(BaseModel):
     valid_to: date | None = None
     confidence: Confidence | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: Who asserted this claim, forwarded into the record's existing `Provenance.stated_by`.
+    #:
+    #: This is assertion attribution, and it is none of the three things next to it: `source` is
+    #: the process that wrote the row, `session` the process run, and an M18 `source_session_id`
+    #: the receipt for the artifact that was read. A CV saying someone is analytical is that
+    #: person's own claim about themselves, not a verified characteristic, and recording who said
+    #: it is what keeps the two apart. Unknown attribution stays absent: never invent a speaker.
+    stated_by: StatedBy | None = None
 
 
 class ObservationCandidateInput(BaseModel):

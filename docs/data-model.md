@@ -13,7 +13,10 @@ adapters.
 - Human names also have normalized columns populated by `normalize_name()` for identity matching.
 - Timestamps are timezone-aware UTC datetimes; validity bounds are calendar dates.
 - Assertive records carry confidence, provenance (`source`, optional `session`, optional `stated_by`), and where
-  applicable sensitivity (`public`, `personal`, `sensitive`, `restricted`).
+  applicable sensitivity (`public`, `personal`, `sensitive`, `restricted`). `stated_by` is *assertion
+  attribution* — who made the claim — not the process that recorded it. A fact or affiliation reaching the
+  database through import may supply it on its candidate; see
+  [docs/import.md](import.md#attributing-a-claim-to-who-made-it-m22).
 - Facts, affiliations, and relationships use a bitemporal-lite shape: world validity plus recording/creation time.
 
 ## Core tables
