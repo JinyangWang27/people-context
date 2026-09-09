@@ -408,3 +408,74 @@ The following remain candidates, not commitments:
 
 See `docs/specs/` for one implementation spec per M8–M20 milestone, and
 [docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.
+
+## M22 — Source-grounded CV and background capture
+
+**Goals:** store attributed knowledge about a person, preserve uncertainty and change, and assemble useful views
+from those records. Let the existing agent read CVs, biographies, and notes through stage → review → commit.
+
+**Deliverables:**
+
+- optional `stated_by` on fact and affiliation candidates, forwarded into existing provenance without a new
+  primary table or invalidating old candidates;
+- shared agent guidance and fictional end-to-end CV capture examples covering unreadable documents, uncertain
+  dates, identity ambiguity, disclosure, and available source receipts;
+- employment and education as affiliations where representable; qualifications, skills, and background as facts;
+  source assertions remain attributed claims rather than independently verified truth or inferred temperament;
+- exact dates in existing validity fields, with year-only, month-only, approximate, and unknown periods explicit
+  in concise claim text; unknown historical periods must not appear as current unbounded affiliations;
+- background and sensitive details kept out of the unrestricted person summary, using appropriately protected
+  facts where affiliations or relationships cannot enforce sensitivity.
+
+No native PDF/DOCX parser, internal LLM, raw-document storage, personality assessment system, or structured
+partial-date storage is included. Observations and traits retain their existing meanings.
+
+**Spec:** [M22 — Source-grounded person capture](specs/m22-source-grounded-person-capture.md).
+
+**Status:** Planned.
+
+## M23 — Explainable person briefs and history
+
+**Goals:** extend the existing brief with explicitly requested history, keeping a biography a presentation
+assembled from records rather than another durable source of truth.
+
+**Deliverables:**
+
+- an opt-in history section composed from the existing timeline, retaining its default limit of 50 and range
+  of 1–200, current brief defaults, and existing JSON fields; history metadata is additive;
+- clear distinctions between recorded assertions, subjective traits, available evidence, validity periods,
+  event dates, and recording dates;
+- visible truncation and available source references without implying complete history, with disclosure
+  filtering applied independently to records and evidence;
+- agent-composed profiles using existing MCP reads, without a new all-purpose profile endpoint or profile model.
+
+M23 independently reuses the delivered M14 brief and M19 timeline capabilities; it does not depend on M22 or M24.
+Dedicated life events and a separate durable biography remain out of scope.
+
+**Spec:** [M23 — Explainable person history](specs/m23-explainable-person-history.md).
+
+**Status:** Planned.
+
+## M24 — Conservative CV update review
+
+**Goals:** treat a newer CV as additional evidence, compare it with available records, and apply only accepted,
+supported changes while preserving historically correct values.
+
+**Deliverables:**
+
+- additive affiliations, dates, available provenance, and explicit truncation in bounded consolidation context;
+- a reviewed agent workflow: resolve identity, compare claims, propose specific actions, obtain acceptance,
+  recheck affected records, apply supported operations, and reread the result;
+- explicit outcomes: add, already represented, correct an error, record a supported temporal transition, or
+  leave unresolved; changed targets require renewed review;
+- omission never implies deletion or a role ending; concurrent roles, multiple skills, and different traits
+  are not inherently contradictory, and source repetition does not automatically increase confidence;
+- fact supersession only with a known effective date within the existing operation's constraints; unsupported
+  transitions remain unresolved, and separate tool calls report partial completion without claiming atomicity.
+
+M22 precedes M24; M24 also reuses delivered M19 consolidation and fact supersession. Automated belief revision,
+semantic deduplication, generic batch mutation, and generalized temporal transitions remain deferred.
+
+**Spec:** [M24 — Reviewed person updates](specs/m24-reviewed-person-updates.md).
+
+**Status:** Planned.
