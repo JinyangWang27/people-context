@@ -442,6 +442,35 @@ class TestReviewedCvUpdate:
         assert "`correct_record` is not a substitute" in lowered
         assert "never for a value that was right and then stopped being current" in lowered
 
+    def test_treats_a_contradicting_document_as_conflict_rather_than_proven_error(self) -> None:
+        """The correction that overwrites a rival claim is the easiest mistake in the whole flow.
+
+        A newer CV disagreeing with a stored value looks exactly like a typo, and the store cannot
+        tell the difference for you: it keeps no copy of the first document, and a receipt records
+        only that an artifact was processed.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "disagreement is not proof of error" in lowered
+        assert "not that the stored one was wrong when it was written" in lowered
+        assert "reopen the original source and confirm" in lowered
+
+    def test_states_that_the_direct_write_tools_carry_no_attribution(self) -> None:
+        """`supersede_fact` cannot name the document, and the guidance must not imply it can."""
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "the direct write tools carry no attribution" in lowered
+        assert "take no `stated_by`" in lowered
+        # The old row is the half that does keep its attribution; say which is which.
+        assert "keeps the *old* row's attribution untouched and gives the replacement yours" in lowered
+
+    def test_adds_a_supported_new_role_rather_than_dropping_it(self) -> None:
+        """Unsupported transition is not unsupported claim; the new role is still evidence."""
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "the new role is **added** like any other" in lowered
+        assert "what stays **unresolved** is only the *transition*" in lowered
+
     def test_treats_several_calls_as_several_calls_rather_than_a_transaction(self) -> None:
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
 

@@ -355,6 +355,39 @@ def test_an_inexact_date_yields_no_transition_boundary(guessed: date, reason: st
     assert (after[0]["value"], after[0]["valid_to"]) == ("Bristol", "2027-12-31")
 
 
+def test_correcting_a_mere_disagreement_discards_the_rival_assertion() -> None:
+    """Why a newer document contradicting a stored value is not, by itself, grounds to correct it.
+
+    `correct_record` overwrites in place. If the newer CV is the only basis, the older claim leaves
+    the readable record entirely and the disagreement stops being visible to anyone — which is the
+    opposite of preserving a conflict the evidence cannot settle.
+    """
+    harness = _Harness()
+    person_id = harness.seed()
+    affiliation_id = harness.affiliation("Senior Data Engineer")["id"]
+
+    harness.correct.execute(
+        CorrectRecordInput(
+            entity_type="affiliation",
+            entity_id=affiliation_id,
+            fields={"valid_from": date(2024, 4, 3)},
+        )
+    )
+
+    context = harness.consolidation.execute(person_id)
+    senior = next(entry for entry in context.affiliations if entry.role == "Senior Data Engineer")
+    assert senior.valid_from == date(2024, 4, 3)
+    # One row, one date: no readable affiliation still says 2023, so the conflict is gone rather
+    # than kept, and the store offers no second row where the older claim survived.
+    assert [entry.valid_from for entry in context.affiliations if entry.role == "Senior Data Engineer"] == [
+        date(2024, 4, 3)
+    ]
+    assert [row["valid_from"] for row in harness.conn.execute("SELECT valid_from FROM affiliations")] == [
+        "2024-04-03",
+        "2025-01-15",
+    ]
+
+
 def test_a_changed_role_at_one_organisation_has_no_supported_transition() -> None:
     """There is no affiliation supersession, and a correction must not be used to fake one."""
     harness = _Harness()

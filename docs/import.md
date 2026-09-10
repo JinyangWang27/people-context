@@ -338,11 +338,11 @@ be compared against. Six claims, five outcomes:
 
 | Incoming claim | Stored state | Outcome | Action |
 |---|---|---|---|
-| Northbridge Analytics from 3 April 2024 | affiliation says 2023-04-03 | Correct an error | `correct_record` on the affiliation's `valid_from`. Both documents say 2024; the first distillation mis-keyed the year, so the stored value was wrong when written. |
+| Northbridge Analytics from 3 April 2024 | affiliation says 2023-04-03 | Unresolved, then correct an error | On the reads alone this is two sources disagreeing, and the store keeps no copy of the first CV to settle it. It becomes `correct_record` on the affiliation's `valid_from` only after the user reopens the original document and confirms it also said 2024. |
 | Relocated to Leeds on 1 September 2026 | `city` fact says Bristol, exactly dated | Record a supported temporal transition | `supersede_fact(effective_from="2026-09-01")`. Bristol keeps its value and provenance and closes on 31 August; the replacement inherits the original end date. |
 | Study at Northbridge College, 2017–2019 | held as a fact whose text carries that imprecision | Already represented | Nothing. A source repeating itself adds no row and moves no `confidence`. |
 | A certification the store does not hold | absent | Add | Staged as an attributed candidate, through the ordinary stage → review → commit gate. |
-| Principal Data Engineer at Northbridge Analytics | affiliation says Senior Data Engineer | Leave unresolved | None. A changed role at one organisation has no supported transition, and `correct_record` must not be used to simulate one. |
+| Principal Data Engineer at Northbridge Analytics, from March 2026 | affiliation says Senior Data Engineer | Add, and leave the transition unresolved | Stage the new dated role. Only the *transition* is unsupported: a changed role at one organisation cannot be recorded as such, and `correct_record` must not be used to simulate it. Both affiliations stand and the older gains no end date. |
 | *(the CV does not mention the Harbour Data Trust board seat)* | affiliation stands, open | — | None. Silence is not an ending. |
 
 Proposals are presented and accepted **per action**. Immediately before applying each accepted action the
@@ -359,6 +359,8 @@ the affected records are read again and the result is reported.
 | Omission | No proposal at all. A shorter CV is not evidence that what it leaves out stopped being true. |
 | Concurrent roles and several skills | Not contradictions. Consolidation `signals` name comparisons worth a reader's attention, never verdicts about which record to discard. |
 | Repeated claims | Another document, and another source receipt, raise no `confidence`. Where two assertions genuinely conflict and the evidence cannot settle them, both stand. |
+| Disagreement about a stored value | Not proof the stored value was wrong when written. No raw source material is kept and a receipt says only that an artifact was processed, so the store cannot settle it. Reopen the original source and confirm, or leave both assertions intact. |
+| Attribution on a direct write | `record_fact`, `correct_record`, and `supersede_fact` accept no `stated_by`; a row they write records the calling agent. A supersession leaves the old row's attribution untouched and gives the replacement the caller's. Naming a source durably means putting it in the claim text, or staging an attributed candidate. |
 | Inexact dates | No transition boundary is manufactured from a year, from the newer CV's own date, or from the day it was read. `supersede_fact` refuses an out-of-range `effective_from` with a `reason`; the transition then stays unresolved. |
 | Unsupported transitions | There is no generic affiliation or relationship supersession. A separately supported new claim may still be proposed, provided it is not presented as closing the old record. |
 | Changed target | The reread before applying catches it. The earlier acceptance does not carry over to the new state. |

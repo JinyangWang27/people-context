@@ -404,6 +404,18 @@ knowledge that was correct when it was recorded and that nothing afterwards can 
 - **Repetition is not independent evidence.** Documents copy each other. Another source receipt does
   not raise `confidence`, and where two assertions genuinely conflict and the evidence cannot settle
   them, both stay and you say so.
+- **Disagreement is not proof of error.** A newer document contradicting a stored value shows that
+  two sources disagree, not that the stored one was wrong when it was written. Nothing in the store
+  can settle it for you: no raw source material is kept, and a receipt records only that an artifact
+  was processed, never what it said. Correcting on the newer document's say-so silently discards a
+  rival claim. Reopen the original source and confirm, or leave the disagreement unresolved with
+  both assertions intact.
+- **The direct write tools carry no attribution.** `record_fact`, `correct_record`, and
+  `supersede_fact` take no `stated_by`, so a row they write records the calling agent, not the
+  document. A supersession keeps the *old* row's attribution untouched and gives the replacement
+  yours. Where naming the source matters, say it inside the claim text as capture does, or stage an
+  attributed candidate through `stage_candidates`, which does carry `stated_by`. Do not tell the
+  user a transition recorded who asserted the new value when it did not.
 - **Never invent an effective date.** Exact dates belong in the validity fields and approximate ones
   in the claim text, as in capture. Do not manufacture a transition boundary out of a year, out of
   the newer CV's own date, or out of the day you read it. `supersede_fact` needs a real, known
@@ -424,18 +436,22 @@ knowledge that was correct when it was recorded and that nothing afterwards can 
 Nadia Okonkwo's CV arrives again eighteen months after the capture example above, and one pass over
 it produces all five outcomes:
 
-- her Northbridge Analytics start date reads 3 April **2024** in both documents, and the stored
-  affiliation says 2023 — a mis-keyed year in the first distillation, so **correct an error** with
-  `correct_record` on that affiliation's `valid_from`;
+- the new CV gives her Northbridge Analytics start date as 3 April **2024**; the stored affiliation
+  says 2023. On the reads alone that is a conflict and nothing more, so it starts as
+  **unresolved**. It becomes **correct an error** only because the user still has the first CV,
+  reopens it, and confirms it also said 2024 — then `correct_record` on that affiliation's
+  `valid_from` is repairing a mis-keyed distillation rather than overwriting a rival claim;
 - the CV says she relocated to Leeds on 1 September 2026 and the stored `city` fact says Bristol
   from an exact date — a **supported temporal transition**, so `supersede_fact` with
-  `effective_from` 2026-09-01, which keeps the Bristol row and its provenance and closes it on
-  31 August;
+  `effective_from` 2026-09-01, which keeps the Bristol row, its dates and its attribution, and
+  closes it on 31 August;
 - the same 2017–2019 study appears again, already held as a fact whose text carries that
   imprecision — **already represented**, so nothing is written and no confidence moves;
 - a certification the store does not hold is **added**, staged as an attributed candidate for review;
-- the CV now calls her Principal Data Engineer at Northbridge Analytics. A role change at one
-  organisation has no supported transition, so it is **left unresolved** and reported as such;
+- the CV now calls her Principal Data Engineer at Northbridge Analytics from March 2026. That is a
+  dated, supported claim, so the new role is **added** like any other. What stays **unresolved** is
+  only the *transition*: whether the Senior Data Engineer role ended, and when. Both affiliations
+  stand, and the older one gains no end date;
 - and her Harbour Data Trust board role is not mentioned anywhere in the new document. That is
   silence, not an ending: no proposal, and the affiliation stands exactly as it is.
 
