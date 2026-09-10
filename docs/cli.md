@@ -30,7 +30,7 @@ what encryption does and does not protect.
 | `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
-| `brief PERSON [--include-sensitive] [--json] [--output FILE]` | Compose one person's deterministic brief. |
+| `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
@@ -412,6 +412,7 @@ count cannot reveal that an elevated birthday exists.
 uv run pctx brief "Alice Zhang"
 uv run pctx brief 01J... --json --output ~/alice.json
 uv run pctx brief "Alice Zhang" --include-sensitive
+uv run pctx brief "Alice Zhang" --include-history --history-limit 20
 ```
 
 Composes one person's context, communication guidance, and reminders into a single document. It is a read path:
@@ -424,6 +425,27 @@ records — facts, interactions, and traits — because that is the one read tha
 guidance keeps its own `public`/`personal` contract in both modes, so a brief taken with the flag still shows
 guidance built from ordinary records only. Both levels are printed in the Markdown header and carried in the JSON
 `disclosure` object, next to a notice saying the document is outside the server's disclosure controls entirely.
+
+`--include-history` adds a bounded, newest-first History section composed from the same person timeline
+`pctx timeline` prints — the same default limit of 50, the same accepted range of **1–200** through
+`--history-limit`, and the same deterministic ordering. History is **off by default**, and an ordinary brief runs
+no timeline read at all. `--history-limit` on its own is refused with exit code 2 rather than silently enabling
+history or silently ignoring the number, and a limit outside 1–200 is refused the same way, exactly as
+`pctx timeline --limit` refuses it.
+
+`--include-sensitive` widens the history page the same way it widens context, through the timeline's own
+disclosure rule. A trait's evidence is filtered by the *evidence's* own level, so a visible trait resting on a
+restricted observation cites nothing and signals nothing about it.
+
+The section states its own limits rather than implying completeness. Its heading names the bound that was applied
+and the level it was read at; a page with older entries beyond the bound says so in words. Each entry prints the
+instant it was placed at *and* the stored field that supplied it, so a `recorded_at` fallback never reads as an
+event date, alongside any validity period, source-session reference, and readable evidence citations. It is a
+bounded, disclosure-filtered page of durable records — not a complete personal history, and not a durable
+biography.
+
+In JSON, `history` is `null` when it was not requested, which is a different fact from a requested page whose
+`entries` are empty; `disclosure.history` is `null` in the same case and otherwise names the level.
 
 Markdown is the default and goes to stdout. `--json` emits the versioned `people-context-brief` document instead;
 it is the stable machine form and is listed in

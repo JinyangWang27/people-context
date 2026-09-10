@@ -349,6 +349,15 @@ Markdown header and in the JSON `disclosure` object — alongside a notice that 
 disclosure controls once rendered or written. Reading it back, redirecting stdout, or handing the file to another
 tool is the operator's own disclosure decision.
 
+`--include-history` adds a bounded page of this person's timeline to the brief and is off by default: a brief that
+did not ask for history runs no history read at all, and `history: null` records that in the document. When it is
+asked for, the page obeys the timeline's own disclosure rule — ordinary unless `--include-sensitive` widens it —
+and a trait's evidence is filtered by the *evidence's* level, so a visible trait resting on a restricted
+observation neither cites it nor signals that it exists. The level the history was read at is labelled separately
+as `disclosure.history`, and communication guidance stays ordinary in both modes as before. The section reports
+the bound it applied and whether older entries exist beyond it, because a disclosure-filtered, bounded page is not
+a complete personal history and must not be read as one.
+
 The person index is identity only: stable id, canonical name, alias values, summary, `is_self`, and a `deleted`
 flag. It carries no facts, interactions, traits, or reminders at any sensitivity level, which is what lets an
 integration list people without reading their records.

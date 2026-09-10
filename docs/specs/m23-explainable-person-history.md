@@ -1,6 +1,7 @@
 # M23 — Explainable person briefs and history
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m23--explainable-person-briefs-and-history).
+Status: Delivered — M23.1 merged.
+See [docs/roadmap.md](../roadmap.md#m23--explainable-person-briefs-and-history).
 
 ## Purpose
 
