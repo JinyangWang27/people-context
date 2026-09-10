@@ -1,6 +1,6 @@
 ---
 name: people-context-usage
-description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, shares information worth remembering about people, or asks to review, reconcile, or tidy what is already stored about someone. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, the review-before-commit approval flow, and correction vs. temporal supersession when maintaining stored knowledge.
+description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, shares information worth remembering about people, points at a CV, biography, or background notes about someone, or asks to review, reconcile, or tidy what is already stored about someone. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, the review-before-commit approval flow, attributed capture from documents, and correction vs. temporal supersession when maintaining stored knowledge.
 ---
 
 # Using people-context
@@ -199,6 +199,101 @@ pctx import stage-candidates --source "2026-08-27 planning sync" --input -   # o
 
 Its `--input` is candidate JSON — never the transcript. It stages only; `pctx import
 review BATCH_ID` and `pctx import commit BATCH_ID --accept ID` are the same gate.
+
+### Capturing a CV, biography, or page of notes
+
+A CV, a bio page, or a folder of background notes runs through the same staged flow with one extra
+discipline: **the document asserts, it does not establish.** Every line in it is a claim by whoever
+wrote it, and storing a claim must never quietly promote it to a verified characteristic.
+
+1. **Read it yourself.** people-context has no parser and keeps no copy — it never sees the document.
+   Say plainly when a file is unreadable or only partly readable, extract only what you actually read,
+   and never present a partial read as a complete CV.
+2. **Resolve the subject first** with `resolve_person`, along with anyone else the document names. An
+   ambiguous match stays unresolved: do not turn it into a new person, and do not attach a CV to
+   whichever candidate looked likeliest. Do not lean on staging to catch this for you either. A batch
+   of `person`, `affiliation`, and `fact` candidates is the released pre-M17 shape, and its matcher
+   reports no ambiguity at all — a unique handle binds the claim even when the name on the document
+   matches two other people, and a name matching two with nothing to separate them fails the whole
+   commit after the user has already reviewed it. `pctx import stage-candidates` always uses the
+   ambiguity-preserving matcher; `stage_candidates` does so only for a batch that also carries an
+   `observation`, `trait`, or `relationship`.
+3. **Pick the record type from what the document supports.** Employment and education are `affiliation`
+   candidates *when* role, organisation, dates, and disclosure can all be represented faithfully.
+   Qualifications, skills, languages, and other background are `fact` candidates. `observation` and
+   `trait` keep the meanings they have above — a CV is not a meeting you sat in.
+4. **Attribute every claim** with `stated_by`. "Describes herself as analytical in her CV" is a `fact`
+   whose value says exactly that and whose `stated_by` names her. It never becomes a `trait` valued
+   "analytical", because nobody observed it. Attribution is not verification, and a confident-sounding
+   document is no reason for a high `confidence`.
+5. **Stage with a receipt when you have one.** A `source_kind` plus a `content_digest` over the bytes
+   you actually read records that this artifact was processed. That is all it records: a receipt is
+   evidence of processing, never verification of the claims inside it. A `label` is caller metadata —
+   no private source content, no filesystem path.
+6. **Review, commit, read back.** Show the review with its uncertainty and its reading limitations,
+   commit only the candidates the user explicitly accepted, then re-read the person and report what
+   committed and what stayed unresolved.
+
+#### Only the dates the source actually supports
+
+`valid_from` and `valid_to` take the exact dates the document gives you and nothing else. Year-only,
+month-only, approximate, and unknown periods stay in the claim text, where their uncertainty survives:
+"CV reports study at Northbridge College, 2017–2019; months and days unknown." Never invent a January 1,
+a month boundary, or a date taken from when you happened to read the file — a recording date is not an
+event date.
+
+This matters most at the open end. An affiliation with no `valid_to` reads as current everywhere, so a
+role you know only as historical must not be staged as one. Capture it as an attributed background fact
+carrying its own uncertainty, or leave it unresolved and say why. A document's silence about an end date
+is not a claim that the role continues. An explicit "current" in the source is such a claim, and can be
+staged as one with its attribution and whatever bounds are known.
+
+Two roles at once are ordinary — a job and a board seat, a lecturer and a consultant — and are not a
+contradiction to resolve. Nothing a CV leaves out closes or deletes anything: omission is not an ending.
+A second, revised, or contradictory CV is more evidence, not permission to overwrite. That is a
+maintenance pass under the rules below, never a silent rewrite during extraction, and a claim repeated
+across three documents is not thereby more likely to be true.
+
+#### Background that needs protecting
+
+Affiliations and relationships carry no sensitivity field, so they cannot protect anything. Health,
+immigration, financial, and comparable background belongs in a `fact` at `sensitive` or `restricted`,
+and must not leak sideways into a record that cannot hold it: not into the organisation name, not into
+a graph edge, not into a person `summary`, and not into a `stated_by` string.
+
+#### Two worked examples
+
+A readable CV whose subject resolves to exactly one person:
+
+```json
+[
+  {"type": "person", "ref": "nadia", "name": "Nadia Okonkwo",
+   "aliases": [{"value": "nadia.okonkwo@example.com", "kind": "handle"}]},
+  {"type": "affiliation", "person_ref": "nadia", "org": "Northbridge Analytics",
+   "role": "Senior Data Engineer", "valid_from": "2023-04-03",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.7},
+  {"type": "fact", "person_ref": "nadia", "predicate": "skill",
+   "value": "CV lists Rust and distributed systems as primary skills",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6},
+  {"type": "fact", "person_ref": "nadia", "predicate": "education",
+   "value": "CV reports study at Northbridge College, 2017–2019; months and days unknown",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6}
+]
+```
+
+The dated role is an affiliation because the CV gives a start date and says it is current. The degree is
+a fact because 2017–2019 is not a pair of dates, and forcing it into an affiliation would either invent
+two days or open a period that reads as a job she still holds.
+
+The same document when its middle pages are an unreadable scan and the name matches two active people:
+stage nothing. Report what you have — "the employment section did not come out, and 'J. Okonkwo' matches
+two people in the store; tell me which one and I will bring you the rest." A guessed subject or an
+invented date is worse than a gap, because afterwards the store cannot tell which values were read and
+which were filled in.
+
+Neither pass claims to be complete. A capture records what one document asserted and one person accepted;
+it is not a survey of what is knowable about someone, and nothing here notices that a newly staged claim
+means the same thing as one already stored.
 
 ## Maintaining what is already stored: propose, wait, then write
 

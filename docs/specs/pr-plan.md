@@ -586,7 +586,7 @@ semantic deduplication, and generic batch mutation are deferred, not implicit ca
     review gates, and source-receipt semantics remain intact.
   - **Out:** new primary table, candidate vocabulary, personality assessment, internal LLM, raw-document storage.
 
-- [ ] **M22.2 — Document and exercise agent CV capture**
+- [x] **M22.2 — Document and exercise agent CV capture**
   - **Scope:** Extend shared agent guidance and fictional end-to-end examples for agent-read CVs, biographies,
     and notes through stage → review → explicit commit.
   - **Acceptance:** employment/education use affiliations where representable; qualifications/skills/background

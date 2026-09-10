@@ -227,3 +227,99 @@ class TestQuickCaptureAndNameReads:
 
         assert "accept `person` (the name as said)" in lowered
         assert "returns candidates instead of data" in lowered
+
+
+class TestCvCapture:
+    """The M22.2 workflow for a CV, biography, or page of background notes.
+
+    The mechanism is M17 staging and M22.1 attribution; what M22.2 adds is the judgement that
+    keeps a stored claim from reading as a verified one. These pin the parts an agent gets wrong
+    on its own: promoting a self-description to a trait, inventing a day for a year-only degree,
+    opening an affiliation that then reads as a current job, and trusting a legacy matcher to
+    notice that two people share the name on the document.
+    """
+
+    def test_frames_a_document_as_asserting_rather_than_establishing(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "the document asserts, it does not establish" in lowered
+        assert "attribution is not verification" in lowered
+
+    def test_reports_unreadable_and_partial_documents_instead_of_guessing(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "never present a partial read as a complete cv" in lowered
+        # The refusal example ends in nothing staged, not in a best guess.
+        assert "stage nothing" in lowered
+
+    def test_resolves_identity_before_staging_rather_than_trusting_the_matcher(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "an ambiguous match stays unresolved" in lowered
+        assert "do not turn it into a new person" in lowered
+        # A person/affiliation/fact batch is the released pre-M17 shape, whose matcher reports no
+        # ambiguity at all — so the skill must not imply staging will catch it.
+        assert "a unique handle binds the claim even when the name on the document" in lowered
+        assert "fails the whole commit after the user has already reviewed it" in lowered
+
+    def test_maps_employment_to_affiliations_and_background_to_facts(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "employment and education are `affiliation` candidates" in lowered
+        assert "background are `fact` candidates" in lowered
+        # A CV is a document, not something the agent witnessed.
+        assert "a cv is not a meeting you sat in" in lowered
+
+    def test_keeps_a_self_description_an_attributed_fact_rather_than_a_trait(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "`stated_by`" in lowered
+        assert 'it never becomes a `trait` valued "analytical", because nobody observed it' in lowered
+
+    def test_keeps_inexact_dates_in_the_claim_text(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "never invent a january 1, a month boundary, or a date taken from when you happened" in lowered
+        assert "a recording date is not an event date" in lowered
+        assert "months and days unknown" in lowered
+
+    def test_refuses_to_open_an_affiliation_for_a_role_with_unknown_bounds(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "an affiliation with no `valid_to` reads as current everywhere" in lowered
+        assert "silence about an end date is not a claim that the role continues" in lowered
+
+    def test_treats_concurrent_roles_and_omissions_correctly(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "two roles at once are ordinary" in lowered
+        assert "omission is not an ending" in lowered
+        # Repetition across documents is not evidence strength.
+        assert "is not thereby more likely to be true" in lowered
+
+    def test_puts_sensitive_background_only_where_disclosure_is_enforceable(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "affiliations and relationships carry no sensitivity field, so they cannot protect anything" in lowered
+        # Nor may it be copied sideways into a record that has no protection to give.
+        assert "not into a `stated_by` string" in lowered
+
+    def test_treats_a_source_receipt_as_processing_evidence_only(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "`content_digest` over the bytes you actually read" in lowered
+        assert "never verification of the claims inside it" in lowered
+        assert "no private source content, no filesystem path" in lowered
+
+    def test_commits_only_what_was_explicitly_accepted_and_reads_back(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "commit only the candidates the user explicitly accepted" in lowered
+        assert "report what committed and what stayed unresolved" in lowered
+
+    def test_claims_neither_completeness_nor_semantic_deduplication(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "neither pass claims to be complete" in lowered
+        assert "not a survey of what is knowable about someone" in lowered
+        assert "means the same thing as one already stored" in lowered
