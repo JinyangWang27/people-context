@@ -1,396 +1,173 @@
 # Roadmap
 
-Milestones are additive and preserve the hexagonal dependency rule.
+Milestones are additive and preserve the hexagonal dependency rule. Completed entries summarize outcomes;
+linked documents retain implementation details and acceptance criteria.
 
 ## M0 — Foundation
 
-Delivered the domain/schema scaffold, SQLite repository, stdio MCP server, initial identity tools, CLI, and
-vertical-slice tests.
+Delivered the domain/schema scaffold, SQLite repository, stdio MCP server, initial identity tools, CLI,
+and vertical-slice tests.
 
 **Status:** Delivered.
+**Details:** [Documentation](architecture.md).
 
 ## M1 — Identity and retrieval
 
-Delivered the five-stage explainable resolution pipeline and bounded sensitivity-aware person context.
+Delivered explainable identity resolution and bounded, sensitivity-aware person context.
 
 **Status:** Delivered.
+**Details:** [Documentation](mcp-interface.md).
 
 ## M2 — Full write surface, curation, and communication guidance
 
-Delivered all record writes, corrections, reminders, communication philosophy/guidance, consistent provenance,
-and polished audit behavior.
+Delivered record writes, corrections, reminders, communication guidance, provenance, and audited mutations.
 
 **Status:** Delivered.
+**Details:** [Documentation](communication-guidance.md).
 
 ## M3 — Lifecycle and import
 
-Delivered merge, forget, JSON export, reviewable email/mbox import, and CLI curation commands.
+Delivered merge, forget, JSON export, reviewable email/mbox import, and CLI curation.
 
 **Status:** Delivered.
+**Details:** [Documentation](import.md).
 
 ## M4 — Transport and retrieval upgrades
 
-Delivered loopback Streamable HTTP, optional pinned multilingual semantic retrieval, vCard import, and strict
-agent-extracted candidate staging.
+Delivered loopback HTTP, optional pinned semantic retrieval, vCard import, and strict agent-candidate staging.
 
 **Status:** Delivered.
+**Details:** [Documentation](mcp-interface.md).
 
 ## M5 — Sync groundwork
 
-Documented replication, dedicated changelog, conservative conflict handling, and future ownership/sharing
-considerations without implementing sync runtime.
+Designed replication, conflict handling, and ownership/sharing boundaries; no sync runtime.
 
 **Status:** Delivered as design only.
+**Details:** [Documentation](design/sync.md).
 
 ## M6 — Sync foundations
 
-Added migration `002_sync_foundations.sql`, installation identity, persisted HLC, replayable changelog,
-`sync_conflicts`, and one atomic unit-of-work seam spanning state, audit, clock, and changelog. Merge and forget
-emit exact replay children/manifests or redacted ID-only tombstones. `sync-log` provides local inspection.
-
-M6 deliberately added no exchange, pairing, relay, peer cursor, replay engine, bootstrap restore, or MCP sync
-tool.
+Delivered installation identity, persisted HLC, replayable changelog, atomic audited writes, and `sync-log`.
+Peer exchange and incremental replay remain deferred.
 
 **Status:** Delivered.
+**Details:** [Documentation](design/sync.md).
 
 ## M7 — Relationship graph & vault export
 
-**Goals:** make relationship semantics canonical and extensible, expose bounded structural graph traversal, and
-provide a safe human-operated Obsidian export without changing existing response or sync contracts.
-
-**Deliverables:**
-
-- migration `003_relationship_vocabulary.sql` with seeded professional/family/social vocabulary and synonyms;
-- write-time synonym resolution, inverse canonicalization, symmetric endpoint ordering, and active-edge update
-  deduplication through the M6 atomic audit/changelog seam;
-- additive perspective `display_type` in relationship hydration, context, guidance, and CLI show;
-- add-only custom vocabulary curation plus dry-run/apply legacy relationship normalization;
-- narrow `GraphReader` port with cycle-safe bounded breadth-first SQLite traversal;
-- read-only `get_relationship_graph` and `find_connection` MCP tools with depth/node/edge caps and explicit
-  truncation/not-found/not-connected contracts;
-- CLI-only deterministic Obsidian vault export with marker-file ownership safety, Unicode/collision-safe names,
-  organization hubs, perspective Dataview/wikilinks, durable facts/reminders, and explicit sensitivity opt-in;
-- fake-port, real-SQLite, in-memory MCP, CLI, migration, and real-stdio E2E coverage.
+Delivered canonical relationship vocabulary, bounded graph traversal, and safe CLI-only Obsidian vault export.
 
 **Status:** Delivered.
+**Details:** [Documentation](relationship-graph.md).
 
 ## M8 — Distribution & reach
 
-**Goals:** cut the distance between “hears about this project” and “has it running in a client” to a single
-command, without changing server behavior.
-
-**Deliverables:**
-
-- verified zero-clone install: `uvx --from people-context people-context` against the existing
-  PyPI-published package;
-- root `server.json` using the official MCP Registry package schema and packaged `mcp-name:` ownership marker,
-  plus current metadata/submission coverage for Smithery, PulseMCP, mcp.so, and Glama;
-- a native-UV Claude Desktop `.mcpb` bundle containing its root manifest/project and thin Python entry point —
-  not a packaged `.claude-plugin/mcp.json` command wrapper;
-- documented one-line stdio configs for Cursor, Windsurf, and VS Code alongside the existing generic/Claude Code
-  instructions;
-- an optional non-root local-stdio Docker image with a bind-mounted database volume and GHCR release workflow;
-- pinned external validators/build CLIs, base-image digests, and Actions;
-- README quick-start and docs-table updates.
-
-No `domain`, `app`, `ports`, or MCP tool-surface changes are required; this milestone is packaging, metadata,
-documentation, and CI only.
+Delivered zero-clone installation, Registry metadata, a Desktop bundle, editor configurations, and Docker packaging.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m8-distribution-and-reach.md).
 
 ## M9 — Cold start & onboarding
 
-**Goals:** give a freshly installed, empty database something to show in under a minute, and broaden the
-extract-and-stage import pipeline to the contact sources people actually export from.
-
-**Deliverables:**
-
-- `pctx init`: an interactive CLI onboarding command that first seeds the self person through
-  `RememberPerson` with supplied email handles, then optionally runs the existing vCard
-  `ImportContent` → `ReviewImport` → `CommitImport` flow, and prompts for an initial communication philosophy;
-  the user's own contact card must not create a duplicate self record;
-- `pctx demo`: seeds a small fictional dataset into a dedicated demo database (never the user's real
-  `--db`/resolved path), ships its data in the installed wheel, and prints path-targeted server plus
-  `resolve_person`, `get_relationship_graph`, and `find_connection` examples;
-- two new import sources reusing the existing candidate vocabulary with zero schema/review-gate changes: `.ics`
-  calendar attendees (`source_type="ics"`) and LinkedIn connections (`source_type="linkedin"`);
-- `ImportExtractorRouter` lives in `adapters/importers/router.py` without dropping the existing `mbox` source;
-- fake-port, real-SQLite, in-memory MCP, CLI, packaging, and stdio E2E coverage.
+Delivered `pctx init`, an isolated fictional demo, and calendar/LinkedIn imports through the shared import router.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m9-cold-start-and-onboarding.md).
 
 ## M10 — Agent utilization
 
-**Goals:** make the existing tool surface easier for agents to use correctly and consistently. The milestone adds
-prompt/plugin behavior and at most a minimal instruction string, not new business capabilities.
-
-**Deliverables:**
-
-- a packaged Claude Code skill describing resolution-first behavior, communication guidance, and the
-  stage/review/commit import flow;
-- user-invocable who/remember/reminders workflows (namespaced as `/people-context:who` etc.) composing existing
-  tools;
-- an end-of-session instruction asking the agent to propose staged candidates for durable facts — never an
-  automatic `commit_import`;
-- at most a small additive `SERVER_INSTRUCTIONS` extension naming `get_communication_guidance` and
-  `stage_candidates`, without signature/annotation/response changes.
+Delivered shared usage guidance and who/remember/reminders skills over existing tools, preserving reviewed capture.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m10-agent-utilization.md).
 
 ## M11 — Sync bundle export and trusted bootstrap restore
 
-**Goals:** give the M6 changelog foundations a first consumer beyond local inspection — a file-based bundle that
-moves one device's complete state to a brand-new device, doubling as a backup. Incremental replay between
-independently diverged devices remains deferred.
-
-**Deliverables:**
-
-- `pctx sync push --output DIR`: one strict versioned JSON bundle containing a single-transaction
-  snapshot, relationship vocabulary, referenced devices, complete changelog, and HLC watermark;
-- `pctx sync pull --input PATH`: strict format/version/nested validation before preview or writes, then
-  empty-target-only atomic `BEGIN IMMEDIATE` restore of vocabulary, retired device history, primary/audit rows,
-  and changelog, followed by FTS rebuild and local-HLC advancement;
-- imported device identities are never active and a bundle/local device-id collision is rejected;
-- an additive `Changelog.list_entries(limit=None)` read;
-- a shared atomic owner-private file writer used by bundle/JSON and later personal-data exports;
-- fake-port, strict-model, real-SQLite, concurrency, CLI, and stdio E2E coverage, including A→B→C continuity.
+Delivered file-based snapshot export and atomic empty-database bootstrap restore with private file output.
+Incremental synchronization between diverged devices remains deferred.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m11-sync-bundle-and-bootstrap-restore.md).
 
 ## M12 — Trust, stability, and v1.0
 
-**Goals:** formalize the compatibility discipline followed since M7 and close trust gaps around at-rest encryption
-and cloud-memory comparisons.
+Delivered the compatibility promise, optional SQLCipher encryption, privacy comparisons, and synchronized v1.0
+server metadata through release automation; integration versions remain independent.
 
-**Deliverables:**
-
-- a written additive MCP/stable-JSON, CLI-default, and forward-only DB compatibility promise;
-- synchronized `1.0.0` primary server metadata (`pyproject.toml`, Registry package/server versions, MCPB semantic
-  version/dependency pin) plus regenerated `uv.lock`, while integration plugin/shim versions remain explicit
-  independent domains;
-- opt-in SQLCipher behind a locked optional dependency extra and `PEOPLE_CONTEXT_DB_KEY`-gated connection path,
-  leaving default `open_db` behavior unchanged;
-- a dated, primary-source threat-model comparison with cloud memory tools;
-- README demo polish based on the packaged M9 demo.
-
-**Status:** Delivered. The synchronized `1.0.0` primary server metadata landed through the release automation
-rather than a dedicated pull request: the `chore(main): release 1.0.0` release-please change set the root
-project, Registry server version and `--from` pin, MCPB manifest version and dependency pin, and the `uv.lock`
-root entry together, and `tests/test_packaging_metadata.py` pins all five to one another. The MCPB
-`manifest_version` stays tooling metadata at `0.4`, and the integration plugin/shim versions remain the
-independent domains described in [compatibility.md](compatibility.md#scope-and-versioning).
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m12-trust-stability-v1.md).
 
 ## M13 — Daily utility & proactive signals
 
-**Goals:** give the store daily, explainable read-side utility over data already held; nothing new is recorded.
-
-**Deliverables:**
-
-- read-only `get_stale_relationships` MCP tool and `pctx stale` CLI, computed only over
-  ordinary-disclosure interactions with one row per person and a categories list;
-- read-only `upcoming_dates` MCP tool/CLI over ordinary birthday facts and active reminders, with annual
-  month/day projection and real leap-day behavior;
-- a meeting-preparation flow in the M10 skill;
-- deterministic `pctx reminders-ics --output FILE` using the shared atomic private-file writer; dated
-  reminders remain exported even when an unsupported recurrence rule is omitted and counted;
-- `pctx watch`: local-only JSON-lines changelog tail with explicit initial-cursor and `--from-start`
-  semantics.
+Delivered stale-relationship and upcoming-date reports, meeting preparation, reminder calendar export, and local
+changelog watching. Reminders remain pull-based.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m13-daily-utility.md).
 
 ## M14 — Ecosystem & interoperability
 
-**Goals:** meet adjacent tool ecosystems with portable briefs, existing-import-plus-one-way-vCard-export,
-additional import funnels, and a first-class live Obsidian view.
-
-**Deliverables:**
-
-- `pctx brief PERSON [--include-sensitive]`: CLI-only deterministic Markdown/versioned JSON, explicitly
-  distinguishing sensitive context from ordinary-only communication guidance;
-- `pctx export-vcard`: deterministic unchanged-importer round-trip for non-heuristic names, one active
-  affiliation, and one full-date birthday; partial/unparseable birthdays are counted rather than emitted
-  non-standardly;
-- Outlook contacts CSV and WhatsApp participant/date imports through the M9 router; WhatsApp bodies never enter
-  candidates/logs/errors and self participation remains implicit in the unchanged candidate contract;
-- a desktop-only Obsidian plugin using stable person ids and shell-free bounded CLI subprocesses, with typed
-  database/encryption settings, a committed Node lockfile, and deterministic mirrored release artifacts.
+Delivered portable person briefs, one-way vCard export, Outlook/WhatsApp imports, and a live desktop Obsidian plugin.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m14-ecosystem-interop.md).
 
 ## M15 — Data quality, insight, and credibility
 
-**Goals:** keep long-lived databases trustworthy, make the privacy story inspectable, and provide publishable
-evidence and narratives.
-
-**Deliverables:**
-
-- `pctx doctor`: report-only deterministic duplicate/contradiction/soft-deleted-reference findings with
-  structured id-based CLI/MCP suggested actions, never shell-interpolated or auto-applied;
-- `pctx stats`: versioned aggregate-only local inventory including sensitivity/audit/changelog summaries,
-  disclosure-gate state, path redaction, and main+WAL+SHM storage size;
-- additive transliteration-aware `match_detail` while preserving exact-match reason/ranking/ambiguity;
-- a fictional-data, locally runnable evaluation plus dated results and use-case gallery.
+Delivered report-only `doctor`, aggregate `stats`, transliteration match explanations, fictional evaluations,
+and worked use cases.
 
 **Status:** Delivered.
+**Details:** [Milestone spec](specs/m15-data-quality-and-credibility.md).
 
 ## M16 — First-class CLI import workflow
 
-**Goals:** make the existing review-gated import subsystem directly usable from `pctx` by both humans and
-automation, without inventing another import policy or adding model/network dependencies.
+Delivered CLI import stage/review/commit with stable v1 JSON, bounded staging, and shared onboarding review.
+Existing MCP and onboarding contracts are preserved.
 
-**Deliverables:**
-
-- `pctx import stage SOURCE PATH [--self-sender TEXT] [--json]` over the seven existing import sources;
-- `pctx import review BATCH_ID [--json]` with deterministic review-safe rendering;
-- `pctx import commit BATCH_ID --all|--accept ... [--json]` with explicit acceptance and unchanged unresolved
-  dependency semantics;
-- stable v1 `people-context-import-batch`, `people-context-import-review`, and
-  `people-context-import-commit` JSON documents;
-- reuse of the general CLI import workflow/rendering from `pctx init` without changing onboarding safety;
-- parser/CLI/runtime/privacy/subprocess coverage and documentation of the local/offline lifecycle.
-
-No new importer, candidate type, schema migration, live service integration, raw-text extraction, or general
-CLI/MCP parity is part of M16.
-
-**Status:** Delivered — the `pctx import` group exposes the existing stage/review/commit lifecycle over all seven
-sources with stable v1 JSON documents, a bounded 64 MiB/100,000-candidate/64 MiB-payload staging budget, and a
-SQLite preflight that refuses an oversized legacy batch before any full-batch read; onboarding shares the same
-review rendering and candidate selection, and the released MCP and `pctx init` contracts are unchanged.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m16-first-class-cli-import.md).
 
 ## M17 — Agent-assisted knowledge extraction
 
-**Goals:** let agents distill meeting transcripts, conversation logs, notes, and other unstructured material into
-strict reviewable people-context candidates while keeping semantic reasoning outside the core server.
+Delivered staged observations, evidence-backed traits, relationships, and CLI candidate staging.
+Agents distill source material; the server validates concise candidates and preserves explicit reviewed commit.
 
-**Deliverables:**
-
-- additive strict candidate types for observations, inferred traits, and canonical relationships;
-- mandatory explicit confidence plus concise evidence note for staged inferred traits;
-- commit support for the new candidates through existing audited/changelogged write use cases;
-- `pctx import stage-candidates --source SOURCE --input PATH|- [--json]` for agents without MCP access;
-- packaged agent guidance distinguishing fact vs observation vs trait, resolving participants through batch-local
-  person candidates, and preserving stage → review → explicit commit;
-- explicit safeguards against raw-transcript persistence, unsupported sensitive inference, evidence-free traits,
-  and an embedded LLM/model dependency.
-
-**Status:** Delivered. M17.1 delivered the three additive strict candidate types, their commit support
-through the existing `RecordObservation`/`RecordTrait`/`SetRelationship` use cases, the conditional resource
-bounds on any MCP request that uses one, and ambiguity-preserving person matching for those batches. M17.2
-added `pctx import stage-candidates` over that same use case — candidate JSON from a file or stdin, bounded
-unconditionally by a 1 MiB read budget plus the M17 count, source-label, and string limits — and extended the
-packaged usage skill with the fact/observation/trait extraction workflow. Semantic reasoning stays with the
-calling agent: no source text is read, parsed, or stored by People Context.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m17-agent-assisted-knowledge-extraction.md).
 
 ## M18 — Provenance, idempotency & evidence
 
-**Goals:** make repeated ingestion traceable and duplicate-safe without turning People Context into a document
-store, and ground inferred traits in durable evidence records.
+Delivered duplicate-safe source receipts, commit mappings, bounded source inspection, and durable trait evidence,
+with merge/forget, disclosure, and backward-compatible bootstrap integration.
 
-**Deliverables:**
-
-- a minimal durable source-session/receipt model with bounded metadata and exact-byte SHA-256 digest, never raw
-  source content or default absolute paths;
-- concurrency-safe atomic default claiming of source-kind+digest together with source-session/batch/candidate
-  staging publication, while explicitly forced reprocessing remains distinct;
-- additive bootstrap preservation of staged/partially committed source sessions and the incomplete staging rows
-  required to keep their batches reviewable after restore;
-- a separate durable record-to-source-session association for committed writes while preserving existing
-  message/event-derived `Provenance.session` semantics;
-- local source-session inspection showing batch/record ids and status summaries but no source body;
-- durable trait-evidence links to observations/interactions involving the same trait subject, including same-batch
-  staged evidence resolution and subject validation;
-- additive migration/sync/bootstrap/privacy/concurrency coverage for the new provenance/evidence state.
-
-M18 deliberately does not perform semantic record deduplication, automatic confidence recomputation, source
-rollback, document storage, or incremental peer replication of incomplete staging state.
-
-**Status:** In progress. M18.1 delivered the durable source-receipt and candidate-commit-mapping relations,
-stable-snapshot extraction for byte-capable and path-only sources, the concurrency-safe
-`(source_kind, content_digest, extraction_fingerprint)` claim with explicit `--force` reprocessing and the
-`source_previously_redacted` refusal, one logical transaction id across every effect of an import commit, merge
-and hard-forget integration for mappings, retained staging, and caller-authored receipt metadata, and bootstrap
-bundle version 2 carrying that state while restore keeps accepting version 1. M18.2 added bounded local source
-inspection over those same mappings — `pctx sources` and `pctx source show`, keyset-paginated at the SQLite read
-with SQL aggregate counts, and held to the erasure rules so a redacted source discloses only its claim. M18.3
-completed the milestone with the durable trait-evidence relation: bounded caller-addressable `evidence_ref`
-tokens rewritten to canonical candidate ids at staging, commit-time resolution through the M18.1 mapping for
-evidence committed earlier in the batch or in an earlier partial commit, format-opaque durable `evidence_ids`,
-type and subject validation that leaves an ungroundable trait unresolved rather than committing it, hard-forget
-and disclosure integration, and bootstrap bundle version 3 while restore keeps accepting versions 1 and 2.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m18-provenance-idempotency-and-evidence.md).
 
 ## M19 — Knowledge consolidation & temporal views
 
-**Goals:** make accumulated memory understandable and maintainable over time without introducing an autonomous
-belief updater.
+Delivered bounded timelines, consolidation context, atomic fact supersession, and reviewed maintenance guidance.
+No automatic belief revision or record merging.
 
-**Deliverables:**
-
-- bounded deterministic person timelines over interactions, observations, dated state changes, traits, and M18
-  provenance/evidence metadata;
-- local CLI timeline output plus ordinary-disclosure MCP access with explicit sensitivity policy;
-- a bounded person-scoped consolidation-context read exposing duplicate/superseding/reinforcing/contradictory
-  knowledge and the evidence/provenance needed to reason about it;
-- an agent maintenance workflow that proposes structured corrections/merges/supersession actions, explains its
-  evidence, and waits for explicit user approval before using existing mutation tools;
-- deterministic bounds/order/privacy tests proving all analysis/report paths remain read-only.
-
-M19 does not automatically merge records, rewrite traits, recalculate confidence, or run a maintenance daemon.
-
-**Status:** Planned.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m19-consolidation-and-temporal-views.md).
 
 ## M20 — Streaming importer parsing
 
-**Goals:** close the one resource gap M16 left open — every extractor turns a whole in-budget source into
-intermediate Python objects before the first candidate exists, so the candidate ceiling cannot meter it — and
-do it across all seven sources and both surfaces at once rather than site by site.
+Delivered streaming import parsing and bounded retained parser state across all seven sources and MCP import,
+preserving extraction behavior and existing user-visible limits.
 
-**Deliverables:**
-
-- a narrow parser-work budget bounding live retained parsed records, defaulting to unbounded so existing
-  callers are unaffected, alongside a bounded streaming line/record source reader;
-- streaming conversions for all seven sources: lazy unfold/split for vCard and iCalendar, streamed CSV input
-  for LinkedIn and Outlook, metered address expansion for email, a lazily consumed mailbox for `mbox`, and a
-  bounded resolution for WhatsApp;
-- the same bound extended to the released MCP `import_content` path **by streaming rather than by rejection**,
-  so no source accepted today stops being accepted;
-- a preserved-or-explicitly-renegotiated answer for WhatsApp's documented whole-file day/month ordering
-  inference, which is the only place a memory fix could otherwise change what is extracted;
-- table-driven equivalence tests proving byte-identical candidates, ordering, refs, skip reasons, and indexes
-  for every source, plus retention tests proving candidate-free input stays bounded.
-
-M20 adds no source type, candidate type, migration, or new user-visible limit, and does not change the M16
-source-byte, candidate, staged-payload, or batch-read ceilings.
-
-**Status:** Planned.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m20-streaming-importer-parsing.md).
 
 ## M21 — Adoption & agent ergonomics
 
-**Goals:** cut the distance from "found the repo" to "my agent remembers people" — for a person reading the
-README, for a fresh install, and for an agent that has to use the tool surface correctly on the first try.
+Delivered client setup, one-call `remember`, name-based reads, typed tool schemas, and shared MCP prompts/resources.
+Directory publication and a recorded real-model evaluation remain account-owner steps.
 
-**Deliverables:**
-
-- a README that opens with the problem and a reproducible 20-second demo (`docs/assets/demo.tape` → `demo.gif`),
-  one install block per client, a what-it-remembers / what-it-never-does table, and a comparison with hosted
-  memory; repository topics, description, Discussions, issue and pull-request templates, a Code of Conduct, and
-  a good-first-issues section in `CONTRIBUTING.md`;
-- `pctx setup <client>`: merges the canonical stdio entry into Claude Desktop, Cursor, Windsurf, or VS Code
-  configuration (backup, atomic write, symlink and invalid-JSON refusal) or drives `claude mcp add` /
-  `codex mcp add`; `pctx init` offers it at a terminal;
-- the `remember` MCP tool and `pctx remember`: one statement about one person resolved, created if new, and
-  recorded as a fact, trait, interaction, affiliation, or relationship in one audited transaction, refusing to
-  write against an ambiguous or weakly matched name;
-- `person` (a name) accepted alongside `person_id` on every read tool with the same ambiguity contract;
-  additive `withheld` counts on `get_person_context`; sensitivity, trait-category, and reminder-kind
-  vocabularies exposed as enums in tool schemas; typed `resolve_person` hints; `review_import` annotated
-  read-only;
-- MCP prompts (`who`, `remember`, `meeting_prep`, `end_of_session_capture`, `maintenance_review`) and
-  resources (`people-context://guide`, `people-context://self`) so clients without skills get the same
-  guidance; the packaged guide is asserted identical to the Claude Code usage skill.
-
-**Status:** Delivered in the repository. Directory publication (MCP Registry, Glama, Smithery, PulseMCP,
-mcp.so, awesome-mcp-servers, the Claude Desktop extension directory, Obsidian community plugins) and a recorded
-real-model evaluation run remain account-owner steps.
+**Status:** Delivered in the repository.
+**Details:** [Documentation](distribution-checklist.md).
 
 ## Post-roadmap candidates
 
@@ -406,98 +183,32 @@ The following remain candidates, not commitments:
 - watched-folder/background ingestion orchestration outside the core import transaction;
 - source-session rollback/retraction after safe lifecycle semantics are designed from real usage.
 
-See `docs/specs/` for one implementation spec per M8–M20 milestone, and
-[docs/specs/pr-plan.md](specs/pr-plan.md) for the per-PR implementation checklist derived from those specs.
+Detailed delivery contracts remain in [the milestone specs](specs/) and the
+[PR checklist](specs/pr-plan.md).
 
 ## M22 — Source-grounded CV and background capture
 
-**Goals:** store attributed knowledge about a person, preserve uncertainty and change, and assemble useful views
-from those records. Let the existing agent read CVs, biographies, and notes through stage → review → commit.
+Delivered attributed CV/background capture through existing staging, preserving uncertain dates, sensitivity,
+and source claims without raw-document storage.
 
-**Deliverables:**
-
-- optional `stated_by` on fact and affiliation candidates, forwarded into existing provenance without a new
-  primary table or invalidating old candidates;
-- shared agent guidance and fictional end-to-end CV capture examples covering unreadable documents, uncertain
-  dates, identity ambiguity, disclosure, and available source receipts;
-- employment and education as affiliations where representable; qualifications, skills, and background as facts;
-  source assertions remain attributed claims rather than independently verified truth or inferred temperament;
-- exact dates in existing validity fields, with year-only, month-only, approximate, and unknown periods explicit
-  in concise claim text; unknown historical periods must not appear as current unbounded affiliations;
-- background and sensitive details kept out of the unrestricted person summary, using appropriately protected
-  facts where affiliations or relationships cannot enforce sensitivity.
-
-No native PDF/DOCX parser, internal LLM, raw-document storage, personality assessment system, or structured
-partial-date storage is included. Observations and traits retain their existing meanings.
-
-**Spec:** [M22 — Source-grounded person capture](specs/m22-source-grounded-person-capture.md).
-
-**Status:** Delivered. M22.1 delivered `stated_by` on fact and affiliation candidates, forwarded into the
-existing provenance and audit paths; the bundle advanced to version 4 to carry it in a still-reviewable batch.
-M22.2 delivered the capture workflow itself in the packaged agent guidance and its worked examples, with an
-end-to-end check that a fictional CV's exact dates, year-only periods, concurrent roles, protected background,
-and ambiguous subject each reach the record they belong in — and that the document itself reaches none of them.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m22-source-grounded-person-capture.md).
 
 ## M23 — Explainable person briefs and history
 
-**Goals:** extend the existing brief with explicitly requested history, keeping a biography a presentation
-assembled from records rather than another durable source of truth.
+Delivered opt-in brief history with explicit bounds, date meanings, source references, and disclosure limits.
+No separate biography store or profile endpoint.
 
-**Deliverables:**
-
-- an opt-in history section composed from the existing timeline, retaining its default limit of 50 and range
-  of 1–200, current brief defaults, and existing JSON fields; history metadata is additive;
-- clear distinctions between recorded assertions, subjective traits, available evidence, validity periods,
-  event dates, and recording dates;
-- visible truncation and available source references without implying complete history, with disclosure
-  filtering applied independently to records and evidence;
-- agent-composed profiles using existing MCP reads, without a new all-purpose profile endpoint or profile model.
-
-M23 independently reuses the delivered M14 brief and M19 timeline capabilities; it does not depend on M22 or M24.
-Dedicated life events and a separate durable biography remain out of scope.
-
-**Spec:** [M23 — Explainable person history](specs/m23-explainable-person-history.md).
-
-**Status:** Delivered. M23.1 composed the delivered M19.1 timeline into the delivered M14.1 brief as an opt-in
-section: `pctx brief --include-history [--history-limit N]`, off by default and reading no timeline at all when
-it is off. The document reports its own limits — the applied bound, the level it was read at, whether older
-entries exist beyond the page, and the stored field each instant came from — so a bounded, disclosure-filtered
-page never reads as a complete personal history. History is additive on the version-1 brief document; no second
-profile model, durable biography, or MCP endpoint was added.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m23-explainable-person-history.md).
 
 ## M24 — Conservative CV update review
 
-**Goals:** treat a newer CV as additional evidence, compare it with available records, and apply only accepted,
-supported changes while preserving historically correct values.
+Delivered affiliation-aware consolidation and reviewed CV updates that preserve history, uncertainty, and
+explicit acceptance; omission never implies deletion.
 
-**Deliverables:**
-
-- additive affiliations, dates, available provenance, and explicit truncation in bounded consolidation context;
-- a reviewed agent workflow: resolve identity, compare claims, propose specific actions, obtain acceptance,
-  recheck affected records, apply supported operations, and reread the result;
-- explicit outcomes: add, already represented, correct an error, record a supported temporal transition, or
-  leave unresolved; changed targets require renewed review;
-- omission never implies deletion or a role ending; concurrent roles, multiple skills, and different traits
-  are not inherently contradictory, and source repetition does not automatically increase confidence;
-- fact supersession only with a known effective date within the existing operation's constraints; unsupported
-  transitions remain unresolved, and separate tool calls report partial completion without claiming atomicity.
-
-M22 precedes M24; M24 also reuses delivered M19 consolidation and fact supersession. Automated belief revision,
-semantic deduplication, generic batch mutation, and generalized temporal transitions remain deferred.
-
-**Spec:** [M24 — Reviewed person updates](specs/m24-reviewed-person-updates.md).
-
-**Status:** Delivered. M24.1 added stored affiliations to the bounded consolidation context — ids, dates,
-provenance, available receipts, newest-first ordering, and an independent truncation flag — so the employment
-and education a CV asserts can be compared with what is held, without a signal, a sensitivity control, or a
-scan of a professional history. M24.2 delivered the review itself in the packaged agent guidance and its
-worked example: one identity, one outcome per incoming claim from add, already represented, correct an error,
-record a supported temporal transition, or leave unresolved, acceptance taken per action, and a reread of each
-target immediately before it is written. An end-to-end check exercises a fictional revised CV against the
-records the M22.2 capture committed — an exactly dated transition that preserves the old value and its
-original endpoint, a year-only date that produces no boundary at all, a changed role with no supported
-transition, an omission that closes nothing, a target that moved between review and writing, and a partial
-run reported as it happened.
+**Status:** Delivered.
+**Details:** [Milestone spec](specs/m24-reviewed-person-updates.md).
 
 ## M25 — Relationship-aware communication coaching
 

@@ -1,6 +1,6 @@
 # M18 — Provenance, idempotency, and evidence
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m18--provenance-idempotency--evidence).
+Status: Delivered. All milestone PRs are complete in [the PR checklist](pr-plan.md). See [docs/roadmap.md](../roadmap.md#m18--provenance-idempotency--evidence).
 
 ## Motivation
 
