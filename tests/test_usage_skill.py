@@ -468,8 +468,26 @@ class TestReviewedCvUpdate:
         """Unsupported transition is not unsupported claim; the new role is still evidence."""
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
 
-        assert "the new role is **added** like any other" in lowered
+        assert "the new role is **added** as an affiliation like any other" in lowered
         assert "what stays **unresolved** is only the *transition*" in lowered
+
+    def test_the_worked_example_never_manufactures_a_day_from_a_month(self) -> None:
+        """The example must obey the rule the section states, or it teaches the opposite of it."""
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "from 2 march 2026" in lowered
+        assert "the date is exact, so the new role is **added** as an affiliation" in lowered
+        # And it says what the month-only version of the same claim would have to become instead.
+        assert 'had the cv said only "march 2026"' in lowered
+        assert "never an affiliation starting on a 1 march nobody wrote down" in lowered
+
+    def test_the_worked_example_carries_the_source_into_the_superseded_value(self) -> None:
+        """Stating the attribution limit is not enough; the example has to apply its own remedy."""
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "the new value carries it, `leeds; per revised cv`" in lowered
+        assert "the row's own provenance names you and not the document" in lowered
 
     def test_treats_several_calls_as_several_calls_rather_than_a_transaction(self) -> None:
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())

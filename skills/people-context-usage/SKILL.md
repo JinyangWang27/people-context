@@ -449,14 +449,18 @@ it produces all five outcomes:
 - the CV says she relocated to Leeds on 1 September 2026 and the stored `city` fact says Bristol
   from an exact date — a **supported temporal transition**, so `supersede_fact` with
   `effective_from` 2026-09-01, which keeps the Bristol row, its dates and its attribution, and
-  closes it on 31 August;
+  closes it on 31 August. The tool takes no `stated_by`, so apply the rule above rather than losing
+  the source: the new value carries it, `Leeds; per revised CV`, and you tell the user the row's own
+  provenance names you and not the document;
 - the same 2017–2019 study appears again, already held as a fact whose text carries that
   imprecision — **already represented**, so nothing is written and no confidence moves;
 - a certification the store does not hold is **added**, staged as an attributed candidate for review;
-- the CV now calls her Principal Data Engineer at Northbridge Analytics from March 2026. That is a
-  dated, supported claim, so the new role is **added** like any other. What stays **unresolved** is
-  only the *transition*: whether the Senior Data Engineer role ended, and when. Both affiliations
-  stand, and the older one gains no end date;
+- the CV now calls her Principal Data Engineer at Northbridge Analytics from 2 March 2026. The date
+  is exact, so the new role is **added** as an affiliation like any other. What stays **unresolved**
+  is only the *transition*: whether the Senior Data Engineer role ended, and when. Both affiliations
+  stand, and the older one gains no end date. Had the CV said only "March 2026", the day would be
+  missing and the same capture rule would apply — an attributed fact whose text keeps the month,
+  never an affiliation starting on a 1 March nobody wrote down;
 - and her Harbour Data Trust board role is not mentioned anywhere in the new document. That is
   silence, not an ending: no proposal, and the affiliation stands exactly as it is.
 

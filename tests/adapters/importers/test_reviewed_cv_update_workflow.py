@@ -297,14 +297,16 @@ def test_an_exactly_dated_transition_preserves_the_old_value_and_its_original_en
     result = harness.supersede.execute(
         SupersedeFactInput(
             fact_id=before["id"],
-            new_value="Leeds",
+            new_value="Leeds; per revised CV",
             effective_from=date(2026, 9, 1),
             source="agent",
-            stated_by=_REVISED_ATTRIBUTION,
         )
     )
 
-    assert (result.superseded.value, result.replacement.value) == ("Bristol", "Leeds")
+    assert (result.superseded.value, result.replacement.value) == ("Bristol", "Leeds; per revised CV")
+    # The row's own provenance cannot name the document, so the value carries the source instead.
+    assert result.replacement.provenance.stated_by is None
+    assert "revised CV" in result.replacement.value
     # The old assertion is closed the day before, keeping its value, its dates, and who asserted it.
     assert result.superseded.period.valid_from == date(2023, 4, 3)
     assert result.superseded.period.valid_to == date(2026, 8, 31)
@@ -318,7 +320,7 @@ def test_an_exactly_dated_transition_preserves_the_old_value_and_its_original_en
     history = [(row["value"], row["valid_from"], row["valid_to"]) for row in harness.fact("city")]
     assert history == [
         ("Bristol", "2023-04-03", "2026-08-31"),
-        ("Leeds", "2026-09-01", "2027-12-31"),
+        ("Leeds; per revised CV", "2026-09-01", "2027-12-31"),
     ]
 
     # What a well-formed transition leaves behind: a succession, reported as history rather than
@@ -424,7 +426,8 @@ def test_a_separately_supported_new_role_does_not_close_the_old_one() -> None:
                     "person_ref": "nadia",
                     "org": "Northbridge Analytics",
                     "role": "Principal Data Engineer",
-                    "valid_from": "2026-03-01",
+                    # The document states 2 March 2026. A day it did not give would be invented.
+                    "valid_from": "2026-03-02",
                     "stated_by": _REVISED_ATTRIBUTION,
                     "confidence": 0.6,
                 },
@@ -432,9 +435,54 @@ def test_a_separately_supported_new_role_does_not_close_the_old_one() -> None:
         ).batch_id
     )
 
-    assert harness.affiliation("Principal Data Engineer")["valid_from"] == "2026-03-01"
+    assert harness.affiliation("Principal Data Engineer")["valid_from"] == "2026-03-02"
     # Adding one did not end the other, and nothing invented a closing date for it.
     assert harness.affiliation("Senior Data Engineer")["valid_to"] is None
+
+
+def test_a_month_only_role_keeps_its_imprecision_and_opens_no_affiliation() -> None:
+    """"March 2026" is not a date. An affiliation would have to invent the day it omits.
+
+    The same rule capture applies to a year-only degree applies here: the uncertainty survives in
+    the claim text, where a reader can see it, rather than being flattened into a `valid_from` that
+    every later timeline and consolidation read would report as an exact start.
+    """
+    harness = _Harness()
+    person_id = harness.seed()
+
+    harness.accept_all(
+        harness.stage(
+            [
+                _person("Nadia Okonkwo", "nadia.okonkwo@example.com"),
+                {
+                    "type": "fact",
+                    "person_ref": "nadia",
+                    "predicate": "role",
+                    "value": (
+                        "Revised CV reports Principal Data Engineer at Riverside Systems "
+                        "from March 2026; day unknown"
+                    ),
+                    "stated_by": _REVISED_ATTRIBUTION,
+                    "confidence": 0.6,
+                },
+            ]
+        ).batch_id
+    )
+
+    orgs = [
+        row["name"]
+        for row in harness.conn.execute(
+            "SELECT o.name AS name FROM affiliations a JOIN organizations o ON o.id = a.org_id"
+        )
+    ]
+    assert "Riverside Systems" not in orgs, "a month-only start must not open an affiliation"
+
+    role = harness.fact("role")[0]
+    assert "March 2026" in role["value"]
+    assert "day unknown" in role["value"]
+    # Nothing invented a 1 March to hold it, and no read can mistake the claim for an exact date.
+    assert (role["valid_from"], role["valid_to"]) == (None, None)
+    assert all(entry.valid_from != date(2026, 3, 1) for entry in harness.consolidation.execute(person_id).facts)
 
 
 def test_a_role_the_newer_cv_omits_is_neither_closed_nor_deleted() -> None:
