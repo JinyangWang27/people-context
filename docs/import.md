@@ -260,6 +260,62 @@ Candidates that omit `stated_by`, including every batch staged before M22.1, rem
 they did. Because the bootstrap bundle forbids unknown fields inside a staged candidate, carrying attribution in
 an incomplete batch advances the bundle to **version 4**; see [docs/compatibility.md](compatibility.md).
 
+### Capturing a CV, biography, or page of notes (M22.2)
+
+M22.2 adds no mechanism at all. It is the workflow that makes the pieces above add up to a faithful
+record of a document People Context cannot read: the agent reads it and distils claims, and People
+Context validates, attributes, and stores the ones a person accepted. The binding version lives in the
+packaged usage skill (`skills/people-context-usage/SKILL.md`, served as the `people-context://guide`
+resource); this section is the reference walkthrough behind it.
+
+Nadia Okonkwo sends a CV. The agent reads it, resolves the name to exactly one active person, and stages
+one batch with `source_kind="cv"` and a `content_digest` over the bytes it actually read:
+
+```json
+[
+  {"type": "person", "ref": "nadia", "name": "Nadia Okonkwo",
+   "aliases": [{"value": "nadia.okonkwo@example.com", "kind": "handle"}]},
+  {"type": "affiliation", "person_ref": "nadia", "org": "Northbridge Analytics",
+   "role": "Senior Data Engineer", "valid_from": "2023-04-03",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.7},
+  {"type": "fact", "person_ref": "nadia", "predicate": "skill",
+   "value": "CV lists Rust and distributed systems as primary skills",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6},
+  {"type": "fact", "person_ref": "nadia", "predicate": "education",
+   "value": "CV reports study at Northbridge College, 2017–2019; months and days unknown",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6}
+]
+```
+
+Three decisions carry the milestone. The current role is an **affiliation** because role, organisation,
+and a start date are all present and the CV states it is current. The degree is a **fact** because
+`2017–2019` is not a pair of dates: an affiliation would need two invented days, and one left open would
+read everywhere as a job she still holds. And every row names its asserter in `stated_by`, so the store
+records that Nadia said these things rather than that they are established.
+
+Review then shows those four rows and whatever the agent could not read. Commit writes only the
+candidates the user explicitly accepted, and the read back reports what committed and what did not. A CV
+never reaches durable state without that acceptance.
+
+#### The cases that decide whether this is honest
+
+| Case | What happens |
+|---|---|
+| Unreadable document | No candidates. The agent reports the limitation; a guessed row is worse than a gap, because nothing afterwards distinguishes a value that was read from one that was filled in. |
+| Partly readable document | Only the supported claims are staged, and the review states which material could not be assessed. A partial read is never presented as a complete CV. |
+| Ambiguous subject | The agent resolves identity before it stages anything, because only the ambiguity-preserving path reports the problem. On that path — `pctx import stage-candidates`, or an MCP batch that also carries an M17 candidate — the person stages `ambiguous` with a bounded `match_count` and no `matched_person_id`, never falls through to `RememberPerson`, and every accepted dependant stays in `unresolved_ids`. A legacy-shaped `stage_candidates` batch keeps its released matcher, which reports nothing: a unique handle binds the claim even when the document's name matches two other people, and a name matching two with nothing to separate them fails the whole commit after review. |
+| Repeated CV | The same `(source_kind, content_digest, extraction_fingerprint)` is the existing duplicate claim, and a default reprocess returns the existing batch rather than staging a second one. |
+| Conflicting CV | A different document is a different claim and more evidence, not permission to replace anything. Changes to existing records are a maintenance pass under explicit approval, not a side effect of extraction, and a claim repeated across three documents does not thereby earn a higher `confidence`. |
+| Concurrent roles | Two affiliations stand together. A job and a board seat are not a contradiction to resolve. |
+| Omission | Silence closes nothing. A role missing from a newer CV is not an end date, and no absence in a document deletes a record. |
+| Sensitive background | Health, immigration, financial, and comparable details go into a `fact` at `sensitive` or `restricted`. They must not appear in an organisation name, a graph edge, a person `summary`, or a `stated_by` string, none of which any read can protect. |
+| Preserved history | Capture only adds. Closing or replacing an earlier record is `supersede_fact` or `correct_record` under explicit approval, never something extraction does on its own. |
+| Source receipt | Where the agent supplied a digest, `pctx sources` and `pctx source show` explain what was processed and which candidates it produced. That is evidence of processing; it says nothing about whether the CV's claims are true. Labels are caller metadata and carry no source content or path. |
+
+None of this claims completeness. A capture pass records the claims one document made and one person
+accepted; it does not survey what is knowable about someone, and it does not detect that a newly staged
+claim means the same thing as a stored one.
+
 ### Grounding a trait in the records it was drawn from
 
 A trait's `evidence_note` says what the inference rests on in words. M18.3 adds the id-based half, so a trait

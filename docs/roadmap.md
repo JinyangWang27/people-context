@@ -432,8 +432,11 @@ partial-date storage is included. Observations and traits retain their existing 
 
 **Spec:** [M22 — Source-grounded person capture](specs/m22-source-grounded-person-capture.md).
 
-**Status:** In progress. M22.1 delivered `stated_by` on fact and affiliation candidates, forwarded into the
+**Status:** Delivered. M22.1 delivered `stated_by` on fact and affiliation candidates, forwarded into the
 existing provenance and audit paths; the bundle advanced to version 4 to carry it in a still-reviewable batch.
+M22.2 delivered the capture workflow itself in the packaged agent guidance and its worked examples, with an
+end-to-end check that a fictional CV's exact dates, year-only periods, concurrent roles, protected background,
+and ambiguous subject each reach the record they belong in — and that the document itself reaches none of them.
 
 ## M23 — Explainable person briefs and history
 
