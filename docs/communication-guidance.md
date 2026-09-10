@@ -65,16 +65,22 @@ write tool, `get_communication_guidance` is read-only.
 The implemented guidance path never returns observations. Traits and interactions marked `sensitive` or
 `restricted` are also excluded; M2 deliberately has no `include_sensitive` override on this tool.
 
-## Planned coaching workflow
+## Coaching workflow
 
-[M25 — Relationship-aware communication coaching](specs/m25-communication-coaching.md) specifies a future
-client skill for replies, preparation, practice, and reflection across work, friends, and family. It uses these
-existing signals to provide a usable reply or next action and a short transferable lesson, with no automatic
-capture or personality assessment. General coaching can proceed from user-supplied context when a contact is
-unknown or MCP is unavailable; personalized reads still require resolved identity.
+[M25 — Relationship-aware communication coaching](specs/m25-communication-coaching.md) turns these signals into
+a client workflow for replies, preparation, practice, and reflection across work, friends, and family. It ships
+as `skills/communication-coach/SKILL.md`, with the essential steps mirrored into the shared usage guidance that
+is served as the `people-context://guide` resource, so a client without plugin skills gets the same workflow.
 
-The skill and worked scenarios are planned, not shipped. No server-side advice generator or persistent learning
-profile is proposed. See the [PR checklist](specs/pr-plan.md#m25--relationship-aware-communication-coaching).
+The workflow leads with a usable reply or next action and adds a short transferable lesson. It resolves identity
+before any personalized read, and an unknown contact, an ambiguous name, or an unavailable server leaves general
+coaching available from user-supplied context rather than a guessed read or a created person. It writes nothing
+by default, including end-of-session capture; a requested record follows the existing direct-versus-extracted
+rules and the explicit review gate. Drafts and rehearsed reactions are neither observations nor traits, and no
+personality assessment, automatic sending, learning profile, or server-side advice generator is introduced.
+
+Fictional bilingual scenarios and the human-review rubric are M25.2 and are not yet shipped. See the
+[PR checklist](specs/pr-plan.md#m25--relationship-aware-communication-coaching).
 
 ## Reminders
 

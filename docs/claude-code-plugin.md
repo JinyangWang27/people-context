@@ -53,16 +53,20 @@ launches Claude Code.
 
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
 
-## Bundled usage skill
+## Bundled usage skills
 
-The plugin ships one root-level skill at `skills/people-context-usage/SKILL.md`. Claude
-Code discovers skills at the plugin root, not inside `.claude-plugin/`. The skill adds no
-new tool or capability; it teaches agents to compose the existing tools correctly:
+The plugin ships model-discoverable skills at the plugin root, where Claude Code discovers
+them rather than inside `.claude-plugin/`. `skills/people-context-usage/SKILL.md` is the
+general one, and `skills/communication-coach/SKILL.md` covers help with one specific
+conversation. Neither adds a tool or a capability; they teach agents to compose the existing
+tools correctly:
 
 - resolve identity with `resolve_person` first and preserve the `ambiguous` candidate-list
   contract instead of guessing;
-- read `get_person_context` for what is known and `get_communication_guidance` for how to
-  communicate;
+- read `get_person_context` for what is known, and `get_communication_guidance` for the
+  stored signals about communicating with someone — traits, roles, recent interaction
+  summaries, notes, and the user's own philosophy text, from which the client composes the
+  advice the server never generates;
 - capture extracted knowledge only through the strict `person`/`interaction`/`affiliation`/
   `fact` staged-candidate vocabulary, never as raw conversation text;
 - treat `stage_candidates` as a proposal, `review_import` as inspection, and `commit_import`
@@ -70,8 +74,10 @@ new tool or capability; it teaches agents to compose the existing tools correctl
 - treat the absence of `get_sensitive_person_context` and `export_data` from ordinary
   discovery as an intended privacy gate, not something to work around.
 
-The skill is behavioural guidance only. It never enables elevated tools, never commits a
-staged batch automatically, and never copies raw transcript text into candidates.
+Both skills are behavioural guidance only. They never enable elevated tools, never commit a
+staged batch automatically, and never copy raw transcript text into candidates. Coaching in
+particular writes nothing at all unless the user asks for a record afterwards, at which point
+the ordinary review-before-commit gate applies.
 
 ## User-invocable workflows
 

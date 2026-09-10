@@ -672,7 +672,7 @@ skills; check each box only in its implementing PR.
 
 **Spec:** [M25 — Communication coaching](m25-communication-coaching.md).
 
-- [ ] **M25.1 — Add communication coaching workflow**
+- [x] **M25.1 — Add communication coaching workflow**
   - **Scope:** Add `skills/communication-coach/SKILL.md` with precise ordinary-discovery triggers; extend shared
     usage guidance and its packaged mirror. Correct signal-versus-advice descriptions.
   - **Acceptance:** replies, preparation, practice, and reflection serve the user's stated goals across work,
