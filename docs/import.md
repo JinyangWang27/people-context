@@ -334,7 +334,8 @@ read, and each one gets exactly one outcome.
 Nadia Okonkwo's CV arrives again eighteen months after the capture pass above. The agent resolves her
 identity, reads the document, then reads `get_person_context`, `get_person_timeline`, and
 `get_consolidation_context` — the last for the affiliations the employment and education sections have to
-be compared against. Six claims, five outcomes:
+be compared against. Six claims, five outcomes — and two of the claims yield more than one proposal, because
+an outcome belongs to a proposal rather than to a document line:
 
 | Incoming claim | Stored state | Outcome | Action |
 |---|---|---|---|

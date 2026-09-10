@@ -375,7 +375,11 @@ knowledge that was correct when it was recorded and that nothing afterwards can 
    which collections came back truncated. Those are limits of the comparison. Follow-up reads help,
    but a bounded read never promises complete history, and a page that stopped is never evidence
    that a record is absent.
-3. **Give every incoming claim exactly one outcome.**
+3. **Give every proposal exactly one outcome.** One incoming claim can yield more than one
+   proposal — a new dated role is an *Add* while the question of whether the old role ended stays
+   *Leave unresolved* — and an outcome can change when fresh evidence arrives, which is what
+   reopening an original source does. What must never happen is one proposal carrying two outcomes,
+   or a mutation going ahead under an outcome that no longer describes it.
 
    | Outcome | What it means, and what you propose |
    |---|---|

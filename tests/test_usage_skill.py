@@ -377,11 +377,21 @@ class TestReviewedCvUpdate:
         assert "never promises complete history" in lowered
         assert "never evidence that a record is absent" in lowered
 
-    def test_gives_every_incoming_claim_exactly_one_of_the_five_outcomes(self) -> None:
+    def test_gives_every_proposal_exactly_one_of_the_five_outcomes(self) -> None:
+        """The outcome belongs to a proposal, not to a line of the document.
+
+        One claim can yield two proposals — the new role is an add while the end of the old one
+        stays unresolved — and an outcome can change when fresh evidence arrives. Saying "one
+        outcome per claim" would contradict the worked example, which does both.
+        """
         body = SKILL_PATH.read_text(encoding="utf-8")
         lowered = " ".join(body.lower().split())
 
-        assert "give every incoming claim exactly one outcome" in lowered
+        assert "give every proposal exactly one outcome" in lowered
+        assert "one incoming claim can yield more than one proposal" in lowered
+        assert "an outcome can change when fresh evidence arrives" in lowered
+        # The prohibition that still holds absolutely.
+        assert "never happen is one proposal carrying two outcomes" in lowered
         for outcome in ("| Add |", "| Already represented |", "| Correct an error |",
                         "| Record a supported temporal transition |", "| Leave unresolved |"):
             assert outcome in body, outcome
