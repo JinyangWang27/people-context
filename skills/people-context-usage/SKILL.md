@@ -383,7 +383,7 @@ knowledge that was correct when it was recorded and that nothing afterwards can 
    | Already represented | A stored claim already says this. Name it, note any limits on how well you could check, and create nothing. A source repeating itself is not a reason to add a row or raise `confidence`. |
    | Correct an error | The evidence shows the stored data was wrong when it was written. Propose `correct_record` on the supported fields only, with the prior meaning and the correction both explicit. |
    | Record a supported temporal transition | The old assertion was historically correct and the world then changed. Use `supersede_fact` where it applies, on its own narrow terms. |
-   | Leave unresolved | Identity, evidence, dates, readable coverage, or the available operations are not enough. Describe what is missing and change nothing. |
+   | Leave unresolved | Identity, evidence, dates, readable coverage, or the available operations are not enough. Describe what is missing and change nothing about the stored records. Where the incoming claim is itself worth keeping, stage it as an attributed claim so it survives the conversation. |
 
    Every proposed mutation names the target record ids, what the record means before and after, the
    attribution and any source receipt behind it, how precise the dates are, and the exact tool and
@@ -408,13 +408,19 @@ knowledge that was correct when it was recorded and that nothing afterwards can 
   record to discard.
 - **Repetition is not independent evidence.** Documents copy each other. Another source receipt does
   not raise `confidence`, and where two assertions genuinely conflict and the evidence cannot settle
-  them, both stay and you say so.
+  them, both are kept and you say so.
 - **Disagreement is not proof of error.** A newer document contradicting a stored value shows that
   two sources disagree, not that the stored one was wrong when it was written. Nothing in the store
   can settle it for you: no raw source material is kept, and a receipt records only that an artifact
   was processed, never what it said. Correcting on the newer document's say-so silently discards a
-  rival claim. Reopen the original source and confirm, or leave the disagreement unresolved with
-  both assertions intact.
+  rival claim. Reopen the original source and confirm, or leave which one is right unresolved.
+- **Keeping a conflict means recording the incoming half of it.** Leaving the question unresolved
+  changes nothing, and the document is gone when the conversation ends, so doing only that keeps the
+  stored claim and loses the one that disagreed with it. If the newer claim is worth keeping, stage
+  it the way capture would — an attributed claim about what the document said, `Revised CV gives the
+  Northbridge start as 3 April 2024`, carrying `stated_by` — and say plainly that which of the two
+  is correct is still open. That preserves both sides without either overwriting the other or
+  pretending the disagreement was settled.
 - **A new row records you, not the document.** `record_fact`, `set_affiliation`, and the replacement
   a `supersede_fact` opens all take no `stated_by`, so their provenance names the calling agent. A
   supersession keeps the *old* row's attribution untouched and gives the replacement yours. Where
@@ -451,7 +457,10 @@ it produces all five outcomes:
   says 2023. On the reads alone that is a conflict and nothing more, so it starts as
   **unresolved**. It becomes **correct an error** only because the user still has the first CV,
   reopens it, and confirms it also said 2024 — then `correct_record` on that affiliation's
-  `valid_from` is repairing a mis-keyed distillation rather than overwriting a rival claim;
+  `valid_from` is repairing a mis-keyed distillation rather than overwriting a rival claim. Had the
+  first CV been unavailable, the affiliation would have kept 2023 and the newer claim would have
+  been staged as an attributed fact recording what the revised CV said, with which one is right left
+  open;
 - the CV says she relocated to Leeds on 1 September 2026 and the stored `city` fact says Bristol
   from an exact date — a **supported temporal transition**, so `supersede_fact` with
   `effective_from` 2026-09-01, which keeps the Bristol row, its dates and its attribution, and

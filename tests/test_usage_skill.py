@@ -455,6 +455,21 @@ class TestReviewedCvUpdate:
         assert "not that the stored one was wrong when it was written" in lowered
         assert "reopen the original source and confirm" in lowered
 
+    def test_keeping_a_conflict_means_recording_the_incoming_half(self) -> None:
+        """"Leave unresolved" changes nothing, so on its own it loses the claim that disagreed.
+
+        The document does not persist and the store keeps no copy of it, so a review that only
+        declines to act keeps the stored assertion and quietly drops the incoming one — the opposite
+        of preserving a conflict the evidence cannot settle.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "keeping a conflict means recording the incoming half of it" in lowered
+        assert "keeps the stored claim and loses the one that disagreed with it" in lowered
+        assert "stage it the way capture would" in lowered
+        # And the unresolved row says the same thing, so the table and the rule cannot disagree.
+        assert "change nothing about the stored records" in lowered
+
     def test_states_that_a_new_row_cannot_name_the_document(self) -> None:
         """`supersede_fact` cannot name the document, and the guidance must not imply it can."""
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())

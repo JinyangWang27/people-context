@@ -426,6 +426,45 @@ def test_a_correction_keeps_the_attribution_the_record_was_written_with() -> Non
     assert entry.provenance.stated_by == _ATTRIBUTION
 
 
+def test_an_unsettled_conflict_is_kept_by_staging_the_incoming_claim() -> None:
+    """Declining to act preserves one side of a disagreement. Keeping both takes a write.
+
+    Nothing durable records what the newer document said unless it is staged, so a review that only
+    reports the conflict leaves the store asserting 2023 and loses the claim that said 2024.
+    """
+    harness = _Harness()
+    person_id = harness.seed()
+
+    # The original CV cannot be reopened, so which date is right stays open — and the newer claim is
+    # recorded as a claim, attributed, rather than applied to the affiliation.
+    harness.accept_all(
+        harness.stage(
+            [
+                _person("Nadia Okonkwo", "nadia.okonkwo@example.com"),
+                {
+                    "type": "fact",
+                    "person_ref": "nadia",
+                    "predicate": "employment_history",
+                    "value": "Revised CV gives the Northbridge Analytics start as 3 April 2024",
+                    "stated_by": _REVISED_ATTRIBUTION,
+                    "confidence": 0.5,
+                },
+            ]
+        ).batch_id
+    )
+
+    context = harness.consolidation.execute(person_id)
+    # The stored assertion is untouched, with the attribution it was written with.
+    affiliation = next(entry for entry in context.affiliations if entry.role == "Senior Data Engineer")
+    assert (affiliation.valid_from, affiliation.provenance.stated_by) == (date(2023, 4, 3), _ATTRIBUTION)
+    # And the incoming one is readable beside it, attributed to the document that made it.
+    claim = next(fact for fact in context.facts if fact.predicate == "employment_history")
+    assert "3 April 2024" in claim.value
+    assert claim.provenance.stated_by == _REVISED_ATTRIBUTION
+    # Neither was declared correct: no correction ran, so both sides of the conflict survive.
+    assert harness.affiliation("Senior Data Engineer")["valid_from"] == "2023-04-03"
+
+
 def test_a_changed_role_at_one_organisation_has_no_supported_transition() -> None:
     """There is no affiliation supersession, and a correction must not be used to fake one."""
     harness = _Harness()
