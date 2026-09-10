@@ -551,6 +551,13 @@ person candidate, so ambiguity cannot be mistaken for a new identity. A request 
 released types keeps its pre-M17 accepted shape and matching behavior; the `review_import` and `commit_import`
 envelopes are unchanged. See [docs/import.md](import.md#agent-extracted-knowledge-m17).
 
+M22.1 adds an optional `stated_by` of at most 256 characters to the `affiliation` and `fact` candidates,
+recording who asserted the claim. Commit forwards it into the record's existing `Provenance.stated_by`, so it
+reads back through every surface that already reports provenance. It is distinct from the processing `source`,
+the `session`, and the M18 `source_session_id` receipt, and attribution never implies verification. Candidates
+omitting it keep their existing behavior. See
+[docs/import.md](import.md#attributing-a-claim-to-who-made-it-m22).
+
 M18.1 adds optional receipt metadata to both staging tools' responses and, on `stage_candidates`, to its
 arguments: `source_kind`, `content_digest`, `extraction_fingerprint`, `label`, and `external_source_id`. All are
 optional and omitting every one keeps the released behaviour exactly. `source_kind` is a bounded machine category

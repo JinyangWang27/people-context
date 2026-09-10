@@ -432,7 +432,8 @@ partial-date storage is included. Observations and traits retain their existing 
 
 **Spec:** [M22 — Source-grounded person capture](specs/m22-source-grounded-person-capture.md).
 
-**Status:** Planned.
+**Status:** In progress. M22.1 delivered `stated_by` on fact and affiliation candidates, forwarded into the
+existing provenance and audit paths; the bundle advanced to version 4 to carry it in a still-reviewable batch.
 
 ## M23 — Explainable person briefs and history
 

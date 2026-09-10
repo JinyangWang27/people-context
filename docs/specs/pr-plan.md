@@ -577,7 +577,7 @@ semantic deduplication, and generic batch mutation are deferred, not implicit ca
 
 **Spec:** [M22 — Source-grounded person capture](m22-source-grounded-person-capture.md).
 
-- [ ] **M22.1 — Preserve attribution in extracted claims**
+- [x] **M22.1 — Preserve attribution in extracted claims**
   - **Scope:** Add optional `stated_by` to fact and affiliation candidates and forward it through existing
     provenance fields across staging, review, and commit.
   - **Acceptance:** old candidates remain valid; provided attribution survives the existing lifecycle and reads.

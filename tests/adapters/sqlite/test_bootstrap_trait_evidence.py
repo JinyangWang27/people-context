@@ -112,13 +112,13 @@ def _grounded(origin: _Origin) -> tuple[str, str, str]:
     return trait.id, observation.id, interaction.id
 
 
-def test_export_emits_version_three_carrying_every_link(tmp_path: Path) -> None:
+def test_export_emits_the_current_version_carrying_every_link(tmp_path: Path) -> None:
     origin = _Origin(tmp_path / "origin.db")
     trait_id, observation_id, interaction_id = _grounded(origin)
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 3
+    assert document.version == SYNC_BUNDLE_VERSION == 4
     assert [(row.trait_id, row.evidence_type, row.evidence_id) for row in document.trait_evidence] == [
         (trait_id, "interaction", interaction_id),
         (trait_id, "observation", observation_id),

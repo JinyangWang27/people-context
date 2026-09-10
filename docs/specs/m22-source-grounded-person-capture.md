@@ -1,6 +1,7 @@
 # M22 — Source-grounded CV and background capture
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m22--source-grounded-cv-and-background-capture).
+Status: In progress — M22.1 delivered, M22.2 planned.
+See [docs/roadmap.md](../roadmap.md#m22--source-grounded-cv-and-background-capture).
 
 ## Purpose
 

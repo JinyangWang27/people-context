@@ -113,9 +113,9 @@ The staged flow has three distinct steps. Keep them distinct:
 - `interaction` — `summary`, `participant_refs` (batch-local person `ref`s), `date`;
   optional `channel`, `message_id`, `sensitivity`, `evidence_ref`.
 - `affiliation` — `person_ref`, `org`, `role`; optional `valid_from`, `valid_to`,
-  `confidence`.
+  `confidence`, `stated_by`.
 - `fact` — `person_ref`, `predicate`, `value`; optional `valid_from`, `valid_to`,
-  `confidence`, `sensitivity`.
+  `confidence`, `sensitivity`, `stated_by`.
 - `observation` — `person_ref`, `text`; optional `observed_at`, `sensitivity`,
   `evidence_ref`. Omit `observed_at` when the source establishes no event time rather
   than guessing one.
@@ -123,6 +123,12 @@ The staged flow has three distinct steps. Keep them distinct:
   call — a **required** `evidence_note` and `confidence`; optional `evidence_refs` and
   `evidence_ids`.
 - `relationship` — `from_ref`, `to_ref`, `relationship_type`; optional `confidence`.
+
+`stated_by` on a `fact` or `affiliation` records **who asserted the claim**, in at most 256
+characters — a person, a document, or a role. It is not `source`, which names the process that
+wrote the row. Attribution is not verification: a claim someone makes about themselves stays a
+fact whose value says so and whose `stated_by` names them, never an inferred `trait`. Omit it
+when the attribution is unknown rather than guessing at a speaker.
 
 References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
 `trait`, or `relationship` points at a `person` candidate's `ref` within the same

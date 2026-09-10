@@ -5,9 +5,9 @@ from __future__ import annotations
 import unicodedata
 from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Final
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 from ulid import ULID
 
 
@@ -21,6 +21,24 @@ class Sensitivity(StrEnum):
 
 
 Confidence = Annotated[float, Field(ge=0.0, le=1.0)]
+
+#: Characters an *extracted* assertion's `stated_by` attribution may carry.
+#:
+#: This bounds the import path, not `Provenance` itself: a directly recorded fact has accepted an
+#: unbounded `stated_by` since it shipped, and narrowing that would break a released write. What is
+#: new with M22.1 is attribution arriving from an agent's reading of a document, and there the whole
+#: point of the field is that it names who asserted a claim — a person, a document, a role — rather
+#: than becoming somewhere a copied passage could sit.
+#:
+#: It lives in the domain so both boundaries can hold to it without `domain` importing `app`: the
+#: candidate a caller submits, and the persisted candidate a restored bundle carries.
+MAX_STATED_BY_CHARS: Final = 256
+
+#: One bounded attribution value, stripped and non-blank.
+StatedByText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_STATED_BY_CHARS),
+]
 
 
 class Provenance(BaseModel):

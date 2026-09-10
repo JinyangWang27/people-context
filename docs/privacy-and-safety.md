@@ -535,8 +535,12 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   nothing is reconstructed or enriched.
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
 - Since M18.1 the bundle carries import receipts, every durable candidate commit mapping, and the staging rows
-  of batches that are still reviewable; since M18.3 it is **version 3** and also carries the trait-evidence
-  links. Restore still accepts versions 1 and 2, validating each document against its own strict shape, and
+  of batches that are still reviewable; M18.3 made it version 3 and added the trait-evidence links, and since
+  M22.1 it is **version 4**, whose staged fact and affiliation candidates may name who asserted them. That
+  attribution is bounded, distilled text, never a copied document passage, and it travels only inside a staging
+  row a still-reviewable batch already carried. Restore accepts versions 1, 2, and 3, validating each document
+  against its own strict shape — an older version refuses the attribution rather than restoring a candidate it
+  would then commit with the attribution silently dropped — and
   every new table joins the baseline-empty rule for *all* accepted versions — freshness is a property of the
   destination, not of the document. A terminal `redacted` receipt travels as the minimal claim it was reduced
   to; a bundle that tried to reattach cleared caller metadata to one is refused. An evidence link is validated

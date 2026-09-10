@@ -92,9 +92,15 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         if candidate_type == "person":
             detail = _import_person(candidate)
         elif candidate_type == "affiliation":
-            detail = f"{candidate['role']} at {candidate['org']} — {_import_owner(candidate, person_names)}"
+            detail = (
+                f"{candidate['role']} at {candidate['org']} — "
+                f"{_import_owner(candidate, person_names)}{_import_attribution(candidate)}"
+            )
         elif candidate_type == "fact":
-            detail = f"{candidate['predicate']}={candidate['value']} — {_import_owner(candidate, person_names)}"
+            detail = (
+                f"{candidate['predicate']}={candidate['value']} — "
+                f"{_import_owner(candidate, person_names)}{_import_attribution(candidate)}"
+            )
         elif candidate_type == "observation":
             detail = f"{candidate['text']} — {_import_owner(candidate, person_names)}"
         elif candidate_type == "trait":
@@ -174,6 +180,17 @@ def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) ->
     person_candidate_id = str(candidate["person_candidate_id"])
     person_name = str(person_names.get(person_candidate_id, "unknown person"))
     return f"{person_name} ({person_candidate_id})"
+
+
+def _import_attribution(candidate: dict[str, object]) -> str:
+    """Render who asserted a fact or affiliation, or nothing when the candidate names nobody.
+
+    The review gate is where someone decides what to commit, so it has to show the attribution
+    that will be committed with the record. Without it a claim a source made about itself reads
+    on this line exactly like one the operator established independently.
+    """
+    stated_by = candidate.get("stated_by")
+    return f", stated by {stated_by}" if stated_by else ""
 
 
 #: Printed once at the end of onboarding and the demo. The project is found through GitHub search, so
