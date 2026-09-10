@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SKILL_PATH = REPOSITORY_ROOT / "skills" / "people-context-usage" / "SKILL.md"
+GUIDE_PATH = REPOSITORY_ROOT / "src" / "people_context" / "adapters" / "mcp" / "guide.md"
 
 
 def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -323,3 +324,215 @@ class TestCvCapture:
         assert "neither pass claims to be complete" in lowered
         assert "not a survey of what is knowable about someone" in lowered
         assert "means the same thing as one already stored" in lowered
+
+
+def test_the_served_guide_matches_the_packaged_skill() -> None:
+    """One body, two delivery paths.
+
+    `guide.md` is served as the `people-context://guide` resource and `SKILL.md` is loaded by
+    Claude Code; they are the same guidance and have always been kept byte-identical below the
+    frontmatter by hand. Nothing enforced it, so an edit to one could silently teach MCP callers
+    and skill users different rules about the same tools.
+    """
+    _, skill_body = _split_frontmatter(SKILL_PATH.read_text(encoding="utf-8"))
+
+    assert GUIDE_PATH.read_text(encoding="utf-8") == skill_body.lstrip("\n")
+
+
+class TestReviewedCvUpdate:
+    """The M24.2 review of a newer document against records already stored.
+
+    M24.2 ships no mechanism; the operations it drives were all released earlier. What it adds is
+    the restraint, and the restraint is what an agent abandons first: treating the latest CV as
+    the profile, closing what it no longer mentions, overwriting a title that was historically
+    correct, and manufacturing a transition date out of a year. These pin the parts that keep a
+    review conservative.
+    """
+
+    def test_frames_a_newer_document_as_evidence_rather_than_a_replacement(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "a second cv is more evidence about someone, not a replacement" in lowered
+
+    def test_ends_the_review_on_an_ambiguous_or_incoherent_identity(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "ends the review there" in lowered
+        # Neither escape from ambiguity is available: invent a person, or merge two.
+        assert "do not create a replacement person" in lowered
+        assert "do not merge two people in order to have somewhere to put the document" in lowered
+
+    def test_reads_the_store_including_stored_affiliations_before_comparing(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+
+        assert "### Reviewing a newer CV against what is stored" in body
+        assert "`get_consolidation_context`" in body
+        assert "carries the stored affiliations" in body
+
+    def test_states_unreadable_and_truncated_reads_as_limits_of_the_comparison(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "those are limits of the comparison" in lowered
+        # A page that stopped is the commonest false negative in a comparison like this.
+        assert "never promises complete history" in lowered
+        assert "never evidence that a record is absent" in lowered
+
+    def test_gives_every_proposal_exactly_one_of_the_five_outcomes(self) -> None:
+        """The outcome belongs to a proposal, not to a line of the document.
+
+        One claim can yield two proposals — the new role is an add while the end of the old one
+        stays unresolved — and an outcome can change when fresh evidence arrives. Saying "one
+        outcome per claim" would contradict the worked example, which does both.
+        """
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "give every proposal exactly one outcome" in lowered
+        assert "one incoming claim can yield more than one proposal" in lowered
+        assert "an outcome can change when fresh evidence arrives" in lowered
+        # The prohibition that still holds absolutely.
+        assert "never happen is one proposal carrying two outcomes" in lowered
+        for outcome in ("| Add |", "| Already represented |", "| Correct an error |",
+                        "| Record a supported temporal transition |", "| Leave unresolved |"):
+            assert outcome in body, outcome
+
+    def test_every_proposed_mutation_names_its_target_and_its_call(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "names the target record ids" in lowered
+        assert "the exact tool and arguments you would call" in lowered
+
+    def test_acceptance_is_per_action_rather_than_a_blanket_yes(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "wait for explicit acceptance, and take it per action" in lowered
+        assert "being asked to read a cv is not approval to write" in lowered
+        # New claims do not get a shortcut around the existing review gate.
+        assert "stage → review → commit gate" in lowered
+
+    def test_rereads_the_target_immediately_before_applying(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "reread immediately before you apply" in lowered
+        assert "go back for renewed review" in lowered
+        assert "never silently retarget an accepted mutation" in lowered
+
+    def test_reports_completed_failed_skipped_and_unresolved_separately(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "report completed, failed, skipped, and unresolved actions separately" in lowered
+
+    def test_omission_never_implies_deletion_or_an_ending(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "omission is never deletion, and never an ending" in lowered
+        assert "propose nothing for a record the new document is merely silent about" in lowered
+
+    def test_keeps_concurrent_roles_and_repetition_out_of_the_verdict(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "concurrent roles, several skills, and different traits are not contradictions" in lowered
+        assert "they are not verdicts about which record to discard" in lowered
+        # A second receipt is another copy of a claim, not a second witness to it.
+        assert "repetition is not independent evidence" in lowered
+        assert "another source receipt does not raise `confidence`" in lowered
+
+    def test_refuses_to_manufacture_an_effective_date(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "never invent an effective date" in lowered
+        assert "out of a year, out of the newer cv's own date, or out of the day you read it" in lowered
+        assert "without one the transition stays unresolved" in lowered
+
+    def test_has_no_generic_affiliation_transition_and_will_not_fake_one(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "there is no generic affiliation or relationship supersession" in lowered
+        # The tempting substitution: overwrite the role in place and call it an update.
+        assert "`correct_record` is not a substitute" in lowered
+        assert "never for a value that was right and then stopped being current" in lowered
+
+    def test_treats_a_contradicting_document_as_conflict_rather_than_proven_error(self) -> None:
+        """The correction that overwrites a rival claim is the easiest mistake in the whole flow.
+
+        A newer CV disagreeing with a stored value looks exactly like a typo, and the store cannot
+        tell the difference for you: it keeps no copy of the first document, and a receipt records
+        only that an artifact was processed.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "disagreement is not proof of error" in lowered
+        assert "not that the stored one was wrong when it was written" in lowered
+        assert "reopen the original source and confirm" in lowered
+
+    def test_keeping_a_conflict_means_recording_the_incoming_half(self) -> None:
+        """"Leave unresolved" changes nothing, so on its own it loses the claim that disagreed.
+
+        The document does not persist and the store keeps no copy of it, so a review that only
+        declines to act keeps the stored assertion and quietly drops the incoming one — the opposite
+        of preserving a conflict the evidence cannot settle.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "keeping a conflict means recording the incoming half of it" in lowered
+        assert "keeps the stored claim and loses the one that disagreed with it" in lowered
+        assert "stage it the way capture would" in lowered
+        # And the unresolved row says the same thing, so the table and the rule cannot disagree.
+        assert "change nothing about the stored records" in lowered
+
+    def test_states_that_a_new_row_cannot_name_the_document(self) -> None:
+        """`supersede_fact` cannot name the document, and the guidance must not imply it can."""
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "a new row records you, not the document" in lowered
+        assert "take no `stated_by`" in lowered
+        # The old row is the half that does keep its attribution; say which is which.
+        assert "keeps the *old* row's attribution untouched and gives the replacement yours" in lowered
+
+    def test_does_not_group_correction_with_the_tools_that_create_a_row(self) -> None:
+        """A correction preserves provenance, and saying otherwise invites a false loss report.
+
+        `correct_record` writes only the whitelisted fields and provenance is not among them, so the
+        repaired row keeps the attribution it was written with. Lumping it in with the create paths
+        would teach an agent to announce a loss that did not happen, and to pad the corrected value
+        with source text to compensate for it.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "a correction leaves attribution alone" in lowered
+        assert "keeps the attribution it was written with" in lowered
+        assert "do not report the original attribution as lost" in lowered
+
+    def test_adds_a_supported_new_role_rather_than_dropping_it(self) -> None:
+        """Unsupported transition is not unsupported claim; the new role is still evidence."""
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "the new role is **added** as an affiliation like any other" in lowered
+        assert "what stays **unresolved** is only the *transition*" in lowered
+
+    def test_the_worked_example_never_manufactures_a_day_from_a_month(self) -> None:
+        """The example must obey the rule the section states, or it teaches the opposite of it."""
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "from 2 march 2026" in lowered
+        assert "the date is exact, so the new role is **added** as an affiliation" in lowered
+        # And it says what the month-only version of the same claim would have to become instead.
+        assert 'had the cv said only "march 2026"' in lowered
+        assert "never an affiliation starting on a 1 march nobody wrote down" in lowered
+
+    def test_the_worked_example_carries_the_source_into_the_superseded_value(self) -> None:
+        """Stating the attribution limit is not enough; the example has to apply its own remedy."""
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "the new value carries it, `leeds; per revised cv`" in lowered
+        assert "the row's own provenance names you and not the document" in lowered
+
+    def test_treats_several_calls_as_several_calls_rather_than_a_transaction(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "separate tool calls are not one transaction" in lowered
+        assert "has no collective rollback" in lowered
+        assert "never replay a successful action" in lowered
+        # The reread is a safeguard, and claiming more for it would be claiming isolation.
+        assert "it is not compare-and-swap" in lowered

@@ -338,6 +338,41 @@ class TestSupersedeFactTool:
         assert payload["explicit"]["replacement"]["confidence"] == 0.9
         assert payload["explicit"]["replacement"]["sensitivity"] == "public"
 
+    def test_the_public_tool_cannot_attribute_the_replacement_to_a_source(self, tmp_path: Path) -> None:
+        """The write tools take no `stated_by`, and the M24.2 guidance says so rather than implying otherwise.
+
+        A CV-driven transition is the case where this bites: the incoming value came from a document,
+        and no argument of this tool can record that. The old row keeps whatever attribution it was
+        written with; the replacement gets the calling agent's. Pinning it here keeps the guidance
+        honest about what the served surface can actually do.
+        """
+        server = build_server(tmp_path / "attribution.db")
+
+        async def flow(client: Client) -> dict[str, Any]:
+            alice = await _person(client)
+            original = await _fact(client, alice, predicate="city", value="Bristol", valid_from="2024-01-01")
+            schema = (await client.list_tools()).tools
+            result = await client.call_tool(
+                "supersede_fact",
+                {"fact_id": original["id"], "new_value": "Leeds", "effective_from": "2026-09-01"},
+            )
+            return {
+                "arguments": sorted(
+                    next(tool for tool in schema if tool.name == "supersede_fact").input_schema["properties"]
+                ),
+                "original": original,
+                "payload": dict(result.structured_content),
+            }
+
+        outcome = _run(server, flow)
+
+        assert outcome["arguments"] == ["confidence", "effective_from", "fact_id", "new_value", "sensitivity"]
+        payload = outcome["payload"]
+        assert payload["replacement"]["provenance"]["stated_by"] is None
+        # History is still preserved; it is only the new value's origin that cannot be named here.
+        assert payload["superseded"]["value"] == "Bristol"
+        assert payload["superseded"]["provenance"] == outcome["original"]["provenance"]
+
     def test_a_date_inside_no_transition_returns_a_structured_reason(self, tmp_path: Path) -> None:
         server = build_server(tmp_path / "refusal.db")
 
