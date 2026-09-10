@@ -498,3 +498,35 @@ records the M22.2 capture committed — an exactly dated transition that preserv
 original endpoint, a year-only date that produces no boundary at all, a changed role with no supported
 transition, an omission that closes nothing, a target that moved between review and writing, and a partial
 run reported as it happened.
+
+## M25 — Relationship-aware communication coaching
+
+**Status:** Planned. Existing tools supply signals; the coaching workflow and examples are not yet delivered.
+
+**Deliverables:** a discoverable communication-coach skill, shared/packaged guide integration, and fictional
+Chinese and English scenarios for work, friends, and family. Provide immediate help plus a short explanation;
+support practice and reflection on request. Preserve uncertainty, the user's voice and boundaries, and optional
+reviewed capture. No automatic personality inference, sending, learning profile, or server-side LLM.
+
+M25.1 delivers the workflow; M25.2 delivers examples and qualitative evaluation. Reuse existing guidance,
+context, and capture. M25 is independent of M26.
+
+**Spec:** [M25 — Communication coaching](specs/m25-communication-coaching.md).
+**PRs:** [M25 checklist](specs/pr-plan.md#m25--relationship-aware-communication-coaching).
+
+## M26 — Attribution-aware transcript review
+
+**Status:** Planned. Existing extraction supports reviewed candidates; this attribution-review workflow is not
+yet delivered.
+
+**Deliverables:** a discoverable transcript-review skill, shared/packaged guide integration, and fictional partial
+capture scenarios with lifecycle checks. Review statement attribution conversationally: several labels may identify
+one person, and one room-microphone label may contain several people. Confirmed participation does not establish
+who spoke or accepted a task. Stage supported claims only; unresolved attribution stays in conversation.
+
+M26.1 delivers the workflow; M26.2 proves supported partial capture and documents it. Reuse M17/M18 extraction
+and provenance plus M22 attribution. No resumable review state, raw transcript storage, acoustic identification,
+new candidate type, or native Ideashell integration. M26 is independent of M25.
+
+**Spec:** [M26 — Transcript attribution review](specs/m26-transcript-attribution-review.md).
+**PRs:** [M26 checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).

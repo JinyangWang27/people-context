@@ -269,6 +269,8 @@ writing live in adapters. One composition root wires both stdio and HTTP. See
 | [docs/evals.md](docs/evals.md) | Evaluation harness, fixed tasks, scoring rules, and dated recorded results |
 | [docs/roadmap.md](docs/roadmap.md) | Delivered milestones and planned work |
 | [docs/specs](docs/specs/) | One implementation spec per planned milestone |
+| [M25 coaching spec](docs/specs/m25-communication-coaching.md) | Planned communication coaching, practice, and reflection |
+| [M26 transcript review spec](docs/specs/m26-transcript-attribution-review.md) | Planned review of split and mixed speaker attribution |
 
 ## Contributing
 

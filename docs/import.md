@@ -922,6 +922,22 @@ idempotent, and unresolved interactions remain pending for a later partial commi
 reported in deterministic input order through `skipped_message_ids` or `skipped_without_id`.
 
 
+## Planned transcript attribution review
+
+[M26 — Attribution-aware transcript review](specs/m26-transcript-attribution-review.md) specifies a future client
+workflow for user-supplied transcripts, including exports with numbered speakers. A speaker label is not a person:
+several labels can refer to one person, and a shared room microphone can combine several people under one label.
+Whole-label mapping cannot resolve that second case; individual statements may require user clarification.
+
+The planned skill reviews attribution in conversation and stages only supported distilled claims through the
+existing lifecycle. Unresolved ownership is not converted into a person fact, trait, or promise. Neutral interaction
+capture requires confirmed participation and an established event date; otherwise a conversational summary remains
+useful. Reminders are not a candidate type and cannot be smuggled into staged capture.
+
+The workflow is planned, not a shipped parser or Ideashell integration. It adds no durable speaker map, raw-source
+storage, or resumable review session. Client conversation retention remains a separate boundary. See the
+[PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
+
 ## M6 changelog and export boundary
 
 Accepted import candidates reach ordinary application write use cases and therefore produce the same atomic
