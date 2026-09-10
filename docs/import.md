@@ -316,6 +316,58 @@ None of this claims completeness. A capture pass records the claims one document
 accepted; it does not survey what is knowable about someone, and it does not detect that a newly staged
 claim means the same thing as a stored one.
 
+### Reviewing a newer CV against what is stored (M24.2)
+
+M24.2 adds no mechanism either. Capture answered what to do with a document about someone the store
+knows little about; this answers what to do when the store already holds records the document
+disagrees with. Every operation it uses is already shipped — staging with its review gate,
+`correct_record`, [`supersede_fact`](mcp-interface.md#supersede_fact),
+and the bounded reads, including the affiliations M24.1 added to
+[`get_consolidation_context`](mcp-interface.md#get_consolidation_context). The binding version lives in
+the packaged usage skill (`skills/people-context-usage/SKILL.md`, served as the `people-context://guide`
+resource); this section is the reference walkthrough behind it.
+
+The governing idea is that **a newer CV is more evidence, not a replacement profile**. The store is not
+brought into line with the latest document. Each incoming claim is compared with what can actually be
+read, and each one gets exactly one outcome.
+
+Nadia Okonkwo's CV arrives again eighteen months after the capture pass above. The agent resolves her
+identity, reads the document, then reads `get_person_context`, `get_person_timeline`, and
+`get_consolidation_context` — the last for the affiliations the employment and education sections have to
+be compared against. Six claims, five outcomes:
+
+| Incoming claim | Stored state | Outcome | Action |
+|---|---|---|---|
+| Northbridge Analytics from 3 April 2024 | affiliation says 2023-04-03 | Correct an error | `correct_record` on the affiliation's `valid_from`. Both documents say 2024; the first distillation mis-keyed the year, so the stored value was wrong when written. |
+| Relocated to Leeds on 1 September 2026 | `city` fact says Bristol, exactly dated | Record a supported temporal transition | `supersede_fact(effective_from="2026-09-01")`. Bristol keeps its value and provenance and closes on 31 August; the replacement inherits the original end date. |
+| Study at Northbridge College, 2017–2019 | held as a fact whose text carries that imprecision | Already represented | Nothing. A source repeating itself adds no row and moves no `confidence`. |
+| A certification the store does not hold | absent | Add | Staged as an attributed candidate, through the ordinary stage → review → commit gate. |
+| Principal Data Engineer at Northbridge Analytics | affiliation says Senior Data Engineer | Leave unresolved | None. A changed role at one organisation has no supported transition, and `correct_record` must not be used to simulate one. |
+| *(the CV does not mention the Harbour Data Trust board seat)* | affiliation stands, open | — | None. Silence is not an ending. |
+
+Proposals are presented and accepted **per action**. Immediately before applying each accepted action the
+agent rereads the target and the identity; a record that changed, disappeared, or can no longer be read
+stops that action and goes back for renewed review rather than being silently retargeted. After applying,
+the affected records are read again and the result is reported.
+
+#### The cases that decide whether this is conservative
+
+| Case | What happens |
+|---|---|
+| Ambiguous subject | The review ends before any write. No replacement person is created and no merge is performed in order to continue. |
+| Unreadable or truncated reads | Reported as limits of the comparison. A page that stopped is never evidence that a record is absent, and a partial read cannot justify a claim that something is missing. |
+| Omission | No proposal at all. A shorter CV is not evidence that what it leaves out stopped being true. |
+| Concurrent roles and several skills | Not contradictions. Consolidation `signals` name comparisons worth a reader's attention, never verdicts about which record to discard. |
+| Repeated claims | Another document, and another source receipt, raise no `confidence`. Where two assertions genuinely conflict and the evidence cannot settle them, both stand. |
+| Inexact dates | No transition boundary is manufactured from a year, from the newer CV's own date, or from the day it was read. `supersede_fact` refuses an out-of-range `effective_from` with a `reason`; the transition then stays unresolved. |
+| Unsupported transitions | There is no generic affiliation or relationship supersession. A separately supported new claim may still be proposed, provided it is not presented as closing the old record. |
+| Changed target | The reread before applying catches it. The earlier acceptance does not carry over to the new state. |
+| Partial completion | Separate tool calls are not one transaction. `supersede_fact` is atomic within its own call; a review made of several calls has no collective rollback. What succeeded and what failed are reported as they happened, with no blind replay and no unapproved compensating edit. |
+| Sensitive background | Unchanged from capture: it belongs in a `fact` at a level a read can withhold. Proposals and truncation metadata expose no evidence the caller could not already read. |
+
+None of this claims completeness either. A review pass compares one document against the records it could
+actually read, and it detects no semantic duplication between them.
+
 ### Grounding a trait in the records it was drawn from
 
 A trait's `evidence_note` says what the inference rests on in words. M18.3 adds the id-based half, so a trait

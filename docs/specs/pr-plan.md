@@ -632,7 +632,7 @@ semantic deduplication, and generic batch mutation are deferred, not implicit ca
   - **Out:** new primary table, automatic affiliation contradiction verdicts, semantic deduplication, new
     sensitivity model, generic profile endpoint.
 
-- [ ] **M24.2 — Add the reviewed CV-update workflow**
+- [x] **M24.2 — Add the reviewed CV-update workflow**
   - **Scope:** Extend shared agent guidance and fictional scenarios to resolve identity, compare incoming claims
     with available records, propose specific actions, obtain acceptance, apply supported operations, and reread.
   - **Acceptance:** each proposal explains attribution, evidence, dates, target ids, and one outcome: add,

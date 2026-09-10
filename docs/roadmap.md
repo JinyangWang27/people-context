@@ -487,4 +487,14 @@ semantic deduplication, generic batch mutation, and generalized temporal transit
 
 **Spec:** [M24 — Reviewed person updates](specs/m24-reviewed-person-updates.md).
 
-**Status:** Planned.
+**Status:** Delivered. M24.1 added stored affiliations to the bounded consolidation context — ids, dates,
+provenance, available receipts, newest-first ordering, and an independent truncation flag — so the employment
+and education a CV asserts can be compared with what is held, without a signal, a sensitivity control, or a
+scan of a professional history. M24.2 delivered the review itself in the packaged agent guidance and its
+worked example: one identity, one outcome per incoming claim from add, already represented, correct an error,
+record a supported temporal transition, or leave unresolved, acceptance taken per action, and a reread of each
+target immediately before it is written. An end-to-end check exercises a fictional revised CV against the
+records the M22.2 capture committed — an exactly dated transition that preserves the old value and its
+original endpoint, a year-only date that produces no boundary at all, a changed role with no supported
+transition, an omission that closes nothing, a target that moved between review and writing, and a partial
+run reported as it happened.

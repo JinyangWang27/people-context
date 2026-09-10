@@ -1,6 +1,6 @@
 ---
 name: people-context-usage
-description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, shares information worth remembering about people, points at a CV, biography, or background notes about someone, or asks to review, reconcile, or tidy what is already stored about someone. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, the review-before-commit approval flow, attributed capture from documents, and correction vs. temporal supersession when maintaining stored knowledge.
+description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, shares information worth remembering about people, points at a CV, biography, or background notes about someone, asks to review, reconcile, or tidy what is already stored about someone, or brings a newer CV to check against existing records. Covers identity resolution first, context vs. guidance, meeting preparation, the strict staged-capture vocabulary, the review-before-commit approval flow, attributed capture from documents, correction vs. temporal supersession when maintaining stored knowledge, and the conservative outcomes of reviewing a newer document against what is already held.
 ---
 
 # Using people-context
@@ -357,6 +357,92 @@ Where the source material genuinely conflicts, leave the conflict standing and s
 Rewriting history to make the current state look tidy loses the thing the store is for.
 Merging people is a proposal only when identity is independently established, never
 because two records look similar.
+
+### Reviewing a newer CV against what is stored
+
+A second CV is more evidence about someone, not a replacement for what you already hold. The
+difference shows up exactly where the two documents disagree, and the tidy-looking move there —
+overwrite the old job title, close the role the newer document no longer mentions — destroys
+knowledge that was correct when it was recorded and that nothing afterwards can recover.
+
+1. **Resolve one identity.** An ambiguous name, or identity evidence that does not hang together,
+   ends the review there. Do not create a replacement person, and do not merge two people in order
+   to have somewhere to put the document.
+2. **Read the document, then read the store.** Distil claims under the capture rules above, then
+   read `get_person_context`, `get_person_timeline`, and `get_consolidation_context` — the last of
+   which carries the stored affiliations a CV's employment and education sections have to be
+   compared against. Say which sections you could not read, which evidence you could not see, and
+   which collections came back truncated. Those are limits of the comparison. Follow-up reads help,
+   but a bounded read never promises complete history, and a page that stopped is never evidence
+   that a record is absent.
+3. **Give every incoming claim exactly one outcome.**
+
+   | Outcome | What it means, and what you propose |
+   |---|---|
+   | Add | The claim is supported and nothing in what you could read represents it. Stage it as an attributed candidate. Say so when incomplete reads weaken the conclusion. |
+   | Already represented | A stored claim already says this. Name it, note any limits on how well you could check, and create nothing. A source repeating itself is not a reason to add a row or raise `confidence`. |
+   | Correct an error | The evidence shows the stored data was wrong when it was written. Propose `correct_record` on the supported fields only, with the prior meaning and the correction both explicit. |
+   | Record a supported temporal transition | The old assertion was historically correct and the world then changed. Use `supersede_fact` where it applies, on its own narrow terms. |
+   | Leave unresolved | Identity, evidence, dates, readable coverage, or the available operations are not enough. Describe what is missing and change nothing. |
+
+   Every proposed mutation names the target record ids, what the record means before and after, the
+   attribution and any source receipt behind it, how precise the dates are, and the exact tool and
+   arguments you would call.
+4. **Wait for explicit acceptance, and take it per action.** Being asked to read a CV is not
+   approval to write, and discussing one proposal does not approve the others. New claims keep the
+   ordinary stage → review → commit gate.
+5. **Reread immediately before you apply.** Check that the target and the identity still match,
+   including validity and whichever fields the proposal turns on. If the record changed, disappeared,
+   or can no longer be read, stop that action and go back for renewed review. Never silently
+   retarget an accepted mutation onto whatever is there now.
+6. **Apply, reread, and report.** Report completed, failed, skipped, and unresolved actions
+   separately, keeping the ids a reader needs in order to check the outcome for themselves.
+
+### What a newer document does not license
+
+- **Omission is never deletion, and never an ending.** A shorter CV is not evidence that the
+  employment, study, membership, or relationship it leaves out stopped being true. Propose nothing
+  for a record the new document is merely silent about.
+- **Concurrent roles, several skills, and different traits are not contradictions.** Consolidation
+  `signals` identify comparisons worth a reader's attention; they are not verdicts about which
+  record to discard.
+- **Repetition is not independent evidence.** Documents copy each other. Another source receipt does
+  not raise `confidence`, and where two assertions genuinely conflict and the evidence cannot settle
+  them, both stay and you say so.
+- **Never invent an effective date.** Exact dates belong in the validity fields and approximate ones
+  in the claim text, as in capture. Do not manufacture a transition boundary out of a year, out of
+  the newer CV's own date, or out of the day you read it. `supersede_fact` needs a real, known
+  transition date; without one the transition stays unresolved.
+- **There is no generic affiliation or relationship supersession.** A changed role at the same
+  organisation has no supported transition, and `correct_record` is not a substitute — that operation
+  is for data that was wrong, never for a value that was right and then stopped being current.
+  Leave the transition unresolved. You may still propose a separately supported new claim, as long
+  as you do not present it as closing or replacing the old affiliation.
+- **Separate tool calls are not one transaction.** `supersede_fact` is atomic inside its own call;
+  a review made of staging, commits, corrections, and supersessions has no collective rollback. If
+  something fails partway, report exactly what did and did not happen, reread before proposing a
+  retry, and never replay a successful action or attempt an unapproved compensating edit.
+- **Rereading is a safeguard, not a lock.** It catches a target that moved between review and
+  writing. It is not compare-and-swap, and nothing here introduces a concurrency token or a batch
+  transaction.
+
+Nadia Okonkwo's CV arrives again eighteen months after the capture example above, and one pass over
+it produces all five outcomes:
+
+- her Northbridge Analytics start date reads 3 April **2024** in both documents, and the stored
+  affiliation says 2023 — a mis-keyed year in the first distillation, so **correct an error** with
+  `correct_record` on that affiliation's `valid_from`;
+- the CV says she relocated to Leeds on 1 September 2026 and the stored `city` fact says Bristol
+  from an exact date — a **supported temporal transition**, so `supersede_fact` with
+  `effective_from` 2026-09-01, which keeps the Bristol row and its provenance and closes it on
+  31 August;
+- the same 2017–2019 study appears again, already held as a fact whose text carries that
+  imprecision — **already represented**, so nothing is written and no confidence moves;
+- a certification the store does not hold is **added**, staged as an attributed candidate for review;
+- the CV now calls her Principal Data Engineer at Northbridge Analytics. A role change at one
+  organisation has no supported transition, so it is **left unresolved** and reported as such;
+- and her Harbour Data Trust board role is not mentioned anywhere in the new document. That is
+  silence, not an ending: no proposal, and the affiliation stands exactly as it is.
 
 ## Disclosure gates are expected, not obstacles
 

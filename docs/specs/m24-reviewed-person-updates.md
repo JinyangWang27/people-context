@@ -1,6 +1,7 @@
 # M24 — Conservative CV update review
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m24--conservative-cv-update-review).
+Status: Delivered — M24.1 and M24.2 merged.
+See [docs/roadmap.md](../roadmap.md#m24--conservative-cv-update-review).
 
 ## Purpose
 
