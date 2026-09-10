@@ -147,7 +147,14 @@ project:
   The brief's disclosure labelling is part of its contract, not decoration: `disclosure.guidance` stays
   `ordinary` in every mode, and `disclosure.context` is `sensitive` only when the operator passed
   `--include-sensitive`. A later release does not start putting elevated records in a document whose labels say
-  ordinary.
+  ordinary. `disclosure.history` joins that labelling on the same terms: `null` when no history was requested,
+  and otherwise the level the history page itself was read at.
+
+  The brief's opt-in `history` (M23.1) is an additive field on the **version-1** document, not a new version.
+  `history: null` means history was not requested — distinct from a requested page whose `entries` are empty —
+  and `history.limit` reports the bound that was actually applied, with `history.truncated` saying older entries
+  exist beyond it. Its entries reuse the person-timeline entry shape verbatim, so a reader that already parses
+  `people-context-person-timeline` needs no second parser.
 - **Bootstrap sync bundle** is read back by `pctx sync pull`, which validates the whole document — including every
   nested object — against an exact format and version with unknown fields forbidden. A reader from an older
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible

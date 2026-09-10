@@ -458,7 +458,12 @@ Dedicated life events and a separate durable biography remain out of scope.
 
 **Spec:** [M23 — Explainable person history](specs/m23-explainable-person-history.md).
 
-**Status:** Planned.
+**Status:** Delivered. M23.1 composed the delivered M19.1 timeline into the delivered M14.1 brief as an opt-in
+section: `pctx brief --include-history [--history-limit N]`, off by default and reading no timeline at all when
+it is off. The document reports its own limits — the applied bound, the level it was read at, whether older
+entries exist beyond the page, and the stored field each instant came from — so a bounded, disclosure-filtered
+page never reads as a complete personal history. History is additive on the version-1 brief document; no second
+profile model, durable biography, or MCP endpoint was added.
 
 ## M24 — Conservative CV update review
 

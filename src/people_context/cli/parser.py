@@ -125,6 +125,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Widen the context records to sensitive and restricted ones; guidance stays ordinary.",
     )
     brief.add_argument(
+        "--include-history",
+        action="store_true",
+        help="Add a bounded newest-first history section composed from this person's timeline.",
+    )
+    brief.add_argument(
+        "--history-limit",
+        type=int,
+        default=None,
+        help=(
+            f"Entries in the history section ({MIN_TIMELINE_LIMIT}..{MAX_TIMELINE_LIMIT}, "
+            f"default {DEFAULT_TIMELINE_LIMIT}); requires --include-history."
+        ),
+    )
+    brief.add_argument(
         "--json",
         action="store_true",
         help="Print the versioned brief JSON document instead of Markdown.",

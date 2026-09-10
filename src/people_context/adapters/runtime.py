@@ -291,6 +291,7 @@ def build_runtime(
     list_reminders = ListReminders(records)
     get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
     get_communication_guidance = GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock)
+    get_person_timeline = GetPersonTimeline(repo, timeline_reader)
 
     resolve_person = ResolvePerson(repo, context_reader, runtime_clock)
     quick_capture = QuickCapture(
@@ -313,7 +314,7 @@ def build_runtime(
         get_relationship_graph=GetRelationshipGraph(repo, graph_reader, relationship_vocabulary),
         find_connection=FindConnection(repo, graph_reader, relationship_vocabulary),
         get_stale_relationships=GetStaleRelationships(recency_reader, runtime_clock),
-        get_person_timeline=GetPersonTimeline(repo, timeline_reader),
+        get_person_timeline=get_person_timeline,
         get_consolidation_context=GetConsolidationContext(repo, consolidation_reader),
         report_doctor_findings=ReportDoctorFindings(curation_reader, runtime_clock),
         report_store_stats=ReportStoreStats(stats_reader, runtime_clock),
@@ -363,6 +364,8 @@ def build_runtime(
             get_person_context,
             get_communication_guidance,
             list_reminders,
+            # The same instance the `timeline` command uses: one timeline use case, not two.
+            get_person_timeline,
             runtime_clock,
         ),
         export_data=ExportData(export_reader, runtime_clock),

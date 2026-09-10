@@ -603,7 +603,7 @@ semantic deduplication, and generic batch mutation are deferred, not implicit ca
 
 **Spec:** [M23 — Explainable person history](m23-explainable-person-history.md).
 
-- [ ] **M23.1 — Add explicitly requested history to briefs**
+- [x] **M23.1 — Add explicitly requested history to briefs**
   - **Scope:** Compose an opt-in history section from the existing timeline into the existing brief, retaining
     timeline default limit 50 and range 1–200, with additive history/disclosure/truncation/source metadata.
   - **Acceptance:** current brief defaults and existing JSON fields retain their meanings; no implicit history

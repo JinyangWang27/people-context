@@ -77,6 +77,20 @@ def _seed(db_path: Path, *, second_person: str | None = None) -> str:
         conn.close()
 
 
+def _record_extra_fact(db_path: Path, person_id: str) -> None:
+    """Add a second ordinary fact, so a one-entry history page has something to truncate."""
+    conn = open_db(db_path)
+    try:
+        record_fact = RecordFact(
+            SqlitePeopleRepository(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock()
+        )
+        record_fact.execute(
+            RecordFactInput(person_id=person_id, predicate="city", value="Berlin", source="cli")
+        )
+    finally:
+        conn.close()
+
+
 def test_markdown_brief_goes_to_stdout_and_stays_ordinary_by_default(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -113,6 +127,7 @@ def test_include_sensitive_widens_context_only(
         "include_sensitive": True,
         "context": "sensitive",
         "guidance": "ordinary",
+        "history": None,
         "notice": payload["disclosure"]["notice"],
     }
     assert {fact["value"] for fact in payload["facts"]} == {"Engineer", "Elevated detail"}
@@ -242,3 +257,82 @@ def test_ambiguous_person_exits_two_with_candidates(tmp_path: Path, capsys: pyte
     assert main(["--db", str(db_path), "brief", "Alice"]) == 2
 
     assert "Ambiguous match for 'Alice'" in capsys.readouterr().err
+
+
+def test_history_is_off_by_default_and_rendered_when_requested(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+
+    assert main(["--db", str(db_path), "brief", "Alice Zhang"]) == 0
+    assert "## History" not in capsys.readouterr().out
+
+    assert main(["--db", str(db_path), "brief", "Alice Zhang", "--include-history"]) == 0
+    out = capsys.readouterr().out
+    assert "## History (newest first, limit 50, ordinary disclosure)" in out
+    # The seeded ordinary fact reaches the timeline; the sensitive one does not.
+    assert "(by recorded_at) — fact: role: Engineer" in out
+    assert "Elevated detail" not in out
+
+
+def test_history_json_distinguishes_not_requested_from_empty(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path, second_person="Bob Chen")
+
+    assert main(["--db", str(db_path), "brief", "Alice Zhang", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["history"] is None
+
+    assert main(["--db", str(db_path), "brief", "Bob Chen", "--include-history", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["history"] == {"limit": 50, "truncated": False, "entries": []}
+    assert payload["disclosure"]["history"] == "ordinary"
+
+
+def test_history_limit_bounds_the_page_and_reports_truncation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    person_id = _seed(db_path)
+    _record_extra_fact(db_path, person_id)
+
+    args = ["--db", str(db_path), "brief", "Alice Zhang", "--include-history", "--history-limit", "1", "--json"]
+    assert main(args) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["history"]["limit"] == 1
+    assert len(payload["history"]["entries"]) == 1
+    assert payload["history"]["truncated"] is True
+
+
+def test_history_limit_without_include_history_exits_two(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+
+    assert main(["--db", str(db_path), "brief", "Alice Zhang", "--history-limit", "5"]) == 2
+
+    captured = capsys.readouterr()
+    assert "--history-limit requires --include-history" in captured.err
+    # Never a silent enable: nothing was composed at all.
+    assert captured.out == ""
+
+
+def test_out_of_range_history_limit_exits_two(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    _seed(db_path)
+
+    args = ["--db", str(db_path), "brief", "Alice Zhang", "--include-history", "--history-limit", "201"]
+    assert main(args) == 2
+
+    assert "limit must be between 1 and 200" in capsys.readouterr().err
