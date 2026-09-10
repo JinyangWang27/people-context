@@ -1,4 +1,4 @@
-# M8–M20 pull-request plan
+# M8–M20 pull-request plan with supplemental milestones
 
 One checklist item is one independently mergeable pull request. Implementers must read the referenced milestone
 spec first; the bullets below are binding acceptance criteria and the out-of-scope bullets are hard boundaries.
@@ -649,3 +649,78 @@ semantic deduplication, and generic batch mutation are deferred, not implicit ca
     changed targets, partial completion, and preserved history.
   - **Out:** replacement-profile import, omission-driven deletion, automated belief revision, generic batch
     mutation, semantic deduplication, unsupported affiliation/trait supersession, structured partial-date storage.
+
+## M25–M26 supplemental plan and dependencies
+
+These four planned PRs are additional to the historical M8–M20 total of 42 and M22–M24 supplemental total of five.
+Earlier checklist entries and statuses remain unchanged. Specifications and roadmap entries do not deliver the
+skills; check each box only in its implementing PR.
+
+| Milestone | Theme | Additional PRs |
+|---|---|---:|
+| M25 | Relationship-aware communication coaching | 2 |
+| M26 | Attribution-aware transcript review | 2 |
+| **M25–M26 supplemental total** | | **4** |
+
+- Delivered guidance, M10 skills, packaged guide, and M17/M18 capture → M25.1.
+- M25.1 → M25.2: scenarios assess the delivered coaching workflow.
+- Delivered M17/M18 extraction and provenance plus M22 attribution → M26.1.
+- M26.1 → M26.2: partial-capture scenarios exercise the delivered review workflow.
+- M25 and M26 are independent. Neither introduces a server-side LLM, schema migration, or new MCP/CLI API.
+
+## M25 — Relationship-aware communication coaching
+
+**Spec:** [M25 — Communication coaching](m25-communication-coaching.md).
+
+- [ ] **M25.1 — Add communication coaching workflow**
+  - **Scope:** Add `skills/communication-coach/SKILL.md` with precise ordinary-discovery triggers; extend shared
+    usage guidance and its packaged mirror. Correct signal-versus-advice descriptions.
+  - **Acceptance:** replies, preparation, practice, and reflection serve the user's stated goals across work,
+    friends, and family. Default to a usable reply/action plus a short lesson; preserve voice, boundaries, and
+    uncertainty. Resolve identity before personalized reads; unknown/ambiguous identity or unavailable MCP permits
+    situational coaching without guessed reads or person creation. `situation` is echoed and `friction_notes` is
+    recent summaries, not detected conflict. No unsolicited writes, including end-of-session staging; requested
+    capture preserves direct-versus-extracted rules and explicit reviewed commit. Drafts/simulations are not
+    observed outcomes or traits. Philosophy changes require an explicit request. Essential workflow reaches MCP
+    clients through the existing guide; skill and packaged-body parity checks pass.
+  - **Out:** new tools/prompts/CLI commands, schema/dependencies, automatic sending, personality scoring,
+    persistent learning profiles, server-side advice generation.
+
+- [ ] **M25.2 — Demonstrate and evaluate coaching**
+  - **Scope:** Add fictional bilingual use cases, a human-review rubric, and delivered-skill plugin documentation.
+  - **Acceptance:** examples cover workplace hierarchy, disagreement/refusal, friendship repair, family boundaries,
+    uncertain intent, missing context/identity, requested practice/debrief, and optional capture. Assess usefulness,
+    voice, grounding, uncertainty, boundaries, and transferable lessons; separate qualitative review from automated
+    structural checks. Stub runs, keyword scoring, and instruction-text tests are not evidence of coaching quality.
+    Link examples from the gallery and document cloud-client retention separately from local server storage.
+  - **Out:** new evaluation framework, effectiveness claims without evidence, curricula or progress tracking.
+
+## M26 — Attribution-aware transcript review
+
+**Spec:** [M26 — Transcript attribution review](m26-transcript-attribution-review.md).
+
+- [ ] **M26.1 — Add transcript attribution review workflow**
+  - **Scope:** Add `skills/transcript-review/SKILL.md`; integrate attribution review into shared extraction guidance
+    and its packaged mirror using existing candidate contracts.
+  - **Acceptance:** handle both multiple labels for one person and multiple people under one label. Whole-label
+    assignment requires homogeneity confirmation; mixed labels use statement/range confirmation in conversation.
+    Distinguish participant, speaker, subject, and commitment owner. Labels never become aliases or people and do
+    not transfer across recordings. Resolve identities before staging; preserve uncertain attribution/dates, partial
+    coverage, sensitivity, source receipts, and explicit reviewed commit. Stage supported claims only. Neutral
+    interactions require confirmed participation and an established date; otherwise summarize conversationally.
+    No reminder candidate exists: follow-ups remain conversational unless a supported specific write is requested.
+    Essential guidance is available through the existing MCP guide and packaged-body parity holds.
+  - **Out:** acoustic identification, diarization repair, native Ideashell parser, raw transcript persistence,
+    durable speaker maps, resumable review state, new candidate types/tools/prompts/CLI commands.
+
+- [ ] **M26.2 — Prove safe partial transcript capture**
+  - **Scope:** Add fictional transcript use cases and runnable lifecycle checks with existing test infrastructure;
+    update delivered-skill import/plugin documentation and the gallery.
+  - **Acceptance:** cases cover split/mixed labels, recording-local identity, ambiguous names, unknown dates,
+    partial reads/confirmation, unsupported reminder candidates, and sensitive claims. Confirmed subsets survive
+    stage/review/accepted commit with correct attribution; uncertain ownership, raw marker text, speaker maps, and
+    label-derived aliases are absent from persisted staging, records, and receipts. Participant knowledge does not
+    create a promise or speaker attribution. Separate human assessment of extraction decisions from tests of
+    hand-authored candidate batches; neither stub output nor skill wording proves reliable agent behavior.
+  - **Out:** new test framework, persistent transcript review, raw fixtures from real people, automatic identity
+    inference or completeness claims.

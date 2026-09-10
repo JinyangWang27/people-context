@@ -1,6 +1,6 @@
 # M20 — Streaming importer parsing under a parser-work budget
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m20--streaming-importer-parsing).
+Status: Delivered. All milestone PRs are complete in [the PR checklist](pr-plan.md). See [docs/roadmap.md](../roadmap.md#m20--streaming-importer-parsing).
 
 ## Motivation
 

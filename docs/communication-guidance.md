@@ -28,7 +28,7 @@ believes them, not asserted from nowhere.
 The server's job stops at supplying structured context; it never generates communication advice itself:
 
 - **The server stores structured signal**: a person's traits (with evidence and confidence), relevant
-  relationship/role context, recent interaction friction notes, active `communication_note` reminders for
+  relationship/role context, recent interaction summaries, active `communication_note` reminders for
   that person, and the user's own communication philosophy text.
 - **The client LLM composes the actual advice**, in whatever framing the user has configured — principles
   from 周易 (I Ching) or 道德经 (Tao Te Ching), a personal style guide, company communication norms, or any
@@ -48,18 +48,33 @@ while still letting any MCP client render advice in its own voice, matched to th
    containing:
    - the person's traits (grouped by category),
    - relevant relationship/role context for that person,
-   - up to five recent interaction friction notes (newest first, drawn from interaction summaries),
+   - up to five recent ordinary-disclosure interaction summaries (newest first, under `friction_notes`),
    - any active `communication_note` reminders for that person,
    - the user's `communication_philosophy` text, verbatim (`null` plus `philosophy_set: false` when unset),
    - the caller's `situation`, echoed unchanged.
 3. The calling LLM composes advice from that bundle, in the user's own framing, for the specific
    `situation` described (if given).
 
+`situation` is echoed, not used by the server to select or rank the returned signal. Despite its name,
+`friction_notes` does not identify conflict: it contains recent interaction summaries whether or not friction
+occurred. The client must assess relevance and distinguish recorded information from possible interpretations.
+
 Both tools are described in [docs/mcp-interface.md](mcp-interface.md); `set_communication_philosophy` is a
 write tool, `get_communication_guidance` is read-only.
 
 The implemented guidance path never returns observations. Traits and interactions marked `sensitive` or
 `restricted` are also excluded; M2 deliberately has no `include_sensitive` override on this tool.
+
+## Planned coaching workflow
+
+[M25 — Relationship-aware communication coaching](specs/m25-communication-coaching.md) specifies a future
+client skill for replies, preparation, practice, and reflection across work, friends, and family. It uses these
+existing signals to provide a usable reply or next action and a short transferable lesson, with no automatic
+capture or personality assessment. General coaching can proceed from user-supplied context when a contact is
+unknown or MCP is unavailable; personalized reads still require resolved identity.
+
+The skill and worked scenarios are planned, not shipped. No server-side advice generator or persistent learning
+profile is proposed. See the [PR checklist](specs/pr-plan.md#m25--relationship-aware-communication-coaching).
 
 ## Reminders
 
