@@ -455,14 +455,28 @@ class TestReviewedCvUpdate:
         assert "not that the stored one was wrong when it was written" in lowered
         assert "reopen the original source and confirm" in lowered
 
-    def test_states_that_the_direct_write_tools_carry_no_attribution(self) -> None:
+    def test_states_that_a_new_row_cannot_name_the_document(self) -> None:
         """`supersede_fact` cannot name the document, and the guidance must not imply it can."""
         lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
 
-        assert "the direct write tools carry no attribution" in lowered
+        assert "a new row records you, not the document" in lowered
         assert "take no `stated_by`" in lowered
         # The old row is the half that does keep its attribution; say which is which.
         assert "keeps the *old* row's attribution untouched and gives the replacement yours" in lowered
+
+    def test_does_not_group_correction_with_the_tools_that_create_a_row(self) -> None:
+        """A correction preserves provenance, and saying otherwise invites a false loss report.
+
+        `correct_record` writes only the whitelisted fields and provenance is not among them, so the
+        repaired row keeps the attribution it was written with. Lumping it in with the create paths
+        would teach an agent to announce a loss that did not happen, and to pad the corrected value
+        with source text to compensate for it.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "a correction leaves attribution alone" in lowered
+        assert "keeps the attribution it was written with" in lowered
+        assert "do not report the original attribution as lost" in lowered
 
     def test_adds_a_supported_new_role_rather_than_dropping_it(self) -> None:
         """Unsupported transition is not unsupported claim; the new role is still evidence."""

@@ -390,6 +390,42 @@ def test_correcting_a_mere_disagreement_discards_the_rival_assertion() -> None:
     ]
 
 
+def test_a_correction_keeps_the_attribution_the_record_was_written_with() -> None:
+    """Correcting a value does not restate who asserted it; the same source still says it.
+
+    Provenance is not a correctable field, so the repaired row keeps the CV that asserted it and the
+    correcting agent appears in the audit trail instead. Reporting that attribution as lost, or
+    padding the value with source text to replace it, would both be wrong.
+    """
+    harness = _Harness()
+    person_id = harness.seed()
+    before = harness.affiliation("Senior Data Engineer")
+    assert before["provenance_stated_by"] == _ATTRIBUTION
+
+    harness.correct.execute(
+        CorrectRecordInput(
+            entity_type="affiliation",
+            entity_id=before["id"],
+            fields={"valid_from": date(2024, 4, 3)},
+            source="agent",
+            stated_by="the reviewing agent",
+        )
+    )
+
+    after = harness.affiliation("Senior Data Engineer")
+    assert after["valid_from"] == "2024-04-03"
+    # The value changed; who asserted it did not.
+    assert (after["provenance_source"], after["provenance_session"], after["provenance_stated_by"]) == (
+        before["provenance_source"],
+        before["provenance_session"],
+        _ATTRIBUTION,
+    )
+    entry = next(
+        row for row in harness.consolidation.execute(person_id).affiliations if row.role == "Senior Data Engineer"
+    )
+    assert entry.provenance.stated_by == _ATTRIBUTION
+
+
 def test_a_changed_role_at_one_organisation_has_no_supported_transition() -> None:
     """There is no affiliation supersession, and a correction must not be used to fake one."""
     harness = _Harness()

@@ -410,12 +410,18 @@ knowledge that was correct when it was recorded and that nothing afterwards can 
   was processed, never what it said. Correcting on the newer document's say-so silently discards a
   rival claim. Reopen the original source and confirm, or leave the disagreement unresolved with
   both assertions intact.
-- **The direct write tools carry no attribution.** `record_fact`, `correct_record`, and
-  `supersede_fact` take no `stated_by`, so a row they write records the calling agent, not the
-  document. A supersession keeps the *old* row's attribution untouched and gives the replacement
-  yours. Where naming the source matters, say it inside the claim text as capture does, or stage an
-  attributed candidate through `stage_candidates`, which does carry `stated_by`. Do not tell the
-  user a transition recorded who asserted the new value when it did not.
+- **A new row records you, not the document.** `record_fact`, `set_affiliation`, and the replacement
+  a `supersede_fact` opens all take no `stated_by`, so their provenance names the calling agent. A
+  supersession keeps the *old* row's attribution untouched and gives the replacement yours. Where
+  naming the source matters, say it inside the claim text as capture does, or stage an attributed
+  candidate through `stage_candidates`, which does carry `stated_by`. Do not tell the user a
+  transition recorded who asserted the new value when it did not.
+- **A correction leaves attribution alone.** `correct_record` writes only the fields you name, and
+  provenance is not one of them, so the repaired row keeps the attribution it was written with and
+  your part is recorded in the audit trail instead. That is the point of a correction: the same
+  source still asserts the claim, and only the value it was written down as was wrong. Do not report
+  the original attribution as lost, and do not pad the corrected value with source text to make up
+  for a loss that did not happen.
 - **Never invent an effective date.** Exact dates belong in the validity fields and approximate ones
   in the claim text, as in capture. Do not manufacture a transition boundary out of a year, out of
   the newer CV's own date, or out of the day you read it. `supersede_fact` needs a real, known
