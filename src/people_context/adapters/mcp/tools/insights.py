@@ -84,7 +84,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         limit: int = DEFAULT_CONSOLIDATION_LIMIT,
         person: str | None = None,
     ) -> dict[str, Any]:
-        """Return one person's stored facts, traits, and observations plus how they relate.
+        """Return one person's stored facts, traits, observations, and affiliations and how they relate.
 
         Pass `person_id` from `resolve_person`, or `person` (a name or alias) to resolve inline.
 
@@ -96,8 +96,19 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         user to approve is your job, and several observations supporting one trait are separate
         evidence rather than duplicates.
 
+        `affiliations` carries the person's stored roles at organizations — employment, education,
+        membership — with their ids, dates, provenance, and any import receipt, so an incoming CV
+        claim can be checked against what is already recorded. It has its own page and its own
+        `affiliations_truncated` flag, and no signal is computed over it: two roles at one
+        organization may be a promotion, a rehire, or two concurrent posts, and only you can read
+        which. A `valid_to` of null means the stored assertion set no end, not that the role is
+        confirmed current, and `created_at` is when the row was written rather than when the role
+        began. A page that truncates is not evidence that a role is absent.
+
         This read never writes. Sensitive and restricted records are never returned, and a trait
-        names only evidence that is itself ordinary. An unknown or removed person returns
+        names only evidence that is itself ordinary. Affiliations carry no disclosure level at all,
+        so this collection adds no sensitivity control and is no route to a protected fact —
+        background that needs one belongs in a fact. An unknown or removed person returns
         `found: false` rather than an error.
         """
         target = resolve_reference(deps, person_id=person_id, person=person)

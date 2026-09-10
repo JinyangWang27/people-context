@@ -7,12 +7,14 @@ from datetime import UTC, date, datetime, timedelta, timezone
 
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
+    SqliteOrganizationStore,
     SqlitePeopleRepository,
     SqlitePersonConsolidationReader,
     SqliteRecordStore,
     open_db,
 )
 from people_context.adapters.sqlite.consolidation_reader import (
+    _AFFILIATIONS_SQL,
     _FACTS_SQL,
     _OBSERVATIONS_SQL,
     _TRAITS_SQL,
@@ -28,9 +30,12 @@ from people_context.app.records import (
     RecordObservationInput,
     RecordTrait,
     RecordTraitInput,
+    SetAffiliation,
+    SetAffiliationInput,
 )
 from people_context.domain.fact import Fact
 from people_context.domain.observation import Observation
+from people_context.domain.organization import Affiliation
 from people_context.domain.person import Person
 from people_context.domain.shared import Sensitivity
 from people_context.domain.trait import Trait, TraitCategory
@@ -52,8 +57,12 @@ class _Fixture:
         self.audit = SqliteAuditLog(self.conn)
         self.clock = SystemClock()
         self.trait_evidence = SqliteTraitEvidenceStore(self.conn)
+        self.organizations = SqliteOrganizationStore(self.conn)
         self.reader = SqlitePersonConsolidationReader(self.conn)
         self.facts = RecordFact(self.people, self.records, self.audit, self.clock)
+        self.affiliations = SetAffiliation(
+            self.people, self.organizations, self.records, self.audit, self.clock
+        )
         self.observations = RecordObservation(self.people, self.records, self.audit, self.clock)
         self.interactions = RecordInteraction(self.people, self.records, self.audit, self.clock)
         self.traits = RecordTrait(self.people, self.records, self.audit, self.clock, self.trait_evidence)
@@ -125,6 +134,33 @@ class _Fixture:
                 confidence=confidence,
                 sensitivity=sensitivity,
                 evidence_ids=evidence_ids or [],
+            )
+        )
+
+    def affiliation(
+        self,
+        person_id: str,
+        *,
+        org: str = "Acme",
+        role: str = "Head of Design",
+        valid_from: date | None = None,
+        valid_to: date | None = None,
+        confidence: float | None = None,
+        source: str = "agent",
+        session: str | None = None,
+        stated_by: str | None = None,
+    ) -> Affiliation:
+        return self.affiliations.execute(
+            SetAffiliationInput(
+                person_id=person_id,
+                org=org,
+                role=role,
+                valid_from=valid_from,
+                valid_to=valid_to,
+                confidence=confidence,
+                source=source,
+                session=session,
+                stated_by=stated_by,
             )
         )
 
@@ -265,9 +301,12 @@ def test_another_persons_records_are_never_returned() -> None:
     fixture.trait(bob.id)
     fixture.observation(bob.id)
 
+    fixture.affiliation(bob.id, org="Globex")
+
     assert fixture.reader.list_consolidation_facts(alice.id, limit=10, sensitivities=ORDINARY) == []
     assert fixture.reader.list_consolidation_traits(alice.id, limit=10, sensitivities=ORDINARY) == []
     assert fixture.reader.list_consolidation_observations(alice.id, limit=10, sensitivities=ORDINARY) == []
+    assert fixture.reader.list_consolidation_affiliations(alice.id, limit=10) == []
 
 
 class TestBounding:
@@ -287,14 +326,14 @@ class TestBounding:
 
     def test_every_query_carries_its_own_limit(self) -> None:
         """A bound applied after the read would let a dense store answer `limit=1` expensively."""
-        for sql in (_FACTS_SQL, _TRAITS_SQL, _OBSERVATIONS_SQL):
+        for sql in (_FACTS_SQL, _TRAITS_SQL, _OBSERVATIONS_SQL, _AFFILIATIONS_SQL):
             assert "LIMIT :limit" in sql
 
     def test_no_read_scans_a_whole_table(self) -> None:
         """Every branch reaches its rows through an index, so another person's rows cost nothing."""
         fixture = _Fixture()
 
-        for sql in (_FACTS_SQL, _TRAITS_SQL, _OBSERVATIONS_SQL):
+        for sql in (_FACTS_SQL, _TRAITS_SQL, _OBSERVATIONS_SQL, _AFFILIATIONS_SQL):
             plan = fixture.conn.execute(
                 "EXPLAIN QUERY PLAN " + sql.format(levels=":level0, :level1"),
                 {"person_id": "P", "limit": 6, "level0": "public", "level1": "personal"},
@@ -456,12 +495,130 @@ class TestProvenanceAndEvidence:
         assert fixture.reader.list_trait_evidence(trait.id, limit=10, sensitivities=ORDINARY) == []
 
 
+class TestAffiliations:
+    """Roles at organizations are read as bounded, ordered, level-free evidence."""
+
+    def test_every_stored_field_reaches_the_projection(self) -> None:
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        stored = fixture.affiliation(
+            alice.id,
+            org="Acme",
+            role="Head of Design",
+            valid_from=date(2024, 1, 1),
+            valid_to=date(2026, 12, 31),
+            confidence=0.8,
+            source="import",
+            session="cv-1",
+            stated_by="alice",
+        )
+
+        row = fixture.reader.list_consolidation_affiliations(alice.id, limit=10)[0]
+
+        assert (row.affiliation_id, row.person_id, row.org_id) == (stored.id, alice.id, stored.org_id)
+        assert (row.org_name, row.role) == ("Acme", "Head of Design")
+        assert (row.valid_from, row.valid_to) == (date(2024, 1, 1), date(2026, 12, 31))
+        assert row.created_at == stored.created_at
+        assert row.confidence == 0.8
+        # Attribution is the affiliation's own, and no import committed onto it.
+        assert (row.provenance.source, row.provenance.session, row.provenance.stated_by) == (
+            "import",
+            "cv-1",
+            "alice",
+        )
+        assert row.source_session_id is None
+
+    def test_an_affiliation_names_the_earliest_import_that_committed_onto_it(self) -> None:
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        stored = fixture.affiliation(alice.id)
+        fixture.add_source("S-late", "2026-05-01T00:00:00+00:00")
+        fixture.add_source("S-early", "2026-01-01T00:00:00+00:00")
+        fixture.map_candidate("C2", "S-late", "affiliation", stored.id, "2026-05-01T00:00:00+00:00")
+        fixture.map_candidate("C1", "S-early", "affiliation", stored.id, "2026-01-01T00:00:00+00:00")
+
+        rows = fixture.reader.list_consolidation_affiliations(alice.id, limit=10)
+
+        assert [(row.affiliation_id, row.source_session_id) for row in rows] == [(stored.id, "S-early")]
+
+    def test_rows_are_newest_first_by_asserted_start(self) -> None:
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        old = fixture.affiliation(alice.id, org="Acme", valid_from=date(2018, 1, 1), valid_to=date(2021, 12, 31))
+        recent = fixture.affiliation(alice.id, org="Borealis", valid_from=date(2022, 1, 1))
+        newest = fixture.affiliation(alice.id, org="Cirrus", valid_from=date(2024, 3, 1))
+
+        rows = fixture.reader.list_consolidation_affiliations(alice.id, limit=10)
+
+        assert [row.affiliation_id for row in rows] == [newest.id, recent.id, old.id]
+        # A closed role is history, not a row to hide, and a concurrent one is not collapsed.
+        assert [row.valid_to for row in rows] == [None, None, date(2021, 12, 31)]
+
+    def test_an_affiliation_asserting_no_start_is_placed_by_when_it_was_recorded(self) -> None:
+        """`created_at` is a fallback for ordering, never a claim about when the role began."""
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        undated = fixture.affiliation(alice.id, org="Acme")
+        long_ago = fixture.affiliation(alice.id, org="Borealis", valid_from=date(1999, 1, 1))
+
+        rows = fixture.reader.list_consolidation_affiliations(alice.id, limit=10)
+
+        assert [row.affiliation_id for row in rows] == [undated.id, long_ago.id]
+        assert rows[0].valid_from is None
+
+    def test_an_exact_tie_is_broken_by_id(self) -> None:
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        first = fixture.affiliation(alice.id, org="Acme", valid_from=date(2024, 1, 1))
+        second = fixture.affiliation(alice.id, org="Borealis", valid_from=date(2024, 1, 1))
+        expected = sorted([first.id, second.id])
+
+        rows = fixture.reader.list_consolidation_affiliations(alice.id, limit=10)
+
+        assert [row.affiliation_id for row in rows] == expected
+
+    def test_the_read_is_bounded_one_row_past_the_page(self) -> None:
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        for index in range(5):
+            fixture.affiliation(alice.id, org=f"Org {index}")
+
+        assert len(fixture.reader.list_consolidation_affiliations(alice.id, limit=2)) == 3
+
+    def test_a_widened_disclosure_opt_in_changes_nothing_about_this_collection(self) -> None:
+        """There is no level to widen, so both callers see one page through the use case."""
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        fixture.affiliation(alice.id)
+        use_case = GetConsolidationContext(fixture.people, fixture.reader)
+
+        ordinary = use_case.execute(alice.id)
+        elevated = use_case.execute(alice.id, include_sensitive=True)
+
+        assert [row.affiliation_id for row in ordinary.affiliations] == [
+            row.affiliation_id for row in elevated.affiliations
+        ]
+
+    def test_a_restricted_fact_is_not_exposed_through_the_affiliation_collection(self) -> None:
+        fixture = _Fixture()
+        alice = fixture.person("Alice")
+        fixture.fact(alice.id, predicate="health", value="on leave", sensitivity=Sensitivity.RESTRICTED)
+        fixture.affiliation(alice.id)
+
+        result = GetConsolidationContext(fixture.people, fixture.reader).execute(alice.id)
+
+        assert result.facts == []
+        assert len(result.affiliations) == 1
+        assert "leave" not in result.model_dump_json()
+
+
 def test_the_read_writes_no_audit_or_changelog_row() -> None:
     fixture = _Fixture()
     alice = fixture.person("Alice")
     fixture.fact(alice.id)
     fixture.trait(alice.id)
     fixture.observation(alice.id)
+    fixture.affiliation(alice.id)
     before = fixture.counts()
 
     result = GetConsolidationContext(fixture.people, fixture.reader).execute(alice.id)

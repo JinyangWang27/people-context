@@ -621,7 +621,7 @@ semantic deduplication, and generic batch mutation are deferred, not implicit ca
 
 **Spec:** [M24 — Reviewed person updates](m24-reviewed-person-updates.md).
 
-- [ ] **M24.1 — Include affiliations in bounded consolidation context**
+- [x] **M24.1 — Include affiliations in bounded consolidation context**
   - **Scope:** Add affiliation records, dates, available provenance/source references, and an explicit
     affiliation truncation flag to the existing person-scoped consolidation context.
   - **Acceptance:** deterministic bounded reads retain existing fields, limits, ordering, signals, and disclosure

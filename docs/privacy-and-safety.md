@@ -63,6 +63,17 @@ cannot contradict a visible one from behind the disclosure gate, which would lea
 without ever naming it. Trait citations follow the timeline's rule — the cited record's own level decides —
 and the read has no elevated MCP variant. It returns no raw source material, because none is stored.
 
+The consolidation read's `affiliations` collection sits outside that filter, because there is nothing to filter
+on: the table stores no disclosure level, and the timeline already reports affiliations with a `null` sensitivity
+rather than one it invented. The collection is therefore identical for every caller. That is a statement about
+what affiliations are, not a widening of what this read discloses — it adds no sensitivity control, exposes no
+protected fact or restricted evidence through a second collection, and cannot be used as a fallback route to a
+record the level rule withholds. The practical rule for a writer is unchanged and worth repeating here: a role or
+an organization that must not be disclosed casually does not become safe by being stored as an affiliation.
+Background that needs an enforceable level belongs in a fact, which has one. Affiliation rows carry their own
+stored provenance and, when an import committed a candidate onto them, an import receipt id; neither discloses
+raw source material, because none is stored.
+
 The consolidation read is read-only in the strong sense: it writes no audit row, no changelog row, and no durable
 state, and the maintenance actions it feeds are separate, explicitly approved mutations. M19 ships no autonomous
 belief updater and no background process that revises stored knowledge.
