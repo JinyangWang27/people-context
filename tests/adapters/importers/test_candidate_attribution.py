@@ -32,7 +32,6 @@ from people_context.app.imports import (
     ReviewImport,
     StageCandidates,
 )
-from people_context.app.imports.models import MAX_STATED_BY_CHARS
 from people_context.app.people import RememberPerson
 from people_context.app.records import (
     RecordFact,
@@ -42,6 +41,7 @@ from people_context.app.records import (
     SetAffiliation,
 )
 from people_context.app.relationships import SetRelationship
+from people_context.domain.shared import MAX_STATED_BY_CHARS
 
 _NOW = datetime(2026, 9, 9, 9, 0, tzinfo=UTC)
 

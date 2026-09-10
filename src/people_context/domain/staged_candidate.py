@@ -22,6 +22,15 @@ one caller may submit in a single request; they protect request and storage size
 the durable write imposes none of them. Re-imposing them on a restore would refuse a bundle whose
 rows this installation itself accepted and stored.
 
+Two bounds *are* re-checked, and the difference is whether refusing could reject this installation's
+own data. A trait's evidence budget and `stated_by` are both unconditional at the input boundary, so
+nothing staged here can exceed them and holding a restored row to the same number turns away only a
+document that was hand-edited or corrupted. Both are also bounds whose breach would be carried
+forward: an over-budget trait makes one trait's retrieval unbounded, and an oversized attribution is
+committed into durable provenance and then read back through every surface that reports it. The
+older unbounded strings beside them — an observation's `text`, a fact's `value` — keep their released
+shape, because narrowing those *would* refuse rows this installation legitimately stored.
+
 `extra="forbid"` is the other half of the contract: staging is where extraction output stops being
 prose, so a key nothing here declares is unexplained text that review would display and every later
 bundle would carry.
@@ -44,7 +53,7 @@ from pydantic import (
 )
 
 from people_context.domain.person import AliasKind
-from people_context.domain.shared import Confidence, Sensitivity
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -140,7 +149,7 @@ class StagedAffiliation(StrictStagedModel):
     valid_from: date | None = None
     valid_to: date | None = None
     confidence: Confidence | None = None
-    stated_by: NonBlank | None = None
+    stated_by: StatedByText | None = None
 
 
 class StagedFact(StrictStagedModel):
@@ -154,7 +163,7 @@ class StagedFact(StrictStagedModel):
     valid_to: date | None = None
     confidence: Confidence | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
-    stated_by: NonBlank | None = None
+    stated_by: StatedByText | None = None
 
 
 class StagedObservation(StrictStagedModel):

@@ -348,6 +348,13 @@ names an M17 type, so a legacy fact-only batch would otherwise carry an unbounde
 is exactly where a copied document passage would sit. A field with no released unbounded history is simply
 bounded.
 
+The same bound holds on the *persisted* candidate, so a restored bundle cannot reintroduce what staging refuses.
+Because the input bound is unconditional, nothing this installation stages can exceed it, and refusing a longer
+one turns away only a hand-edited or corrupted document. This follows M18.3's evidence identifiers, which are
+bounded at both boundaries for the same reason. The older unbounded strings beside it — an observation's `text`,
+a fact's `value` — keep their released shape, because narrowing those *would* refuse rows this installation
+legitimately stored.
+
 Every one of these is checked before validation and before any staging row exists, and a refusal names only
 the limit: the rejected payload is untrusted extraction output and is never echoed back. The limits are
 **conditional on purpose**. A request built only from the four released candidate types keeps the accepted

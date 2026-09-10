@@ -10,6 +10,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from people_context.domain import sync_bundle
+from people_context.domain.shared import MAX_STATED_BY_CHARS
 from people_context.domain.sync_bundle import (
     MAX_REPORTED_DETAILS,
     SQLITE_MAX_INTEGER,
@@ -1145,6 +1146,37 @@ def test_a_version_three_document_without_attribution_still_parses() -> None:
     assert document.version == SYNC_BUNDLE_VERSION
     assert len(document.imports.staging) == 1
     assert len(document.trait_evidence) == 1
+
+
+@pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
+def test_a_restored_candidate_is_held_to_the_same_attribution_bound_as_staged_input(
+    candidate_type: str,
+) -> None:
+    """A hand-edited bundle must not reintroduce the unbounded field staging refuses.
+
+    The input bound is unconditional, so nothing this installation stages can exceed it and
+    refusing here turns away only a corrupted or hand-edited document. Accepting one would put
+    unbounded text into durable provenance at commit, where every surface that reports provenance
+    then reads it back.
+    """
+    payload = _document()
+    _staged_attribution(payload, candidate_type)
+    _imports(payload)["staging"][-1]["candidate"]["stated_by"] = "x" * (MAX_STATED_BY_CHARS + 1)
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+@pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
+def test_a_restored_candidate_at_exactly_the_attribution_bound_is_accepted(candidate_type: str) -> None:
+    """The bound refuses what is over it and nothing else."""
+    payload = _document()
+    _staged_attribution(payload, candidate_type)
+    _imports(payload)["staging"][-1]["candidate"]["stated_by"] = "x" * MAX_STATED_BY_CHARS
+
+    document = parse_bundle_payload(payload)
+
+    assert document.imports.staging[-1].candidate["stated_by"] == "x" * MAX_STATED_BY_CHARS
 
 
 def test_a_version_two_document_rejects_attribution_as_well_as_evidence() -> None:

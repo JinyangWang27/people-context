@@ -10,7 +10,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstra
 
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
-from people_context.domain.shared import Confidence, Sensitivity
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -92,16 +92,6 @@ MAX_RELATIONSHIP_TYPE_CHARS: Final = 256
 #: Characters a batch-local person reference on an M17 candidate may carry.
 MAX_CANDIDATE_REF_CHARS: Final = 256
 
-#: Characters a fact or affiliation candidate may carry in `stated_by`.
-#:
-#: This one is bounded on the model rather than by the extraction budgets, because those budgets
-#: are conditional: `contains_extraction_candidate` selects them only for a batch that names an
-#: M17 type, so a legacy fact-only batch would carry an unbounded attribution. `stated_by` names
-#: who asserted a claim — a person, a document, a role — and M22 requires attribution to stay
-#: concise rather than become somewhere a copied document passage could sit. A field with no
-#: released unbounded history is simply bounded, as every M17 and M18.3 field was.
-MAX_STATED_BY_CHARS: Final = 256
-
 #: Characters a batch-local evidence reference or a durable evidence id may carry.
 #:
 #: A durable id is *format-opaque*: the ceiling bounds what one request may submit and nothing
@@ -146,10 +136,14 @@ CandidateRef = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CANDIDATE_REF_CHARS),
 ]
-StatedBy = Annotated[
-    str,
-    StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_STATED_BY_CHARS),
-]
+#: Attribution on a fact or affiliation candidate, bounded by the domain that owns the field.
+#:
+#: The bound sits on the model rather than in the extraction budgets because those budgets are
+#: conditional: `contains_extraction_candidate` selects them only for a batch that names an M17
+#: type, so a legacy fact-only batch would otherwise carry an unbounded attribution. The same
+#: domain type bounds the *persisted* candidate, so a restored bundle cannot reintroduce what
+#: staging refuses. See `MAX_STATED_BY_CHARS`.
+StatedBy = StatedByText
 RelationshipTypeText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RELATIONSHIP_TYPE_CHARS),
