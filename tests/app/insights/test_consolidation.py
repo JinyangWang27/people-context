@@ -26,6 +26,7 @@ from people_context.app.insights import (
 from people_context.domain.person import Person
 from people_context.domain.shared import Provenance, Sensitivity
 from people_context.ports.consolidation import (
+    ConsolidationAffiliationRow,
     ConsolidationFactRow,
     ConsolidationObservationRow,
     ConsolidationTraitRow,
@@ -95,18 +96,48 @@ def _observation(
     )
 
 
+def _affiliation(
+    affiliation_id: str,
+    *,
+    org_id: str = "O1",
+    org_name: str = "Acme",
+    role: str = "Head of Design",
+    valid_from: date | None = None,
+    valid_to: date | None = None,
+) -> ConsolidationAffiliationRow:
+    return ConsolidationAffiliationRow(
+        affiliation_id=affiliation_id,
+        person_id=ALICE.id,
+        org_id=org_id,
+        org_name=org_name,
+        role=role,
+        valid_from=valid_from,
+        valid_to=valid_to,
+        created_at=_RECORDED,
+        confidence=1.0,
+        provenance=Provenance(source="agent"),
+    )
+
+
 def _use_case(
     *,
     facts: list[ConsolidationFactRow] | None = None,
     traits: list[ConsolidationTraitRow] | None = None,
     observations: list[ConsolidationObservationRow] | None = None,
+    affiliations: list[ConsolidationAffiliationRow] | None = None,
     evidence: dict[str, list[tuple[Sensitivity | None, TimelineEvidenceRow]]] | None = None,
     people: list[Person] | None = None,
 ) -> tuple[GetConsolidationContext, FakePersonConsolidationReader]:
     repo = FakePeopleRepository()
     for person in people if people is not None else [ALICE]:
         repo.save_person(person)
-    reader = FakePersonConsolidationReader(facts, traits, observations, evidence)
+    reader = FakePersonConsolidationReader(
+        facts=facts,
+        traits=traits,
+        observations=observations,
+        affiliations=affiliations,
+        evidence=evidence,
+    )
     return GetConsolidationContext(repo, reader), reader
 
 
@@ -122,6 +153,7 @@ class TestBounds:
             facts=[_fact(f"f{index}", predicate=f"p{index}") for index in range(4)],
             traits=[_trait(f"t{index}", category=f"c{index}") for index in range(4)],
             observations=[_observation(f"o{index}") for index in range(4)],
+            affiliations=[_affiliation(f"a{index}") for index in range(4)],
         )
 
         result = use_case.execute(ALICE.id, limit=2)
@@ -129,17 +161,20 @@ class TestBounds:
         assert [fact.fact_id for fact in result.facts] == ["f0", "f1"]
         assert [trait.trait_id for trait in result.traits] == ["t0", "t1"]
         assert [entry.observation_id for entry in result.observations] == ["o0", "o1"]
-        assert (result.facts_truncated, result.traits_truncated, result.observations_truncated) == (
-            True,
-            True,
-            True,
-        )
+        assert [entry.affiliation_id for entry in result.affiliations] == ["a0", "a1"]
+        assert (
+            result.facts_truncated,
+            result.traits_truncated,
+            result.observations_truncated,
+            result.affiliations_truncated,
+        ) == (True, True, True, True)
         # Every read asks for exactly one row past the page, never for the table.
         assert reader.calls == [
             ("facts", ALICE.id, 2, _ORDINARY),
             ("traits", ALICE.id, 2, _ORDINARY),
             ("observations", ALICE.id, 2, _ORDINARY),
         ]
+        assert reader.affiliation_calls == [(ALICE.id, 2)]
 
     def test_one_dense_record_type_does_not_consume_another_type_page(self) -> None:
         """A person with many observations must still have their facts reported."""
@@ -156,15 +191,21 @@ class TestBounds:
         assert result.observations_truncated is True
 
     def test_an_untruncated_page_says_so(self) -> None:
-        use_case, _ = _use_case(facts=[_fact("f1")], traits=[_trait("t1")], observations=[_observation("o1")])
+        use_case, _ = _use_case(
+            facts=[_fact("f1")],
+            traits=[_trait("t1")],
+            observations=[_observation("o1")],
+            affiliations=[_affiliation("a1")],
+        )
 
         result = use_case.execute(ALICE.id)
 
-        assert (result.facts_truncated, result.traits_truncated, result.observations_truncated) == (
-            False,
-            False,
-            False,
-        )
+        assert (
+            result.facts_truncated,
+            result.traits_truncated,
+            result.observations_truncated,
+            result.affiliations_truncated,
+        ) == (False, False, False, False)
         assert result.limit == DEFAULT_CONSOLIDATION_LIMIT
 
     @pytest.mark.parametrize("limit", [MIN_CONSOLIDATION_LIMIT - 1, 0, -1, MAX_CONSOLIDATION_LIMIT + 1])
@@ -192,14 +233,15 @@ class TestMissingPerson:
 
         assert result.found is False
         assert (result.facts, result.traits, result.observations, result.signals) == ([], [], [], [])
-        assert reader.calls == []
+        assert (result.affiliations, result.affiliations_truncated) == ([], False)
+        assert (reader.calls, reader.affiliation_calls) == ([], [])
 
     def test_a_soft_deleted_person_is_reported_as_not_found(self) -> None:
         removed = Person(id="P9", canonical_name="Gone", deleted_at=_RECORDED)
         use_case, reader = _use_case(facts=[_fact("f1")], people=[removed])
 
         assert use_case.execute(removed.id).found is False
-        assert reader.calls == []
+        assert (reader.calls, reader.affiliation_calls) == ([], [])
 
 
 class TestFactSignals:
@@ -611,11 +653,117 @@ class TestProjection:
             assert record.provenance.source == "agent"
 
 
+class TestAffiliations:
+    """Roles at organizations are carried as evidence, without a level and without a verdict."""
+
+    def test_an_affiliation_is_projected_field_for_field(self) -> None:
+        row = _affiliation("a1", valid_from=date(2024, 1, 1), valid_to=date(2025, 6, 30))
+        use_case, _ = _use_case(affiliations=[row])
+
+        affiliation = use_case.execute(ALICE.id).affiliations[0]
+
+        assert affiliation.model_dump() == {
+            "affiliation_id": "a1",
+            "person_id": ALICE.id,
+            "org_id": "O1",
+            "org_name": "Acme",
+            "role": "Head of Design",
+            "valid_from": date(2024, 1, 1),
+            "valid_to": date(2025, 6, 30),
+            "created_at": _RECORDED,
+            "confidence": 1.0,
+            "provenance": {"source": "agent", "session": None, "stated_by": None},
+            "source_session_id": None,
+        }
+
+    def test_the_projection_carries_no_sensitivity_field(self) -> None:
+        """Affiliations store no level, and this read must not appear to give them one."""
+        use_case, _ = _use_case(affiliations=[_affiliation("a1")])
+
+        assert "sensitivity" not in use_case.execute(ALICE.id).affiliations[0].model_dump()
+
+    def test_the_affiliation_read_is_asked_for_no_disclosure_levels(self) -> None:
+        """The port takes none, so an opt-in cannot narrow or widen this collection."""
+        use_case, reader = _use_case(affiliations=[_affiliation("a1")])
+
+        ordinary = use_case.execute(ALICE.id)
+        elevated = use_case.execute(ALICE.id, include_sensitive=True)
+
+        assert [entry.affiliation_id for entry in ordinary.affiliations] == ["a1"]
+        assert [entry.affiliation_id for entry in elevated.affiliations] == ["a1"]
+        assert reader.affiliation_calls == [(ALICE.id, DEFAULT_CONSOLIDATION_LIMIT)] * 2
+
+    def test_historical_and_concurrent_roles_are_both_reported(self) -> None:
+        """A closed role and two overlapping open ones survive the page unchanged."""
+        use_case, _ = _use_case(
+            affiliations=[
+                _affiliation("a1", org_name="Acme", valid_from=date(2018, 1, 1), valid_to=date(2021, 12, 31)),
+                _affiliation("a2", org_id="O2", org_name="Borealis", valid_from=date(2022, 1, 1)),
+                _affiliation("a3", org_id="O3", org_name="Cirrus", role="Trustee", valid_from=date(2023, 5, 1)),
+            ]
+        )
+
+        result = use_case.execute(ALICE.id)
+
+        assert [entry.affiliation_id for entry in result.affiliations] == ["a1", "a2", "a3"]
+        assert [entry.valid_to for entry in result.affiliations] == [date(2021, 12, 31), None, None]
+
+    def test_affiliations_produce_no_signal(self) -> None:
+        """Two roles at one organization may be a promotion, a rehire, or two posts at once."""
+        use_case, _ = _use_case(
+            affiliations=[
+                _affiliation("a1", role="Designer", valid_from=date(2020, 1, 1)),
+                _affiliation("a2", role="Head of Design", valid_from=date(2022, 1, 1)),
+            ]
+        )
+
+        result = use_case.execute(ALICE.id)
+
+        assert len(result.affiliations) == 2
+        assert (result.signals, result.signals_truncated) == ([], False)
+
+    def test_affiliations_do_not_disturb_the_signals_facts_and_traits_produce(self) -> None:
+        use_case, _ = _use_case(
+            facts=[_fact("f1", value="engineer"), _fact("f2", value="architect")],
+            affiliations=[_affiliation("a1")],
+        )
+
+        signals = use_case.execute(ALICE.id).signals
+
+        assert [signal.entity_ids for signal in signals] == [["f1", "f2"]]
+        assert signals[0].entity_type == SIGNAL_SUBJECT_FACT
+
+    def test_a_dense_affiliation_history_does_not_consume_another_type_page(self) -> None:
+        use_case, _ = _use_case(
+            facts=[_fact("f1")],
+            affiliations=[_affiliation(f"a{index}") for index in range(10)],
+        )
+
+        result = use_case.execute(ALICE.id, limit=3)
+
+        assert ([fact.fact_id for fact in result.facts], result.facts_truncated) == (["f1"], False)
+        assert (len(result.affiliations), result.affiliations_truncated) == (3, True)
+
+    def test_a_protected_fact_is_not_reachable_through_the_affiliation_collection(self) -> None:
+        """The collection carries affiliations only; a withheld fact stays withheld."""
+        use_case, _ = _use_case(
+            facts=[_fact("f1", value="on medical leave", sensitivity=Sensitivity.RESTRICTED)],
+            affiliations=[_affiliation("a1")],
+        )
+
+        result = use_case.execute(ALICE.id)
+
+        assert result.facts == []
+        assert "medical" not in result.affiliations[0].model_dump_json()
+
+
 def test_the_read_performs_no_mutation() -> None:
     """A report path must not write; the use case is given no writer to write with."""
     repo = FakePeopleRepository()
     repo.save_person(ALICE)
-    reader = FakePersonConsolidationReader([_fact("f1")], [_trait("t1")], [_observation("o1")])
+    reader = FakePersonConsolidationReader(
+        [_fact("f1")], [_trait("t1")], [_observation("o1")], [_affiliation("a1")]
+    )
     use_case = GetConsolidationContext(repo, reader)
     before = repo.list_people()
 

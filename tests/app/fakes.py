@@ -22,6 +22,7 @@ from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
 from people_context.ports.consolidation import (
+    ConsolidationAffiliationRow,
     ConsolidationFactRow,
     ConsolidationObservationRow,
     ConsolidationTraitRow,
@@ -270,15 +271,20 @@ class FakePersonConsolidationReader:
         facts: list[ConsolidationFactRow] | None = None,
         traits: list[ConsolidationTraitRow] | None = None,
         observations: list[ConsolidationObservationRow] | None = None,
+        affiliations: list[ConsolidationAffiliationRow] | None = None,
         evidence: dict[str, list[tuple[Sensitivity | None, TimelineEvidenceRow]]] | None = None,
     ) -> None:
         self.facts = facts or []
         self.traits = traits or []
         self.observations = observations or []
+        self.affiliations = affiliations or []
         # Each citation is stored beside the level of the record it cites, which is what the real
         # reader filters on in SQL before the application ever sees the row.
         self.evidence = evidence or {}
         self.calls: list[tuple[str, str, int, tuple[Sensitivity, ...]]] = []
+        # Affiliations carry no disclosure level, so their call is recorded without one rather than
+        # with an empty tuple that would read as "nothing may be disclosed".
+        self.affiliation_calls: list[tuple[str, int]] = []
         self.evidence_calls: list[tuple[str, int, tuple[Sensitivity, ...]]] = []
 
     def list_consolidation_facts(
@@ -310,6 +316,16 @@ class FakePersonConsolidationReader:
     ) -> list[ConsolidationObservationRow]:
         self.calls.append(("observations", person_id, limit, sensitivities))
         return [row for row in self.observations if row.sensitivity in sensitivities][: limit + 1]
+
+    def list_consolidation_affiliations(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+    ) -> list[ConsolidationAffiliationRow]:
+        """Return one row past `limit`, with no level filtering — the real read has none either."""
+        self.affiliation_calls.append((person_id, limit))
+        return self.affiliations[: limit + 1]
 
     def list_trait_evidence(
         self,

@@ -35,6 +35,11 @@ async def _fact(client: Client, person_id: str, **fields: Any) -> dict[str, Any]
     return dict(result.structured_content)
 
 
+async def _affiliation(client: Client, person_id: str, **fields: Any) -> dict[str, Any]:
+    result = await client.call_tool("set_affiliation", {"person_id": person_id, **fields})
+    return dict(result.structured_content)
+
+
 class TestConsolidationTool:
     """The read is registered, bounded, ordinary-disclosure, and explains what it found."""
 
@@ -148,6 +153,107 @@ class TestConsolidationTool:
 
         assert payload["found"] is False
         assert payload["facts"] == payload["traits"] == payload["observations"] == payload["signals"] == []
+        assert (payload["affiliations"], payload["affiliations_truncated"]) == ([], False)
+
+    def test_stored_roles_are_reported_with_their_ids_dates_and_provenance(self, tmp_path: Path) -> None:
+        server = build_server(tmp_path / "affiliations.db")
+
+        async def flow(client: Client) -> dict[str, Any]:
+            alice = await _person(client)
+            await _affiliation(
+                client,
+                alice,
+                org="Acme",
+                role="Designer",
+                valid_from="2018-01-01",
+                valid_to="2021-12-31",
+            )
+            await _affiliation(client, alice, org="Borealis", role="Head of Design", valid_from="2022-01-01")
+            result = await client.call_tool("get_consolidation_context", {"person_id": alice})
+            return dict(result.structured_content)
+
+        payload = _run(server, flow)
+
+        # Newest first by asserted start, and the closed historical role is still reported.
+        assert [entry["org_name"] for entry in payload["affiliations"]] == ["Borealis", "Acme"]
+        assert [entry["role"] for entry in payload["affiliations"]] == ["Head of Design", "Designer"]
+        assert [entry["valid_to"] for entry in payload["affiliations"]] == [None, "2021-12-31"]
+        entry = payload["affiliations"][0]
+        assert set(entry) == {
+            "affiliation_id",
+            "person_id",
+            "org_id",
+            "org_name",
+            "role",
+            "valid_from",
+            "valid_to",
+            "created_at",
+            "confidence",
+            "provenance",
+            "source_session_id",
+        }
+        assert entry["person_id"] == payload["person_id"]
+        assert entry["provenance"]["source"] == "agent"
+        assert entry["source_session_id"] is None
+        # Two roles at one person are not a verdict: no signal is computed over them.
+        assert payload["signals"] == []
+        assert payload["affiliations_truncated"] is False
+
+    def test_the_affiliation_page_takes_the_shared_limit_and_truncates_on_its_own(
+        self, tmp_path: Path
+    ) -> None:
+        server = build_server(tmp_path / "affiliation-bound.db")
+
+        async def flow(client: Client) -> dict[str, Any]:
+            alice = await _person(client)
+            await _fact(client, alice, predicate="employer", value="Acme")
+            for index in range(3):
+                await _affiliation(client, alice, org=f"Org {index}", role="Member")
+            result = await client.call_tool("get_consolidation_context", {"person_id": alice, "limit": 1})
+            return dict(result.structured_content)
+
+        payload = _run(server, flow)
+
+        assert len(payload["affiliations"]) == 1
+        assert payload["affiliations_truncated"] is True
+        # A dense professional history does not crowd out another collection.
+        assert (len(payload["facts"]), payload["facts_truncated"]) == (1, False)
+
+    def test_existing_collections_keep_their_shape_when_affiliations_are_present(
+        self, tmp_path: Path
+    ) -> None:
+        """The collection is additive: nothing already returned changes meaning."""
+        server = build_server(tmp_path / "additive.db")
+
+        async def flow(client: Client) -> dict[str, Any]:
+            alice = await _person(client)
+            await _fact(client, alice, predicate="employer", value="Acme", valid_from="2024-01-01")
+            await _affiliation(client, alice, org="Acme", role="Designer", valid_from="2024-01-01")
+            result = await client.call_tool("get_consolidation_context", {"person_id": alice})
+            return dict(result.structured_content)
+
+        payload = _run(server, flow)
+
+        assert set(payload) == {
+            "found",
+            "person_id",
+            "limit",
+            "include_sensitive",
+            "facts",
+            "traits",
+            "observations",
+            "affiliations",
+            "signals",
+            "facts_truncated",
+            "traits_truncated",
+            "observations_truncated",
+            "affiliations_truncated",
+            "signals_truncated",
+        }
+        assert [fact["value"] for fact in payload["facts"]] == ["Acme"]
+        # An affiliation is not a fact and does not pair with one in a signal.
+        assert payload["signals"] == []
+        assert "sensitivity" not in payload["affiliations"][0]
 
     def test_an_out_of_range_limit_returns_a_structured_parameter_error(self, tmp_path: Path) -> None:
         server = build_server(tmp_path / "limit.db")

@@ -1,15 +1,20 @@
 """SQLite projection behind the bounded person consolidation context.
 
-Three narrow reads rather than one union, because the three record types answer three different
-questions and each carries its own page. A shared page would let one dense collection — a person
-with four hundred imported observations — consume the whole budget and leave their facts and traits
-looking as though there were none to consolidate.
+Narrow reads rather than one union, because the record types answer different questions and each
+carries its own page. A shared page would let one dense collection — a person with four hundred
+imported observations — consume the whole budget and leave their facts and traits looking as though
+there were none to consolidate.
 
 Every read is bounded in SQL, ordered by the exact UTC key `_projection.sort_key` builds, and
 filtered by the disclosure levels the caller passes before the page is cut. That last point matters
 more here than on a plain listing: the application computes duplicate/contradiction signals *over*
 the page it receives, so a record filtered after the cut would be able to change what the caller is
 told without ever appearing in what the caller was shown.
+
+Affiliations are the one branch with no level predicate, because the table has no `sensitivity`
+column: the timeline reads them the same way and reports a null level rather than inventing one. The
+page bound still applies in SQL, so a thirty-year professional history costs a page rather than a
+scan.
 
 Trait evidence is delegated to the timeline reader rather than re-spelled. The citation contract —
 the *cited record's* own level decides whether a trait may name it — is one rule, and one rule
@@ -31,11 +36,13 @@ from people_context.adapters.sqlite._projection import (
 from people_context.adapters.sqlite.timeline_reader import SqlitePersonTimelineReader
 from people_context.domain.shared import Provenance, Sensitivity
 from people_context.ports.consolidation import (
+    ConsolidationAffiliationRow,
     ConsolidationFactRow,
     ConsolidationObservationRow,
     ConsolidationTraitRow,
 )
 from people_context.ports.timeline import (
+    ENTRY_AFFILIATION,
     ENTRY_FACT,
     ENTRY_OBSERVATION,
     ENTRY_TRAIT,
@@ -65,6 +72,36 @@ SELECT f.id AS fact_id,
 FROM facts f
 WHERE f.person_id = :person_id AND f.sensitivity IN ({{levels}})
 ORDER BY {sort_key(_FACT_ORDER_COLUMN)} DESC, f.id ASC
+LIMIT :limit
+"""
+
+# An affiliation is placed by the date it asserts the role began, and by the time the row was written
+# when it asserts none — the same rule the facts branch uses, so one `limit` describes one window
+# across the collections rather than several a caller has to reconcile.
+_AFFILIATION_ORDER_COLUMN = (
+    f"CASE WHEN a.valid_from IS NULL THEN a.created_at ELSE a.valid_from || '{DATE_START_OF_DAY}' END"
+)
+
+# No level predicate and no `{levels}` placeholder: affiliations store no disclosure level, so there
+# is nothing here to filter on and no caller for whom this page differs.
+_AFFILIATIONS_SQL = f"""
+SELECT a.id AS affiliation_id,
+       a.person_id AS person_id,
+       a.org_id AS org_id,
+       org.name AS org_name,
+       a.role AS role,
+       a.valid_from AS valid_from,
+       a.valid_to AS valid_to,
+       a.created_at AS created_at,
+       a.confidence AS confidence,
+       a.provenance_source AS provenance_source,
+       a.provenance_session AS provenance_session,
+       a.provenance_stated_by AS provenance_stated_by,
+       {source_session(ENTRY_AFFILIATION, "a.id")} AS source_session_id
+FROM affiliations a
+JOIN organizations org ON org.id = a.org_id
+WHERE a.person_id = :person_id
+ORDER BY {sort_key(_AFFILIATION_ORDER_COLUMN)} DESC, a.id ASC
 LIMIT :limit
 """
 
@@ -173,6 +210,35 @@ class SqlitePersonConsolidationReader:
                 text=row["text"],
                 observed_at=datetime.fromisoformat(row["observed_at"]),
                 sensitivity=Sensitivity(row["sensitivity"]),
+                provenance=_provenance(row),
+                source_session_id=row["source_session_id"],
+            )
+            for row in rows
+        ]
+
+    def list_consolidation_affiliations(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+    ) -> list[ConsolidationAffiliationRow]:
+        """Return the person's newest affiliations, reading one row past `limit`.
+
+        No disclosure levels are bound, because the table carries none. The bound is still applied in
+        SQL: a long professional history is answered by a page, never by loading it and slicing.
+        """
+        rows = self._conn.execute(_AFFILIATIONS_SQL, {"person_id": person_id, "limit": limit + 1}).fetchall()
+        return [
+            ConsolidationAffiliationRow(
+                affiliation_id=row["affiliation_id"],
+                person_id=row["person_id"],
+                org_id=row["org_id"],
+                org_name=row["org_name"],
+                role=row["role"],
+                valid_from=_date(row["valid_from"]),
+                valid_to=_date(row["valid_to"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                confidence=float(row["confidence"]),
                 provenance=_provenance(row),
                 source_session_id=row["source_session_id"],
             )
