@@ -943,7 +943,12 @@ The workflow adds no source format, candidate type, tool, or CLI command, and it
 integration. It adds no durable speaker map, raw-source storage, or resumable review session. Client conversation
 retention remains a separate boundary.
 
-Fictional worked transcripts and the runnable lifecycle checks are M26.2 and are not yet shipped. See the
+Eight fictional worked reviews — a diarization split, a shared room microphone, a partial read, an ambiguous
+first name, an undated recording, a task nobody accepted, a sensitive aside, and a later recording in the same
+series — are in [transcript-review-examples.md](transcript-review-examples.md). The lifecycle checks behind them
+run hand-authored candidate batches through the real stores in
+`tests/adapters/importers/test_transcript_capture_workflow.py`; extraction quality itself is assessed by a person
+against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution). See the
 [PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
 
 ## M6 changelog and export boundary

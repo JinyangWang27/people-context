@@ -100,6 +100,11 @@ Eight worked scenarios showing what the coaching skill produces — across work,
 in Chinese and English — are in
 [communication-coaching-examples.md](communication-coaching-examples.md).
 
+Eight worked reviews showing what the transcript skill stages and what it declines to stage — a
+diarization split, a shared room microphone, a partial read, an ambiguous name, an undated
+recording, an unaccepted task, a sensitive aside, and a later recording in the same series — are
+in [transcript-review-examples.md](transcript-review-examples.md).
+
 ## User-invocable workflows
 
 The plugin also ships three user-invoked workflow skills under `skills/`, each

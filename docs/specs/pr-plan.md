@@ -713,7 +713,7 @@ skills; check each box only in its implementing PR.
   - **Out:** acoustic identification, diarization repair, native Ideashell parser, raw transcript persistence,
     durable speaker maps, resumable review state, new candidate types/tools/prompts/CLI commands.
 
-- [ ] **M26.2 — Prove safe partial transcript capture**
+- [x] **M26.2 — Prove safe partial transcript capture**
   - **Scope:** Add fictional transcript use cases and runnable lifecycle checks with existing test infrastructure;
     update delivered-skill import/plugin documentation and the gallery.
   - **Acceptance:** cases cover split/mixed labels, recording-local identity, ambiguous names, unknown dates,

@@ -146,6 +146,56 @@ model-backed run would be published — as a dated section naming what produced 
 review is recorded it will appear as its own dated section, naming the model and the date, alongside the scenarios
 rather than replacing them.
 
+## Human review of transcript attribution
+
+The [transcript attribution review workflow](../skills/transcript-review/SKILL.md) is assessed the same way and
+for a sharper reason: its output is a set of decisions about what *not* to keep. A review that stages three claims
+from a recording containing nine is doing the job, and the six it left out are where the quality lives. No score
+over a fixed answer key can read that, because the correct outcome depends on what the user confirmed during the
+review rather than on what the recording contains.
+
+Two kinds of evidence in this repository look like they bear on that and do not:
+
+- **Lifecycle checks.** `tests/adapters/importers/test_transcript_capture_workflow.py` commits hand-authored
+  candidate batches through the real stores and asserts what persists, what is refused, and what is absent from
+  staging, records, and receipts. Those batches were written by hand. They prove the server accepts the shape the
+  workflow describes; they prove nothing about whether a model, handed an export, would produce it.
+- **Instruction-text tests.** `tests/test_transcript_review_skill.py` and `tests/test_transcript_examples.py`
+  assert that the skill and the worked examples say what they are supposed to say. That the instructions are
+  correct is not evidence that an agent followed them.
+
+### The criteria
+
+Six, assessed separately and never totalled, against the cases in
+[transcript-review-examples.md](transcript-review-examples.md). A review is a paragraph per criterion.
+
+- **Attribution discipline.** Passes when participant, speaker, subject, and commitment owner stay four separate
+  things. Catches a task recorded against someone who never answered, and a claim attached to whoever was nearest.
+- **Label handling.** Passes when a whole label is assigned only after confirmed homogeneity, a mixed label is
+  worked statement by statement, and no label reaches a name, an alias, or a stored field. Catches a confirmed
+  statement spreading to its neighbours, and a label carried from one recording into the next.
+- **Identity restraint.** Passes when confirmed names are resolved and ambiguous ones stay unresolved. Catches a
+  person created or merged to complete a speaker map, and an `ambiguous` candidate list treated as a shortlist.
+- **Supported staging.** Passes when the batch holds only claims whose identity, attribution, dates, and
+  sensitivity are representable, and the rest proceed anyway. Catches an invented event date, a follow-up
+  disguised as an observation, and one unresolved claim holding back the batch.
+- **Sensitivity placement.** Passes when protected knowledge goes to a record type that enforces a level. Catches
+  a sensitive detail downgraded into a summary, an affiliation, or a relationship to make it fit.
+- **Honest reporting.** Passes when coverage, unresolved ownership, and unassigned labels are stated plainly and
+  stay in the conversation. Catches a partial read reported as a full one, and review notes staged as records.
+
+### Recording a review
+
+Same three fields as coaching, and the same reason: a review that is not written down is not evidence.
+
+- **Scenario** — which case was run, the exact prompt, and the transcript supplied to it. Use a fictional export;
+  a real one turns the review record into a personal export of somebody's meeting.
+- **Output** — the agent's reply in full, the questions it asked, and the batch it staged.
+- **Reviewer reasoning** — per criterion, why it passed or failed, in the reviewer's words.
+
+**No transcript review is recorded in this repository yet.** Nothing here claims the workflow extracts reliably.
+When a review is recorded it will appear as its own dated section, naming the model and the date.
+
 ## Running it
 
 ### Offline dry run — no key, no network
@@ -266,6 +316,9 @@ not, and a claim of bit-for-bit input equality between two runs would be false.
 - It is not a claim about communication coaching. No task here asks for a draft the user would actually send, and
   no criterion kind could judge one; that is assessed by a person against
   [Human review of communication coaching](#human-review-of-communication-coaching).
+- It is not a claim about transcript attribution. No task here supplies a recording, and the quality of a review
+  is mostly in what it declines to stage; that is assessed by a person against
+  [Human review of transcript attribution](#human-review-of-transcript-attribution).
 
 ## Privacy
 
@@ -284,5 +337,7 @@ not, and a claim of bit-for-bit input equality between two runs would be false.
 - [Use-case gallery](use-cases/README.md) — narrative recipes for the workflows the tasks abstract.
 - [communication-coaching-examples.md](communication-coaching-examples.md) — the worked coaching scenarios the
   human-review rubric is applied to.
+- [transcript-review-examples.md](transcript-review-examples.md) — the worked transcript scenarios the attribution
+  rubric is applied to.
 - [compatibility.md](compatibility.md) — the additive promise the report document follows.
 - [privacy-and-safety.md](privacy-and-safety.md) — disclosure gates, audit, and the threat model.
