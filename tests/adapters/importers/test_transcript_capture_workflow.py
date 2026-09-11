@@ -12,9 +12,13 @@ the server accepts the shape the skill describes, not that a model produced it f
 The extraction decisions themselves are assessed by a person against the worked cases in
 `docs/transcript-review-examples.md` and the rubric in `docs/evals.md`.
 
-The last check is the one the milestone spec names directly: the recording never enters People
-Context, so a distinctive line of the fictional transcript, every speaker label in it, and the
-working map between the two must appear in no staged row, no committed record, and no receipt.
+The last check is the one the milestone spec names directly: a distinctive line of the fictional
+transcript, every speaker label in it, and the working map between the two appear in no staged
+row, no committed record, and no receipt. Read that one for what it is. An observation's `text`,
+a fact's `value`, and a person's `summary` take free prose, so a caller that pasted a raw line
+into one would be staging a well-formed candidate the server accepts. What this proves is that a
+batch shaped the way the workflow describes carries none of it through the lifecycle — the
+protection is the workflow and the review before commit, not a constraint the schema enforces.
 """
 
 from __future__ import annotations
@@ -196,13 +200,14 @@ def _confirmed_batch() -> list[dict[str, Any]]:
             "channel": "call",
             "sensitivity": "personal",
         },
-        # Said under one label, repeated under another, confirmed as one person's claim.
+        # Said under one label, and the rotation below under another, confirmed as one person's
+        # claims. She gave the day, which is what makes the role representable as an affiliation.
         {
             "type": "affiliation",
             "person_ref": "priya",
             "org": "Northbridge Analytics",
             "role": "Staff Engineer",
-            "valid_from": "2026-06-01",
+            "valid_from": "2026-06-08",
             "stated_by": _PRIYA_SAID,
             "confidence": 0.7,
         },
@@ -451,6 +456,37 @@ def test_a_follow_up_has_no_candidate_type_to_be_staged_as() -> None:
     assert raised.value.details["allowed_types"] == list(STAGED_CANDIDATE_MODELS)
     assert harness.conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
     assert harness.conn.execute("SELECT COUNT(*) FROM reminders").fetchone()[0] == 0
+
+
+def test_a_month_only_start_stays_in_claim_text_rather_than_opening_an_affiliation() -> None:
+    """"Since June" is not a date. `valid_from` has no way to hold one without choosing a day.
+
+    The same rule the CV capture follows for a year-only period: the uncertainty lives in the
+    value, and nothing invents a 1 June to fill the field.
+    """
+    harness = _Harness()
+
+    batch = harness.stage(
+        [
+            _person("priya", "Priya Raghunathan"),
+            {
+                "type": "fact",
+                "person_ref": "priya",
+                "predicate": "role",
+                "value": "Says she became staff engineer at Northbridge Analytics in June 2026; day unknown",
+                "stated_by": _PRIYA_SAID,
+                "confidence": 0.6,
+            },
+        ]
+    )
+    harness.accept_all(batch.batch_id)
+
+    assert harness.conn.execute("SELECT COUNT(*) FROM affiliations").fetchone()[0] == 0
+    assert harness.conn.execute("SELECT COUNT(*) FROM organizations").fetchone()[0] == 0
+    role = harness.conn.execute("SELECT value, valid_from, valid_to FROM facts").fetchone()
+    assert "June 2026" in role["value"]
+    assert "day unknown" in role["value"]
+    assert role["valid_from"] is None and role["valid_to"] is None
 
 
 def test_a_trait_has_no_owner_to_attach_to_when_the_speech_is_unattributed() -> None:
