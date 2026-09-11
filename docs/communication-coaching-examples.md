@@ -10,6 +10,10 @@ with these cases.
 **Everything here is invented.** The people, the employers, the messages, and the drafts are fiction written for
 this document. No real person's correspondence was used, quoted, or paraphrased.
 
+**Every detail in a draft comes from the scenario.** No draft states a fact, a date, an offer, or a reason that
+the user did not supply in their own words above it. Drafts go out under the user's name, so an invented specific
+is not colour — it is a false statement they would be making, or a commitment they would have to keep.
+
 **The drafts are illustrative.** They show the shape of a reply that satisfies the workflow — usable text first,
 a short lesson after — not a promise about wording. A different model, or the same model on a different day, will
 word these differently and still be right. A draft that matches these samples word for word is not thereby good,
@@ -22,10 +26,12 @@ the agent calls on the user's behalf; see [mcp-interface.md](mcp-interface.md) f
 ## 1. A deadline slip, upward (Chinese)
 
 **Situation.** 林书宁 (Lin Shuning) is the user's manager. She has sent a short message asking why the migration
-report is not finished, on a week where the user was pulled onto an incident nobody logged. The user wants the
-deadline moved without either accepting the framing that they dropped it or blaming the incident owner.
+report is not finished, on a week where the user spent Tuesday to Thursday on a payment-path production issue
+that never got a ticket. The user wants the deadline moved without either accepting the framing that they dropped
+it or blaming whoever should have logged it.
 
-> 林经理问我报告为什么还没交。我想把交付日期往后挪，但不想显得是在推责任。帮我回一下。
+> 林经理问我报告为什么还没交。周二到周四我都在处理支付链路的线上问题，那个没走工单。我想把交付日期往后挪，
+> 但不想显得是在推责任。帮我回一下。
 
 The agent resolves 林书宁 with `resolve_person`, then reads `get_communication_guidance`. The stored signal is
 thin and specific: a `communication_style` trait saying she prefers a proposed date over an apology, and two
@@ -37,13 +43,16 @@ the whole recommendation, so the agent asks for it rather than choosing a date o
 
 > 写之前先确认两件事：剩下的部分你还需要多久？有没有哪一部分已经定稿、现在就能先发过去？
 
-> 剩下两节周五能写完。前三节已经定稿了。
+> 剩下迁移风险和回滚方案两节，周五能写完。前三节已经定稿了。
 
 The question is asked in the language the user is writing in, because switching them into English to answer a
 question about their own work is the same voice failure as drafting the reply in English would be.
 
-Now both dates in the draft come from the user: Friday is their estimate, and the first three sections are work
-they have already finished.
+Every concrete thing in the draft below now traces to something the user said: the days, the incident and what it
+was, which sections remain and what they are called, the Friday estimate, and the three finished sections. That
+is the standard the whole document holds itself to. A draft goes to the user's manager with the user's name on
+it, so a plausible-sounding detail the agent supplied is not a stylistic flourish — it is a false statement the
+user would be making.
 
 Illustrative draft:
 
@@ -65,7 +74,8 @@ changed the draft, is not an intake interview. The agent wrote nothing to the st
 already in that code". The user has decided to say no and wants the refusal to be clear without souring a working
 relationship they still need.
 
-> I'm going to say no to Bram about the dashboards. Help me write it so it's final but not hostile.
+> I'm going to say no to Bram about the dashboards — my whole quarter is the billing migration and I'm not
+> putting that at risk. Help me write it so it's final but not hostile.
 
 The agent reads the stored context and finds nothing that argues for softening. The user has said the decision is
 made, so the agent drafts a refusal rather than negotiating on Bram's behalf.
@@ -103,8 +113,8 @@ that as a genuine choice with a cost attached, rather than presenting it as the 
 
 Illustrative draft:
 
-> I missed your birthday and I've been sitting with that for two weeks, which made it worse. No excuse — I just
-> didn't have it written down anywhere. [what you want to do about it — your call]
+> I missed your birthday and I've been sitting with that for two weeks, which made it worse. No excuse.
+> [what you want to do about it — your call]
 
 The slot is deliberate. An apology lands better with a repair attached, but the repair is the user's to offer:
 only they know whether they have a free weekend, what Noor would actually enjoy, and how much they want to
@@ -119,7 +129,8 @@ apology harder to skim past.
 
 **Lesson.** An apology that includes a repair is easier to accept than one that only carries regret. Naming the
 delay before she does removes the one thing she might otherwise have to raise. What the repair is, though, is not
-a wording question, and a draft that decides it for you has committed you to it.
+a wording question, and a draft that decides it for you has committed you to it. "No excuse" also does more work
+than any particular excuse would, which is fortunate, because the user never said why they missed it.
 
 **Not done.** No manufactured warmth, no reference to whatever else the store knows about Noor, and no
 explanation dressed up as an apology. The user said they are not gushy, and the draft is not gushy.
@@ -265,21 +276,12 @@ script would have prevented the outcome.
 
 Two separate statements are in that sentence, and that is what decides the path. The direct-capture route is for
 a single thing the user states in the invocation; a request carrying several separate statements stays on the
-staged route so the whole of it is reviewable as one batch. Both clauses are therefore staged together with
-`stage_candidates` and wait for `review_import` and an explicit acceptance before `commit_import`.
-
-Staging is itself a write, and the document is careful not to call it otherwise. `stage_candidates` persists both
-candidates immediately; the gate that acceptance controls is promotion into the durable person, fact, and
-interaction records, not whether anything reached the disk. A candidate left out of the accepted set stays in the
-batch as a pending row — commit skips it, and nothing in the ordinary toolset deletes it individually.
+staged route so the whole of it is reviewable as one batch.
 
 Splitting them would be the tempting mistake. Committing the Q3 instruction immediately with `remember` and
 leaving the inference in staging means the user who then rejects the batch has already had half the request
 written, and rejecting a batch cannot undo a write that happened outside it. One gate over both clauses keeps the
 whole request refusable.
-
-The distinction between the two clauses still matters, and the agent names it in the batch rather than in the
-plumbing:
 
 One thing is missing before anything can be staged. An interaction candidate's occurrence date is mandatory and
 must not be guessed, so the agent asks for it rather than reaching for the current time:
@@ -288,18 +290,30 @@ must not be guessed, so the agent asks for it rather than reaching for the curre
 
 > Yeah, this morning.
 
-Now the batch can be staged, and the agent is exact about what that did:
+The batch is three rows rather than two. An interaction's participants and a fact's subject are batch-local
+references that have to resolve to a `person` candidate in the same call, so Aditi travels with them as a person
+row; a batch without her is refused as an unknown person reference. The agent says what it staged and is exact
+about what staging did:
 
-> Staged two candidates against Aditi Rao. Both rows are saved in the staging area now; what the review gate
-> holds back is promotion into her actual record, not storage.
+> Staged three rows: Aditi Rao as the person the other two point at, plus the interaction and the fact. All three
+> are saved in the staging area now — what acceptance gates is promotion into her actual record, not whether
+> anything reached the disk.
+
+Staging is a proposal, not a commit, and the two never happen in one breath. The agent shows what `review_import`
+returns, because that is what an acceptance would actually be accepting, and then stops:
+
+> Here is the batch as stored, which is what you'd be accepting:
 >
-> - an interaction, dated today — she asked you to raise the title again in Q3. That one is what she said.
-> - a fact — she weighs cross-team scope for staff promotions. That one is your reading of what she cares
->   about, recorded as your reading rather than as her position.
+> - `person` — Aditi Rao.
+> - `interaction`, dated today — she asked you to raise the title again in Q3. That one is what she said.
+> - `fact` — she weighs cross-team scope for staff promotions. That one is your reading of what she cares about,
+>   recorded as your reading rather than as her position.
 >
-> Say the word and I'll commit both, or name the one to leave out. Leaving one out stops it becoming a record; it
-> stays in the batch as a pending candidate rather than disappearing, so tell me if you want it gone from the
-> store as well and we'll deal with that separately.
+> Nothing commits until you name the rows you want. A row you leave out never becomes a record, but it does stay
+> in the batch as a pending candidate: commit skips it, and no ordinary tool removes it on its own.
+
+Only once the user names rows does `commit_import` run, against those ids and no others. Three calls, three
+separate decisions, and the last one is the user's.
 
 Had the user asked to save only the one thing Aditi told them, that single directly-stated statement is what the
 direct-capture path is for — `remember` resolves the name, records it, and reports ambiguity rather than guessing.
@@ -316,9 +330,10 @@ keeps them apart stays correctable later. Keeping them apart is a labelling job,
 through different gates.
 
 **Not done.** Nothing was written until the user asked, and no end-of-session capture was proposed during the
-coaching itself, because a drafting session is not a source of durable knowledge about anyone. The agent also did
-not describe the staged batch as unwritten, and did not offer to make a staged candidate disappear, because
-neither would have been true.
+coaching itself, because a drafting session is not a source of durable knowledge about anyone. The agent did not
+describe the staged batch as unwritten, did not offer to commit in the same breath as staging, and did not offer
+to make a pending candidate disappear — there is no operation that would, and promising one is worse than the
+storage it was trying to reassure the user about.
 
 ## Where this material goes
 
