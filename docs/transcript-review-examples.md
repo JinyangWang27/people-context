@@ -11,10 +11,16 @@ with these cases.
 lines are fiction written for this document. No real recording, export, or conversation was used, quoted, or
 paraphrased.
 
-**People Context never reads the transcript.** There is no transcript parser, no source format for one, and no
-field that holds a line of it. The agent reads the file with its own file capability, distils what the user
-confirms, and stages that distillation through `stage_candidates` → `review_import` → `commit_import`, the same
-lifecycle every other extraction uses. What reaches SQLite is the distillation and a non-content receipt.
+**People Context never reads the transcript.** There is no transcript parser and no source format for one. The
+agent reads the file with its own file capability, distils what the user confirms, and stages that distillation
+through `stage_candidates` → `review_import` → `commit_import`, the same lifecycle every other extraction uses.
+What reaches SQLite is the distillation and a non-content receipt.
+
+**Keeping raw lines out is discipline, not a schema constraint.** An `observation`'s `text`, a `fact`'s `value`,
+and a person's `summary` take free prose, so a caller that pasted a transcript line into one would be staging a
+well-formed candidate and the server would accept it. What keeps raw text out is the workflow above and the review
+that precedes every commit — the user sees each candidate's exact field values before anything is written. Read
+the rule as an instruction the agent follows and the user can check, not a guarantee the database enforces.
 
 **Partial is the normal outcome.** Every scenario below leaves something unresolved, and none of them treats that
 as a failure. A transcript that yields three supported claims and six open questions has been reviewed correctly.
@@ -33,7 +39,7 @@ natively with a romanization on first use, following [identity-resolution.md](id
 A fictional 50-minute planning call at a fictional company, exported by a recorder that numbers its speakers. The
 export has timestamps and four labels, and the labels are all it knows:
 
-> [00:01:02] Speaker 1: I've been staff engineer here since June, so I've watched this one the whole way.
+> [00:01:02] Speaker 1: I moved up to staff engineer on 8 June, so I've watched this one the whole way.
 > [00:03:10] Speaker 1: the Halden tier is the whole question. I'd rather sequence the migration behind it.
 > [00:14:32] Speaker 2: honestly we should just drop the Halden tier and eat the churn.
 > [00:14:41] Speaker 2: I can have the pricing writeup done by the end of next week.
@@ -64,14 +70,21 @@ Now the claims join up. The agent calls `resolve_person` for Priya Raghunathan, 
 stages the role she stated at 00:01:02 and the rotation she stated at 00:22:05 against that one person — one from
 each label, both attributed to her because she asserted them herself on the record.
 
-**Staged.** An `affiliation` for the staff-engineer role, dated from June because she said June, and a `fact` for
-the rotation, each with `stated_by` naming her as the source. `stated_by` exists on those two candidate types and
-nowhere else, and it records who asserted the claim — not that the claim is true.
+**Staged.** An `affiliation` for the staff-engineer role, starting 8 June because she gave the day, and a `fact`
+for the rotation, each with `stated_by` naming her as the source. `stated_by` exists on those two candidate types
+and nowhere else, and it records who asserted the claim — not that the claim is true.
 
 **Not staged.** No alias. "Speaker 1" and "Speaker 3" are observations about one recorder's output, not names
 Priya answers to, and adding either as an alias would make a future import match on a label. No second person
 record either: the split was a diarization artefact, and merging two people afterwards is worse than never
 creating the duplicate.
+
+**The day is what made the affiliation possible.** Had she said only "since June", the role would be an attributed
+`fact` carrying the month in its text — "says she became staff engineer in June 2026; day unknown" — and no
+affiliation at all. `valid_from` is a date, so a month-only start can only be stored by choosing a day, and
+choosing 1 June records a precision the recording does not have. That is the same rule the CV workflow follows for
+year-only study: [import.md](import.md#capturing-a-cv-biography-or-page-of-notes-m222) keeps year-only, month-only,
+and approximate dates in claim text, and never invents a January 1 or a month boundary to fill a date field.
 
 **Lesson.** A confirmed split collapses into one person and leaves no trace of having been split. The mapping was
 review scaffolding; it does not survive the review.
@@ -249,11 +262,14 @@ numbering scheme and nothing else.
 `tests/adapters/importers/test_transcript_capture_workflow.py` runs a fictional version of this call through the
 real stores: a confirmed split commits one person, a mixed label contributes only its confirmed statement, an
 undated call stages no interaction, an ambiguous name commits nothing, a trait with no owner is refused, a partial
-acceptance commits exactly the accepted subset, a sensitive fact is withheld from the ordinary read, and no marker
-text, speaker label, or working map reaches a staged row, a committed record, or a receipt.
+acceptance commits exactly the accepted subset, a month-only start stays in claim text instead of becoming an
+affiliation, a sensitive fact is withheld from the ordinary read, and no marker text, speaker label, or working map
+survives into a staged row, a committed record, or a receipt.
 
-Every batch in that file is hand-authored. It proves the server accepts the batch the workflow describes and
-refuses the ones it forbids. It proves nothing about whether a model, handed a real export, would produce that
+Every batch in that file is hand-authored, and the last of those is the one to read carefully. It shows that a
+workflow-shaped batch carries no raw line through the lifecycle; it does not show that the server would refuse one,
+because it would not. The whole file proves that the server accepts the batches the workflow describes and refuses
+the ones its schema forbids. It proves nothing about whether a model, handed a real export, would produce that
 batch — the decisions above are the actual subject, and they are assessed by a person against the rubric in
 [evals.md](evals.md#human-review-of-transcript-attribution).
 
@@ -265,12 +281,15 @@ That the instructions are correct is not evidence that an agent followed them.
 
 Two retention boundaries apply to a transcript review, and they are not the same boundary.
 
-**The local server** stores no part of the recording. It is given no transcript, so it parses none, and it has no
-field that could hold a line of one: what lands in SQLite is the distilled candidates the user accepted, plus a
-receipt that records the processing with a content digest the agent computed and a non-content source label.
-Speaker labels, working maps, unresolved ownership, and the review conversation itself reach none of it — not
-staging metadata, not a person `summary`, not an `observation`, not the audit log, which covers mutations rather
-than disclosures.
+**The local server** is given no transcript, so it parses none and stores none of its own accord: what lands in
+SQLite is the distilled candidates the user accepted, plus a receipt that records the processing with a content
+digest the agent computed and a non-content source label. Speaker labels, working maps, unresolved ownership, and
+the review conversation itself belong nowhere in that — not in staging metadata, not in a person `summary`, not in
+an `observation`, and not in the audit log, which covers mutations rather than disclosures.
+
+That is the workflow's commitment, and the commit gate is where a user enforces it. The prose fields would accept a
+raw line if a caller put one there, so the protection is that review shows every field value before it is written,
+not that the schema refuses it. A user who wants the guarantee reads the batch.
 
 **The client** is a separate trust boundary with its own rules. When the agent runs in a cloud-hosted assistant,
 the whole review reaches that provider as ordinary prompt content: the transcript the agent read, every paraphrase

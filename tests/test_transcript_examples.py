@@ -138,11 +138,31 @@ def test_the_seven_candidate_types_are_named_and_no_eighth_is_implied() -> None:
 
 def test_client_retention_is_documented_separately_from_local_storage() -> None:
     """The two boundaries are different, and collapsing them is the privacy error to avoid."""
-    text = _read(EXAMPLES_PATH)
+    text = _flowed(EXAMPLES_PATH)
 
-    assert "**The local server** stores no part of the recording." in text
+    assert "**The local server** is given no transcript, so it parses none and stores none of its own accord" in text
     assert "**The client** is a separate trust boundary with its own rules." in text
     assert "the server keeping nothing says nothing about what the client kept" in text
+
+
+def test_raw_text_exclusion_is_stated_as_workflow_discipline_not_a_schema_guarantee() -> None:
+    """The prose fields would accept a pasted line; claiming otherwise sells an unenforced guarantee."""
+    text = _flowed(EXAMPLES_PATH)
+
+    assert "**Keeping raw lines out is discipline, not a schema constraint.**" in text
+    assert "the server would accept it" in text
+    assert "not a guarantee the database enforces" in text
+    # And the same limit is stated where the checks are described.
+    assert "it does not show that the server would refuse one, because it would not" in text
+
+
+def test_a_month_only_start_is_shown_staying_in_claim_text() -> None:
+    """`valid_from` is a date, so a month-only start can only be stored by inventing a day."""
+    text = _flowed(EXAMPLES_PATH)
+
+    assert "**The day is what made the affiliation possible.**" in text
+    assert "day unknown" in text
+    assert "never invents a January 1 or a month boundary to fill a date field" in text
 
 
 def test_the_examples_name_the_lifecycle_checks_and_their_limit() -> None:
@@ -150,7 +170,7 @@ def test_the_examples_name_the_lifecycle_checks_and_their_limit() -> None:
     text = _flowed(EXAMPLES_PATH)
 
     assert "tests/adapters/importers/test_transcript_capture_workflow.py" in text
-    assert "Every batch in that file is hand-authored." in text
+    assert "Every batch in that file is hand-authored" in text
     assert "It proves nothing about whether a model, handed a real export, would produce that batch" in text
     assert "not evidence that an agent followed them" in text
 
