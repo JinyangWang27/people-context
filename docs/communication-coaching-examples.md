@@ -10,9 +10,15 @@ with these cases.
 **Everything here is invented.** The people, the employers, the messages, and the drafts are fiction written for
 this document. No real person's correspondence was used, quoted, or paraphrased.
 
-**Every detail in a draft comes from the scenario.** No draft states a fact, a date, an offer, or a reason that
-the user did not supply in their own words above it. Drafts go out under the user's name, so an invented specific
-is not colour — it is a false statement they would be making, or a commitment they would have to keep.
+**Every detail in a draft comes from the scenario.** No draft states a fact about the world, a date, an offer, or
+a reason that the user did not supply in their own words above it. Drafts go out under the user's name, so an
+invented specific is not colour — it is a false statement they would be making, or a commitment they would have
+to keep.
+
+The line falls between what the user is asserting and what they are being made to assert. Their own position,
+what they want, and what they are willing to do are theirs to state, and a draft may put those in words. Anything
+the recipient could check — what happened, when, why, what the user is offering — has to come from the user
+first, because they are the one who will have to stand behind it.
 
 **The drafts are illustrative.** They show the shape of a reply that satisfies the workflow — usable text first,
 a short lesson after — not a promise about wording. A different model, or the same model on a different day, will
@@ -113,7 +119,7 @@ that as a genuine choice with a cost attached, rather than presenting it as the 
 
 Illustrative draft:
 
-> I missed your birthday and I've been sitting with that for two weeks, which made it worse. No excuse.
+> I missed your birthday, and then it took me two weeks to say so, which made it worse. No excuse.
 > [what you want to do about it — your call]
 
 The slot is deliberate. An apology lands better with a repair attached, but the repair is the user's to offer:
@@ -211,11 +217,13 @@ When the server is unavailable, it says so once and carries on:
 > Which terms are you pushing back on, and which one matters most if you only get one?
 
 That question is asked for the same reason as the one in scenario 1: without it there is nothing to draft. The
-user answers that the payment terms are net ninety and they need net thirty, and that the liability cap is
+user answers that the payment terms are net ninety, that at this contract size that leaves them funding the work
+out of their own cash for three months, that net thirty is what they need, and that the liability cap is
 survivable.
 
-> Sam — raising one thing on the terms before I go further. Payment at net ninety puts us underwater on a project
-> this size, and net thirty is what I'd need to go ahead. The liability cap as drafted I can work with. I'm still
+> Sam — raising one thing on the terms before I go further. At net ninety I'd be funding three months of this
+> out of my own cash, which I can't do at this size, so net thirty is what I'd need to go ahead. The liability
+> cap as drafted I can work with. I'm still
 > going through the rest, so read this as the one item I'm flagging now rather than agreement on everything else.
 > Is net thirty workable on your side, or is there a middle number you have room for?
 
@@ -292,28 +300,22 @@ must not be guessed, so the agent asks for it rather than reaching for the curre
 
 The batch is three rows rather than two. An interaction's participants and a fact's subject are batch-local
 references that have to resolve to a `person` candidate in the same call, so Aditi travels with them as a person
-row; a batch without her is refused as an unknown person reference. The agent says what it staged and is exact
-about what staging did:
+row; a batch without her is refused as an unknown person reference.
 
-> Staged three rows: Aditi Rao as the person the other two point at, plus the interaction and the fact. All three
-> are saved in the staging area now — what acceptance gates is promotion into her actual record, not whether
-> anything reached the disk.
+Staging is a proposal, not a commit, and the two never happen in one breath:
 
-Staging is a proposal, not a commit, and the two never happen in one breath. The agent shows what `review_import`
-returns, because that is what an acceptance would actually be accepting, and then stops:
+> Staged. Nothing is in her record yet, though the rows themselves are saved — what acceptance gates is promotion
+> into her record, not whether anything reached the disk. Next I'll pull the batch back up so you can see the
+> exact rows, ids and all, and you tell me which ones to accept. I won't commit anything you haven't named.
 
-> Here is the batch as stored, which is what you'd be accepting:
->
-> - `person` — Aditi Rao.
-> - `interaction`, dated today — she asked you to raise the title again in Q3. That one is what she said.
-> - `fact` — she weighs cross-team scope for staff promotions. That one is your reading of what she cares about,
->   recorded as your reading rather than as her position.
->
-> Nothing commits until you name the rows you want. A row you leave out never becomes a record, but it does stay
-> in the batch as a pending candidate: commit skips it, and no ordinary tool removes it on its own.
+What `review_import` then returns is the stored batch itself: every candidate with its generated id, its status,
+and the fields an acceptance would write — including sensitivity and any attribution. That listing, not a summary
+of it, is what the user reviews, and the ids in it are what `commit_import` consumes. This document does not
+reproduce one, because a plausible-looking batch with invented identifiers is exactly the kind of detail it tells
+its own drafts not to manufacture; [import.md](import.md) carries the real shape.
 
-Only once the user names rows does `commit_import` run, against those ids and no others. Three calls, three
-separate decisions, and the last one is the user's.
+Three calls, three separate decisions, and the last one is the user's. A row left out never becomes a record but
+does stay in the batch as a pending candidate: commit skips it, and no ordinary tool removes it on its own.
 
 Had the user asked to save only the one thing Aditi told them, that single directly-stated statement is what the
 direct-capture path is for — `remember` resolves the name, records it, and reports ambiguity rather than guessing.
