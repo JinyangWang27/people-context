@@ -417,3 +417,15 @@ def test_the_provenance_rule_states_where_its_line_falls() -> None:
 
     assert "The line falls between what the user is asserting and what they are being made to assert." in text
     assert "Anything the recipient could check" in _flowed(text)
+
+
+def test_no_draft_negotiates_below_a_figure_the_user_called_their_minimum() -> None:
+    """Regression: the closing question invited a number between the two on the table.
+
+    The user said net thirty was what they needed. Asking for a middle number concedes the figure
+    before the counterparty has answered, and a fallback is theirs to authorise.
+    """
+    text = _read(EXAMPLES_PATH)
+
+    assert "middle number you have room for" not in text
+    assert "A fallback is the user's to authorise, and they have not." in _flowed(text)
