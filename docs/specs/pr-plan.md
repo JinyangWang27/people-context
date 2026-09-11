@@ -686,7 +686,7 @@ skills; check each box only in its implementing PR.
   - **Out:** new tools/prompts/CLI commands, schema/dependencies, automatic sending, personality scoring,
     persistent learning profiles, server-side advice generation.
 
-- [ ] **M25.2 — Demonstrate and evaluate coaching**
+- [x] **M25.2 — Demonstrate and evaluate coaching**
   - **Scope:** Add fictional bilingual use cases, a human-review rubric, and delivered-skill plugin documentation.
   - **Acceptance:** examples cover workplace hierarchy, disagreement/refusal, friendship repair, family boundaries,
     uncertain intent, missing context/identity, requested practice/debrief, and optional capture. Assess usefulness,
