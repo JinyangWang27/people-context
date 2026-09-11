@@ -218,7 +218,7 @@ def test_no_scenario_proposes_a_date_the_user_did_not_supply() -> None:
     section = _scenario_sections()["1"]
 
     assert "\u8fd8\u9700\u8981\u591a\u4e45" in section, "the agent no longer asks for the user's own estimate"
-    assert "Now both dates in the draft come from the user" in section
+    assert "Every concrete thing in the draft below now traces to something the user said" in section
     assert "no delivery\ndate the agent picked itself" in section
 
 
@@ -231,7 +231,7 @@ def test_a_compound_capture_request_stays_behind_one_review_gate() -> None:
     section = _scenario_sections()["8"]
 
     assert "a request carrying several separate statements stays on the" in section
-    assert "Both clauses are therefore staged together" in section
+    assert "One gate over both clauses keeps the\nwhole request refusable." in section
     assert "rejecting a batch cannot undo a write that happened outside it" in section
 
 
@@ -327,9 +327,9 @@ def test_staging_is_described_as_a_persisted_write_behind_a_promotion_gate() -> 
     text = _read(EXAMPLES_PATH)
 
     assert "nothing written yet" not in text
-    assert "Staging is itself a write" in text
-    assert "not whether anything reached the disk" in text
-    assert "stays in the batch as a pending row" in " ".join(text.split())
+    assert "what acceptance gates is promotion into her actual record, not whether" in " ".join(text.split())
+    assert "anything reached the disk" in " ".join(text.split())
+    assert "stay\n> in the batch as a pending candidate" in text
 
 
 def test_a_staged_interaction_has_a_date_the_user_established() -> None:
@@ -346,3 +346,48 @@ def test_a_named_person_is_resolved_before_being_role_played() -> None:
 
     assert "resolve_person" in section
     assert "I'll play a generic skip-level rather than her" in section
+
+
+def test_the_capture_batch_carries_the_person_row_its_references_require() -> None:
+    """Regression: the batch was described as two rows.
+
+    An interaction's participants and a fact's subject are batch-local refs that must resolve to a
+    `person` candidate staged in the same call; `stage_candidates` raises `unknown person reference`
+    otherwise. The batch is therefore three rows, not two.
+    """
+    section = _scenario_sections()["8"]
+
+    assert "The batch is three rows rather than two" in section
+    assert "refused as an unknown person reference" in section
+
+
+def test_review_runs_before_any_offer_to_commit() -> None:
+    """Regression: the agent offered to commit in the same breath as staging.
+
+    `skills/people-context-usage/SKILL.md` forbids exactly that, and the accepted ids a commit needs
+    come from the review the scenario had skipped.
+    """
+    section = _scenario_sections()["8"]
+
+    assert "Staging is a proposal, not a commit, and the two never happen in one breath." in section
+    assert "review_import" in section
+    assert "Nothing commits until you name the rows you want." in section
+
+
+def test_no_deletion_of_a_pending_candidate_is_offered() -> None:
+    """Regression: the agent offered to get an unaccepted candidate "gone from the store".
+
+    No ordinary operation deletes an individual staged candidate, so the offer could not be kept.
+    """
+    text = _read(EXAMPLES_PATH)
+
+    assert "gone from the store" not in text
+    assert "no ordinary tool removes it on its own" in text
+
+
+def test_the_document_states_that_draft_details_come_from_the_user() -> None:
+    """The provenance rule the scenarios are written to, stated where a reader meets it."""
+    text = _read(EXAMPLES_PATH)
+
+    assert "**Every detail in a draft comes from the scenario.**" in text
+    assert "it is a false statement they would be making" in text
