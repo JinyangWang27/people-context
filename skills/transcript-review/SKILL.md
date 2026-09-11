@@ -1,6 +1,6 @@
 ---
 name: transcript-review
-description: Review a transcript, recording export, call note, or conversation log the user supplies, and extract the knowledge about people that is actually supported by it — working out in conversation who said what before anything is staged, because a speaker label like "Speaker 2" is not a person, several labels can be one person, and one room microphone can hold several. Confirms attribution statement by statement, stages only the supported subset through the existing review-before-commit flow, and leaves unresolved ownership in the conversation. Not for every mention of a transcript: identifying someone, recording one stated fact, or preparing for a meeting is not a review request.
+description: "Review a transcript, recording export, call note, or conversation log the user supplies, and extract the knowledge about people that is actually supported by it — working out in conversation who said what before anything is staged, because a speaker label like 'Speaker 2' is not a person, several labels can be one person, and one room microphone can hold several. Confirms attribution statement by statement, stages only the supported subset through the existing review-before-commit flow, and leaves unresolved ownership in the conversation. Not for every mention of a transcript: identifying someone, recording one stated fact, or preparing for a meeting is not a review request."
 ---
 
 # Reviewing a transcript for attribution

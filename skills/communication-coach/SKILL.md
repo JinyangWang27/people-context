@@ -1,6 +1,6 @@
 ---
 name: communication-coach
-description: Help the user handle one real conversation with a specific person — drafting or answering a message, raising something difficult, refusing or setting a boundary, repairing a misunderstanding, asking for something, preparing for a conversation that has not happened yet, rehearsing one, or debriefing one that already has — at work, with friends, or in the family. Composes the existing people-context reads into a usable reply plus a short transferable lesson, and writes nothing unless the user asks. Not for every mention of a person: identifying someone, reading their context, or recording something about them is not a coaching request.
+description: "Help the user handle one real conversation with a specific person — drafting or answering a message, raising something difficult, refusing or setting a boundary, repairing a misunderstanding, asking for something, preparing for a conversation that has not happened yet, rehearsing one, or debriefing one that already has — at work, with friends, or in the family. Composes the existing people-context reads into a usable reply plus a short transferable lesson, and writes nothing unless the user asks. Not for every mention of a person: identifying someone, reading their context, or recording something about them is not a coaching request."
 ---
 
 # Coaching a real conversation
