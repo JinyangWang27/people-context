@@ -35,9 +35,12 @@ does not describe the summaries as friction, because nothing in them went wrong.
 The trait says she wants a date, and the user has not given one. That is the one missing answer that would change
 the whole recommendation, so the agent asks for it rather than choosing a date on the user's behalf:
 
-> Before I draft this: how much more time do you actually need, and is any of it finished enough to send now?
+> 写之前先确认两件事：剩下的部分你还需要多久？有没有哪一部分已经定稿、现在就能先发过去？
 
 > 剩下两节周五能写完。前三节已经定稿了。
+
+The question is asked in the language the user is writing in, because switching them into English to answer a
+question about their own work is the same voice failure as drafting the reply in English would be.
 
 Now both dates in the draft come from the user: Friday is their estimate, and the first three sections are work
 they have already finished.
@@ -180,16 +183,20 @@ That question is asked for the same reason as the one in scenario 1: without it 
 user answers that the payment terms are net ninety and they need net thirty, and that the liability cap is
 survivable.
 
-> Sam — most of this works. The one I can't sign as written is the payment terms: net ninety puts us underwater
-> on a project this size, and net thirty is what I'd need to go ahead. Everything else I can live with, liability
-> cap included. Is net thirty workable on your side, or is there a middle number you have room for?
+> Sam — raising one thing on the terms before I go further. Payment at net ninety puts us underwater on a project
+> this size, and net thirty is what I'd need to go ahead. The liability cap as drafted I can work with. I'm still
+> going through the rest, so read this as the one item I'm flagging now rather than agreement on everything else.
+> Is net thirty workable on your side, or is there a middle number you have room for?
 
-**Lesson.** Missing context changes what advice can claim, not whether advice is possible. Naming the one term
-that is a blocker, and saying the rest is fine, is what keeps a pushback from reading as a reopening of the whole
-deal — and none of that needed a stored record to get right.
+**Lesson.** Missing context changes what advice can claim, not whether advice is possible. Naming one blocker
+keeps a pushback from reading as a reopening of the whole deal — but narrowing what you raise is not the same as
+clearing what you did not raise, so the draft says which terms have actually been cleared and leaves the rest
+open. None of that needed a stored record to get right.
 
 **Not done.** No guessed identity in order to have something to read. No person created in order to have
-somewhere to write. No general advice presented as though it were grounded in records.
+somewhere to write. No general advice presented as though it were grounded in records. And no concession beyond
+the two terms the user actually named — a draft that tells the other side everything else is fine has conceded
+every term the user has not read yet, which is an invented concession however agreeable it sounds.
 
 ## 7. Rehearsal and debrief (English)
 
