@@ -1,6 +1,6 @@
 # M26 — Attribution-aware transcript review
 
-Status: In progress — M26.1 delivered, M26.2 planned. This specification delivers nothing itself.
+Status: Delivered — M26.1 and M26.2 are merged. This specification delivers nothing itself.
 See [roadmap](../roadmap.md#m26--attribution-aware-transcript-review) and
 [PR checklist](pr-plan.md#m26--attribution-aware-transcript-review).
 
