@@ -225,7 +225,7 @@ survivable.
 > out of my own cash, which I can't do at this size, so net thirty is what I'd need to go ahead. The liability
 > cap as drafted I can work with. I'm still
 > going through the rest, so read this as the one item I'm flagging now rather than agreement on everything else.
-> Is net thirty workable on your side, or is there a middle number you have room for?
+> Is net thirty workable on your side?
 
 **Lesson.** Missing context changes what advice can claim, not whether advice is possible. Naming one blocker
 keeps a pushback from reading as a reopening of the whole deal — but narrowing what you raise is not the same as
@@ -236,6 +236,10 @@ open. None of that needed a stored record to get right.
 somewhere to write. No general advice presented as though it were grounded in records. And no concession beyond
 the two terms the user actually named — a draft that tells the other side everything else is fine has conceded
 every term the user has not read yet, which is an invented concession however agreeable it sounds.
+
+The closing question is the narrow version for the same reason. Inviting a middle number would read as an opening
+to negotiate between thirty and ninety, which gives away the one figure the user said they needed before Sam has
+even answered. A fallback is the user's to authorise, and they have not.
 
 ## 7. Rehearsal and debrief (English)
 
