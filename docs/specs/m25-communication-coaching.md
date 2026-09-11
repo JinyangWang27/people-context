@@ -1,6 +1,6 @@
 # M25 — Relationship-aware communication coaching
 
-Status: Planned. No coaching skill is delivered by this specification.
+Status: In progress — M25.1 delivered, M25.2 planned. This specification delivers nothing itself.
 See [roadmap](../roadmap.md#m25--relationship-aware-communication-coaching) and
 [PR checklist](pr-plan.md#m25--relationship-aware-communication-coaching).
 
