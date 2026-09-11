@@ -57,6 +57,11 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _flowed(source: str) -> str:
+    """Text with quote markers and line wrapping removed, so assertions survive rewrapping."""
+    return " ".join(line.lstrip("> ") for line in source.splitlines()).replace("  ", " ")
+
+
 def _scenario_sections() -> dict[str, str]:
     """The eight numbered scenarios, keyed by their number."""
     parts = re.split(r"^## (\d+)\. ", _read(EXAMPLES_PATH), flags=re.MULTILINE)
@@ -219,7 +224,7 @@ def test_no_scenario_proposes_a_date_the_user_did_not_supply() -> None:
 
     assert "\u8fd8\u9700\u8981\u591a\u4e45" in section, "the agent no longer asks for the user's own estimate"
     assert "Every concrete thing in the draft below now traces to something the user said" in section
-    assert "no delivery\ndate the agent picked itself" in section
+    assert "no delivery date the agent picked itself" in _flowed(section)
 
 
 def test_a_compound_capture_request_stays_behind_one_review_gate() -> None:
@@ -231,7 +236,7 @@ def test_a_compound_capture_request_stays_behind_one_review_gate() -> None:
     section = _scenario_sections()["8"]
 
     assert "a request carrying several separate statements stays on the" in section
-    assert "One gate over both clauses keeps the\nwhole request refusable." in section
+    assert "One gate over both clauses keeps the whole request refusable." in _flowed(section)
     assert "rejecting a batch cannot undo a write that happened outside it" in section
 
 
@@ -286,7 +291,7 @@ def test_no_scenario_concedes_terms_the_user_did_not_clear() -> None:
 
     assert "Everything else I can live with" not in section
     assert "rather than agreement on everything else" in section
-    assert "no concession beyond\nthe two terms the user actually named" in section
+    assert "no concession beyond the two terms the user actually named" in _flowed(section)
 
 
 def test_no_draft_commits_the_user_to_something_they_did_not_offer() -> None:
@@ -314,7 +319,7 @@ def test_unreachable_or_bounded_context_is_not_reported_as_an_empty_store() -> N
 
     assert "I have nothing stored about Sam" not in text
     assert "That is not the same as there being nothing there" in text
-    assert "That is the ordinary view,\n> not everything there is about him." in text
+    assert "That is the ordinary view, not everything there is about him." in _flowed(text)
 
 
 def test_staging_is_described_as_a_persisted_write_behind_a_promotion_gate() -> None:
@@ -327,16 +332,16 @@ def test_staging_is_described_as_a_persisted_write_behind_a_promotion_gate() -> 
     text = _read(EXAMPLES_PATH)
 
     assert "nothing written yet" not in text
-    assert "what acceptance gates is promotion into her actual record, not whether" in " ".join(text.split())
-    assert "anything reached the disk" in " ".join(text.split())
-    assert "stay\n> in the batch as a pending candidate" in text
+    assert "what acceptance gates is promotion into her record" in _flowed(text)
+    assert "not whether anything reached the disk" in _flowed(text)
+    assert "stay in the batch as a pending candidate" in _flowed(text)
 
 
 def test_a_staged_interaction_has_a_date_the_user_established() -> None:
     """`InteractionCandidateInput.date` is mandatory and the workflow forbids guessing it."""
     section = _scenario_sections()["8"]
 
-    assert "occurrence date is mandatory and\nmust not be guessed" in section
+    assert "occurrence date is mandatory and must not be guessed" in _flowed(section)
     assert "When did the skip-level actually happen" in section
 
 
@@ -369,9 +374,9 @@ def test_review_runs_before_any_offer_to_commit() -> None:
     """
     section = _scenario_sections()["8"]
 
-    assert "Staging is a proposal, not a commit, and the two never happen in one breath." in section
+    assert "Staging is a proposal, not a commit, and the two never happen in one breath" in section
     assert "review_import" in section
-    assert "Nothing commits until you name the rows you want." in section
+    assert "I won't commit anything you haven't named." in section
 
 
 def test_no_deletion_of_a_pending_candidate_is_offered() -> None:
@@ -391,3 +396,24 @@ def test_the_document_states_that_draft_details_come_from_the_user() -> None:
 
     assert "**Every detail in a draft comes from the scenario.**" in text
     assert "it is a false statement they would be making" in text
+
+
+def test_no_invented_review_payload_is_reproduced() -> None:
+    """The document describes what review returns rather than printing a fabricated batch.
+
+    A plausible-looking listing would need generated candidate ids, and inventing those is the
+    thing this document tells its own drafts not to do. The real shape lives in `docs/import.md`.
+    """
+    section = _scenario_sections()["8"]
+
+    assert "This document does not" in section
+    assert "invented identifiers" in section
+    assert "](import.md)" in section
+
+
+def test_the_provenance_rule_states_where_its_line_falls() -> None:
+    """An unbounded version of the rule would forbid a draft from voicing the user's own position."""
+    text = _read(EXAMPLES_PATH)
+
+    assert "The line falls between what the user is asserting and what they are being made to assert." in text
+    assert "Anything the recipient could check" in _flowed(text)
