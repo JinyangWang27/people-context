@@ -32,6 +32,16 @@ thin and specific: a `communication_style` trait saying she prefers a proposed d
 recent interaction summaries under `friction_notes`, both routine status exchanges. The agent uses the trait and
 does not describe the summaries as friction, because nothing in them went wrong.
 
+The trait says she wants a date, and the user has not given one. That is the one missing answer that would change
+the whole recommendation, so the agent asks for it rather than choosing a date on the user's behalf:
+
+> Before I draft this: how much more time do you actually need, and is any of it finished enough to send now?
+
+> 剩下两节周五能写完。前三节已经定稿了。
+
+Now both dates in the draft come from the user: Friday is their estimate, and the first three sections are work
+they have already finished.
+
 Illustrative draft:
 
 > 林经理，报告目前完成到第三节，剩下迁移风险和回滚方案两部分。这周二到周四我在处理支付链路的线上问题，那段时间没能推进。
@@ -41,8 +51,10 @@ Illustrative draft:
 the manager needs. Supplying both, in that order, lets the explanation read as information rather than as a
 defence — and offering a partial deliverable gives her something to choose between instead of something to accept.
 
-**Not done.** No apology the user did not want to make, no promise about work that has not been scoped, and no
-mention of who owned the incident. The agent wrote nothing to the store.
+**Not done.** No apology the user did not want to make, no mention of who owned the incident, and no delivery
+date the agent picked itself — a proposed deadline is a commitment, and inventing one on the user's behalf is the
+thing the workflow forbids even when it would make the reply land better. One question, asked because the answer
+changed the draft, is not an intake interview. The agent wrote nothing to the store.
 
 ## 2. Declining scope the user will not absorb (English)
 
@@ -161,11 +173,20 @@ When the server is unavailable, it says so once and carries on:
 > I can't reach your people-context server right now, so I have nothing stored about Sam — no past dealings, no
 > recorded preferences. I can still help with the negotiation from what you've told me; just treat the advice as
 > general rather than tailored to them.
+>
+> Which terms are you pushing back on, and which one matters most if you only get one?
 
-The coaching that follows is built entirely from what the user supplied in the conversation.
+That question is asked for the same reason as the one in scenario 1: without it there is nothing to draft. The
+user answers that the payment terms are net ninety and they need net thirty, and that the liability cap is
+survivable.
 
-**Lesson.** Missing context changes what advice can claim, not whether advice is possible. Saying which one you
-are giving is the part that matters.
+> Sam — most of this works. The one I can't sign as written is the payment terms: net ninety puts us underwater
+> on a project this size, and net thirty is what I'd need to go ahead. Everything else I can live with, liability
+> cap included. Is net thirty workable on your side, or is there a middle number you have room for?
+
+**Lesson.** Missing context changes what advice can claim, not whether advice is possible. Naming the one term
+that is a blocker, and saying the rest is fine, is what keeps a pushback from reading as a reopening of the whole
+deal — and none of that needed a stored record to get right.
 
 **Not done.** No guessed identity in order to have something to read. No person created in order to have
 somewhere to write. No general advice presented as though it were grounded in records.
@@ -207,12 +228,29 @@ instead of a verdict, and did not tell the user a better script would have preve
 
 > Save this: Aditi cares about cross-team scope for staff promotions, and she told me to come back in Q3.
 
-Two different things are in that sentence, and they take two different paths.
+Two separate statements are in that sentence, and that is what decides the path. The direct-capture route is for
+a single thing the user states in the invocation; a request carrying several separate statements stays on the
+staged route so the whole of it is reviewable as one batch. Both clauses are therefore staged together with
+`stage_candidates` and wait for `review_import` and an explicit acceptance before `commit_import`.
 
-The second half is something Aditi told the user directly, so it goes down the direct-capture path — `remember`
-resolves the name, records the one statement, and reports ambiguity rather than guessing. The first half is the
-user's reading of what she cares about; it is staged with `stage_candidates` and waits for `review_import` and an
-explicit acceptance before `commit_import`. The agent says which is which before writing anything.
+Splitting them would be the tempting mistake. Committing the Q3 instruction immediately with `remember` and
+leaving the inference in staging means the user who then rejects the batch has already had half the request
+written, and rejecting a batch cannot undo a write that happened outside it. One gate over both clauses keeps the
+whole request refusable.
+
+The distinction between the two clauses still matters, and the agent names it in the batch rather than in the
+plumbing:
+
+> Staged two candidates against Aditi Rao, nothing written yet:
+>
+> - an interaction — she asked you to raise the title again in Q3. That one is what she said.
+> - a fact — she weighs cross-team scope for staff promotions. That one is your reading of what she cares
+>   about, recorded as your reading rather than as her position.
+>
+> Say the word and I'll commit both, or tell me which to drop.
+
+Had the user asked to save only the one thing Aditi told them, that single directly-stated statement is what the
+direct-capture path is for — `remember` resolves the name, records it, and reports ambiguity rather than guessing.
 
 What does not get recorded: the rehearsal, the simulated replies, the drafts, and the user's report that the
 conversation went badly. A draft is not an outcome and a simulated reaction is not observed behaviour; neither
@@ -222,7 +260,8 @@ If the user had instead said "remind me to raise this in Q3", that is a `set_rem
 the reply — there is no reminder candidate type, so it is never staged.
 
 **Lesson.** What someone told you and what you concluded about them are different kinds of claim, and a store that
-keeps them apart stays correctable later.
+keeps them apart stays correctable later. Keeping them apart is a labelling job, though, not a reason to send them
+through different gates.
 
 **Not done.** Nothing was written until the user asked. No end-of-session capture was proposed during the coaching
 itself, because a drafting session is not a source of durable knowledge about anyone.

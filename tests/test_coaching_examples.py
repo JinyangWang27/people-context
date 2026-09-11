@@ -47,12 +47,35 @@ REQUIRED_CRITERIA: tuple[str, ...] = (
     "Transferable lesson",
 )
 
+PLUGIN_DOC_PATH = REPOSITORY_ROOT / "docs/claude-code-plugin.md"
+
 #: What the specification requires a reviewer to write down for each assessed run.
 REQUIRED_REVIEW_RECORD_FIELDS: tuple[str, ...] = ("Scenario", "Output", "Reviewer reasoning")
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _scenario_sections() -> dict[str, str]:
+    """The eight numbered scenarios, keyed by their number."""
+    parts = re.split(r"^## (\d+)\. ", _read(EXAMPLES_PATH), flags=re.MULTILINE)
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def _blockquote_blocks(section: str) -> list[list[str]]:
+    """Consecutive runs of quoted lines, which is how the document shows a message or a draft."""
+    blocks: list[list[str]] = []
+    in_block = False
+    for line in section.splitlines():
+        if line.startswith(">"):
+            if not in_block:
+                blocks.append([])
+            blocks[-1].append(line)
+            in_block = True
+        else:
+            in_block = False
+    return blocks
 
 
 def test_the_examples_document_exists() -> None:
@@ -168,3 +191,68 @@ def test_the_documents_disclaim_the_evidence_these_very_checks_provide() -> None
     assert "**Instruction-text tests.**" in text
     assert "tests/test_coaching_examples.py" in text
     assert "is not evidence that an agent followed them" in text
+
+
+def test_every_scenario_shows_the_agent_output_rather_than_describing_it() -> None:
+    """Regression: one scenario ended at a disclaimer and said coaching followed, without showing it.
+
+    A reviewer cannot score usefulness, voice, or boundaries against a sentence promising that a
+    reply existed. Every scenario therefore quotes at least two blocks — what the user said, and
+    what the agent produced.
+    """
+    thin = {
+        number: len(_blockquote_blocks(section))
+        for number, section in _scenario_sections().items()
+        if len(_blockquote_blocks(section)) < 2
+    }
+
+    assert not thin, f"scenarios with no quoted agent output: {thin}"
+
+
+def test_no_scenario_proposes_a_date_the_user_did_not_supply() -> None:
+    """Regression: the deadline draft promised dates that appeared nowhere in the user's account.
+
+    Proposing a delivery date is a commitment, and inventing one is what the workflow forbids. The
+    scenario now asks for the estimate and says where both dates came from.
+    """
+    section = _scenario_sections()["1"]
+
+    assert "how much more time do you actually need" in section
+    assert "Now both dates in the draft come from the user" in section
+    assert "no delivery\ndate the agent picked itself" in section
+
+
+def test_a_compound_capture_request_stays_behind_one_review_gate() -> None:
+    """Regression: splitting a two-statement request committed half of it outside the batch.
+
+    `skills/remember/SKILL.md` keeps any request carrying several separate statements on the staged
+    path precisely so the whole of it stays refusable.
+    """
+    section = _scenario_sections()["8"]
+
+    assert "a request carrying several separate statements stays on the" in section
+    assert "Both clauses are therefore staged together" in section
+    assert "rejecting a batch cannot undo a write that happened outside it" in section
+
+
+def test_the_plugin_doc_names_the_slash_invocation_each_skill_actually_has() -> None:
+    """Regression: the doc claimed neither bundled skill was a slash command.
+
+    A skill is invocable by the user and by the model unless its frontmatter says otherwise, and
+    `disable-model-invocation` removes the automatic path rather than the typed one. Neither
+    bundled skill sets `user-invocable: false`, so both have a namespaced command.
+    """
+    text = _read(PLUGIN_DOC_PATH)
+
+    assert "/people-context:communication-coach" in text
+    assert "/people-context:people-context-usage" in text
+    assert "It does\nnot affect slash availability" in text
+
+
+def test_neither_bundled_skill_opts_out_of_user_invocation() -> None:
+    """The claim above is only true while the frontmatter keeps it true."""
+    for name in ("communication-coach", "people-context-usage"):
+        frontmatter = (REPOSITORY_ROOT / "skills" / name / "SKILL.md").read_text(encoding="utf-8").split("---")[1]
+
+        assert "user-invocable" not in frontmatter, name
+        assert "disable-model-invocation" not in frontmatter, name
