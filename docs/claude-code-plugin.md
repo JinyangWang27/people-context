@@ -79,6 +79,18 @@ staged batch automatically, and never copy raw transcript text into candidates. 
 particular writes nothing at all unless the user asks for a record afterwards, at which point
 the ordinary review-before-commit gate applies.
 
+Neither is a slash command. Both are model-discoverable, so Claude Code loads one when its
+frontmatter description matches what you are asking for — you describe the conversation you need
+help with in plain language and the coaching skill is picked up from that, rather than typing an
+invocation. That is the opposite of the three workflows in the next section, which set
+`disable-model-invocation` and therefore run only when you type them. The practical difference is
+that a coaching skill you never invoke by name still has to earn its trigger from the description
+alone, which is why that description says what it does not cover as well as what it does.
+
+Eight worked scenarios showing what the coaching skill produces — across work, friends, and family,
+in Chinese and English — are in
+[communication-coaching-examples.md](communication-coaching-examples.md).
+
 ## User-invocable workflows
 
 The plugin also ships three user-invoked workflow skills under `skills/`, each

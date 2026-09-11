@@ -21,6 +21,11 @@ and the agent picks the tool. See [mcp-interface.md](../mcp-interface.md) for th
 
 Sample output is illustrative. It shows the shape of a result, not a promise about wording.
 
+These five recipes pair with the evaluation tasks, so they stay at five. Coaching is not one of those tasks and
+has no recipe here; its worked scenarios live in
+[communication-coaching-examples.md](../communication-coaching-examples.md), which shows drafts verbatim because a
+coaching reply cannot be reviewed from a description of it.
+
 ## Where your data goes
 
 Every recipe runs against your local SQLite database. The store, the CLI, and the MCP server are local: no step

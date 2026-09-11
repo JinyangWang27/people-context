@@ -212,9 +212,9 @@ explicit acceptance; omission never implies deletion.
 
 ## M25 — Relationship-aware communication coaching
 
-**Status:** In progress. M25.1 delivered the `communication-coach` skill and mirrored its essential workflow
-into the shared usage guidance and the packaged `people-context://guide`; the fictional scenarios and the
-human-review rubric are still to come.
+**Status:** Delivered. M25.1 delivered the `communication-coach` skill and mirrored its essential workflow into
+the shared usage guidance and the packaged `people-context://guide`; M25.2 added the fictional bilingual scenarios
+and the human-review rubric. No coaching review has been recorded yet, so nothing here claims effectiveness.
 
 **Deliverables:** a discoverable communication-coach skill, shared/packaged guide integration, and fictional
 Chinese and English scenarios for work, friends, and family. Provide immediate help plus a short explanation;

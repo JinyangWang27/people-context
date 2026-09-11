@@ -92,6 +92,60 @@ Each criterion carries a weight; a task's score is the earned share of its possi
 intentional — an answer that names the right person but omits their stated update preference is better than one
 that does neither, and the report shows which criterion failed.
 
+## Human review of communication coaching
+
+The rules above score short factual answers. They cannot score the
+[communication coaching workflow](../skills/communication-coach/SKILL.md), and no criterion kind in this harness
+is a candidate for trying. Whether a draft is usable, whether it sounds like the user, whether a refusal held
+without turning hostile, and whether the lesson transfers are semantic judgements, and this harness makes none —
+that is the same commitment that left the drafting task's "no preamble" clause unscored.
+
+So coaching is reviewed by a person, against the worked cases in
+[communication-coaching-examples.md](communication-coaching-examples.md), and the result is written down rather
+than counted. Three kinds of evidence in this repository look like they bear on coaching quality and do not:
+
+- **Stub runs.** The dry run replays scripted answers to prove the plumbing works. It measures no model at all.
+- **Keyword scoring.** The criterion kinds above match phrases and regular expressions. A draft can contain every
+  right string and still be tone-deaf, and a better draft can contain none of them.
+- **Instruction-text tests.** `tests/test_communication_coach_skill.py` and `tests/test_coaching_examples.py`
+  assert that the skill and these documents say what they are supposed to say. That the instructions are correct
+  is not evidence that an agent followed them.
+
+### The criteria
+
+Six, assessed separately and never totalled. A review is a paragraph per criterion, not a number.
+
+- **Practical usefulness.** Passes when the reply leads with something the user could send or do and the
+  explanation comes after it. Catches an analysis of the situation with no draft anywhere in it.
+- **Voice.** Passes when the draft matches the user's language, register, directness, and length. Catches a plain
+  message laundered into corporate neutrality, and warmth, apology, or hedging the user did not ask for.
+- **Grounded personalization.** Passes when stored signal is used where it is relevant and its absence is stated
+  where it is not. Catches general advice presented as tailored, and a bounded read implied to be complete history.
+- **Uncertainty.** Passes when recorded, reported, and inferred stay apart and readings are offered as readings.
+  Catches a diagnosis of hidden intent, a personality derived from one incident, and `friction_notes` read as a
+  finding because of what the field is called.
+- **Boundaries.** Passes when refusal, disagreement, and renegotiation are available and nothing is written unless
+  the user asked. Catches deference prescribed as tact, an invented concession, and an unrequested capture proposal.
+- **Transferable lesson.** Passes when one short principle is drawn from this situation, claiming no guarantee
+  about the other person. Catches no lesson at all, an essay in place of a lesson, and a promise that a wording
+  produces a response.
+
+### Recording a review
+
+A review that is not written down is not evidence. Record three things per scenario, and publish them the way a
+model-backed run would be published — as a dated section naming what produced the output:
+
+- **Scenario** — which case was run, and the exact prompt, including anything the reviewer supplied when the
+  agent asked a follow-up question.
+- **Output** — the agent's reply in full, drafts included. Treat it as a personal export before attaching it
+  anywhere: it contains whatever the reviewer pasted in.
+- **Reviewer reasoning** — per criterion, why it passed or failed, in the reviewer's words. A verdict with no
+  reasoning behind it cannot be checked by the next reader.
+
+**No coaching review is recorded in this repository yet.** Nothing here claims the workflow is effective. When a
+review is recorded it will appear as its own dated section, naming the model and the date, alongside the scenarios
+rather than replacing them.
+
 ## Running it
 
 ### Offline dry run — no key, no network
@@ -209,6 +263,9 @@ not, and a claim of bit-for-bit input equality between two runs would be false.
 - It is not a claim about a competing product. The comparison here is one agent with and without this server;
   the dated local-versus-cloud comparison lives in
   [privacy-and-safety.md](privacy-and-safety.md#threat-model-notes).
+- It is not a claim about communication coaching. No task here asks for a draft the user would actually send, and
+  no criterion kind could judge one; that is assessed by a person against
+  [Human review of communication coaching](#human-review-of-communication-coaching).
 
 ## Privacy
 
@@ -225,5 +282,7 @@ not, and a claim of bit-for-bit input equality between two runs would be false.
 ## Related reading
 
 - [Use-case gallery](use-cases/README.md) — narrative recipes for the workflows the tasks abstract.
+- [communication-coaching-examples.md](communication-coaching-examples.md) — the worked coaching scenarios the
+  human-review rubric is applied to.
 - [compatibility.md](compatibility.md) — the additive promise the report document follows.
 - [privacy-and-safety.md](privacy-and-safety.md) — disclosure gates, audit, and the threat model.

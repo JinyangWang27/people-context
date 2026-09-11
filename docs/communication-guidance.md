@@ -79,8 +79,10 @@ by default, including end-of-session capture; a requested record follows the exi
 rules and the explicit review gate. Drafts and rehearsed reactions are neither observations nor traits, and no
 personality assessment, automatic sending, learning profile, or server-side advice generator is introduced.
 
-Fictional bilingual scenarios and the human-review rubric are M25.2 and are not yet shipped. See the
-[PR checklist](specs/pr-plan.md#m25--relationship-aware-communication-coaching).
+Eight fictional bilingual scenarios covering work, friends, and family are in
+[communication-coaching-examples.md](communication-coaching-examples.md), and the human review they are written to
+be assessed against is in [evals.md](evals.md#human-review-of-communication-coaching). Neither is scored by the
+evaluation harness: whether a draft is usable and sounds like the user is a judgement a person makes.
 
 ## Reminders
 
