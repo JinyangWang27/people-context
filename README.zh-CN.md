@@ -59,6 +59,21 @@ claude plugin install people-context@people-context-plugins
 重启 Claude Code 或运行 `/reload-plugins`。安装后可使用 MCP 服务器，以及
 `/people-context:who`、`/people-context:remember` 和 `/people-context:reminders`。
 
+### Claude Desktop
+
+从 [最新版本](https://github.com/JinyangWang27/people-context/releases/latest)下载
+`people-context.mcpb` 并打开。Claude Desktop 会使用自带的 `uv` 运行环境安装固定版本。
+详细说明见 [桌面端与编辑器文档（英文）](docs/desktop-and-editors.md)。
+
+### Codex
+
+```bash
+codex plugin marketplace add JinyangWang27/people-context
+codex plugin add people-context@people-context-plugins
+```
+
+安装后请启动新的 Codex 会话。详细说明见 [Codex 插件文档（英文）](docs/codex-plugin.md)。
+
 ### Cursor、Windsurf、VS Code 或其他 MCP Client
 
 在客户端的 MCP 配置中加入 stdio 服务器：
@@ -85,6 +100,15 @@ uvx --from people-context pctx setup cursor
 `cursor` 也可以替换为 `windsurf`、`vscode` 或 `claude-desktop`；加上 `--dry-run` 可先预览修改。
 各编辑器的完整说明见 [桌面端与编辑器文档（英文）](docs/desktop-and-editors.md)。
 
+### OpenClaw
+
+```bash
+openclaw plugins install clawhub:openclaw-plugin-people-context
+```
+
+该原生插件连接到需要主动启用的本地回环 HTTP 服务器。详细说明见
+[OpenClaw 插件文档（英文）](docs/openclaw-plugin.md)。
+
 ### 仅使用 CLI
 
 ```bash
@@ -99,6 +123,15 @@ pctx --help
 pctx remember "Amina Hassan" "prefers short emails" --org "Open City Lab"
 pctx brief "Amina Hassan"
 ```
+
+### Docker
+
+```bash
+docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest
+```
+
+该镜像以非 root 用户运行并将数据库保存在命名卷中，但它只是便捷的分发方式，并不是安全沙箱。
+详细说明见 [Docker 文档（英文）](docs/docker.md)。
 
 ## 沟通辅助如何工作
 
