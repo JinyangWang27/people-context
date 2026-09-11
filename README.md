@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.JinyangWang27/people-context -->
 
+English | [简体中文](README.zh-CN.md)
+
 **Your agent already remembers your codebase. Now it can remember your people.**
 
 `people-context` is a local-first [MCP](https://modelcontextprotocol.io) server and CLI that gives AI agents
