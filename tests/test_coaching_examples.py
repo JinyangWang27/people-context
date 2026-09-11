@@ -287,3 +287,62 @@ def test_no_scenario_concedes_terms_the_user_did_not_clear() -> None:
     assert "Everything else I can live with" not in section
     assert "rather than agreement on everything else" in section
     assert "no concession beyond\nthe two terms the user actually named" in section
+
+
+def test_no_draft_commits_the_user_to_something_they_did_not_offer() -> None:
+    """Regression: three drafts volunteered the user's time, a plan, or a date.
+
+    An offer inside a draft is a commitment the moment the draft is sent. Each of these is now
+    either left out with the reason stated, or left as a slot for the user to fill.
+    """
+    text = _read(EXAMPLES_PATH)
+
+    assert "Happy to spend an hour walking whoever picks them up" not in text
+    assert "Are you free either of the next two weekends?" not in text
+    assert "腊月二十八回来" not in text
+    assert "I've left out a handover offer" in text
+    assert "[what you want to do about it — your call]" in text
+
+
+def test_unreachable_or_bounded_context_is_not_reported_as_an_empty_store() -> None:
+    """Regression: a server it could not reach was described as a store holding nothing.
+
+    Failing to read is not the same as there being nothing to read, and a bounded result is the
+    ordinary view rather than the whole record.
+    """
+    text = _read(EXAMPLES_PATH)
+
+    assert "I have nothing stored about Sam" not in text
+    assert "That is not the same as there being nothing there" in text
+    assert "That is the ordinary view,\n> not everything there is about him." in text
+
+
+def test_staging_is_described_as_a_persisted_write_behind_a_promotion_gate() -> None:
+    """Regression: the batch was announced as "nothing written yet", with an offer to drop a row.
+
+    `stage_candidates` persists both candidates at once; acceptance gates promotion into the
+    durable records. `commit_import` skips a candidate left out of `accepted_ids` and no ordinary
+    tool deletes it, so it stays pending rather than disappearing.
+    """
+    text = _read(EXAMPLES_PATH)
+
+    assert "nothing written yet" not in text
+    assert "Staging is itself a write" in text
+    assert "not whether anything reached the disk" in text
+    assert "stays in the batch as a pending row" in " ".join(text.split())
+
+
+def test_a_staged_interaction_has_a_date_the_user_established() -> None:
+    """`InteractionCandidateInput.date` is mandatory and the workflow forbids guessing it."""
+    section = _scenario_sections()["8"]
+
+    assert "occurrence date is mandatory and\nmust not be guessed" in section
+    assert "When did the skip-level actually happen" in section
+
+
+def test_a_named_person_is_resolved_before_being_role_played() -> None:
+    """Regression: the rehearsal voiced a named person without resolving or reading her."""
+    section = _scenario_sections()["7"]
+
+    assert "resolve_person" in section
+    assert "I'll play a generic skip-level rather than her" in section

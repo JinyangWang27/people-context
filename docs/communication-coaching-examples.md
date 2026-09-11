@@ -73,16 +73,22 @@ made, so the agent drafts a refusal rather than negotiating on Bram's behalf.
 Illustrative draft:
 
 > Bram — I can't take the dashboards on. My quarter is committed to the billing migration and adding these would
-> put that at risk, so this is a no rather than a not-yet. Happy to spend an hour walking whoever picks them up
-> through the parts of the code I know well.
+> put that at risk, so this is a no rather than a not-yet.
+
+The obvious way to warm that up is to offer something instead — an hour with whoever picks the dashboards up, a
+walkthrough of the code. The agent does not put it in the draft, and says why:
+
+> I've left out a handover offer. It would soften this, but it spends your time, and you haven't said you have an
+> hour to give. Add one if you want it there.
 
 **Lesson.** A refusal is clearer when it says which one it is. "Not right now" invites a follow-up in three weeks;
-"this is a no rather than a not-yet" closes the question, and the offer of an hour shows the no is about capacity
-and not about him.
+"this is a no rather than a not-yet" closes the question. If you want to take the edge off, the thing you offer
+has to be something you actually have.
 
 **Not done.** The agent did not invent a future date to soften the refusal, did not suggest escalating to a
-manager, and did not treat the user's decision as something to talk them out of. Social skill is not compulsory
-appeasement.
+manager, and did not treat the user's decision as something to talk them out of. It also did not spend the user's
+time on their behalf: an offer inside a draft is a commitment the moment the draft is sent. Social skill is not
+compulsory appeasement.
 
 ## 3. Repairing a friendship after a missed occasion (English)
 
@@ -98,15 +104,22 @@ that as a genuine choice with a cost attached, rather than presenting it as the 
 Illustrative draft:
 
 > I missed your birthday and I've been sitting with that for two weeks, which made it worse. No excuse — I just
-> didn't have it written down anywhere. I'd like to take you out properly. Are you free either of the next two
-> weekends?
+> didn't have it written down anywhere. [what you want to do about it — your call]
+
+The slot is deliberate. An apology lands better with a repair attached, but the repair is the user's to offer:
+only they know whether they have a free weekend, what Noor would actually enjoy, and how much they want to
+propose. A draft that filled it in would hand them a plan they then have to keep.
+
+> I've left the make-up offer as a blank rather than picking one. Whatever goes there commits your time, so it
+> should be yours — tell me what you have in mind and I'll word it.
 
 Alternative, which trades immediacy for warmth: send the same thing as a voice note, since Noor has said she
 prefers them. That costs the user a day if they want to record it when they are not rushing, and it makes the
 apology harder to skim past.
 
 **Lesson.** An apology that includes a repair is easier to accept than one that only carries regret. Naming the
-delay before she does removes the one thing she might otherwise have to raise.
+delay before she does removes the one thing she might otherwise have to raise. What the repair is, though, is not
+a wording question, and a draft that decides it for you has committed you to it.
 
 **Not done.** No manufactured warmth, no reference to whatever else the store knows about Noor, and no
 explanation dressed up as an apology. The user said they are not gushy, and the draft is not gushy.
@@ -123,14 +136,20 @@ without turning it into a rule about how families should work.
 
 Illustrative draft:
 
-> 姑妈，谢谢您一直惦记着我。这件事我自己会安排，今年过年就不安排相亲了。我腊月二十八回来，到时候陪您吃饭。
+> 姑妈，谢谢您一直惦记着我。相亲这件事我自己会安排，今年就不麻烦您费心了。
 
-**Lesson.** A boundary holds better when the refusal and the relationship are in the same message. Declining the
-meeting while committing to the visit says what the user is turning down without implying they are turning down
-her.
+The pull here is to soften the refusal by attaching a visit — a date home, a meal, something to show the
+relationship survives the no. The agent does not, and says why:
+
+> 我没有在里面写回去的日子。你没说过今年回不回、什么时候回，我替你定下来的日期，你要么得兑现，要么得再跳一次票。想加的话告诉我时间，我帮你措辞。
+
+**Lesson.** A boundary does not need a consolation prize attached to be kind. The warmth that makes a refusal
+land has to be warmth you actually have to give — a visit invented on your behalf is a second thing you now have
+to either honour or take back, which is a worse position than the one the refusal left you in.
 
 **Not done.** The agent did not tell the user to go, did not explain their reasons on their behalf, and did not
-read family obligation off their name or their language. Cultural context came from the user's own philosophy
+read family obligation off their name or their language. It also did not put a return date or a meal into the
+draft, because the user never said they were going home. Cultural context came from the user's own philosophy
 text, not from an assumption about Chinese families.
 
 ## 5. A terse message with unreadable intent (English)
@@ -145,10 +164,11 @@ It says so rather than treating the field name as a finding.
 
 The honest answer has no diagnosis in it:
 
-> I can't tell you what he meant, and neither can the store. "Noted." carries at least three readings: he read it
-> and has no objection, he is deferring a real response until he has time, or he disagrees and is not saying so
-> yet. Nothing recorded about him distinguishes these — the two most recent interactions I can see are a routine
-> scheduling exchange and a handover note, neither of them tense.
+> I can't tell you what he meant, and nothing the store returned tells me either. "Noted." carries at least three
+> readings: he read it and has no objection, he is deferring a real response until he has time, or he disagrees
+> and is not saying so yet. Nothing in what came back distinguishes them — the two most recent interactions I can
+> see are a routine scheduling exchange and a handover note, neither of them tense. That is the ordinary view,
+> not everything there is about him.
 
 The agent then offers the move that resolves the ambiguity instead of guessing at it:
 
@@ -173,9 +193,9 @@ With an ambiguous result, the agent surfaces both candidates and asks. It does n
 
 When the server is unavailable, it says so once and carries on:
 
-> I can't reach your people-context server right now, so I have nothing stored about Sam — no past dealings, no
-> recorded preferences. I can still help with the negotiation from what you've told me; just treat the advice as
-> general rather than tailored to them.
+> I can't reach your people-context server right now, so I can't see anything about Sam — past dealings, recorded
+> preferences, any of it. That is not the same as there being nothing there; I just can't read it. I can still
+> help with the negotiation from what you've told me; treat the advice as general rather than tailored to them.
 >
 > Which terms are you pushing back on, and which one matters most if you only get one?
 
@@ -205,9 +225,16 @@ Afterwards, they come back and say it went badly.
 
 > Can you be Aditi and let me practise? I want to ask about the staff title.
 
-The agent plays the part and labels every reaction as what it is:
+Aditi is a named person, so the agent resolves her before playing her. `resolve_person` returns one confident
+match, and `get_communication_guidance` comes back nearly empty: one affiliation, no traits, no recorded
+interactions. That thin result is the ordinary view rather than proof she is unremarkable, and it is not enough to
+model how she argues.
 
-> Playing Aditi, and this is a guess at how she might respond, not a prediction:
+The agent says so, then plays a generic manager rather than a portrait of her:
+
+> I found her, but there's almost nothing recorded — one affiliation and no notes on how she handles these. So
+> I'll play a generic skip-level rather than her: the questions are the kind this conversation usually produces,
+> not predictions about Aditi.
 >
 > "I hear you. The staff bar here is mostly about scope outside your own team — what would you point to?"
 
@@ -226,8 +253,9 @@ The debrief separates the user's account from the readings available:
 
 **Lesson.** A rehearsal is worth doing for the questions it surfaces, not for the answers it predicts.
 
-**Not done.** The simulated Aditi was never described as what Aditi would say. The debrief offered readings
-instead of a verdict, and did not tell the user a better script would have prevented the outcome.
+**Not done.** The simulated manager was never described as what Aditi would say, and the thin read was not
+dressed up as a personality. The debrief offered readings instead of a verdict, and did not tell the user a better
+script would have prevented the outcome.
 
 ## 8. Saving an outcome, when asked (English)
 
@@ -240,6 +268,11 @@ a single thing the user states in the invocation; a request carrying several sep
 staged route so the whole of it is reviewable as one batch. Both clauses are therefore staged together with
 `stage_candidates` and wait for `review_import` and an explicit acceptance before `commit_import`.
 
+Staging is itself a write, and the document is careful not to call it otherwise. `stage_candidates` persists both
+candidates immediately; the gate that acceptance controls is promotion into the durable person, fact, and
+interaction records, not whether anything reached the disk. A candidate left out of the accepted set stays in the
+batch as a pending row — commit skips it, and nothing in the ordinary toolset deletes it individually.
+
 Splitting them would be the tempting mistake. Committing the Q3 instruction immediately with `remember` and
 leaving the inference in staging means the user who then rejects the batch has already had half the request
 written, and rejecting a batch cannot undo a write that happened outside it. One gate over both clauses keeps the
@@ -248,13 +281,25 @@ whole request refusable.
 The distinction between the two clauses still matters, and the agent names it in the batch rather than in the
 plumbing:
 
-> Staged two candidates against Aditi Rao, nothing written yet:
+One thing is missing before anything can be staged. An interaction candidate's occurrence date is mandatory and
+must not be guessed, so the agent asks for it rather than reaching for the current time:
+
+> When did the skip-level actually happen — today?
+
+> Yeah, this morning.
+
+Now the batch can be staged, and the agent is exact about what that did:
+
+> Staged two candidates against Aditi Rao. Both rows are saved in the staging area now; what the review gate
+> holds back is promotion into her actual record, not storage.
 >
-> - an interaction — she asked you to raise the title again in Q3. That one is what she said.
+> - an interaction, dated today — she asked you to raise the title again in Q3. That one is what she said.
 > - a fact — she weighs cross-team scope for staff promotions. That one is your reading of what she cares
 >   about, recorded as your reading rather than as her position.
 >
-> Say the word and I'll commit both, or tell me which to drop.
+> Say the word and I'll commit both, or name the one to leave out. Leaving one out stops it becoming a record; it
+> stays in the batch as a pending candidate rather than disappearing, so tell me if you want it gone from the
+> store as well and we'll deal with that separately.
 
 Had the user asked to save only the one thing Aditi told them, that single directly-stated statement is what the
 direct-capture path is for — `remember` resolves the name, records it, and reports ambiguity rather than guessing.
@@ -270,8 +315,10 @@ the reply — there is no reminder candidate type, so it is never staged.
 keeps them apart stays correctable later. Keeping them apart is a labelling job, though, not a reason to send them
 through different gates.
 
-**Not done.** Nothing was written until the user asked. No end-of-session capture was proposed during the coaching
-itself, because a drafting session is not a source of durable knowledge about anyone.
+**Not done.** Nothing was written until the user asked, and no end-of-session capture was proposed during the
+coaching itself, because a drafting session is not a source of durable knowledge about anyone. The agent also did
+not describe the staged batch as unwritten, and did not offer to make a staged candidate disappear, because
+neither would have been true.
 
 ## Where this material goes
 
