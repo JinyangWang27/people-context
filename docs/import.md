@@ -922,20 +922,28 @@ idempotent, and unresolved interactions remain pending for a later partial commi
 reported in deterministic input order through `skipped_message_ids` or `skipped_without_id`.
 
 
-## Planned transcript attribution review
+## Transcript attribution review (M26.1)
 
-[M26 — Attribution-aware transcript review](specs/m26-transcript-attribution-review.md) specifies a future client
-workflow for user-supplied transcripts, including exports with numbered speakers. A speaker label is not a person:
-several labels can refer to one person, and a shared room microphone can combine several people under one label.
-Whole-label mapping cannot resolve that second case; individual statements may require user clarification.
+[M26 — Attribution-aware transcript review](specs/m26-transcript-attribution-review.md) adds a client workflow for
+user-supplied transcripts, including exports with numbered speakers. A speaker label is not a person: several labels
+can refer to one person, and a shared room microphone can combine several people under one label. Whole-label
+mapping cannot resolve that second case; individual statements may require user clarification.
 
-The planned skill reviews attribution in conversation and stages only supported distilled claims through the
-existing lifecycle. Unresolved ownership is not converted into a person fact, trait, or promise. Neutral interaction
-capture requires confirmed participation and an established event date; otherwise a conversational summary remains
-useful. Reminders are not a candidate type and cannot be smuggled into staged capture.
+It ships as `skills/transcript-review/SKILL.md`, with the essential rules mirrored into the shared usage guidance
+served as the `people-context://guide` resource, so a client without plugin skills gets the same workflow. The skill
+reviews attribution in conversation and stages only supported distilled claims through the lifecycle documented
+above. Participation, speaking, being the subject of a claim, and owning an accepted commitment stay four separate
+things. Labels never become names, aliases, or person records, and never transfer between recordings. Unresolved
+ownership is not converted into a person fact, trait, or promise; it stays in the conversation alongside the report
+of what was staged. Neutral interaction capture requires confirmed participation and an established event date;
+otherwise a conversational summary remains useful. Reminders are not a candidate type and cannot be smuggled into
+staged capture.
 
-The workflow is planned, not a shipped parser or Ideashell integration. It adds no durable speaker map, raw-source
-storage, or resumable review session. Client conversation retention remains a separate boundary. See the
+The workflow adds no source format, candidate type, tool, or CLI command, and it is not a parser or an Ideashell
+integration. It adds no durable speaker map, raw-source storage, or resumable review session. Client conversation
+retention remains a separate boundary.
+
+Fictional worked transcripts and the runnable lifecycle checks are M26.2 and are not yet shipped. See the
 [PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
 
 ## M6 changelog and export boundary
