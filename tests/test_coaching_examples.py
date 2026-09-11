@@ -217,7 +217,7 @@ def test_no_scenario_proposes_a_date_the_user_did_not_supply() -> None:
     """
     section = _scenario_sections()["1"]
 
-    assert "how much more time do you actually need" in section
+    assert "\u8fd8\u9700\u8981\u591a\u4e45" in section, "the agent no longer asks for the user's own estimate"
     assert "Now both dates in the draft come from the user" in section
     assert "no delivery\ndate the agent picked itself" in section
 
@@ -256,3 +256,34 @@ def test_neither_bundled_skill_opts_out_of_user_invocation() -> None:
 
         assert "user-invocable" not in frontmatter, name
         assert "disable-model-invocation" not in frontmatter, name
+
+
+def test_a_chinese_scenario_never_switches_the_user_into_english() -> None:
+    """Regression: the clarifying question in scenario 1 was English under a Chinese prompt.
+
+    The workflow requires matching the user's language, and a question about their own work is as
+    much a part of the reply as the draft is. Every quoted block in a scenario headed (Chinese)
+    must therefore carry Chinese.
+    """
+    offenders: dict[str, list[str]] = {}
+    for number, section in _scenario_sections().items():
+        if not section.splitlines()[0].endswith("(Chinese)"):
+            continue
+        english_only = ["\n".join(block) for block in _blockquote_blocks(section) if not _CJK.search("".join(block))]
+        if english_only:
+            offenders[number] = english_only
+
+    assert not offenders, f"English-only quoted blocks in a Chinese scenario: {offenders}"
+
+
+def test_no_scenario_concedes_terms_the_user_did_not_clear() -> None:
+    """Regression: the contract draft told the counterparty everything else was acceptable.
+
+    The user had cleared two terms. A blanket acceptance concedes every term they have not read,
+    which is an invented concession even though it reads as cooperative.
+    """
+    section = _scenario_sections()["6"]
+
+    assert "Everything else I can live with" not in section
+    assert "rather than agreement on everything else" in section
+    assert "no concession beyond\nthe two terms the user actually named" in section
