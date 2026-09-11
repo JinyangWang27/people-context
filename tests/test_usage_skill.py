@@ -621,3 +621,79 @@ class TestCommunicationCoaching:
 
         assert "## Coaching a real conversation" in guide
         assert "communication-coach" not in guide.lower(), "the guide teaches the workflow, not the plugin path"
+
+
+class TestTranscriptAttributionReview:
+    """The M26.1 attribution review mirrored into the shared guidance.
+
+    The `transcript-review` skill reaches Claude Code users; MCP clients without plugin
+    skills get the same rules only through the served guide. These pin the parts that turn
+    a transcript into false records if the mirror loses them: a label treated as a person,
+    a room microphone treated as one speaker, attendance treated as a commitment, and a
+    follow-up staged because no reminder candidate type exists.
+    """
+
+    def test_the_section_exists_and_settles_attribution_before_extraction(self) -> None:
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "### Reviewing attribution when the source is a transcript" in body
+        assert "the speaker labels do not identify people" in lowered
+        assert "settle attribution in conversation first, then stage only what survived" in lowered
+
+    def test_keeps_participation_speech_subject_and_commitment_apart(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "attendance establishes none of the other three" in lowered
+        assert "a task nobody answered is a suggestion rather than a promise" in lowered
+
+    def test_labels_stay_recording_local_in_both_directions(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "never a name, an alias, identity proof, or a person record" in lowered
+        assert "diarization can split one person across several labels" in lowered
+        assert "a shared room microphone can put several people under one" in lowered
+        assert "assign a whole label only after the user confirms it is homogeneous" in lowered
+        assert "confirming one statement resolves neither its label nor its neighbours" in lowered
+        assert "labels never transfer between recordings" in lowered
+
+    def test_resolution_precedes_staging_and_attribution_stays_bounded(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "never invent an event time" in lowered
+        assert "never create or merge a person to make a speaker map fit" in lowered
+        assert "`stated_by` is for established attribution on a `fact` or `affiliation` only" in lowered
+        assert "never for a guessed speaker and never for a label" in lowered
+
+    def test_the_gate_survives_the_attribution_confirmation(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "confirming who spoke is not approval to commit what they said" in lowered
+        assert "anything resting on an unknown speaker or owner waits" in lowered
+        assert "supported independent claims proceed" in lowered
+
+    def test_a_neutral_interaction_needs_participation_and_a_date(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "needs confirmed participation **and** an established event date" in lowered
+        assert "inventing a participant or using the import time as the meeting time" in lowered
+
+    def test_follow_ups_are_not_staged_as_another_candidate_type(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "there is no reminder candidate type" in lowered
+        assert "never a candidate wearing another type's name" in lowered
+
+    def test_the_review_itself_is_never_persisted(self) -> None:
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "keep that report in the conversation" in lowered
+        assert "belong in no staged field, no person record, and no source receipt" in lowered
+
+    def test_the_workflow_reaches_mcp_clients_through_the_served_guide(self) -> None:
+        # The parity test above pins the whole body; this one states the M26.1 acceptance
+        # directly, so a future edit that drops the section from both files still fails here.
+        guide = GUIDE_PATH.read_text(encoding="utf-8")
+
+        assert "### Reviewing attribution when the source is a transcript" in guide
+        assert "transcript-review" not in guide.lower(), "the guide teaches the workflow, not the plugin path"

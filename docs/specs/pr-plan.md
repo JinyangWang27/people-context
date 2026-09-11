@@ -699,7 +699,7 @@ skills; check each box only in its implementing PR.
 
 **Spec:** [M26 — Transcript attribution review](m26-transcript-attribution-review.md).
 
-- [ ] **M26.1 — Add transcript attribution review workflow**
+- [x] **M26.1 — Add transcript attribution review workflow**
   - **Scope:** Add `skills/transcript-review/SKILL.md`; integrate attribution review into shared extraction guidance
     and its packaged mirror using existing candidate contracts.
   - **Acceptance:** handle both multiple labels for one person and multiple people under one label. Whole-label

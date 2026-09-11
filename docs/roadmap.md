@@ -229,8 +229,9 @@ context, and capture. M25 is independent of M26.
 
 ## M26 — Attribution-aware transcript review
 
-**Status:** Planned. Existing extraction supports reviewed candidates; this attribution-review workflow is not
-yet delivered.
+**Status:** In progress. M26.1 delivered the `transcript-review` skill and mirrored its essential rules into the
+shared usage guidance and the packaged `people-context://guide`; the fictional partial-capture scenarios and the
+lifecycle checks are still to come.
 
 **Deliverables:** a discoverable transcript-review skill, shared/packaged guide integration, and fictional partial
 capture scenarios with lifecycle checks. Review statement attribution conversationally: several labels may identify

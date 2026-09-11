@@ -1,6 +1,6 @@
 ---
 name: people-context-usage
-description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, wants help answering, raising, refusing, repairing, rehearsing, or debriefing a specific conversation with someone, shares information worth remembering about people, points at a CV, biography, or background notes about someone, asks to review, reconcile, or tidy what is already stored about someone, or brings a newer CV to check against existing records. Covers identity resolution first, context vs. guidance, meeting preparation, coaching a real conversation, the strict staged-capture vocabulary, the review-before-commit approval flow, attributed capture from documents, correction vs. temporal supersession when maintaining stored knowledge, and the conservative outcomes of reviewing a newer document against what is already held.
+description: Use the people-context MCP tools correctly when the user mentions someone in their life, asks who a person is, wants durable context or communication guidance about a contact, is preparing for a meeting or call with named attendees, wants help answering, raising, refusing, repairing, rehearsing, or debriefing a specific conversation with someone, shares information worth remembering about people, points at a CV, biography, or background notes about someone, hands over a transcript or call log to extract from, asks to review or tidy what is stored about someone, or brings a newer CV to check against existing records. Covers identity resolution first, context vs. guidance, meeting preparation, coaching a real conversation, the strict staged-capture vocabulary, the review-before-commit approval flow, attributed capture from documents, speaker attribution reviewed before staging, correction vs. temporal supersession when maintaining stored knowledge, and the conservative outcomes of a newer-document review.
 ---
 
 # Using people-context
@@ -251,6 +251,46 @@ pctx import stage-candidates --source "2026-08-27 planning sync" --input -   # o
 
 Its `--input` is candidate JSON — never the transcript. It stages only; `pctx import
 review BATCH_ID` and `pctx import commit BATCH_ID --accept ID` are the same gate.
+
+### Reviewing attribution when the source is a transcript
+
+A transcript adds one problem before extraction can start: the speaker labels do not
+identify people. Settle attribution in conversation first, then stage only what survived.
+
+Keep four roles apart. **Participation** means they were in the conversation; the
+**speaker** said this particular thing; the **subject** is who a claim is about; the
+**commitment owner** accepted a task in their own words. Attendance establishes none of
+the other three, and a task nobody answered is a suggestion rather than a promise.
+
+Treat a label as an observation about one recording — never a name, an alias, identity
+proof, or a person record. Two mismatches both occur and one mapping cannot fix both:
+diarization can split one person across several labels, and a shared room microphone can
+put several people under one. Assign a whole label only after the user confirms it is
+homogeneous; otherwise confirm individual statements or a range, remembering that
+confirming one statement resolves neither its label nor its neighbours. Labels never
+transfer between recordings.
+
+Bring the user concise paraphrases anchored to the timestamps the transcript already
+carries, or to line ranges when it carries none, and never invent an event time. Ask
+focused attribution questions only for claims worth keeping; identifying every speaker is
+not a precondition for being useful. Resolve confirmed names with `resolve_person`, leave
+`ambiguous` and lone `fuzzy` matches unresolved, and never create or merge a person to make
+a speaker map fit. `stated_by` is for established attribution on a `fact` or `affiliation`
+only, never for a guessed speaker and never for a label.
+
+Stage a claim only when identity, attribution, dates, and sensitivity are all faithfully
+representable; anything resting on an unknown speaker or owner waits, while supported
+independent claims proceed. Confirming who spoke is not approval to commit what they said —
+the `stage_candidates` → `review_import` → explicit acceptance → `commit_import` gate is
+unchanged. A neutral interaction summary needs confirmed participation **and** an
+established event date; with either missing, summarise conversationally rather than
+inventing a participant or using the import time as the meeting time. There is no reminder
+candidate type, so a follow-up stays in your reply or becomes an explicitly requested
+`set_reminder`, never a candidate wearing another type's name.
+
+Report what you staged and what you could not, and keep that report in the conversation.
+Uncertain ownership, working speaker maps, review notes, and raw marker text belong in no
+staged field, no person record, and no source receipt.
 
 ### Capturing a CV, biography, or page of notes
 
