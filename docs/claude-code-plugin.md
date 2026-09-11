@@ -79,13 +79,17 @@ staged batch automatically, and never copy raw transcript text into candidates. 
 particular writes nothing at all unless the user asks for a record afterwards, at which point
 the ordinary review-before-commit gate applies.
 
-Neither is a slash command. Both are model-discoverable, so Claude Code loads one when its
-frontmatter description matches what you are asking for — you describe the conversation you need
-help with in plain language and the coaching skill is picked up from that, rather than typing an
-invocation. That is the opposite of the three workflows in the next section, which set
-`disable-model-invocation` and therefore run only when you type them. The practical difference is
-that a coaching skill you never invoke by name still has to earn its trigger from the description
-alone, which is why that description says what it does not cover as well as what it does.
+Both can be reached either way, because a skill is invocable by you and by Claude unless its
+frontmatter says otherwise. Neither of these sets `user-invocable: false`, so each also has a
+namespaced command — `/people-context:communication-coach` and
+`/people-context:people-context-usage` — and neither sets `disable-model-invocation`, so Claude
+also loads one on its own when its description matches what you are asking for. Describing the
+conversation you need help with in plain language is enough to pull in the coaching skill; typing
+the command is the deterministic way to get it when you would rather not rely on the match.
+
+That is the one difference from the three workflows in the next section. Those set
+`disable-model-invocation`, which removes the automatic path and leaves only the typed one. It does
+not affect slash availability, which every skill here has.
 
 Eight worked scenarios showing what the coaching skill produces — across work, friends, and family,
 in Chinese and English — are in
