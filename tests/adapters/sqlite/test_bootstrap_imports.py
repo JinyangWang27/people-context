@@ -161,7 +161,7 @@ def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> N
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 3
+    assert document.version == SYNC_BUNDLE_VERSION == 4
     assert [session.id for session in document.imports.source_sessions] == [batch.source_session_id]
     assert len(document.imports.candidate_mappings) == 1
     # The batch is only partially committed, so its reviewable rows travel.
@@ -425,7 +425,7 @@ def test_a_version_one_bundle_carrying_version_two_state_is_refused(tmp_path: Pa
     assert any("imports" in detail for detail in excinfo.value.details)
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4])
 def test_a_non_empty_import_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
     origin = _Origin(tmp_path / "origin.db")
     origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
@@ -477,3 +477,71 @@ def test_a_non_empty_mapping_table_refuses_a_restore(tmp_path: Path) -> None:
         restorer.restore(document)
 
     assert any("import_candidate_mappings" in detail for detail in excinfo.value.details)
+
+
+def test_attribution_on_a_reviewable_staging_row_survives_a_real_round_trip(tmp_path: Path) -> None:
+    """M22.1's field is why the bundle is version 4, so it has to reach the restored database.
+
+    The batch is only partially committed, which is the one case a staging row travels at all. If
+    the attribution were dropped in transit, the restored device would commit the remaining
+    candidate as though nobody had asserted it.
+    """
+    origin = _Origin(tmp_path / "origin.db")
+    batch = origin.stage.execute(
+        "nadia-cv",
+        [
+            _person("n", "Nadia Okonkwo", "nadia@example.com"),
+            {
+                "type": "fact",
+                "person_ref": "n",
+                "predicate": "qualification",
+                "value": "MSc Structural Engineering",
+                "stated_by": "her CV",
+            },
+        ],
+        source_kind="cv",
+        content_digest=_DIGEST,
+    )
+    rows = origin.review.execute(batch.batch_id).candidates
+    origin.commit.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "person")])
+
+    document = _round_trip(origin.export())
+    assert document.version == SYNC_BUNDLE_VERSION == 4
+
+    conn, outcome = _restore(document, tmp_path / "destination.db")
+    try:
+        assert outcome.staged_candidates == len(rows)
+        restored = [
+            json.loads(row["candidate_json"])
+            for row in conn.execute("SELECT candidate_json FROM import_staging").fetchall()
+        ]
+        fact = next(candidate for candidate in restored if candidate["type"] == "fact")
+        assert fact["stated_by"] == "her CV"
+    finally:
+        conn.close()
+
+
+def test_a_version_three_document_refuses_a_staging_row_naming_who_asserted_it(tmp_path: Path) -> None:
+    """A released version is a closed shape, and this one predates attribution entirely."""
+    origin = _Origin(tmp_path / "origin.db")
+    origin.stage.execute(
+        "nadia-cv",
+        [
+            _person("n", "Nadia Okonkwo", "nadia@example.com"),
+            {
+                "type": "fact",
+                "person_ref": "n",
+                "predicate": "qualification",
+                "value": "MSc Structural Engineering",
+                "stated_by": "her CV",
+            },
+        ],
+        source_kind="cv",
+        content_digest=_DIGEST,
+    )
+    payload = json.loads(render_bundle_json(origin.export()))
+    assert payload["imports"]["staging"], "the row carrying attribution must actually travel"
+    payload["version"] = 3
+
+    with pytest.raises(InvalidBundleError):
+        _parse(json.dumps(payload))

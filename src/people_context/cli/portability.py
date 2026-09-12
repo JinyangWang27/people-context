@@ -17,6 +17,7 @@ from people_context.app.exports import (
     render_brief_markdown,
     render_bundle_json,
 )
+from people_context.app.insights import DEFAULT_TIMELINE_LIMIT, PersonTimelineError
 from people_context.cli.people import resolve_person
 from people_context.config import describe_resolution, resolve_db_path
 from people_context.domain.sync_bundle import SyncBundleError
@@ -84,13 +85,26 @@ def cmd_export(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
 
 def cmd_brief(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Compose one person's brief as Markdown or the versioned JSON document."""
+    # A limit alone is neither a silent enable nor a silent ignore: history is off by default,
+    # so asking for its size without asking for it at all can only be a mistake.
+    if args.history_limit is not None and not args.include_history:
+        print("Error: --history-limit requires --include-history.", file=sys.stderr)
+        return 2
     person, exit_code = resolve_person(runtime, args.person)
     if person is None:
         return exit_code
-    document = runtime.use_cases.compose_person_brief.execute(
-        person.id,
-        include_sensitive=args.include_sensitive,
-    )
+    try:
+        document = runtime.use_cases.compose_person_brief.execute(
+            person.id,
+            include_sensitive=args.include_sensitive,
+            include_history=args.include_history,
+            history_limit=(
+                DEFAULT_TIMELINE_LIMIT if args.history_limit is None else args.history_limit
+            ),
+        )
+    except PersonTimelineError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     if document is None:
         # Only reachable if the person is removed between resolution and composition.
         print(f"No person found matching '{args.person}'.", file=sys.stderr)

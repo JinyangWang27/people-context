@@ -37,7 +37,7 @@ block and no structured payload.
 | `get_stale_relationships` | Recency report over ordinary interactions only. | optional `category`, `threshold_days=90`, `limit=20` | Ordered recency rows and `truncated`. |
 | `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` or `person` | Ordered entries and `skipped_unparseable`. |
 | `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id` or `person`, `limit=50` | Ordered entries, `found`, and `truncated`. |
-| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id` or `person`, `limit=50` | Facts, traits, observations, deterministic `signals`, and per-collection truncation. |
+| `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id` or `person`, `limit=50` | Facts, traits, observations, affiliations, deterministic `signals`, and per-collection truncation. |
 
 | `review_import` | Staged candidates and statuses for one batch. | `batch_id` | Candidate rows; inspection only. |
 
@@ -383,6 +383,19 @@ and a truncation flag would itself prove that hidden evidence exists.
     "source_session_id": null,
     "cited_by_trait_ids": ["01J..."]
   }],
+  "affiliations": [{
+    "affiliation_id": "01J...",
+    "person_id": "A",
+    "org_id": "01J...",
+    "org_name": "Acme",
+    "role": "Head of Design",
+    "valid_from": "2024-01-01",
+    "valid_to": null,
+    "created_at": "2024-01-05T09:00:00+00:00",
+    "confidence": 1.0,
+    "provenance": {"source": "agent", "session": null, "stated_by": null},
+    "source_session_id": null
+  }],
   "signals": [{
     "kind": "contradictory_fact",
     "entity_type": "fact",
@@ -392,6 +405,7 @@ and a truncation flag would itself prove that hidden evidence exists.
   "facts_truncated": false,
   "traits_truncated": false,
   "observations_truncated": false,
+  "affiliations_truncated": false,
   "signals_truncated": false
 }
 ```
@@ -407,6 +421,23 @@ page. An unknown or soft-deleted person returns `{"found": false}` with every co
 newest first by asserted `valid_from`, or by `recorded_at` when they assert none — the same placement
 `get_person_timeline` uses, so one `limit` describes one window across both reads. Traits are ordered by
 `updated_at` and observations by `observed_at`, each with the id breaking an exact tie.
+
+`affiliations` carries the person's stored roles at organizations — employment, education, membership — so an
+incoming CV claim can be compared against what is already recorded. Each entry names the affiliation, the person,
+and the organization by id, alongside the organization's name, the role, the stored validity bounds, `created_at`,
+`confidence`, the affiliation's own `provenance`, and its import receipt when one exists. Ordering is newest first
+by asserted `valid_from`, falling back to `created_at`, with the id breaking an exact tie; the collection takes the
+same `limit` as the others and reports `affiliations_truncated` on its own. Historical and concurrent roles are
+ordinary rows here: nothing is closed, merged, or hidden because a later role exists. A `valid_to` of `null` means
+the stored assertion set no end, which is not evidence that the role is current, and `created_at` is when the row
+was written rather than when the role began. A truncated page is a limit of the read, never proof that a role is
+absent.
+
+No signal is computed over affiliations. Two roles at one organization may be a promotion, a rehire, or two
+concurrent posts, and distinguishing those needs a reader rather than a rule; there is also no generic affiliation
+supersession operation to propose. Affiliations store no disclosure level, so this collection is the same for every
+caller and adds no sensitivity control — background that needs an enforceable level belongs in a fact, which has
+one.
 
 `signals` relates two records that share a normalized predicate or category. It reports relations, never
 verdicts: it does not decide which record is right, does not merge anything, and does not score a trait by
@@ -444,6 +475,8 @@ with their provenance attached; the record's own sensitivity decides whether the
 
 Disclosure is the ordinary rule and this tool has no elevated variant: only `public`/`personal` records
 participate, `include_sensitive` is always `false` here, and a trait names only evidence readable at that level.
+Affiliations are outside that filter because they carry no level to filter on, exactly as `get_person_timeline`
+reports them with a `null` sensitivity; adding them opens no second route to a record the level rule withholds.
 Filtering happens in the SQL read rather than after it, so an elevated record can neither displace an ordinary
 one from the page nor change a signal it does not appear in. No raw source material is returned, because none is
 stored — a receipt says that material was processed, never what it said.
@@ -550,6 +583,13 @@ limits. Such a request also stages an additive `match_disposition` of `unmatched
 person candidate, so ambiguity cannot be mistaken for a new identity. A request built only from the four
 released types keeps its pre-M17 accepted shape and matching behavior; the `review_import` and `commit_import`
 envelopes are unchanged. See [docs/import.md](import.md#agent-extracted-knowledge-m17).
+
+M22.1 adds an optional `stated_by` of at most 256 characters to the `affiliation` and `fact` candidates,
+recording who asserted the claim. Commit forwards it into the record's existing `Provenance.stated_by`, so it
+reads back through every surface that already reports provenance. It is distinct from the processing `source`,
+the `session`, and the M18 `source_session_id` receipt, and attribution never implies verification. Candidates
+omitting it keep their existing behavior. See
+[docs/import.md](import.md#attributing-a-claim-to-who-made-it-m22).
 
 M18.1 adds optional receipt metadata to both staging tools' responses and, on `stage_candidates`, to its
 arguments: `source_kind`, `content_digest`, `extraction_fingerprint`, `label`, and `external_source_id`. All are

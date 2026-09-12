@@ -1,6 +1,6 @@
 # M19 — Knowledge consolidation and temporal views
 
-Status: Planned. See [docs/roadmap.md](../roadmap.md#m19--knowledge-consolidation--temporal-views).
+Status: Delivered. All milestone PRs are complete in [the PR checklist](pr-plan.md). See [docs/roadmap.md](../roadmap.md#m19--knowledge-consolidation--temporal-views).
 
 ## Motivation
 

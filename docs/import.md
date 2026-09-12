@@ -234,6 +234,145 @@ downgraded. Such a relationship stays out of People Context until relationship s
 contract. Sensitive information that *is* enforceable still has a home in facts, observations, traits, and
 interactions.
 
+### Attributing a claim to who made it (M22)
+
+A CV, a biography, or a page of notes supplies assertions from a source. Its contents are not independently
+verified truth merely because an agent could read them. M22.1 adds an optional `stated_by` to the **fact** and
+**affiliation** candidates so an extraction can say who asserted the claim, and commit forwards it into the
+record's existing `Provenance.stated_by` through the ordinary `RecordFact` and `SetAffiliation` paths — the same
+value the changelog actor carries. No new table, no new candidate type, no new durable provenance schema.
+
+Attribution is the fourth distinct thing in a staged batch's provenance, and the distinction is the point:
+
+| Field | Means |
+|---|---|
+| `stated_by` | who asserted the claim |
+| `source` | the process that wrote the row |
+| `session` | the process run it belonged to |
+| `source_session_id` | the M18 receipt for the artifact that was read |
+
+A source assertion is not independent verification. A CV describing someone as analytical yields a fact whose
+value records the self-description and whose `stated_by` names them; it never becomes an inferred **trait**, and
+a receipt proving the file was processed proves nothing about whether its claims are true. Unknown attribution
+stays absent — do not invent a speaker, and do not put processing metadata there instead.
+
+Candidates that omit `stated_by`, including every batch staged before M22.1, remain valid and commit exactly as
+they did. Because the bootstrap bundle forbids unknown fields inside a staged candidate, carrying attribution in
+an incomplete batch advances the bundle to **version 4**; see [docs/compatibility.md](compatibility.md).
+
+### Capturing a CV, biography, or page of notes (M22.2)
+
+M22.2 adds no mechanism at all. It is the workflow that makes the pieces above add up to a faithful
+record of a document People Context cannot read: the agent reads it and distils claims, and People
+Context validates, attributes, and stores the ones a person accepted. The binding version lives in the
+packaged usage skill (`skills/people-context-usage/SKILL.md`, served as the `people-context://guide`
+resource); this section is the reference walkthrough behind it.
+
+Nadia Okonkwo sends a CV. The agent reads it, resolves the name to exactly one active person, and stages
+one batch with `source_kind="cv"` and a `content_digest` over the bytes it actually read:
+
+```json
+[
+  {"type": "person", "ref": "nadia", "name": "Nadia Okonkwo",
+   "aliases": [{"value": "nadia.okonkwo@example.com", "kind": "handle"}]},
+  {"type": "affiliation", "person_ref": "nadia", "org": "Northbridge Analytics",
+   "role": "Senior Data Engineer", "valid_from": "2023-04-03",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.7},
+  {"type": "fact", "person_ref": "nadia", "predicate": "skill",
+   "value": "CV lists Rust and distributed systems as primary skills",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6},
+  {"type": "fact", "person_ref": "nadia", "predicate": "education",
+   "value": "CV reports study at Northbridge College, 2017–2019; months and days unknown",
+   "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6}
+]
+```
+
+Three decisions carry the milestone. The current role is an **affiliation** because role, organisation,
+and a start date are all present and the CV states it is current. The degree is a **fact** because
+`2017–2019` is not a pair of dates: an affiliation would need two invented days, and one left open would
+read everywhere as a job she still holds. And every row names its asserter in `stated_by`, so the store
+records that Nadia said these things rather than that they are established.
+
+Review then shows those four rows and whatever the agent could not read. Commit writes only the
+candidates the user explicitly accepted, and the read back reports what committed and what did not. A CV
+never reaches durable state without that acceptance.
+
+#### The cases that decide whether this is honest
+
+| Case | What happens |
+|---|---|
+| Unreadable document | No candidates. The agent reports the limitation; a guessed row is worse than a gap, because nothing afterwards distinguishes a value that was read from one that was filled in. |
+| Partly readable document | Only the supported claims are staged, and the review states which material could not be assessed. A partial read is never presented as a complete CV. |
+| Ambiguous subject | The agent resolves identity before it stages anything, because only the ambiguity-preserving path reports the problem. On that path — `pctx import stage-candidates`, or an MCP batch that also carries an M17 candidate — the person stages `ambiguous` with a bounded `match_count` and no `matched_person_id`, never falls through to `RememberPerson`, and every accepted dependant stays in `unresolved_ids`. A legacy-shaped `stage_candidates` batch keeps its released matcher, which reports nothing: a unique handle binds the claim even when the document's name matches two other people, and a name matching two with nothing to separate them fails the whole commit after review. |
+| Repeated CV | The same `(source_kind, content_digest, extraction_fingerprint)` is the existing duplicate claim, and a default reprocess returns the existing batch rather than staging a second one. |
+| Conflicting CV | A different document is a different claim and more evidence, not permission to replace anything. Changes to existing records are a maintenance pass under explicit approval, not a side effect of extraction, and a claim repeated across three documents does not thereby earn a higher `confidence`. |
+| Concurrent roles | Two affiliations stand together. A job and a board seat are not a contradiction to resolve. |
+| Omission | Silence closes nothing. A role missing from a newer CV is not an end date, and no absence in a document deletes a record. |
+| Sensitive background | Health, immigration, financial, and comparable details go into a `fact` at `sensitive` or `restricted`. They must not appear in an organisation name, a graph edge, a person `summary`, or a `stated_by` string, none of which any read can protect. |
+| Preserved history | Capture only adds. Closing or replacing an earlier record is `supersede_fact` or `correct_record` under explicit approval, never something extraction does on its own. |
+| Source receipt | Where the agent supplied a digest, `pctx sources` and `pctx source show` explain what was processed and which candidates it produced. That is evidence of processing; it says nothing about whether the CV's claims are true. Labels are caller metadata and carry no source content or path. |
+
+None of this claims completeness. A capture pass records the claims one document made and one person
+accepted; it does not survey what is knowable about someone, and it does not detect that a newly staged
+claim means the same thing as a stored one.
+
+### Reviewing a newer CV against what is stored (M24.2)
+
+M24.2 adds no mechanism either. Capture answered what to do with a document about someone the store
+knows little about; this answers what to do when the store already holds records the document
+disagrees with. Every operation it uses is already shipped — staging with its review gate,
+`correct_record`, [`supersede_fact`](mcp-interface.md#supersede_fact),
+and the bounded reads, including the affiliations M24.1 added to
+[`get_consolidation_context`](mcp-interface.md#get_consolidation_context). The binding version lives in
+the packaged usage skill (`skills/people-context-usage/SKILL.md`, served as the `people-context://guide`
+resource); this section is the reference walkthrough behind it.
+
+The governing idea is that **a newer CV is more evidence, not a replacement profile**. The store is not
+brought into line with the latest document. Each incoming claim is compared with what can actually be
+read, and each one gets exactly one outcome.
+
+Nadia Okonkwo's CV arrives again eighteen months after the capture pass above. The agent resolves her
+identity, reads the document, then reads `get_person_context`, `get_person_timeline`, and
+`get_consolidation_context` — the last for the affiliations the employment and education sections have to
+be compared against. Six claims, five outcomes — and two of the claims yield more than one proposal, because
+an outcome belongs to a proposal rather than to a document line:
+
+| Incoming claim | Stored state | Outcome | Action |
+|---|---|---|---|
+| Northbridge Analytics from 3 April 2024 | affiliation says 2023-04-03 | Unresolved, then correct an error | On the reads alone this is two sources disagreeing, and the store keeps no copy of the first CV to settle it. It becomes `correct_record` on the affiliation's `valid_from` only after the user reopens the original document and confirms it also said 2024. Without that confirmation the affiliation keeps 2023 and the newer claim is staged as an attributed fact, so both survive and neither is declared correct. |
+| Relocated to Leeds on 1 September 2026 | `city` fact says Bristol, exactly dated | Record a supported temporal transition | `supersede_fact(effective_from="2026-09-01")`. Bristol keeps its value and provenance and closes on 31 August; the replacement inherits the original end date. The tool takes no `stated_by`, so the source goes in the new value (`Leeds; per revised CV`) and the user is told the row's own provenance names the agent. |
+| Study at Northbridge College, 2017–2019 | held as a fact whose text carries that imprecision | Already represented | Nothing. A source repeating itself adds no row and moves no `confidence`. |
+| A certification the store does not hold | absent | Add | Staged as an attributed candidate, through the ordinary stage → review → commit gate. |
+| Principal Data Engineer at Northbridge Analytics, from 2 March 2026 | affiliation says Senior Data Engineer | Add, and leave the transition unresolved | The date is exact, so stage the new role as an affiliation. Only the *transition* is unsupported: a changed role at one organisation cannot be recorded as such, and `correct_record` must not be used to simulate it. Both affiliations stand and the older gains no end date. A month-only "March 2026" would instead be an attributed fact carrying the month in its text. |
+| *(the CV does not mention the Harbour Data Trust board seat)* | affiliation stands, open | — | None. Silence is not an ending. |
+
+Proposals are presented and accepted **per action**. Immediately before applying each accepted action the
+agent rereads the target and the identity; a record that changed, disappeared, or can no longer be read
+stops that action and goes back for renewed review rather than being silently retargeted. After applying,
+the affected records are read again and the result is reported.
+
+#### The cases that decide whether this is conservative
+
+| Case | What happens |
+|---|---|
+| Ambiguous subject | The review ends before any write. No replacement person is created and no merge is performed in order to continue. |
+| Unreadable or truncated reads | Reported as limits of the comparison. A page that stopped is never evidence that a record is absent, and a partial read cannot justify a claim that something is missing. |
+| Omission | No proposal at all. A shorter CV is not evidence that what it leaves out stopped being true. |
+| Concurrent roles and several skills | Not contradictions. Consolidation `signals` name comparisons worth a reader's attention, never verdicts about which record to discard. |
+| Repeated claims | Another document, and another source receipt, raise no `confidence`. Where two assertions genuinely conflict and the evidence cannot settle them, both stand. |
+| Disagreement about a stored value | Not proof the stored value was wrong when written. No raw source material is kept and a receipt says only that an artifact was processed, so the store cannot settle it. Reopen the original source and confirm, or leave which one is right unresolved. |
+| Keeping an unsettled conflict | Leaving it unresolved changes nothing and the document does not persist, so that alone keeps the stored claim and loses the incoming one. Stage the newer claim as an attributed fact about what the document said, and say that which is correct is still open. |
+| Attribution on a new row | `record_fact`, `set_affiliation`, and the replacement a supersession opens accept no `stated_by`, so their provenance names the calling agent. A supersession leaves the old row's attribution untouched. Naming a source durably means putting it in the claim text, or staging an attributed candidate. |
+| Attribution on a correction | `correct_record` writes only the named fields and provenance is not among them, so the repaired row keeps the attribution it was written with; the caller is recorded in the audit trail. The original source is not lost and the value needs no source text added to compensate. |
+| Inexact dates | No transition boundary is manufactured from a year, from the newer CV's own date, or from the day it was read. `supersede_fact` refuses an out-of-range `effective_from` with a `reason`; the transition then stays unresolved. |
+| Unsupported transitions | There is no generic affiliation or relationship supersession. A separately supported new claim may still be proposed, provided it is not presented as closing the old record. |
+| Changed target | The reread before applying catches it. The earlier acceptance does not carry over to the new state. |
+| Partial completion | Separate tool calls are not one transaction. `supersede_fact` is atomic within its own call; a review made of several calls has no collective rollback. What succeeded and what failed are reported as they happened, with no blind replay and no unapproved compensating edit. |
+| Sensitive background | Unchanged from capture: it belongs in a `fact` at a level a read can withhold. Proposals and truncation metadata expose no evidence the caller could not already read. |
+
+None of this claims completeness either. A review pass compares one document against the records it could
+actually read, and it detects no semantic duplication between them.
+
 ### Grounding a trait in the records it was drawn from
 
 A trait's `evidence_note` says what the inference rests on in words. M18.3 adds the id-based half, so a trait
@@ -315,6 +454,19 @@ smuggle a transcript through a released field. The new fields are tighter still:
 trait `value` and `evidence_note` at 2 KiB each, and relationship type, batch-local references, evidence
 references, and durable evidence ids at 256 characters. `source` is bounded as a privacy invariant as much as a
 resource one — `StageCandidates` copies that label into every staged row and every later provenance record.
+
+The M22.1 `stated_by` field is bounded differently, and deliberately: at **256 characters on the model itself**,
+for every request rather than only an extraction one. The limits above are conditional, selected by a batch that
+names an M17 type, so a legacy fact-only batch would otherwise carry an unbounded attribution — and attribution
+is exactly where a copied document passage would sit. A field with no released unbounded history is simply
+bounded.
+
+The same bound holds on the *persisted* candidate, so a restored bundle cannot reintroduce what staging refuses.
+Because the input bound is unconditional, nothing this installation stages can exceed it, and refusing a longer
+one turns away only a hand-edited or corrupted document. This follows M18.3's evidence identifiers, which are
+bounded at both boundaries for the same reason. The older unbounded strings beside it — an observation's `text`,
+a fact's `value` — keep their released shape, because narrowing those *would* refuse rows this installation
+legitimately stored.
 
 Every one of these is checked before validation and before any staging row exists, and a refusal names only
 the limit: the rejected payload is untrusted extraction output and is never echoed back. The limits are
@@ -769,6 +921,35 @@ missing/invalid dates retain person candidates while omitting the interaction. S
 idempotent, and unresolved interactions remain pending for a later partial commit. Omitted interactions are
 reported in deterministic input order through `skipped_message_ids` or `skipped_without_id`.
 
+
+## Transcript attribution review (M26.1)
+
+[M26 — Attribution-aware transcript review](specs/m26-transcript-attribution-review.md) adds a client workflow for
+user-supplied transcripts, including exports with numbered speakers. A speaker label is not a person: several labels
+can refer to one person, and a shared room microphone can combine several people under one label. Whole-label
+mapping cannot resolve that second case; individual statements may require user clarification.
+
+It ships as `skills/transcript-review/SKILL.md`, with the essential rules mirrored into the shared usage guidance
+served as the `people-context://guide` resource, so a client without plugin skills gets the same workflow. The skill
+reviews attribution in conversation and stages only supported distilled claims through the lifecycle documented
+above. Participation, speaking, being the subject of a claim, and owning an accepted commitment stay four separate
+things. Labels never become names, aliases, or person records, and never transfer between recordings. Unresolved
+ownership is not converted into a person fact, trait, or promise; it stays in the conversation alongside the report
+of what was staged. Neutral interaction capture requires confirmed participation and an established event date;
+otherwise a conversational summary remains useful. Reminders are not a candidate type and cannot be smuggled into
+staged capture.
+
+The workflow adds no source format, candidate type, tool, or CLI command, and it is not a parser or an Ideashell
+integration. It adds no durable speaker map, raw-source storage, or resumable review session. Client conversation
+retention remains a separate boundary.
+
+Eight fictional worked reviews — a diarization split, a shared room microphone, a partial read, an ambiguous
+first name, an undated recording, a task nobody accepted, a sensitive aside, and a later recording in the same
+series — are in [transcript-review-examples.md](transcript-review-examples.md). The lifecycle checks behind them
+run hand-authored candidate batches through the real stores in
+`tests/adapters/importers/test_transcript_capture_workflow.py`; extraction quality itself is assessed by a person
+against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution). See the
+[PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
 
 ## M6 changelog and export boundary
 

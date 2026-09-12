@@ -34,6 +34,14 @@ import receipt when one exists and is null for everything recorded directly. Pro
 raw source material, because none is stored, and the record's own level already decides whether the
 row appears at all — the same rule under which `get_person_context` already returns these records
 with their provenance attached.
+
+**Affiliations are read without a disclosure argument, because they carry no disclosure level.** A
+role at an organization has no `sensitivity` column to filter on, exactly as the M19.1 timeline
+already reports it with a null level rather than one that read invented. Taking `sensitivities` here
+would suggest this collection can be narrowed or widened by what the caller may see, and it cannot;
+adding the collection therefore changes no disclosure decision and opens no second route to a
+protected fact or to restricted evidence. Background that genuinely needs enforceable sensitivity
+belongs in a fact, which has a level, rather than in an affiliation, which does not.
 """
 
 from __future__ import annotations
@@ -105,6 +113,30 @@ class ConsolidationObservationRow:
     source_session_id: str | None = None
 
 
+@dataclass(frozen=True)
+class ConsolidationAffiliationRow:
+    """One stored affiliation as the consolidation read sees it.
+
+    Both ends of the assertion travel by id — the affiliation, the person, and the organization —
+    because a CV-update proposal has to name the exact record it would act on, and an organization
+    name alone does not identify one. `org_name` comes along beside `org_id` so a reader can compare
+    an incoming claim without a second lookup. `created_at` is when the row was written down, which
+    is not when the role began: `valid_from` says that, when the affiliation asserts it at all.
+    """
+
+    affiliation_id: str
+    person_id: str
+    org_id: str
+    org_name: str
+    role: str
+    valid_from: date | None
+    valid_to: date | None
+    created_at: datetime
+    confidence: float
+    provenance: Provenance
+    source_session_id: str | None = None
+
+
 @runtime_checkable
 class PersonConsolidationReader(Protocol):
     """Read one person's maintenance evidence as bounded pages, never as tables to slice."""
@@ -141,6 +173,23 @@ class PersonConsolidationReader(Protocol):
         sensitivities: tuple[Sensitivity, ...],
     ) -> list[ConsolidationObservationRow]:
         """Return the person's newest observations, reading one row past `limit`."""
+        ...
+
+    def list_consolidation_affiliations(
+        self,
+        person_id: str,
+        *,
+        limit: int,
+    ) -> list[ConsolidationAffiliationRow]:
+        """Return the person's newest affiliations, reading one row past `limit`.
+
+        Newest is by asserted `valid_from` when the affiliation carries one and by `created_at`
+        otherwise, the same placement facts and the timeline use, with the id breaking an exact tie.
+        Historical and concurrent roles are ordinary rows here: nothing is closed, collapsed, or
+        hidden because a later role exists.
+
+        There is no `sensitivities` argument because affiliations store no disclosure level.
+        """
         ...
 
     def list_trait_evidence(
