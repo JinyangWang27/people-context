@@ -10,7 +10,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstra
 
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
-from people_context.domain.shared import Confidence, Sensitivity
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -136,6 +136,14 @@ CandidateRef = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_CANDIDATE_REF_CHARS),
 ]
+#: Attribution on a fact or affiliation candidate, bounded by the domain that owns the field.
+#:
+#: The bound sits on the model rather than in the extraction budgets because those budgets are
+#: conditional: `contains_extraction_candidate` selects them only for a batch that names an M17
+#: type, so a legacy fact-only batch would otherwise carry an unbounded attribution. The same
+#: domain type bounds the *persisted* candidate, so a restored bundle cannot reintroduce what
+#: staging refuses. See `MAX_STATED_BY_CHARS`.
+StatedBy = StatedByText
 RelationshipTypeText = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RELATIONSHIP_TYPE_CHARS),
@@ -217,6 +225,9 @@ class AffiliationCandidateInput(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
     confidence: Confidence | None = None
+    #: Who asserted this affiliation, forwarded into the record's existing provenance.
+    #: See `FactCandidateInput.stated_by`; absent when the attribution is unknown.
+    stated_by: StatedBy | None = None
 
 
 class FactCandidateInput(BaseModel):
@@ -232,6 +243,14 @@ class FactCandidateInput(BaseModel):
     valid_to: date | None = None
     confidence: Confidence | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: Who asserted this claim, forwarded into the record's existing `Provenance.stated_by`.
+    #:
+    #: This is assertion attribution, and it is none of the three things next to it: `source` is
+    #: the process that wrote the row, `session` the process run, and an M18 `source_session_id`
+    #: the receipt for the artifact that was read. A CV saying someone is analytical is that
+    #: person's own claim about themselves, not a verified characteristic, and recording who said
+    #: it is what keeps the two apart. Unknown attribution stays absent: never invent a speaker.
+    stated_by: StatedBy | None = None
 
 
 class ObservationCandidateInput(BaseModel):

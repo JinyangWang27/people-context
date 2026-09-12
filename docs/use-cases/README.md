@@ -21,6 +21,13 @@ and the agent picks the tool. See [mcp-interface.md](../mcp-interface.md) for th
 
 Sample output is illustrative. It shows the shape of a result, not a promise about wording.
 
+These five recipes pair with the evaluation tasks, so they stay at five. Two workflows are not among those tasks
+and have no recipe here. Coaching's worked scenarios live in
+[communication-coaching-examples.md](../communication-coaching-examples.md), which shows drafts verbatim because a
+coaching reply cannot be reviewed from a description of it. Transcript attribution review's live in
+[transcript-review-examples.md](../transcript-review-examples.md), which shows the review conversation because
+what a review declines to stage is the part worth reading.
+
 ## Where your data goes
 
 Every recipe runs against your local SQLite database. The store, the CLI, and the MCP server are local: no step

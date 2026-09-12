@@ -93,7 +93,7 @@ repurposed, and new fields are additive.
 | Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
 | Import source listing | `people-context-import-sources` | `1` | `pctx sources --json` |
 | Import source detail | `people-context-import-source` | `1` | `pctx source show --json` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `3` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `4` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -147,19 +147,33 @@ project:
   The brief's disclosure labelling is part of its contract, not decoration: `disclosure.guidance` stays
   `ordinary` in every mode, and `disclosure.context` is `sensitive` only when the operator passed
   `--include-sensitive`. A later release does not start putting elevated records in a document whose labels say
-  ordinary.
+  ordinary. `disclosure.history` joins that labelling on the same terms: `null` when no history was requested,
+  and otherwise the level the history page itself was read at.
+
+  The brief's opt-in `history` (M23.1) is an additive field on the **version-1** document, not a new version.
+  `history: null` means history was not requested — distinct from a requested page whose `entries` are empty —
+  and `history.limit` reports the bound that was actually applied, with `history.truncated` saying older entries
+  exist beyond it. Its entries reuse the person-timeline entry shape verbatim, so a reader that already parses
+  `people-context-person-timeline` needs no second parser.
 - **Bootstrap sync bundle** is read back by `pctx sync pull`, which validates the whole document — including every
   nested object — against an exact format and version with unknown fields forbidden. A reader from an older
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 3**, which added the durable trait-evidence relations linking an inferred
-  trait to the observations and interactions it rests on. Version 2 before it added durable import source
-  receipts, candidate commit mappings, and the staging rows an incomplete import batch still needs. `pctx sync
-  pull` accepts **version 1, version 2, and version 3**, validating each against its own strict shape: a
-  version-1 document carrying a version-2 collection is refused as an unknown field rather than quietly
-  upgraded, and so is a version-2 document carrying version 3's. A released version stays readable; only which
-  version is emitted moves forward.
+  `pctx sync push` emits **version 4**, which added optional assertion attribution (`stated_by`) to the staged
+  fact and affiliation candidates an incomplete import batch carries. Version 3 before it added the durable
+  trait-evidence relations linking an inferred trait to the observations and interactions it rests on, and
+  version 2 added durable import source receipts, candidate commit mappings, and the staging rows an incomplete
+  import batch still needs. `pctx sync pull` accepts **version 1, version 2, version 3, and version 4**,
+  validating each against its own strict shape: a version-1 document carrying a version-2 collection is refused
+  as an unknown field rather than quietly upgraded, and so is a version-2 document carrying version 3's or a
+  version-3 document carrying version 4's. A released version stays readable; only which version is emitted
+  moves forward.
+
+  Version 4 is the case that shows the rule is about fields rather than collections. It adds no collection: the
+  new field sits inside a staging row's already-present `candidate` object. A version-3 reader still refuses it,
+  because accepting an attribution it does not understand would mean restoring the candidate and then committing
+  it with the attribution silently dropped — recording a source's own claim as though nobody had made it.
 
 That strictness is the point: a bundle a release does not fully understand fails closed before preview or writes
 rather than restoring partial state. A bundle is restorable by releases that implement its declared version.

@@ -63,6 +63,17 @@ cannot contradict a visible one from behind the disclosure gate, which would lea
 without ever naming it. Trait citations follow the timeline's rule — the cited record's own level decides —
 and the read has no elevated MCP variant. It returns no raw source material, because none is stored.
 
+The consolidation read's `affiliations` collection sits outside that filter, because there is nothing to filter
+on: the table stores no disclosure level, and the timeline already reports affiliations with a `null` sensitivity
+rather than one it invented. The collection is therefore identical for every caller. That is a statement about
+what affiliations are, not a widening of what this read discloses — it adds no sensitivity control, exposes no
+protected fact or restricted evidence through a second collection, and cannot be used as a fallback route to a
+record the level rule withholds. The practical rule for a writer is unchanged and worth repeating here: a role or
+an organization that must not be disclosed casually does not become safe by being stored as an affiliation.
+Background that needs an enforceable level belongs in a fact, which has one. Affiliation rows carry their own
+stored provenance and, when an import committed a candidate onto them, an import receipt id; neither discloses
+raw source material, because none is stored.
+
 The consolidation read is read-only in the strong sense: it writes no audit row, no changelog row, and no durable
 state, and the maintenance actions it feeds are separate, explicitly approved mutations. M19 ships no autonomous
 belief updater and no background process that revises stored knowledge.
@@ -349,6 +360,15 @@ Markdown header and in the JSON `disclosure` object — alongside a notice that 
 disclosure controls once rendered or written. Reading it back, redirecting stdout, or handing the file to another
 tool is the operator's own disclosure decision.
 
+`--include-history` adds a bounded page of this person's timeline to the brief and is off by default: a brief that
+did not ask for history runs no history read at all, and `history: null` records that in the document. When it is
+asked for, the page obeys the timeline's own disclosure rule — ordinary unless `--include-sensitive` widens it —
+and a trait's evidence is filtered by the *evidence's* level, so a visible trait resting on a restricted
+observation neither cites it nor signals that it exists. The level the history was read at is labelled separately
+as `disclosure.history`, and communication guidance stays ordinary in both modes as before. The section reports
+the bound it applied and whether older entries exist beyond it, because a disclosure-filtered, bounded page is not
+a complete personal history and must not be read as one.
+
 The person index is identity only: stable id, canonical name, alias values, summary, `is_self`, and a `deleted`
 flag. It carries no facts, interactions, traits, or reminders at any sensitivity level, which is what lets an
 integration list people without reading their records.
@@ -535,8 +555,12 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   nothing is reconstructed or enriched.
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
 - Since M18.1 the bundle carries import receipts, every durable candidate commit mapping, and the staging rows
-  of batches that are still reviewable; since M18.3 it is **version 3** and also carries the trait-evidence
-  links. Restore still accepts versions 1 and 2, validating each document against its own strict shape, and
+  of batches that are still reviewable; M18.3 made it version 3 and added the trait-evidence links, and since
+  M22.1 it is **version 4**, whose staged fact and affiliation candidates may name who asserted them. That
+  attribution is bounded, distilled text, never a copied document passage, and it travels only inside a staging
+  row a still-reviewable batch already carried. Restore accepts versions 1, 2, and 3, validating each document
+  against its own strict shape — an older version refuses the attribution rather than restoring a candidate it
+  would then commit with the attribution silently dropped — and
   every new table joins the baseline-empty rule for *all* accepted versions — freshness is a property of the
   destination, not of the document. A terminal `redacted` receipt travels as the minimal claim it was reduced
   to; a bundle that tried to reattach cleared caller metadata to one is refused. An evidence link is validated

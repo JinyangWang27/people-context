@@ -1,4 +1,4 @@
-# M8–M20 pull-request plan
+# M8–M20 pull-request plan with supplemental milestones
 
 One checklist item is one independently mergeable pull request. Implementers must read the referenced milestone
 spec first; the bullets below are binding acceptance criteria and the out-of-scope bullets are hard boundaries.
@@ -548,3 +548,179 @@ Check the matching box only in the PR that delivers it.
   - **Out:** new rejection thresholds on any released MCP input, changes to the `pctx import` ceilings, new
     sources or candidate types, and any change to what a source extracts beyond the explicitly renegotiated and
     documented WhatsApp option.
+
+## M22–M24 supplemental plan and dependencies
+
+These planned additions supplement the historical M8–M20 checklist and its unchanged total of 42 PRs.
+Existing text, statuses, and checkboxes remain historical; M21 stays documented in the roadmap without
+introducing or renumbering historical PR entries here.
+
+| Milestone | Theme | Additional PRs |
+|---|---|---:|
+| M22 | Source-grounded CV and background capture | 2 |
+| M23 | Explainable person briefs and history | 1 |
+| M24 | Conservative CV update review | 2 |
+| **Supplemental total** | | **5** |
+
+- Delivered M17 staging and M18 provenance/source receipts → M22.1/M22.2.
+- M22.1 → M22.2: the CV capture workflow exercises optional candidate attribution.
+- Delivered M14.1 brief and M19.1 timeline → M23.1; M23 is independent of M22 and M24.
+- M22 → M24: grounded capture and its date/attribution rules precede reviewed CV updates.
+- Delivered M19.2 consolidation context and fact supersession → M24.1/M24.2.
+- M24.1 → M24.2: affiliation comparison uses the bounded extended consolidation context.
+
+The shared principle is to store attributed knowledge, preserve uncertainty and change, and assemble useful
+views from those records. Structured partial-date storage, dedicated life events, automated belief revision,
+semantic deduplication, and generic batch mutation are deferred, not implicit capabilities of these workflows.
+
+## M22 — Source-grounded CV and background capture
+
+**Spec:** [M22 — Source-grounded person capture](m22-source-grounded-person-capture.md).
+
+- [x] **M22.1 — Preserve attribution in extracted claims**
+  - **Scope:** Add optional `stated_by` to fact and affiliation candidates and forward it through existing
+    provenance fields across staging, review, and commit.
+  - **Acceptance:** old candidates remain valid; provided attribution survives the existing lifecycle and reads.
+    A source assertion is not independent verification: “describes herself as analytical” stays an attributed
+    claim rather than an inferred temperament. Existing validation, provenance/session meanings, sensitivity,
+    review gates, and source-receipt semantics remain intact.
+  - **Out:** new primary table, candidate vocabulary, personality assessment, internal LLM, raw-document storage.
+
+- [x] **M22.2 — Document and exercise agent CV capture**
+  - **Scope:** Extend shared agent guidance and fictional end-to-end examples for agent-read CVs, biographies,
+    and notes through stage → review → explicit commit.
+  - **Acceptance:** employment/education use affiliations where representable; qualifications/skills/background
+    use facts; observations/traits keep their meanings. Exact dates use existing validity fields; year-only,
+    month-only, approximate, and unknown dates remain explicit in concise claim text, never invented January 1
+    dates or import-as-event dates. Unknown historical roles do not become apparently current unbounded
+    affiliations. Background and sensitive details stay out of the unrestricted summary; use protected facts
+    when affiliation/relationship sensitivity cannot be enforced. Examples cover attribution, unreadable/partial
+    documents, ambiguous identity, repeated/conflicting claims, concurrent roles, disclosure, preserved history,
+    and available source receipts without a completeness or semantic-deduplication claim.
+  - **Out:** native PDF/DOCX parsing, internal LLM, raw documents, structured partial dates, dedicated life events.
+
+## M23 — Explainable person briefs and history
+
+**Spec:** [M23 — Explainable person history](m23-explainable-person-history.md).
+
+- [x] **M23.1 — Add explicitly requested history to briefs**
+  - **Scope:** Compose an opt-in history section from the existing timeline into the existing brief, retaining
+    timeline default limit 50 and range 1–200, with additive history/disclosure/truncation/source metadata.
+  - **Acceptance:** current brief defaults and existing JSON fields retain their meanings; no implicit history
+    read is needed when history is not requested. Show validity periods, timestamp basis, available source
+    references, and truncation; distinguish recorded assertions, subjective traits, and available evidence.
+    Recording dates are not event dates, approximate dates remain uncertain, and bounded/filtered reads never
+    imply complete history. Filter records and evidence independently, keeping communication guidance ordinary
+    even with explicit local sensitivity opt-in. Ambiguous identity is refused; conflicting/repeated claims and
+    concurrent roles remain explainable without history rewriting. Agents compose profiles using existing MCP
+    reads; changes after a read require a fresh read rather than treating the brief as authoritative current state.
+  - **Out:** second profile model, durable biography, all-purpose profile endpoint, dedicated life events,
+    unbounded history export, confidence recomputation.
+
+## M24 — Conservative CV update review
+
+**Spec:** [M24 — Reviewed person updates](m24-reviewed-person-updates.md).
+
+- [x] **M24.1 — Include affiliations in bounded consolidation context**
+  - **Scope:** Add affiliation records, dates, available provenance/source references, and an explicit
+    affiliation truncation flag to the existing person-scoped consolidation context.
+  - **Acceptance:** deterministic bounded reads retain existing fields, limits, ordering, signals, and disclosure
+    semantics; affiliations use the existing per-collection default 50/range 1–200. Partial reads are explicit,
+    historical and concurrent roles remain visible within the bound, missing provenance is not invented, and
+    record/evidence filtering remains independent. Affiliations have no sensitivity controls; do not imply
+    this read adds them or expose protected fallback facts through another collection. Reads write nothing.
+  - **Out:** new primary table, automatic affiliation contradiction verdicts, semantic deduplication, new
+    sensitivity model, generic profile endpoint.
+
+- [x] **M24.2 — Add the reviewed CV-update workflow**
+  - **Scope:** Extend shared agent guidance and fictional scenarios to resolve identity, compare incoming claims
+    with available records, propose specific actions, obtain acceptance, apply supported operations, and reread.
+  - **Acceptance:** each proposal explains attribution, evidence, dates, target ids, and one outcome: add,
+    already represented, correct an error, record a supported temporal transition, or leave unresolved.
+    Omission never implies deletion or a role ending. Concurrent jobs, multiple skills, and different traits
+    are not inherently contradictory; repeated sources do not automatically raise confidence. Supersession
+    requires a known effective date strictly after any old start and no later than any old end, closes the old
+    inclusive period the prior day, and preserves its historical value/provenance and the replacement's inherited
+    original end. Unsupported transitions stay unresolved; in-place correction is only for erroneous data.
+    Recheck affected records before applying accepted changes; changed targets require renewed review. Partial
+    reads cannot justify absence claims, and separate tool calls are not an atomic update transaction. Report
+    committed, failed, and unresolved actions accurately, including reread failures, without blind retries.
+    Scenarios cover ambiguous identity, approximate dates, repeated/conflicting CVs, concurrent roles, disclosure,
+    changed targets, partial completion, and preserved history.
+  - **Out:** replacement-profile import, omission-driven deletion, automated belief revision, generic batch
+    mutation, semantic deduplication, unsupported affiliation/trait supersession, structured partial-date storage.
+
+## M25–M26 supplemental plan and dependencies
+
+These four planned PRs are additional to the historical M8–M20 total of 42 and M22–M24 supplemental total of five.
+Earlier checklist entries and statuses remain unchanged. Specifications and roadmap entries do not deliver the
+skills; check each box only in its implementing PR.
+
+| Milestone | Theme | Additional PRs |
+|---|---|---:|
+| M25 | Relationship-aware communication coaching | 2 |
+| M26 | Attribution-aware transcript review | 2 |
+| **M25–M26 supplemental total** | | **4** |
+
+- Delivered guidance, M10 skills, packaged guide, and M17/M18 capture → M25.1.
+- M25.1 → M25.2: scenarios assess the delivered coaching workflow.
+- Delivered M17/M18 extraction and provenance plus M22 attribution → M26.1.
+- M26.1 → M26.2: partial-capture scenarios exercise the delivered review workflow.
+- M25 and M26 are independent. Neither introduces a server-side LLM, schema migration, or new MCP/CLI API.
+
+## M25 — Relationship-aware communication coaching
+
+**Spec:** [M25 — Communication coaching](m25-communication-coaching.md).
+
+- [x] **M25.1 — Add communication coaching workflow**
+  - **Scope:** Add `skills/communication-coach/SKILL.md` with precise ordinary-discovery triggers; extend shared
+    usage guidance and its packaged mirror. Correct signal-versus-advice descriptions.
+  - **Acceptance:** replies, preparation, practice, and reflection serve the user's stated goals across work,
+    friends, and family. Default to a usable reply/action plus a short lesson; preserve voice, boundaries, and
+    uncertainty. Resolve identity before personalized reads; unknown/ambiguous identity or unavailable MCP permits
+    situational coaching without guessed reads or person creation. `situation` is echoed and `friction_notes` is
+    recent summaries, not detected conflict. No unsolicited writes, including end-of-session staging; requested
+    capture preserves direct-versus-extracted rules and explicit reviewed commit. Drafts/simulations are not
+    observed outcomes or traits. Philosophy changes require an explicit request. Essential workflow reaches MCP
+    clients through the existing guide; skill and packaged-body parity checks pass.
+  - **Out:** new tools/prompts/CLI commands, schema/dependencies, automatic sending, personality scoring,
+    persistent learning profiles, server-side advice generation.
+
+- [x] **M25.2 — Demonstrate and evaluate coaching**
+  - **Scope:** Add fictional bilingual use cases, a human-review rubric, and delivered-skill plugin documentation.
+  - **Acceptance:** examples cover workplace hierarchy, disagreement/refusal, friendship repair, family boundaries,
+    uncertain intent, missing context/identity, requested practice/debrief, and optional capture. Assess usefulness,
+    voice, grounding, uncertainty, boundaries, and transferable lessons; separate qualitative review from automated
+    structural checks. Stub runs, keyword scoring, and instruction-text tests are not evidence of coaching quality.
+    Link examples from the gallery and document cloud-client retention separately from local server storage.
+  - **Out:** new evaluation framework, effectiveness claims without evidence, curricula or progress tracking.
+
+## M26 — Attribution-aware transcript review
+
+**Spec:** [M26 — Transcript attribution review](m26-transcript-attribution-review.md).
+
+- [x] **M26.1 — Add transcript attribution review workflow**
+  - **Scope:** Add `skills/transcript-review/SKILL.md`; integrate attribution review into shared extraction guidance
+    and its packaged mirror using existing candidate contracts.
+  - **Acceptance:** handle both multiple labels for one person and multiple people under one label. Whole-label
+    assignment requires homogeneity confirmation; mixed labels use statement/range confirmation in conversation.
+    Distinguish participant, speaker, subject, and commitment owner. Labels never become aliases or people and do
+    not transfer across recordings. Resolve identities before staging; preserve uncertain attribution/dates, partial
+    coverage, sensitivity, source receipts, and explicit reviewed commit. Stage supported claims only. Neutral
+    interactions require confirmed participation and an established date; otherwise summarize conversationally.
+    No reminder candidate exists: follow-ups remain conversational unless a supported specific write is requested.
+    Essential guidance is available through the existing MCP guide and packaged-body parity holds.
+  - **Out:** acoustic identification, diarization repair, native Ideashell parser, raw transcript persistence,
+    durable speaker maps, resumable review state, new candidate types/tools/prompts/CLI commands.
+
+- [x] **M26.2 — Prove safe partial transcript capture**
+  - **Scope:** Add fictional transcript use cases and runnable lifecycle checks with existing test infrastructure;
+    update delivered-skill import/plugin documentation and the gallery.
+  - **Acceptance:** cases cover split/mixed labels, recording-local identity, ambiguous names, unknown dates,
+    partial reads/confirmation, unsupported reminder candidates, and sensitive claims. Confirmed subsets survive
+    stage/review/accepted commit with correct attribution; uncertain ownership, raw marker text, speaker maps, and
+    label-derived aliases are absent from persisted staging, records, and receipts. Participant knowledge does not
+    create a promise or speaker attribution. Separate human assessment of extraction decisions from tests of
+    hand-authored candidate batches; neither stub output nor skill wording proves reliable agent behavior.
+  - **Out:** new test framework, persistent transcript review, raw fixtures from real people, automatic identity
+    inference or completeness claims.

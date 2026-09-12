@@ -53,16 +53,21 @@ launches Claude Code.
 
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
 
-## Bundled usage skill
+## Bundled usage skills
 
-The plugin ships one root-level skill at `skills/people-context-usage/SKILL.md`. Claude
-Code discovers skills at the plugin root, not inside `.claude-plugin/`. The skill adds no
-new tool or capability; it teaches agents to compose the existing tools correctly:
+The plugin ships model-discoverable skills at the plugin root, where Claude Code discovers
+them rather than inside `.claude-plugin/`. `skills/people-context-usage/SKILL.md` is the
+general one, `skills/communication-coach/SKILL.md` covers help with one specific
+conversation, and `skills/transcript-review/SKILL.md` covers reviewing who said what in a
+transcript before anything is staged. None adds a tool or a capability; they teach agents to
+compose the existing tools correctly:
 
 - resolve identity with `resolve_person` first and preserve the `ambiguous` candidate-list
   contract instead of guessing;
-- read `get_person_context` for what is known and `get_communication_guidance` for how to
-  communicate;
+- read `get_person_context` for what is known, and `get_communication_guidance` for the
+  stored signals about communicating with someone — traits, roles, recent interaction
+  summaries, notes, and the user's own philosophy text, from which the client composes the
+  advice the server never generates;
 - capture extracted knowledge only through the strict `person`/`interaction`/`affiliation`/
   `fact` staged-candidate vocabulary, never as raw conversation text;
 - treat `stage_candidates` as a proposal, `review_import` as inspection, and `commit_import`
@@ -70,8 +75,35 @@ new tool or capability; it teaches agents to compose the existing tools correctl
 - treat the absence of `get_sensitive_person_context` and `export_data` from ordinary
   discovery as an intended privacy gate, not something to work around.
 
-The skill is behavioural guidance only. It never enables elevated tools, never commits a
-staged batch automatically, and never copies raw transcript text into candidates.
+All three are behavioural guidance only. They never enable elevated tools, never commit a
+staged batch automatically, and never copy raw transcript text into candidates. Coaching in
+particular writes nothing at all unless the user asks for a record afterwards, at which point
+the ordinary review-before-commit gate applies. Transcript review does stage, but only the
+subset whose attribution the user confirmed, and only through that same gate; speaker labels
+and unresolved ownership stay in the conversation.
+
+All three can be reached either way, because a skill is invocable by you and by Claude unless
+its frontmatter says otherwise. None of them sets `user-invocable: false`, so each also has a
+namespaced command — `/people-context:communication-coach`,
+`/people-context:transcript-review`, and `/people-context:people-context-usage` — and none sets
+`disable-model-invocation`, so Claude also loads one on its own when its description matches
+what you are asking for. Describing the conversation you need help with in plain language is
+enough to pull in the coaching skill, and handing over a transcript to extract from is enough
+to pull in the review one; typing the command is the deterministic way to get either when you
+would rather not rely on the match.
+
+That is the one difference from the three workflows in the next section. Those set
+`disable-model-invocation`, which removes the automatic path and leaves only the typed one. It does
+not affect slash availability, which every skill here has.
+
+Eight worked scenarios showing what the coaching skill produces — across work, friends, and family,
+in Chinese and English — are in
+[communication-coaching-examples.md](communication-coaching-examples.md).
+
+Eight worked reviews showing what the transcript skill stages and what it declines to stage — a
+diarization split, a shared room microphone, a partial read, an ambiguous name, an undated
+recording, an unaccepted task, a sensitive aside, and a later recording in the same series — are
+in [transcript-review-examples.md](transcript-review-examples.md).
 
 ## User-invocable workflows
 

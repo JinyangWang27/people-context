@@ -598,6 +598,12 @@ class CommitImport:
 
         Traits do not arrive here: they are written by `_commit_trait` after the evidence pass,
         because their grounding may name records this same commit has not written yet.
+
+        `stated_by` rides into the record's existing provenance beside `source` and `session`
+        without displacing either: the batch still records which process wrote the row and which
+        run it belonged to, and the attribution says only who asserted the claim. A candidate that
+        carries none — every candidate staged before M22.1 among them — leaves it `None`, which is
+        the value these inputs already defaulted to.
         """
         candidate = row.candidate
         if candidate_type == "affiliation":
@@ -611,6 +617,7 @@ class CommitImport:
                     confidence=candidate.get("confidence"),
                     source=row.source,
                     session=candidate.get("message_id"),
+                    stated_by=candidate.get("stated_by"),
                 ),
                 transaction_id=transaction_id,
             ).id
@@ -626,6 +633,7 @@ class CommitImport:
                     sensitivity=candidate.get("sensitivity", "personal"),
                     source=row.source,
                     session=candidate.get("message_id"),
+                    stated_by=candidate.get("stated_by"),
                 ),
                 transaction_id=transaction_id,
             ).id

@@ -615,3 +615,80 @@ def test_an_unreadable_input_path_is_refused_safely(tmp_path: Path, capsys: pyte
 
     assert "cannot read" in message
     assert _staging_rows(db_file) == []
+
+
+def test_attribution_is_staged_reviewed_and_rendered_at_the_terminal(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`stated_by` reaches the CLI review a person actually reads before committing.
+
+    The review gate is where someone decides what to commit, so the human-readable line has to
+    show the attribution too — otherwise a claim a CV made about itself reads exactly like one
+    the operator established independently.
+    """
+    db_file = tmp_path / "people.db"
+    payload = [
+        {"type": "person", "ref": "nadia", "name": "Nadia Okonkwo", "aliases": []},
+        {
+            "type": "fact",
+            "person_ref": "nadia",
+            "predicate": "self_description",
+            "value": "Describes herself as analytical",
+            "stated_by": "her CV",
+        },
+        {
+            "type": "affiliation",
+            "person_ref": "nadia",
+            "org": "Globex",
+            "role": "Structural Engineer",
+            "stated_by": "her CV",
+        },
+    ]
+
+    document = _stage(db_file, _input_file(tmp_path, payload), capsys)
+    batch_id = str(document["batch_id"])
+
+    assert cli.main(["--db", str(db_file), "import", "review", batch_id]) == 0
+    rendered = capsys.readouterr().out
+    assert rendered.count("stated by her CV") == 2
+
+    assert cli.main(["--db", str(db_file), "import", "commit", batch_id, "--all", "--json"]) == 0
+    commit = json.loads(capsys.readouterr().out)
+    assert commit["unresolved_ids"] == []
+
+    conn = open_db(db_file)
+    try:
+        assert conn.execute("SELECT provenance_stated_by FROM facts").fetchone()[0] == "her CV"
+        assert conn.execute("SELECT provenance_stated_by FROM affiliations").fetchone()[0] == "her CV"
+    finally:
+        conn.close()
+
+
+def test_an_oversized_attribution_is_refused_without_echoing_it(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Attribution is the one new place a copied document passage could sit.
+
+    So the bound is enforced and the refusal names the field and the limit only. The rejected
+    text is untrusted extraction output and must not travel back out through a diagnostic.
+    """
+    db_file = tmp_path / "people.db"
+    payload = [
+        {"type": "person", "ref": "nadia", "name": "Nadia Okonkwo", "aliases": []},
+        {
+            "type": "fact",
+            "person_ref": "nadia",
+            "predicate": "self_description",
+            "value": "Analytical",
+            "stated_by": _TRANSCRIPT_SENTINEL + "x" * 300,
+        },
+    ]
+
+    message = _refusal(db_file, ["--source", "cv", "--input", str(_input_file(tmp_path, payload))], capsys)
+
+    assert _TRANSCRIPT_SENTINEL not in message
+    assert "stated_by" in message
+    assert "256" in message
+    assert _staging_rows(db_file) == []

@@ -650,6 +650,61 @@ def test_stage_candidates_accepts_extraction_types_and_commits_through_the_revie
         conn.close()
 
 
+def test_stage_candidates_carries_attribution_through_review_into_durable_provenance(tmp_path: Path) -> None:
+    """M22.1 over the real transport: who asserted a claim survives to the stored record."""
+    db_path = tmp_path / "attribution.db"
+    server = build_server(db_path=db_path)
+
+    async def flow(client: Client) -> tuple[dict[str, Any], dict[str, Any]]:
+        staged = await client.call_tool(
+            "stage_candidates",
+            {
+                "source": "nadia-cv",
+                "candidates": [
+                    {"type": "person", "ref": "nadia", "name": "Nadia Okonkwo", "aliases": []},
+                    {
+                        "type": "fact",
+                        "person_ref": "nadia",
+                        "predicate": "self_description",
+                        "value": "Describes herself as analytical",
+                        "stated_by": "Nadia Okonkwo's CV",
+                    },
+                    {
+                        "type": "affiliation",
+                        "person_ref": "nadia",
+                        "org": "Globex",
+                        "role": "Structural Engineer",
+                        "stated_by": "Nadia Okonkwo's CV",
+                    },
+                ],
+            },
+        )
+        batch_id = staged.structured_content["batch_id"]
+        reviewed = await client.call_tool("review_import", {"batch_id": batch_id})
+        accepted = [row["id"] for row in reviewed.structured_content["candidates"]]
+        committed = await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": accepted})
+        return reviewed.structured_content, committed.structured_content
+
+    reviewed, committed = _run(server, flow)
+
+    attributed = {
+        row["candidate"]["type"]: row["candidate"].get("stated_by")
+        for row in reviewed["candidates"]
+        if row["candidate"]["type"] in {"fact", "affiliation"}
+    }
+    assert attributed == {"fact": "Nadia Okonkwo's CV", "affiliation": "Nadia Okonkwo's CV"}
+    assert committed["unresolved_ids"] == []
+
+    conn = open_db(db_path)
+    try:
+        # The self-description is a fact attributed to her, never an inferred trait.
+        assert conn.execute("SELECT COUNT(*) FROM traits").fetchone()[0] == 0
+        assert conn.execute("SELECT provenance_stated_by FROM facts").fetchone()[0] == "Nadia Okonkwo's CV"
+        assert conn.execute("SELECT provenance_stated_by FROM affiliations").fetchone()[0] == "Nadia Okonkwo's CV"
+    finally:
+        conn.close()
+
+
 def test_merge_people_tool_is_real_and_returns_structured_errors(tmp_path: Path) -> None:
     db_path = tmp_path / "merge.db"
     conn = open_db(db_path)

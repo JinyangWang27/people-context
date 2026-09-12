@@ -10,6 +10,13 @@ because that is the one place `GetPersonContext` accepts the flag. Communication
 its own ordinary-disclosure contract in both modes, so a brief taken with the flag still shows
 guidance built from `public`/`personal` records only. Once written, the document is outside the
 server's disclosure controls entirely, which the notice in every rendering says out loud.
+
+History (M23.1) is opt-in and composed, not stored: it is one page of the existing person timeline,
+which already owns bound validation, deterministic ordering, per-entry `basis`, validity bounds, and
+the evidence filtering that keeps a restricted citation off a visible trait. An ordinary brief runs
+no timeline read at all. `history: null` therefore means *not requested*, which is a different fact
+from a `BriefHistory` whose `entries` are empty, and the section reports the bound it applied so no
+reader mistakes a bounded page for a complete personal history.
 """
 
 from __future__ import annotations
@@ -23,6 +30,11 @@ from people_context.app.context.guidance import GetCommunicationGuidance
 from people_context.app.context.models import PersonAffiliationContext, PersonRelationshipContext
 from people_context.app.context.query import GetPersonContext, PersonIdentity
 from people_context.app.exports._document import render_json_document
+from people_context.app.insights.timeline import (
+    DEFAULT_TIMELINE_LIMIT,
+    GetPersonTimeline,
+    TimelineEntry,
+)
 from people_context.app.records.reminders import ListReminders, ListRemindersInput
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
@@ -63,6 +75,9 @@ class BriefDisclosure(BaseModel):
     # Guidance is ordinary in both modes; the constant field states that in the document
     # rather than leaving a reader to infer it from `include_sensitive`.
     guidance: DisclosureLevel = DisclosureLevel.ORDINARY
+    # `None` when history was not requested, so a reader never has to guess which level an
+    # absent section would have been read at.
+    history: DisclosureLevel | None = None
     notice: str = DISCLOSURE_NOTICE
 
 
@@ -73,6 +88,19 @@ class BriefGuidance(BaseModel):
     traits: dict[str, list[Trait]] = Field(default_factory=dict)
     friction_notes: list[str] = Field(default_factory=list)
     communication_philosophy: str | None = None
+
+
+class BriefHistory(BaseModel):
+    """One bounded page of the person timeline, carried inside a brief.
+
+    `limit` is the bound that was actually applied, so the document reports what it asked for,
+    and `truncated` says older entries exist beyond it. Per-entry `evidence_truncated` rides
+    along on `TimelineEntry` unchanged.
+    """
+
+    limit: int = DEFAULT_TIMELINE_LIMIT
+    truncated: bool = False
+    entries: list[TimelineEntry] = Field(default_factory=list)
 
 
 class PersonBriefDocument(BaseModel):
@@ -90,6 +118,8 @@ class PersonBriefDocument(BaseModel):
     traits: list[Trait] = Field(default_factory=list)
     reminders: list[Reminder] = Field(default_factory=list)
     guidance: BriefGuidance = Field(default_factory=BriefGuidance)
+    # `None` distinguishes "history was not requested" from "requested and empty".
+    history: BriefHistory | None = None
 
 
 class ComposePersonBrief:
@@ -108,15 +138,28 @@ class ComposePersonBrief:
         context: GetPersonContext,
         guidance: GetCommunicationGuidance,
         reminders: ListReminders,
+        timeline: GetPersonTimeline,
         clock: Clock,
     ) -> None:
         self._context = context
         self._guidance = guidance
         self._reminders = reminders
+        self._timeline = timeline
         self._clock = clock
 
-    def execute(self, person_id: str, *, include_sensitive: bool = False) -> PersonBriefDocument | None:
-        """Return the brief for one active person, or `None` when there is nothing to brief on."""
+    def execute(
+        self,
+        person_id: str,
+        *,
+        include_sensitive: bool = False,
+        include_history: bool = False,
+        history_limit: int = DEFAULT_TIMELINE_LIMIT,
+    ) -> PersonBriefDocument | None:
+        """Return the brief for one active person, or `None` when there is nothing to brief on.
+
+        `history_limit` is validated by the timeline use case, and only when history is asked
+        for: an ordinary brief must not fail on a bound it never applies.
+        """
         context = self._context.execute(
             person_id,
             purpose=BRIEF_PURPOSE,
@@ -131,11 +174,25 @@ class ComposePersonBrief:
         reminders = self._reminders.execute(
             ListRemindersInput(person_id=person_id, status=ReminderStatus.ACTIVE)
         )
+        level = DisclosureLevel.SENSITIVE if include_sensitive else DisclosureLevel.ORDINARY
+        history = None
+        if include_history:
+            page = self._timeline.execute(
+                person_id,
+                limit=history_limit,
+                include_sensitive=include_sensitive,
+            )
+            history = BriefHistory(
+                limit=page.limit,
+                truncated=page.truncated,
+                entries=list(page.entries),
+            )
         return PersonBriefDocument(
             generated_at=self._clock.now(),
             disclosure=BriefDisclosure(
                 include_sensitive=include_sensitive,
-                context=DisclosureLevel.SENSITIVE if include_sensitive else DisclosureLevel.ORDINARY,
+                context=level,
+                history=None if history is None else level,
             ),
             person=context.identity,
             relationships=sorted(context.relationships, key=_relationship_key),
@@ -154,6 +211,7 @@ class ComposePersonBrief:
                 friction_notes=list(guidance.friction_notes),
                 communication_philosophy=guidance.communication_philosophy,
             ),
+            history=history,
         )
 
 
@@ -213,6 +271,7 @@ def render_brief_markdown(document: PersonBriefDocument) -> str:
     )
     lines.extend(_section("Traits", [f"{trait.category.value}: {trait.value}" for trait in document.traits]))
     lines.extend(_section("Reminders", [_reminder_line(reminder) for reminder in document.reminders]))
+    lines.extend(_history_section(document))
 
     guidance = document.guidance
     lines.append(f"## Communication guidance ({guidance.disclosure.value} disclosure)")
@@ -232,6 +291,54 @@ def render_brief_markdown(document: PersonBriefDocument) -> str:
     )
     lines.extend(_section("Recent interaction notes", list(guidance.friction_notes), level=3))
     return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def _history_section(document: PersonBriefDocument) -> list[str]:
+    """Render the opt-in history, or nothing at all when it was not requested.
+
+    Unlike the other sections this one disappears when absent, because an empty History heading
+    would read as "no history exists" for a brief that never asked for any. The heading names
+    the applied bound and disclosure level, and a truncated page says so in words, so the
+    section states its own limits rather than leaving them in the JSON.
+    """
+    history = document.history
+    if history is None:
+        return []
+    level = document.disclosure.history
+    heading = f"## History (newest first, limit {history.limit}, {level.value if level else 'ordinary'} disclosure)"
+    lines = [heading, ""]
+    if history.truncated:
+        lines.extend(
+            [
+                "_Older entries exist beyond this limit; this is a bounded page, not a complete history._",
+                "",
+            ]
+        )
+    lines.extend([f"- {_history_line(entry)}" for entry in history.entries] or ["_None recorded._"])
+    lines.append("")
+    return lines
+
+
+def _history_line(entry: TimelineEntry) -> str:
+    """Render one timeline entry, keeping a recording date visibly distinct from an event date.
+
+    `basis` is printed beside the instant rather than dropped, because it is the only thing that
+    says whether `effective_at` is when something happened or when it was written down.
+    """
+    # The record's own display components join the way `pctx timeline` already joins them,
+    # rather than inventing a second vocabulary for the same two fields.
+    body = entry.summary if entry.detail is None else f"{entry.summary}: {entry.detail}"
+    parts = [f"{entry.effective_at.isoformat()} (by {entry.basis}) — {entry.entry_type}: {body}"]
+    if entry.valid_from is not None or entry.valid_to is not None:
+        start = entry.valid_from.isoformat() if entry.valid_from else "unknown"
+        end = entry.valid_to.isoformat() if entry.valid_to else "present"
+        parts.append(f"valid {start} to {end}")
+    if entry.source_session_id is not None:
+        parts.append(f"source session {entry.source_session_id}")
+    if entry.evidence:
+        citations = ", ".join(f"{link.evidence_type} {link.evidence_id}" for link in entry.evidence)
+        parts.append(f"evidence: {citations}" + (" (more exist)" if entry.evidence_truncated else ""))
+    return " | ".join(parts)
 
 
 def _section(title: str, items: list[str], level: int = 2) -> list[str]:

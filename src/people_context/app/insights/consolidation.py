@@ -11,10 +11,19 @@ read only lays the evidence out.
 
 Four rules decide everything below.
 
-**Each record type carries its own bounded page.** Facts, traits, and observations answer different
-questions, so they are not made to share a budget: a person with four hundred imported observations
-must not be reported as having no facts worth looking at. Each reader returns one row past its limit
-so truncation is reported without counting a table.
+**Each record type carries its own bounded page.** Facts, traits, observations, and affiliations
+answer different questions, so they are not made to share a budget: a person with four hundred
+imported observations must not be reported as having no facts worth looking at. Each reader returns
+one row past its limit so truncation is reported without counting a table.
+
+**Affiliations are evidence, not a fifth signal source.** Employment, education, and membership are
+where a CV's claims actually live, so a review that cannot see them cannot say whether an incoming
+role is already recorded. They are reported with their ids, dates, provenance, and available receipt
+and nothing more: no deterministic relation is computed over them, because deciding that two roles
+at one organization conflict — rather than being a promotion, a rehire, or two concurrent posts — is
+the reader's judgement, and M24 keeps it there. They carry no disclosure level either, so this
+collection narrows for no caller and widens nothing: a detail that needs enforceable sensitivity
+belongs in a fact.
 
 **Signals are deterministic, and they are relations rather than verdicts.** A signal names two
 records that share a normalized predicate or category and says how they stand to each other:
@@ -50,6 +59,7 @@ from people_context.app.insights.timeline import (
 )
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
 from people_context.ports.consolidation import (
+    ConsolidationAffiliationRow,
     ConsolidationFactRow,
     ConsolidationObservationRow,
     ConsolidationTraitRow,
@@ -177,6 +187,28 @@ class ConsolidationObservation(BaseModel):
     cited_by_trait_ids: list[str] = Field(default_factory=list)
 
 
+class ConsolidationAffiliation(BaseModel):
+    """One stored affiliation — a role at an organization — as maintenance evidence.
+
+    `valid_from`/`valid_to` are what the assertion claims about the role; `created_at` is only when
+    the row was written down, and a proposal that reads one as the other invents a date. A null
+    `valid_to` means the stored assertion sets no end, which is not the same as evidence that the
+    role is current. There is no `sensitivity` field because affiliations store no disclosure level.
+    """
+
+    affiliation_id: str
+    person_id: str
+    org_id: str
+    org_name: str
+    role: str
+    valid_from: date | None = None
+    valid_to: date | None = None
+    created_at: datetime
+    confidence: float
+    provenance: Provenance
+    source_session_id: str | None = None
+
+
 class ConsolidationSignal(BaseModel):
     """One deterministic relation between two records that share a predicate or a category.
 
@@ -205,10 +237,12 @@ class ConsolidationContextResult(BaseModel):
     facts: list[ConsolidationFact] = Field(default_factory=list)
     traits: list[ConsolidationTrait] = Field(default_factory=list)
     observations: list[ConsolidationObservation] = Field(default_factory=list)
+    affiliations: list[ConsolidationAffiliation] = Field(default_factory=list)
     signals: list[ConsolidationSignal] = Field(default_factory=list)
     facts_truncated: bool = False
     traits_truncated: bool = False
     observations_truncated: bool = False
+    affiliations_truncated: bool = False
     signals_truncated: bool = False
 
 
@@ -226,7 +260,7 @@ class GetConsolidationContext:
         limit: int = DEFAULT_CONSOLIDATION_LIMIT,
         include_sensitive: bool = False,
     ) -> ConsolidationContextResult:
-        """Return the newest `limit` facts, traits, and observations plus their relations."""
+        """Return the newest `limit` facts, traits, observations, and affiliations plus relations."""
         page_limit = _checked_limit(limit)
         person = self._people.get(person_id)
         if person is None or person.deleted_at is not None:
@@ -247,10 +281,13 @@ class GetConsolidationContext:
         observation_rows = self._consolidation.list_consolidation_observations(
             person_id, limit=page_limit, sensitivities=sensitivities
         )
+        # No levels are passed: affiliations store none, so this page is the same for every caller.
+        affiliation_rows = self._consolidation.list_consolidation_affiliations(person_id, limit=page_limit)
 
         facts = [_fact(row) for row in fact_rows[:page_limit]]
         traits = [self._trait(row, sensitivities) for row in trait_rows[:page_limit]]
         observations = _observations(observation_rows[:page_limit], traits)
+        affiliations = [_affiliation(row) for row in affiliation_rows[:page_limit]]
         signals, signals_truncated = _signals(facts, traits)
         return ConsolidationContextResult(
             found=True,
@@ -260,10 +297,12 @@ class GetConsolidationContext:
             facts=facts,
             traits=traits,
             observations=observations,
+            affiliations=affiliations,
             signals=signals,
             facts_truncated=len(fact_rows) > len(facts),
             traits_truncated=len(trait_rows) > len(traits),
             observations_truncated=len(observation_rows) > len(observations),
+            affiliations_truncated=len(affiliation_rows) > len(affiliations),
             signals_truncated=signals_truncated,
         )
 
@@ -307,6 +346,22 @@ def _fact(row: ConsolidationFactRow) -> ConsolidationFact:
         recorded_at=row.recorded_at,
         confidence=row.confidence,
         sensitivity=row.sensitivity,
+        provenance=row.provenance,
+        source_session_id=row.source_session_id,
+    )
+
+
+def _affiliation(row: ConsolidationAffiliationRow) -> ConsolidationAffiliation:
+    return ConsolidationAffiliation(
+        affiliation_id=row.affiliation_id,
+        person_id=row.person_id,
+        org_id=row.org_id,
+        org_name=row.org_name,
+        role=row.role,
+        valid_from=row.valid_from,
+        valid_to=row.valid_to,
+        created_at=row.created_at,
+        confidence=row.confidence,
         provenance=row.provenance,
         source_session_id=row.source_session_id,
     )
