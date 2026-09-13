@@ -5,6 +5,39 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/JinyangWang27/people-context/compare/v1.1.1...v1.2.0) (2026-09-12)
+
+
+### Features
+
+* **exports:** add opt-in history to person briefs (M23.1) ([#135](https://github.com/JinyangWang27/people-context/issues/135)) ([1e95b1b](https://github.com/JinyangWang27/people-context/commit/1e95b1b7f2a686c88504ebd1391c51825d1783f8))
+* **imports:** preserve assertion attribution in extracted claims (M22.1) ([#133](https://github.com/JinyangWang27/people-context/issues/133)) ([f02371c](https://github.com/JinyangWang27/people-context/commit/f02371cba0786501bcef637c9769553f924cc346))
+* **insights:** include affiliations in bounded consolidation context (M24.1) ([#136](https://github.com/JinyangWang27/people-context/issues/136)) ([eb5e453](https://github.com/JinyangWang27/people-context/commit/eb5e453337e66b4bc8494841d889e7d6f3fd42ba))
+
+
+### Bug Fixes
+
+* **coaching:** address Codex review on the M25.2 examples ([a2452c3](https://github.com/JinyangWang27/people-context/commit/a2452c38cc625ad14eef8ccd634184986b18680a))
+* **coaching:** audit every scenario against the contracts they demonstrate ([9610585](https://github.com/JinyangWang27/people-context/commit/96105855027903a6a6c9981eb694c078bb807f9c))
+* **coaching:** bound the provenance rule and stop narrating a review payload ([ff7fdb1](https://github.com/JinyangWang27/people-context/commit/ff7fdb18107b35f704d3e2ca393379ff412adf9d))
+* **coaching:** keep scenario drafts inside what the user supplied ([1fa2cf5](https://github.com/JinyangWang27/people-context/commit/1fa2cf5e9b0f6bd3f00d7a906b1f4539c51b210d))
+* **coaching:** keep the negotiation draft at the user's stated minimum ([f2b2661](https://github.com/JinyangWang27/people-context/commit/f2b26611767e7fc42b0fa4fc217c33b19a8524e2))
+* **coaching:** source every draft detail and correct the capture lifecycle ([071f818](https://github.com/JinyangWang27/people-context/commit/071f8189ddc60c875e9e83442600282709525d7e))
+* **imports:** keep a month-only start out of a date field and bound the raw-text claim ([dcc29d0](https://github.com/JinyangWang27/people-context/commit/dcc29d08127b1b749c6ba8569a0b44663ad8461b))
+
+
+### Documentation
+
+* add Chinese README ([#143](https://github.com/JinyangWang27/people-context/issues/143)) ([5ad3ccc](https://github.com/JinyangWang27/people-context/commit/5ad3ccc1367fc61cc873009abe4dc8684e593bc7))
+* **coaching:** add the communication coaching workflow (M25.1) ([#139](https://github.com/JinyangWang27/people-context/issues/139)) ([4c9d83e](https://github.com/JinyangWang27/people-context/commit/4c9d83e06f9099bad730ccdbcf74ef880bd48b93))
+* **coaching:** demonstrate and evaluate communication coaching (M25.2) ([3806da7](https://github.com/JinyangWang27/people-context/commit/3806da7f1b148a521a0f2625efb69797e814428a))
+* **imports:** add the transcript attribution review workflow (M26.1) ([#141](https://github.com/JinyangWang27/people-context/issues/141)) ([bb3e907](https://github.com/JinyangWang27/people-context/commit/bb3e907b1f160246a95add21e60ffd4c5f04df01))
+* **imports:** document and exercise agent CV capture (M22.2) ([#134](https://github.com/JinyangWang27/people-context/issues/134)) ([fa06c70](https://github.com/JinyangWang27/people-context/commit/fa06c7019087828a0d99422d5aff6403b1967d8f))
+* **imports:** prove safe partial transcript capture (M26.2) ([6edea48](https://github.com/JinyangWang27/people-context/commit/6edea48eeede8c8f72b415652a3aeb526f1330fd))
+* **maintenance:** add the reviewed CV-update workflow (M24.2) ([#137](https://github.com/JinyangWang27/people-context/issues/137)) ([0b204b8](https://github.com/JinyangWang27/people-context/commit/0b204b808e4b1aed218a775e9e45f245b3a6f26d))
+* plan communication coaching and transcript review ([#138](https://github.com/JinyangWang27/people-context/issues/138)) ([1193ca5](https://github.com/JinyangWang27/people-context/commit/1193ca528e90e94a629df4e138c3701495e1618a))
+* plan grounded person capture and reviewed updates ([#131](https://github.com/JinyangWang27/people-context/issues/131)) ([a435f76](https://github.com/JinyangWang27/people-context/commit/a435f76e8dfff0319ba8350a9e693b6dd0261ccf))
+
 ## [1.1.1](https://github.com/JinyangWang27/people-context/compare/v1.1.0...v1.1.1) (2026-09-03)
 
 
