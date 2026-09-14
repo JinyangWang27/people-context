@@ -5,9 +5,10 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 
 ## Annotations
 
-[M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; see the
-[group contract](#m28-group-and-membership-contract). **Planned, not implemented:** M28.2's explicit pairwise
-shared-context lookup and M28.3's reviewed capture support. Existing tools and graph results keep their meanings.
+[M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; M28.2
+added the explicit pairwise `explain_shared_connections` lookup; see the
+[group contract](#m28-group-and-membership-contract). **Planned, not implemented:** M28.3's reviewed capture
+support. Existing tools and graph results keep their meanings.
 
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
 - default write annotation: clients should apply normal write approval.
@@ -45,17 +46,19 @@ block and no structured payload.
 | `find_groups` | Candidate groups by name; matches are not identity. | optional `name`, `kind`, `limit=50` | Ordinary groups, `truncated`. |
 | `get_group` | One group and a bounded page of its memberships. | `group_id`, `limit=50` | `found`, group, ordinary memberships, `truncated`. |
 | `list_group_memberships` | One person's memberships with each group. | `person_id` or `person`, `limit=50` | `found`, memberships with group summaries, `truncated`. |
+| `explain_shared_connections` | How two people share identified groups, and when. | `person_a_id` or `person_a`, `person_b_id` or `person_b`, `limit=50` | `found`, membership-pair connections with label and temporal certainty, direct relationships, truncation flags. |
 
 | `review_import` | Staged candidates and statuses for one batch. | `batch_id` | Candidate rows; inspection only. |
 
-All sixteen tools are annotated `readOnlyHint=true`. `review_import` was annotated as a write before M21 even
+All seventeen tools are annotated `readOnlyHint=true`. `review_import` was annotated as a write before M21 even
 though it never mutated anything; correcting the annotation removes a spurious approval prompt.
 
 ### Naming a person instead of passing an id
 
 Every ordinary read above that takes a single `person_id` — `get_person_context`, `get_communication_guidance`,
-`list_reminders`, `get_relationship_graph`, `get_person_timeline`, `get_consolidation_context`, and
-`upcoming_dates` — also accepts `person`: the name, nickname, or alias as the user said it. `find_connection` and
+`list_reminders`, `get_relationship_graph`, `get_person_timeline`, `get_consolidation_context`,
+`list_group_memberships`, and `upcoming_dates` — also accepts `person`; `explain_shared_connections` accepts
+`person_a` and `person_b` the same way: the name, nickname, or alias as the user said it. `find_connection` and
 the operator-elevated `get_sensitive_person_context` take ids only.
 
 The name is followed only when the store really holds it: an exact name or alias, or a lexical hit such as
@@ -550,6 +553,54 @@ refused as `invalid_parameter`. They disclose only `public`/`personal` groups an
 when its group is also ordinary, and filter before the limit so hidden rows never change `truncated`. A hidden
 group reads as `found: false`. Memberships are ordered by known start, then undated, then id. These reads report
 recorded memberships only; they derive no connection between members and write nothing.
+
+### `explain_shared_connections`
+
+`explain_shared_connections(person_a_id? | person_a?, person_b_id? | person_b?, limit=50)` returns the versioned
+`people-context-shared-connections` document (version 1). It is the only group read that derives anything, and it
+derives at read time from primary memberships: nothing is stored, so a correction, closure, merge, or forget
+changes the next call. Two identical people, or a limit outside 1..200, are refused as `invalid_parameter`; an
+unknown or removed person returns `found: false`.
+
+```json
+{
+  "format": "people-context-shared-connections", "version": 1, "found": true,
+  "person_a_id": "01K...", "person_b_id": "01K...", "limit": 50, "include_sensitive": false,
+  "connections": [{
+    "group": {"group": {"id": "01K...", "name": "Class 1, Grade 6", "kind": "class", "...": "..."},
+              "organization_name": null},
+    "membership_a": {"id": "01K...", "role": "student", "temporal_basis": "period", "...": "..."},
+    "membership_b": {"id": "01K...", "role": "student", "temporal_basis": "period", "...": "..."},
+    "connection": "derived_relation", "label": "classmates",
+    "temporal": "overlap", "overlap": {"valid_from": "2016-01-10", "valid_to": "2016-06-30"}
+  }],
+  "truncated": false, "memberships_truncated": false,
+  "direct_relationships": [], "direct_relationships_truncated": false
+}
+```
+
+- **Scope.** A connection is one visible membership of each person in the *same* identified group. Different
+  groups under one organization, group placement, affiliations, and relationships through a third person produce
+  no connection. No connection means no shared group was found, not that the two do not know each other.
+- **Temporal certainty.** A membership's *established* days are what it asserts: both bounds of a `period`, only
+  the single known day when one bound is absent, and for `ongoing` its start (or record date) through the date it
+  was recorded. `unknown` establishes nothing. `temporal` is `overlap` (with the common `overlap` period) when the
+  established days intersect, `disjoint` when the known bounds exclude any common day, and `unknown` otherwise.
+  An absent bound is never read as unbounded.
+- **Labels.** `label` is `classmates` only for two `student` roles in a `class`, and `teammates` only for two
+  `participant` roles in a `team`, each with `temporal: overlap`; `connection` is then `derived_relation`. Every
+  other pair — a teacher and a student, clubs, households, communities, cohorts, other roles, or unproven timing —
+  is `shared_context` with `label: null`, which implies no friendship, kinship, or acquaintance. No confidence or
+  score is computed.
+- **Direct assertions.** `direct_relationships` lists the currently active recorded relationships between the two
+  people, ordered by id, apart from the derived connections.
+- **Disclosure and bounds.** Only `public`/`personal` groups and memberships are used, filtered by the store
+  before any limit, so hidden records never change connections, their order, or any flag; the tool has no
+  sensitivity parameter. Each person's visible memberships are read once, up to 200, and a group's member list
+  is never expanded: `memberships_truncated` says a person had more and the answer may be partial. Connections
+  are ordered by normalized group name, group id, then the two membership ids, and `truncated` reports more than
+  `limit`. The lookup writes nothing and leaves `get_person_context`, `get_relationship_graph`, and
+  `find_connection` unchanged.
 
 ## Person context compatibility
 

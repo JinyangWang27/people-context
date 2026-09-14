@@ -96,8 +96,9 @@ group is never named through an ordinary-looking membership. Filtering happens b
 hidden row cannot change a visible page or its `truncated` flag, and a hidden group reads exactly like a missing
 one. The MCP group reads have no sensitivity parameter; only the local CLI's `--include-sensitive` widens them.
 Placement under an organization never writes the organization row. M28.1 does not retrofit sensitivity onto
-existing relationships or affiliations. **Planned, not implemented:** M28.2 filters evidence before deriving
-shared connections.
+existing relationships or affiliations. M28.2's shared-connection lookup applies the same filter before any
+pairing, labelling, counting, or truncation, so hidden memberships and groups cannot change its connections,
+evidence references, or flags. It is an ordinary-disclosure read with no elevated MCP variant.
 
 The existing sensitivity levels are:
 
