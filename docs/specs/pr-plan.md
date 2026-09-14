@@ -733,7 +733,7 @@ This one planned PR is additional to the historical and supplemental totals abov
 unchanged; check this box only in the implementing PR. It reuses delivered configuration/runtime/setup behavior
 and has no dependency on unfinished milestones.
 
-- [ ] **M27.1 — Adopt the shared user database default**
+- [x] **M27.1 — Adopt the shared user database default**
   - **Scope:** Default CLI/MCP to `~/.pctx/people.db`; remove implicit workspace selection; add explicit-transition
     protection, consistent path diagnostics, setup handling, regression tests, and shipped documentation.
   - **Upgrade prerequisite:** before any upgraded client starts, inventory every existing agent's old-version
