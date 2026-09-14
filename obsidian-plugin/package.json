@@ -30,7 +30,7 @@
     "release:check": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
-    "@types/node": "26.4.1",
+    "@types/node": "26.5.1",
     "esbuild": "0.28.2",
     "obsidian": "1.13.1",
     "typescript": "7.0.2",
