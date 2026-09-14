@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -89,3 +90,24 @@ def test_main_refuses_encrypted_start_without_a_key(
     assert DB_KEY_ENV in captured.err
     # The stdio transport owns STDOUT; a refusal must never write to it.
     assert captured.out == ""
+
+
+def test_main_refuses_to_create_the_shared_default_beside_a_legacy_store(
+    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    legacy = tmp_path / "data" / "people-context" / "people.db"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_bytes(b"fictional legacy store, never opened")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    with pytest.raises(SystemExit) as exc_info:
+        server_module.main([])
+
+    assert exc_info.value.code == 2
+    captured = capfd.readouterr()
+    assert str(legacy) in captured.err
+    assert captured.out == ""
+    assert not (home / ".pctx").exists()
+    assert legacy.read_bytes() == b"fictional legacy store, never opened"

@@ -248,7 +248,10 @@ new candidate type, or native Ideashell integration. M26 is independent of M25.
 
 ## M27 — Shared per-user database
 
-**Status:** Planned — not implemented.
+**Status:** Delivered. M27.1 made `~/.pctx/people.db` the shared default, removed workspace and XDG data-directory
+selection, added the legacy transition guard to CLI, MCP startup, `stats`, and setup, and documented the
+pre-upgrade inventory and deliberate relocation in [cli.md](cli.md#upgrading-to-the-shared-default). It is a
+breaking change under the compatibility promise.
 
 Use `~/.pctx/people.db` as the common CLI/MCP default, preserving explicit argument, environment, and config-file
 overrides. Remove automatic OpenClaw workspace selection. Require an explicit transition when legacy databases
@@ -259,7 +262,7 @@ Before upgrading, inventory and pin each existing client's old path in its actua
 legacy discovery sees only the current environment; an existing new default does not prove other stores migrated.
 
 M27.1 delivers resolution, transition protection, setup/diagnostics, regression checks, and shipped documentation
-in one PR. This documentation entry does not change the current default.
+in one PR.
 
 **Spec:** [M27 — Shared per-user database](specs/m27-shared-user-database.md).
 **PRs:** [M27 checklist](specs/pr-plan.md#m27--shared-per-user-database).

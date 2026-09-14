@@ -13,6 +13,11 @@ ClawHub. It does not require a hosted application, public endpoint, OAuth servic
 
 ## Install from ClawHub
 
+**Upgrading an existing installation?** The Python server no longer selects an OpenClaw workspace database.
+Before starting a release with the shared `~/.pctx/people.db` default, complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default): with the old version,
+run `pctx db-path -v` in the server's real launch environment and pin that path with `--db` or
+`PEOPLE_CONTEXT_DB`.
+
 Install and inspect the published plugin with:
 
 ```bash
@@ -49,13 +54,12 @@ The plugin connects to `http://127.0.0.1:8765/mcp` by default. Configure a diffe
 }
 ```
 
-The Python server resolves its database through the standard chain documented in [cli.md](cli.md) and
-[data-model.md](data-model.md). When an OpenClaw workspace exists, that chain can select its
-`people-context/people.db`; run `pctx db-path -v` in the server environment to inspect the selected path.
-
-**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) removes automatic workspace selection
-in favor of the shared `~/.pctx/people.db` default. Existing workspace databases require explicit transition;
-the server currently still uses the chain described above.
+The Python server resolves its database through the standard chain documented in
+[cli.md](cli.md#database-location-resolution): `--db`, `PEOPLE_CONTEXT_DB`, the config file, then the shared
+`~/.pctx/people.db` default. An OpenClaw workspace no longer selects a database. If a workspace database is
+visible and the shared default does not exist, the server refuses to start rather than create an empty store;
+keep the workspace store with `--db`/`PEOPLE_CONTEXT_DB` or relocate it deliberately as described in the
+[upgrade prerequisite](cli.md#upgrading-to-the-shared-default). Run `pctx db-path -v` in the server environment to inspect the selected path.
 
 The plugin exposes these OpenClaw tools:
 
@@ -91,6 +95,8 @@ OpenClaw tool policy is an additional model-facing control, not a replacement fo
 capability gates. See [Privacy and Safety](privacy-and-safety.md) for the complete threat model.
 
 ## Update
+
+Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before updating the server from a release that used the earlier default location.
 
 Update an installed ClawHub release, then restart the Gateway:
 

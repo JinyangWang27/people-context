@@ -42,7 +42,12 @@ from people_context.cli.portability import (
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
 from people_context.cli.setup import cmd_setup
 from people_context.cli.sources import cmd_source, cmd_sources
-from people_context.config import MissingDatabaseKeyError, resolve_db_key, resolve_db_path
+from people_context.config import (
+    LegacyDatabaseTransitionError,
+    MissingDatabaseKeyError,
+    resolve_db_key,
+    resolve_openable_db_path,
+)
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
 
@@ -101,7 +106,7 @@ def _unreadable_stats_target(args: argparse.Namespace) -> tuple[Path, str] | Non
     asks it: every other command keeps the shared runtime exactly as it is. `:memory:` has no
     file to inspect and carries its own explicit storage state in the report.
     """
-    path = resolve_db_path(args.db)
+    path = resolve_openable_db_path(args.db)
     if str(path) == ":memory:":
         return None
     if not path.exists():
@@ -134,7 +139,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "stats":
         try:
             refusal = _unreadable_stats_target(args)
-        except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
+        except (
+        MissingDatabaseKeyError,
+        EncryptedDatabaseError,
+        UnsafeDatabasePathError,
+        LegacyDatabaseTransitionError,
+    ) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
         if refusal is not None:
@@ -155,7 +165,12 @@ def main(argv: list[str] | None = None) -> int:
             warning=lambda message: print(f"Warning: {message}", file=sys.stderr),
             encrypted=args.encrypted,
         )
-    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
+    except (
+        MissingDatabaseKeyError,
+        EncryptedDatabaseError,
+        UnsafeDatabasePathError,
+        LegacyDatabaseTransitionError,
+    ) as exc:
         # Refuse with the reason only; the message never carries key material.
         print(f"Error: {exc}", file=sys.stderr)
         return 2

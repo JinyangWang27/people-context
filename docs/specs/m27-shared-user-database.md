@@ -1,6 +1,6 @@
 # M27 — Shared per-user database
 
-Status: Planned — not implemented. This specification changes no runtime behavior or existing database.
+Status: Delivered — M27.1 is merged. This specification delivers nothing itself.
 See [roadmap](../roadmap.md#m27--shared-per-user-database) and
 [PR checklist](pr-plan.md#m27--shared-per-user-database).
 

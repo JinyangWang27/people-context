@@ -73,6 +73,10 @@ server command in an MCP client and run the printed calls verbatim. See
 
 ## Quick start
 
+> **Upgrading from a release before the shared `~/.pctx/people.db` default?** Before any client starts the new
+> version, inventory and pin each client's existing database as described in
+> [Upgrading to the shared default](docs/cli.md#upgrading-to-the-shared-default).
+
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Pick your client; each is one step.
 
 <details open>
@@ -219,8 +223,8 @@ encryption or opt into SQLCipher at-rest encryption (`uv sync --extra encrypted`
 - **Backup and second device**: `pctx sync push --output DIR` and `pctx sync pull --input PATH`.
 - **Docker**: `docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest`.
   A convenience image, not a sandbox. See [docs/docker.md](docs/docker.md).
-- **Database location**: `--db`, then `PEOPLE_CONTEXT_DB`, then the XDG config file, then an OpenClaw workspace,
-  then the XDG data directory. Inspect with `pctx db-path -v`.
+- **Database location**: `--db`, then `PEOPLE_CONTEXT_DB`, then the XDG config file, then the shared
+  `~/.pctx/people.db`. Inspect with `pctx db-path -v`.
 
 The full command reference is in [docs/cli.md](docs/cli.md); the MCP tool inventory and response contracts are
 in [docs/mcp-interface.md](docs/mcp-interface.md); what stays stable across releases is in
