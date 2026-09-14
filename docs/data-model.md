@@ -9,6 +9,10 @@ adapters.
 
 ## Conventions
 
+**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds protected groups and
+qualified memberships, with explicit temporal evidence and lifecycle/portability support. The tables below remain
+the current model; existing affiliations and relationships are not automatically converted.
+
 - Primary entity and record ids are sortable ULID strings.
 - Human names also have normalized columns populated by `normalize_name()` for identity matching.
 - Timestamps are timezone-aware UTC datetimes; validity bounds are calendar dates.

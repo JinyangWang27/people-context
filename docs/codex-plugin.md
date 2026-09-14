@@ -45,6 +45,10 @@ The selected path is outside the installed plugin copy, survives upgrades and un
 with the `pctx` CLI. Run `pctx db-path -v` to inspect the active path and its resolution
 trace.
 
+**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) will replace workspace discovery and
+the XDG fallback with `~/.pctx/people.db`, retaining overrides and requiring explicit transition for legacy stores.
+The resolution order above remains current behavior.
+
 ## Security model
 
 Installing the plugin executes this repository's Python code with the current operating-system user's

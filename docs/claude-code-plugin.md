@@ -51,6 +51,9 @@ by default, so `pctx show` and `pctx export` work against the plugin's data with
 extra configuration. To isolate or relocate the store, set `PEOPLE_CONTEXT_DB` in the environment that
 launches Claude Code.
 
+**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) will make `~/.pctx/people.db` the
+shared default and require explicit transition for legacy stores. The resolution chain above is current behavior.
+
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
 
 ## Bundled usage skills

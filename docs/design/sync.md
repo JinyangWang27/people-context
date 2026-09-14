@@ -9,6 +9,10 @@ Transport, pairing, exchange, replay, and bootstrap remain M7 work.
 
 ## 1. Goals and non-goals
 
+**Planned change, not implemented:** [M28](../specs/m28-groups-and-shared-connections.md) requires groups and
+memberships to participate in audit/changelog, compatible versioned export/bootstrap, merge, and hard forget
+before their write surfaces ship. Derived connections remain read results and are not portable primary state.
+
 ### Goals
 
 - Sync one user's dataset across multiple devices before attempting any form of inter-user sharing.

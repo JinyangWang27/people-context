@@ -11,6 +11,10 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
 
 ## Layer diagram
 
+**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds protected groups and
+memberships through the existing domain/app/ports/SQLite layers. Explicit pairwise reads derive shared context
+from permitted evidence without persisted inferred edges or a general-purpose inference engine.
+
 ```
                          ┌───────────────────────────────────────────┐
                          │                 adapters                    │
@@ -123,6 +127,10 @@ Concrete implementations of the ports, plus anything that talks to the outside w
   application use cases. Process entrypoints inject their own warning sink.
 - `config.py` — DB path resolution (flag → env → config file → agent workspace → XDG); this is itself an
   adapter concern (it reads environment and filesystem) but is small enough to live at the package root.
+
+**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) replaces workspace discovery and the
+production XDG fallback with `~/.pctx/people.db`, retaining explicit overrides and adding legacy transition checks.
+The resolver description above remains the current architecture.
 
 ## Dependency rule
 

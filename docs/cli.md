@@ -17,6 +17,9 @@ what encryption does and does not protect.
 
 ## Commands
 
+**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds group/membership
+management, explicit shared-context lookup, and reviewed capture. Commands below describe delivered behavior.
+
 | Command | Purpose |
 |---|---|
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
@@ -843,6 +846,10 @@ sensitivity level. They go to local stdout only; a notice on stderr says so befo
 redirecting the stream elsewhere is your own disclosure decision.
 
 ## Database location resolution
+
+**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) will use `~/.pctx/people.db` as the
+shared default, remove workspace discovery, and require explicit transition for legacy stores. The order below
+describes current behavior, including the setup behavior documented above.
 
 The CLI and server use the same first-match order:
 

@@ -724,3 +724,84 @@ skills; check each box only in its implementing PR.
     hand-authored candidate batches; neither stub output nor skill wording proves reliable agent behavior.
   - **Out:** new test framework, persistent transcript review, raw fixtures from real people, automatic identity
     inference or completeness claims.
+
+## M27 — Shared per-user database
+
+**Spec:** [M27 — Shared per-user database](m27-shared-user-database.md).
+
+This one planned PR is additional to the historical and supplemental totals above. Earlier statuses remain
+unchanged; check this box only in the implementing PR. It reuses delivered configuration/runtime/setup behavior
+and has no dependency on unfinished milestones.
+
+- [ ] **M27.1 — Adopt the shared user database default**
+  - **Scope:** Default CLI/MCP to `~/.pctx/people.db`; remove implicit workspace selection; add explicit-transition
+    protection, consistent path diagnostics, setup handling, regression tests, and shipped documentation.
+  - **Upgrade prerequisite:** before any upgraded client starts, inventory every existing agent's old-version
+    path in its actual launch environment and explicitly pin each client's selected absolute path. Keep unknown
+    clients stopped pending inventory; retain pins until a deliberate transition, even if the new default already
+    exists. Publish this prerequisite ahead of upgrade/first-start and plugin auto-update instructions. Runtime
+    discovery covers only the current environment and cannot certify absence of stores in another environment.
+  - **Acceptance:** preserve argument → environment → config precedence and config-file location. Without an
+    override or existing new default, any visible legacy OpenClaw/XDG database blocks fresh-store creation before
+    writes; multiple stores require explicit choice. Never open legacy contents during discovery, including encrypted
+    files. Existing new defaults win; explicit overrides bypass discovery. Path diagnostics are non-mutating and
+    verbose output explains blocked transitions. Setup refuses blocked transitions before writing and preserves
+    explicit pinning/relative-path anchoring while dropping workspace-derived pinning; existing pinned entries
+    remain effective. Cover different agent environments/working directories, custom XDG settings, all legacy
+    candidates, fresh installs, encrypted stores, CLI/MCP/setup agreement, dry runs, and absence of unintended
+    writes. Preserve demo isolation, explicit Docker paths, encryption, and private-file protections. Cover
+    custom XDG/OpenClaw stores invisible to another agent: the old-version inventory
+    and explicit pins preserve each selected store across upgrade, including after creation of the new default.
+    Diagnostics must not claim cross-environment discovery. Update
+    current-behavior guides with deliberate, SQLite-consistent transition instructions and record compatibility
+    and release classification before shipping. Run focused tests and required repository checks plus `uv build`.
+  - **Out:** automatic relocation/copy/merge/deletion, schema changes, new migration command, dependencies,
+    agent-specific storage/configuration, sandbox permission grants, or new synchronization/concurrency guarantees.
+
+## M28 — Groups, memberships, and shared connections
+
+**Spec:** [M28 — Groups, memberships, and shared connections](m28-groups-and-shared-connections.md).
+
+These three planned PRs are additional to all historical and supplemental totals above. Existing statuses and
+M27's scope remain unchanged. M28 is independent of M27; internal dependencies are M28.1 → M28.2 → M28.3.
+
+- [ ] **M28.1 — Store protected groups and memberships**
+  - **Scope:** Add identified groups and qualified memberships, additive persistence, bounded CLI/MCP management,
+    correction and historical closure, privacy enforcement, and complete lifecycle/portability integration.
+  - **Acceptance:** support school, work, clubs, households, and communities with stable group identities;
+    names alone never merge groups. Record roles, temporal evidence, provenance, confidence, and sensitivity.
+    Protect group identity and memberships independently; do not copy protected details into unrestricted legacy
+    records. Distinguish unknown dates from asserted temporal coverage without changing legacy date semantics.
+    Support confirmed cohort continuity without generated yearly placements. Audit/changelog, compatible versioned
+    export/bootstrap, person merge, and hard forget cover new state before writes ship. Preserve old contracts,
+    concurrent memberships, and history; use next-free additive migrations and existing dependencies.
+  - **Out:** automatic legacy conversion, arbitrary hierarchy inference, inferred pairwise edges, group merging,
+    automatic grade advancement, or speculative durable membership.
+
+- [ ] **M28.2 — Explain shared connections**
+  - **Scope:** Add an explicit bounded pairwise CLI/MCP lookup using M28.1 memberships and permitted evidence.
+  - **Acceptance:** distinguish shared context, derived labels, and direct assertions; explain temporal certainty
+    with supporting record references. Classmate/teammate labels require compatible roles and established overlap;
+    absent bounds alone cannot prove overlap. Same school, disjoint dates, or unknown timing permit only the
+    weaker supported context. Hierarchy and common-person edges imply no membership; social groups imply no
+    friendship, kinship, or acquaintance. Filter before inference/counting/truncation, including evidence references;
+    hidden records cannot affect ordinary results or signals. Bound query work and results deterministically.
+    Corrections/closure/forget affect the next read without stale stored deductions. Existing context/graph/path
+    semantics remain unchanged; reads write nothing.
+  - **Out:** elevated MCP lookup, automatic context expansion, inferred graph traversal, materialized deductions,
+    probabilistic scoring, or a general-purpose inference engine.
+
+- [ ] **M28.3 — Capture and use shared context through agents**
+  - **Scope:** Extend reviewed staging for group/membership assertions; add shared/packaged agent guidance and
+    fictional school/work/social examples that exercise M28.2's lookup.
+  - **Acceptance:** versioned bounded candidates preserve group/person resolution, source attribution, receipts,
+    explicit acceptance, partial-commit reporting, and lifecycle/restore guarantees. No guessed groups, unknown
+    dates filled as facts, raw content, or speculative progression is persisted. Confirmed continuity preserves
+    only the known people and extent, without inventing annual class/grade placements. Agents invoke explicit
+    lookup naturally for connection questions, with no automatic expansion of routine context. Test reviewed
+    capture end to end; distinguish candidate lifecycle proof from human assessment of agent reasoning.
+  - **Out:** raw source storage, automatic extracted writes, roster extrapolation, new review frameworks, or
+    claims of reliable inference based only on skill text or hand-authored candidates.
+
+Each PR runs focused checks plus repository-required gates; public surface changes also run `uv build`.
+Specifications do not deliver any of these PRs; boxes remain unchecked until implementation.
