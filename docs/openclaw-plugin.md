@@ -53,6 +53,10 @@ The Python server resolves its database through the standard chain documented in
 [data-model.md](data-model.md). When an OpenClaw workspace exists, that chain can select its
 `people-context/people.db`; run `pctx db-path -v` in the server environment to inspect the selected path.
 
+**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) removes automatic workspace selection
+in favor of the shared `~/.pctx/people.db` default. Existing workspace databases require explicit transition;
+the server currently still uses the chain described above.
+
 The plugin exposes these OpenClaw tools:
 
 - `people_resolve` wraps `resolve_person`;

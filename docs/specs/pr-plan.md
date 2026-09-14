@@ -724,3 +724,28 @@ skills; check each box only in its implementing PR.
     hand-authored candidate batches; neither stub output nor skill wording proves reliable agent behavior.
   - **Out:** new test framework, persistent transcript review, raw fixtures from real people, automatic identity
     inference or completeness claims.
+
+## M27 — Shared per-user database
+
+**Spec:** [M27 — Shared per-user database](m27-shared-user-database.md).
+
+This one planned PR is additional to the historical and supplemental totals above. Earlier statuses remain
+unchanged; check this box only in the implementing PR. It reuses delivered configuration/runtime/setup behavior
+and has no dependency on unfinished milestones.
+
+- [ ] **M27.1 — Adopt the shared user database default**
+  - **Scope:** Default CLI/MCP to `~/.pctx/people.db`; remove implicit workspace selection; add explicit-transition
+    protection, consistent path diagnostics, setup handling, regression tests, and shipped documentation.
+  - **Acceptance:** preserve argument → environment → config precedence and config-file location. Without an
+    override or existing new default, any legacy OpenClaw/XDG database blocks fresh-store creation before writes;
+    multiple stores require explicit choice. Never open legacy contents during discovery, including encrypted
+    files. Existing new defaults win; explicit overrides bypass discovery. Path diagnostics are non-mutating and
+    verbose output explains blocked transitions. Setup refuses blocked transitions before writing and preserves
+    explicit pinning/relative-path anchoring while dropping workspace-derived pinning; existing pinned entries
+    remain effective. Cover different agent environments/working directories, custom XDG settings, all legacy
+    candidates, fresh installs, encrypted stores, CLI/MCP/setup agreement, dry runs, and absence of unintended
+    writes. Preserve demo isolation, explicit Docker paths, encryption, and private-file protections. Update
+    current-behavior guides with deliberate, SQLite-consistent transition instructions and record compatibility
+    and release classification before shipping. Run focused tests and required repository checks plus `uv build`.
+  - **Out:** automatic relocation/copy/merge/deletion, schema changes, new migration command, dependencies,
+    agent-specific storage/configuration, sandbox permission grants, or new synchronization/concurrency guarantees.

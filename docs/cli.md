@@ -844,6 +844,10 @@ redirecting the stream elsewhere is your own disclosure decision.
 
 ## Database location resolution
 
+**Planned change, not implemented:** [M27](specs/m27-shared-user-database.md) will use `~/.pctx/people.db` as the
+shared default, remove workspace discovery, and require explicit transition for legacy stores. The order below
+describes current behavior, including the setup behavior documented above.
+
 The CLI and server use the same first-match order:
 
 1. explicit `--db`/server argument;

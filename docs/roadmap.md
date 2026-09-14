@@ -245,3 +245,18 @@ new candidate type, or native Ideashell integration. M26 is independent of M25.
 
 **Spec:** [M26 — Transcript attribution review](specs/m26-transcript-attribution-review.md).
 **PRs:** [M26 checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
+
+## M27 — Shared per-user database
+
+**Status:** Planned — not implemented.
+
+Use `~/.pctx/people.db` as the common CLI/MCP default, preserving explicit argument, environment, and config-file
+overrides. Remove automatic OpenClaw workspace selection. Require an explicit transition when legacy databases
+would otherwise be stranded; never automatically move, copy, merge, or delete them. Keep demo isolation,
+encryption, and private-file protections. Sharing requires matching user homes, filesystem access, and overrides.
+
+M27.1 delivers resolution, transition protection, setup/diagnostics, regression checks, and shipped documentation
+in one PR. This documentation entry does not change the current default.
+
+**Spec:** [M27 — Shared per-user database](specs/m27-shared-user-database.md).
+**PRs:** [M27 checklist](specs/pr-plan.md#m27--shared-per-user-database).
