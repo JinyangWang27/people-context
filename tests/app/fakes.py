@@ -167,6 +167,17 @@ class FakeContextReader:
             and (record.relationship.period.valid_to is None or record.relationship.period.valid_to >= as_of)
         ]
 
+    def list_active_relationships_between(
+        self, person_a_id: str, person_b_id: str, as_of: date, limit: int
+    ) -> list[Relationship]:
+        pair = {person_a_id, person_b_id}
+        rows = [
+            record.relationship
+            for record in self.list_active_relationships(person_a_id, as_of)
+            if {record.relationship.subject_id, record.relationship.object_id} == pair
+        ]
+        return sorted(rows, key=lambda relationship: relationship.id)[: limit + 1]
+
     def list_active_affiliations(self, person_id: str, as_of: date) -> list[AffiliationRecord]:
         return [
             record

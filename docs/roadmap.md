@@ -269,7 +269,8 @@ in one PR.
 
 ## M28 — Groups, memberships, and shared connections
 
-**Status:** M28.1 delivered; M28.2 and M28.3 planned — not implemented. M28.1 added identified groups and
+**Status:** M28.1 and M28.2 delivered; M28.3 planned — not implemented. M28.2 added the explicit
+`explain_shared_connections` / `pctx group shared` lookup. M28.1 added identified groups and
 membership assertions with independent sensitivity, explicit temporal basis, bounded `pctx group` and MCP
 management/reads, correction and historical closure, merge, hard forget, plain export, and sync bundle version 5.
 

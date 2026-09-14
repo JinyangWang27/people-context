@@ -96,6 +96,7 @@ repurposed, and new fields are additive.
 | Group search | `people-context-group-search` | `1` | `pctx group find --json`, `find_groups` |
 | Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
 | Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
+| Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
 | Bootstrap sync bundle | `people-context-sync-bundle` | `5` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this

@@ -17,8 +17,8 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) M28.2 explicit shared-context
-lookup and M28.3 reviewed capture. Commands below describe delivered behavior, including M28.1 `group`.
+**Planned, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) M28.3 reviewed capture. Commands
+below describe delivered behavior, including M28.1 `group` and M28.2 `group shared`.
 
 | Command | Purpose |
 |---|---|
@@ -349,6 +349,7 @@ uv run pctx group add-member 01K... "Alice Zhang" --role student --from 2015-09-
 uv run pctx group memberships "Alice Zhang" --json
 uv run pctx group close-member 01K... --ended-on 2024-06-30
 uv run pctx group correct membership 01K... --set valid_to=
+uv run pctx group shared "Alice Zhang" "Bob Li" --json
 ```
 
 A group is a context people take part in, not proof that they know each other; see
@@ -363,6 +364,13 @@ warning on stderr so a redirected `--json` document stays pure. `--json` prints 
 `people-context-group-search`, `people-context-group`, or `people-context-person-memberships` document. Unknown
 ids and people exit 1; ambiguous names and invalid input exit 2 with a diagnostic that never echoes submitted
 values. Reads write nothing.
+
+`shared` explains how two people share identified groups, and when, deriving the answer at read time from their
+memberships in the same group. `classmates` and `teammates` labels need two `student` roles in a `class` or two
+`participant` roles in a `team` plus recorded dates that prove a common day; everything else is shared context
+only, with `temporal` `disjoint` or `unknown` when the dates cannot prove overlap. Direct relationships between the
+two are listed separately. `--json` prints the versioned `people-context-shared-connections` document described
+in [mcp-interface.md](mcp-interface.md#explain_shared_connections); naming the same person twice exits 2.
 
 ## Person timeline
 

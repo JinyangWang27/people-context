@@ -778,7 +778,7 @@ M27's scope remain unchanged. M28 is independent of M27; internal dependencies a
   - **Out:** automatic legacy conversion, arbitrary hierarchy inference, inferred pairwise edges, group merging,
     automatic grade advancement, or speculative durable membership.
 
-- [ ] **M28.2 — Explain shared connections**
+- [x] **M28.2 — Explain shared connections**
   - **Scope:** Add an explicit bounded pairwise CLI/MCP lookup using M28.1 memberships and permitted evidence.
   - **Acceptance:** distinguish shared context, derived labels, and direct assertions; explain temporal certainty
     with supporting record references. Classmate/teammate labels require compatible roles and established overlap;

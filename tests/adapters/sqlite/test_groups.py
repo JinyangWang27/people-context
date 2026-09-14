@@ -1,4 +1,7 @@
-"""SQLite groups and memberships (M28.1): storage, disclosure, lifecycle, and portability."""
+"""SQLite groups and memberships (M28.1) and shared connections (M28.2).
+
+Covers storage, disclosure, lifecycle, portability, and read-time connection derivation.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +19,8 @@ from people_context.adapters.sqlite.db import open_db
 from people_context.app.exports.sync_bundle import render_bundle_json
 from people_context.app.groups.commands import AddGroupMembershipInput, CloseGroupMembershipInput, CreateGroupInput
 from people_context.app.people import RememberPersonInput
+from people_context.app.records import CorrectRecordInput
+from people_context.app.relationships.commands import SetRelationshipInput
 from people_context.domain.group import GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.shared import Sensitivity
 from people_context.domain.sync_bundle import SYNC_BUNDLE_VERSION, InvalidBundleError, TargetNotEmptyError
@@ -222,6 +227,122 @@ class TestLifecycle:
         ).fetchall()
         # The reparenting shares the merge's own transaction with the survivor's update.
         assert {"person", "group_membership"} <= {row["entity_type"] for row in merge_rows}
+
+
+class TestSharedConnections:
+    def _classmates(self, runtime: ApplicationRuntime) -> tuple[str, str, str, str, str]:
+        alice, bob = _person(runtime, "Alice"), _person(runtime, "Bob")
+        group = _group(runtime)
+        period: dict[str, Any] = {"role": MembershipRole.STUDENT, "valid_from": date(2015, 9, 1)}
+        first = _member(runtime, group, alice, valid_to=date(2016, 6, 30), **period)
+        second = _member(runtime, group, bob, valid_to=date(2016, 7, 15), **period)
+        return alice, bob, group, first, second
+
+    def _labels(self, runtime: ApplicationRuntime, a: str, b: str) -> list[str | None]:
+        return [row.label for row in runtime.use_cases.explain_shared_connections.execute(a, b).connections]
+
+    def test_the_lookup_writes_nothing_and_leaves_graph_reads_unchanged(self, runtime: ApplicationRuntime) -> None:
+        alice, bob, _, first, second = self._classmates(runtime)
+        carol = _person(runtime, "Carol")
+        for person in (alice, bob):
+            runtime.use_cases.set_relationship.execute(
+                SetRelationshipInput(subject_id=person, object_id=carol, type="friend_of")
+            )
+        before = [_count(runtime.conn, table) for table in ("audit_log", "changelog", "relationships")]
+        path = runtime.use_cases.find_connection.execute(alice, bob)
+        graph = runtime.use_cases.get_relationship_graph.execute(alice)
+
+        document = runtime.use_cases.explain_shared_connections.execute(alice, bob, include_sensitive=True)
+
+        assert [(row.membership_a.id, row.membership_b.id, row.label) for row in document.connections] == [
+            (first, second, "classmates")
+        ]
+        assert document.direct_relationships == []
+        assert [_count(runtime.conn, table) for table in ("audit_log", "changelog", "relationships")] == before
+        assert runtime.use_cases.find_connection.execute(alice, bob) == path
+        assert runtime.use_cases.get_relationship_graph.execute(alice) == graph
+
+    def test_a_direct_relationship_is_reported_separately(self, runtime: ApplicationRuntime) -> None:
+        alice, bob = _person(runtime, "Alice"), _person(runtime, "Bob")
+        relationship = runtime.use_cases.set_relationship.execute(
+            SetRelationshipInput(subject_id=bob, object_id=alice, type="friend_of")
+        )
+
+        document = runtime.use_cases.explain_shared_connections.execute(alice, bob)
+
+        assert document.connections == []
+        assert [row.id for row in document.direct_relationships] == [relationship.id]
+
+    def test_direct_relationships_are_read_for_the_pair_only_and_bounded(self, runtime: ApplicationRuntime) -> None:
+        alice, bob = _person(runtime, "Alice"), _person(runtime, "Bob")
+        for index in range(3):
+            other = _person(runtime, f"Other {index}")
+            runtime.use_cases.set_relationship.execute(
+                SetRelationshipInput(subject_id=alice, object_id=other, type="friend_of")
+            )
+        pair = sorted(
+            runtime.use_cases.set_relationship.execute(SetRelationshipInput(subject_id=a, object_id=b, type=kind)).id
+            for a, b, kind in ((alice, bob, "friend_of"), (bob, alice, "mentor_of"))
+        )
+
+        rows = runtime.context_reader.list_active_relationships_between(alice, bob, _NOW.date(), 1)
+        document = runtime.use_cases.explain_shared_connections.execute(alice, bob, limit=1)
+
+        assert [row.id for row in rows] == pair
+        assert [row.id for row in document.direct_relationships] == pair[:1]
+        assert document.direct_relationships_truncated is True
+
+    def test_correction_changes_the_next_lookup(self, runtime: ApplicationRuntime) -> None:
+        alice, bob, _, first, _ = self._classmates(runtime)
+
+        runtime.use_cases.correct_record.execute(
+            CorrectRecordInput(entity_type="group_membership", entity_id=first, fields={"role": "teacher"})
+        )
+
+        assert self._labels(runtime, alice, bob) == [None]
+
+    def test_correcting_a_membership_to_sensitive_hides_it_from_ordinary_lookups(
+        self, runtime: ApplicationRuntime
+    ) -> None:
+        alice, bob, _, first, _ = self._classmates(runtime)
+
+        runtime.use_cases.correct_record.execute(
+            CorrectRecordInput(entity_type="group_membership", entity_id=first, fields={"sensitivity": "sensitive"})
+        )
+
+        assert self._labels(runtime, alice, bob) == []
+        document = runtime.use_cases.explain_shared_connections.execute(alice, bob, include_sensitive=True)
+        assert [row.label for row in document.connections] == ["classmates"]
+
+    def test_closure_before_the_other_start_removes_the_overlap(self, runtime: ApplicationRuntime) -> None:
+        alice, bob = _person(runtime, "Alice"), _person(runtime, "Bob")
+        team = _group(runtime, "Platform", kind=GroupKind.TEAM)
+        ongoing: dict[str, Any] = {"role": MembershipRole.PARTICIPANT, "temporal_basis": TemporalBasis.ONGOING}
+        first = _member(runtime, team, alice, valid_from=date(2020, 1, 1), **ongoing)
+        _member(runtime, team, bob, valid_from=date(2024, 1, 1), **ongoing)
+        assert self._labels(runtime, alice, bob) == ["teammates"]
+
+        runtime.use_cases.close_group_membership.execute(
+            CloseGroupMembershipInput(membership_id=first, ended_on=date(2022, 12, 31))
+        )
+
+        [connection] = runtime.use_cases.explain_shared_connections.execute(alice, bob).connections
+        assert (connection.label, connection.temporal.value) == (None, "disjoint")
+
+    def test_merge_and_forget_change_the_next_lookup(self, runtime: ApplicationRuntime) -> None:
+        alice, bob, group, _, _ = self._classmates(runtime)
+        duplicate = _person(runtime, "Bob Duplicate")
+        _member(runtime, group, duplicate, role=MembershipRole.TEACHER)
+
+        runtime.use_cases.merge_people.execute(bob, duplicate)
+
+        assert sorted(self._labels(runtime, alice, bob), key=str) == [None, "classmates"]
+        assert runtime.use_cases.explain_shared_connections.execute(alice, duplicate).found is False
+
+        runtime.use_cases.forget.execute(bob, "person")
+
+        assert runtime.use_cases.explain_shared_connections.execute(alice, bob).found is False
+        assert _count(runtime.conn, "group_memberships") == 1
 
 
 class TestPortability:
