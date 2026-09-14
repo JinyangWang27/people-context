@@ -5,6 +5,10 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 
 ## Annotations
 
+**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds group/membership
+management, an explicit pairwise shared-context lookup, and reviewed capture support. Existing tools and graph
+results keep their current meanings; the planned interfaces are not available yet.
+
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
 - default write annotation: clients should apply normal write approval.
 - `destructiveHint=true`: irreversible/restructuring operations (`merge_people`, `forget`).

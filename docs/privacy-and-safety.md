@@ -86,8 +86,14 @@ present look tidy, and a value that was historically correct is never overwritte
 
 ## Sensitivity levels and defaults
 
-Every assertive record (facts, observations, traits, interactions, relationships, affiliations) carries a
-`sensitivity` value:
+Facts, observations, traits, and interactions carry a `sensitivity` value. Relationships and affiliations
+currently do not; their fields must not be used to store content that requires sensitivity filtering.
+
+**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) protects group identity
+and membership assertions independently and filters evidence before deriving shared connections. It does not
+retrofit sensitivity onto existing relationships or affiliations or make those existing records private.
+
+The existing sensitivity levels are:
 
 | Level | Meaning | Default inclusion in context responses |
 |---|---|---|

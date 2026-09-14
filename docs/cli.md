@@ -17,6 +17,9 @@ what encryption does and does not protect.
 
 ## Commands
 
+**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds group/membership
+management, explicit shared-context lookup, and reviewed capture. Commands below describe delivered behavior.
+
 | Command | Purpose |
 |---|---|
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
