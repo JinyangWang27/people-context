@@ -1,4 +1,4 @@
-"""CLI behaviour for `pctx group` management and reads (M28.1)."""
+"""CLI behaviour for `pctx group` management, reads (M28.1), and shared connections (M28.2)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pytest
 
 from people_context import cli
 from people_context.adapters.sqlite import SqlitePeopleRepository, open_db
+from people_context.app.groups.connections import SHARED_CONNECTIONS_FORMAT, SHARED_CONNECTIONS_VERSION
 from people_context.app.groups.queries import GROUP_DETAIL_FORMAT, GROUP_DOCUMENT_VERSION, PERSON_MEMBERSHIPS_FORMAT
 from people_context.cli.groups import GROUP_SENSITIVE_WARNING
 from people_context.domain.person import Person
@@ -163,3 +164,42 @@ def test_a_rejected_basis_does_not_echo_submitted_values(tmp_path: Path, capsys:
     assert code == 2
     assert "cannot carry dates" in err
     assert "private-attribution" not in err
+
+
+def test_shared_explains_classmates_in_json_and_text_without_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = _db(tmp_path)
+    group = _json(db_file, capsys, "create", "Class 1, Grade 6", "--kind", "class")
+    for name, end in (("Alice Zhang", "2016-06-30"), ("Bob Li", "2016-07-15")):
+        _json(
+            db_file, capsys, "add-member", group["id"], name, "--role", "student", "--from", "2015-09-01", "--to", end
+        )
+    hidden = _json(db_file, capsys, "create", "Support circle", "--kind", "community", "--sensitivity", "sensitive")
+    for name in ("Alice Zhang", "Bob Li"):
+        _json(db_file, capsys, "add-member", hidden["id"], name)
+    before = _history(db_file)
+
+    document = _json(db_file, capsys, "shared", "Alice Zhang", "Bob Li")
+    assert cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Bob Li"]) == 0
+    text = capsys.readouterr().out
+    code = cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Bob Li", "--include-sensitive", "--json"])
+    revealed = capsys.readouterr()
+
+    assert (document["format"], document["version"]) == (SHARED_CONNECTIONS_FORMAT, SHARED_CONNECTIONS_VERSION)
+    assert [(row["label"], row["temporal"]) for row in document["connections"]] == [("classmates", "overlap")]
+    assert "classmates" in text and "2015-09-01..2016-06-30" in text
+    assert code == 0 and GROUP_SENSITIVE_WARNING in revealed.err
+    assert len(json.loads(revealed.out)["connections"]) == 2
+    assert _history(db_file) == before
+
+
+def test_shared_reports_no_groups_and_refuses_bad_people(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db_file = _db(tmp_path)
+
+    assert cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Bob Li"]) == 0
+    assert "No shared groups found" in capsys.readouterr().out
+    assert cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Nobody Here"]) == 1
+    assert "No person found" in capsys.readouterr().err
+    assert cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Alice Zhang"]) == 2
+    assert "two different people" in capsys.readouterr().err

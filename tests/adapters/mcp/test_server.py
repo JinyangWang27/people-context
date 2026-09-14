@@ -73,6 +73,7 @@ EXPECTED_TOOLS = {
     "find_groups",
     "get_group",
     "list_group_memberships",
+    "explain_shared_connections",
     # destructive stubs
     "merge_people",
     "forget",

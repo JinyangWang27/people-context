@@ -1,4 +1,4 @@
-"""MCP tools for identified groups and membership assertions (M28.1)."""
+"""MCP tools for identified groups, membership assertions (M28.1), and shared connections (M28.2)."""
 
 from __future__ import annotations
 
@@ -158,5 +158,42 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return target
         try:
             return deps.list_person_memberships.execute(target, limit=limit).model_dump(mode="json")
+        except GroupQueryError as exc:
+            return {"error": "invalid_parameter", "message": str(exc)}
+
+    @mcp.tool(annotations=_READ_ONLY)
+    @flag_refusals
+    async def explain_shared_connections(
+        person_a_id: str | None = None,
+        person_b_id: str | None = None,
+        limit: int = DEFAULT_GROUP_LIMIT,
+        person_a: str | None = None,
+        person_b: str | None = None,
+    ) -> dict[str, Any]:
+        """Explain how two people are connected through groups they were both recorded in, and when.
+
+        Use for shared-background, introduction, and "how do they know each other" questions. Pass
+        each person as an id (`person_a_id`, `person_b_id`) or a name (`person_a`, `person_b`).
+
+        Each connection is one membership of each person in the same group, cited in full. `label`
+        is `classmates` (both `student` in a `class`) or `teammates` (both `participant` in a
+        `team`) only when the recorded dates prove a common day (`temporal: overlap`, with the
+        `overlap` period); otherwise the connection is `shared_context` only. `temporal` is
+        `disjoint` when the dates exclude a common time and `unknown` when they cannot tell. Sharing a
+        club, household, or community is not friendship, kinship, or acquaintance; different groups
+        under one organization, and people linked through a third person, share nothing here.
+        `direct_relationships` are recorded relationships between the two, kept apart from derived
+        results. No result means no shared group was found, not that they do not know each other.
+        Only ordinary groups and memberships are used; `truncated` and `memberships_truncated`
+        report a partial answer.
+        """
+        first = resolve_reference(deps, person_id=person_a_id, person=person_a)
+        if isinstance(first, dict):
+            return first
+        second = resolve_reference(deps, person_id=person_b_id, person=person_b)
+        if isinstance(second, dict):
+            return second
+        try:
+            return deps.explain_shared_connections.execute(first, second, limit=limit).model_dump(mode="json")
         except GroupQueryError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}

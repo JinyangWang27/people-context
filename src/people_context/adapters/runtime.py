@@ -73,6 +73,7 @@ from people_context.app.exports import (
     ListPersonIndex,
 )
 from people_context.app.groups.commands import AddGroupMembership, CloseGroupMembership, CreateGroup
+from people_context.app.groups.connections import ExplainSharedConnections
 from people_context.app.groups.queries import FindGroups, GetGroup, ListPersonMemberships
 from people_context.app.imports import (
     CandidateStager,
@@ -166,6 +167,7 @@ class RuntimeUseCases:
     find_groups: FindGroups
     get_group: GetGroup
     list_person_memberships: ListPersonMemberships
+    explain_shared_connections: ExplainSharedConnections
     set_reminder: SetReminder
     complete_reminder: CompleteReminder
     set_communication_philosophy: SetCommunicationPhilosophy
@@ -368,6 +370,7 @@ def build_runtime(
         find_groups=FindGroups(groups, organizations),
         get_group=GetGroup(records, groups, organizations),
         list_person_memberships=ListPersonMemberships(repo, groups, organizations),
+        explain_shared_connections=ExplainSharedConnections(repo, groups, organizations, context_reader, runtime_clock),
         set_reminder=SetReminder(repo, records, audit, runtime_clock),
         complete_reminder=CompleteReminder(records, records, audit, runtime_clock, people=repo),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences, audit, runtime_clock),

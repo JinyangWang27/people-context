@@ -1,4 +1,4 @@
-"""In-memory MCP-session tests for group management and ordinary group reads (M28.1)."""
+"""In-memory MCP-session tests for group management, ordinary group reads (M28.1), and shared connections (M28.2)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from mcp.client import Client
 
 from people_context.adapters.mcp.server import build_server
 
-_READS = ("find_groups", "get_group", "list_group_memberships")
+_READS = ("find_groups", "get_group", "list_group_memberships", "explain_shared_connections")
 _WRITES = ("create_group", "add_group_membership", "close_group_membership")
 
 
@@ -152,3 +152,43 @@ def test_refusals_are_structured(tmp_path: Path) -> None:
     assert (missing_group["error"], missing_group["entity_type"]) == ("record_not_found", "group")
     assert bad_limit["error"] == "invalid_parameter"
     assert missing_membership["error"] == "record_not_found"
+
+
+def test_shared_connections_resolve_names_use_ordinary_disclosure_and_write_nothing(tmp_path: Path) -> None:
+    database = tmp_path / "groups.db"
+    server = build_server(database)
+
+    async def flow(client: Client) -> tuple[dict[str, Any], ...]:
+        alice, bob = await _person(client, "Alice"), await _person(client, "Bob")
+        klass = await _call(client, "create_group", name="Class 1, Grade 6", kind="class")
+        hidden = await _call(client, "create_group", name="Support circle", kind="community", sensitivity="sensitive")
+        for person, end in ((alice, "2016-06-30"), (bob, "2016-07-15")):
+            await _call(
+                client,
+                "add_group_membership",
+                person_id=person,
+                group_id=klass["id"],
+                role="student",
+                valid_from="2015-09-01",
+                valid_to=end,
+            )
+            await _call(client, "add_group_membership", person_id=person, group_id=hidden["id"])
+        before = _history(database)
+        results = (
+            await _call(client, "explain_shared_connections", person_a="Alice", person_b_id=bob),
+            await _call(client, "explain_shared_connections", person_a_id=alice, person_b_id=alice),
+            await _call(client, "explain_shared_connections", person_a_id=alice, person_b="Nobody"),
+        )
+        assert _history(database) == before
+        return results
+
+    shared, same, missing = _run(server, flow)
+
+    assert shared["format"] == "people-context-shared-connections"
+    [connection] = shared["connections"]
+    assert connection["group"]["group"]["name"] == "Class 1, Grade 6"
+    assert (connection["connection"], connection["label"]) == ("derived_relation", "classmates")
+    assert connection["overlap"] == {"valid_from": "2015-09-01", "valid_to": "2016-06-30"}
+    assert shared["truncated"] is False and shared["memberships_truncated"] is False
+    assert same["error"] == "invalid_parameter"
+    assert missing["error"] == "person_not_found"

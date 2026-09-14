@@ -1,4 +1,4 @@
-"""`pctx group`: manage identified groups and membership assertions (M28.1)."""
+"""`pctx group`: manage identified groups and memberships (M28.1) and explain shared connections (M28.2)."""
 
 from __future__ import annotations
 
@@ -203,6 +203,56 @@ def cmd_group_memberships(runtime: ApplicationRuntime, args: argparse.Namespace)
     return 0
 
 
+def cmd_group_shared(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    first, exit_code = resolve_person(runtime, args.person_a)
+    if first is None:
+        return exit_code
+    second, exit_code = resolve_person(runtime, args.person_b)
+    if second is None:
+        return exit_code
+    try:
+        document = runtime.use_cases.explain_shared_connections.execute(
+            first.id, second.id, limit=args.limit, include_sensitive=args.include_sensitive
+        )
+    except GroupQueryError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    _warn_if_sensitive(args)
+    if args.json:
+        print(render_json_document(document), end="")
+        return 0
+    print(f"{first.canonical_name} ({first.id}) and {second.canonical_name} ({second.id})")
+    if document.connections:
+        print_table(
+            ["GROUP", "CONNECTION", "LABEL", "TEMPORAL", "OVERLAP", "A MEMBERSHIP", "B MEMBERSHIP"],
+            [
+                (
+                    row.group.group.name,
+                    row.connection.value,
+                    row.label or "",
+                    row.temporal.value,
+                    f"{row.overlap.valid_from}..{row.overlap.valid_to}" if row.overlap else "",
+                    row.membership_a.id,
+                    row.membership_b.id,
+                )
+                for row in document.connections
+            ],
+        )
+    else:
+        print("No shared groups found. This does not mean they do not know each other.")
+    _more(document.truncated, "connections")
+    if document.memberships_truncated:
+        print("\nOne of them has more memberships than one lookup reads; the result may be partial.")
+    if document.direct_relationships:
+        print("\nDirect relationships:")
+        print_table(
+            ["ID", "SUBJECT", "TYPE", "OBJECT"],
+            [(row.id, row.subject_id, row.type, row.object_id) for row in document.direct_relationships],
+        )
+    _more(document.direct_relationships_truncated, "direct relationships")
+    return 0
+
+
 def _write(args: argparse.Namespace, action: Callable[[], BaseModel], verb: str) -> int:
     """Run one write and report it; not-found exits 1 and invalid input exits 2."""
     try:
@@ -260,4 +310,5 @@ _GROUP_SUBCOMMANDS: dict[str, Callable[[ApplicationRuntime, argparse.Namespace],
     "close-member": cmd_group_close_member,
     "correct": cmd_group_correct,
     "memberships": cmd_group_memberships,
+    "shared": cmd_group_shared,
 }

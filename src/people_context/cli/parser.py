@@ -164,6 +164,11 @@ def _add_group_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentPa
     memberships.add_argument("person", help="A person id, or a name to resolve.")
     read_flags(memberships, "memberships")
 
+    shared = commands.add_parser("shared", help="Explain how two people share groups, and when (M28.2).")
+    shared.add_argument("person_a", help="A person id, or a name to resolve.")
+    shared.add_argument("person_b", help="A person id, or a name to resolve.")
+    read_flags(shared, "connections and direct relationships")
+
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the top-level argparse parser and its subcommands."""
