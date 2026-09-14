@@ -10,6 +10,7 @@ from people_context import __version__
 from people_context.adapters.importers.router import SUPPORTED_IMPORT_SOURCES
 from people_context.app.capture import CaptureKind
 from people_context.app.exports import DEFAULT_VCARD_VERSION
+from people_context.app.groups.queries import DEFAULT_GROUP_LIMIT, MAX_GROUP_LIMIT, MIN_GROUP_LIMIT
 from people_context.app.imports import (
     DEFAULT_SOURCE_PAGE_LIMIT,
     MAX_SOURCE_PAGE_LIMIT,
@@ -36,6 +37,7 @@ from people_context.app.sync import (
     MIN_INTERVAL_SECONDS,
 )
 from people_context.cli.setup import CLIENTS, SCOPES
+from people_context.domain.group import GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import Sensitivity
 from people_context.domain.trait import TraitCategory
@@ -83,6 +85,89 @@ def _add_page_arguments(parser: argparse.ArgumentParser, subject: str) -> None:
         default=None,
         help="Opaque cursor from a previous page's `next_cursor`; omit it to start from the first page.",
     )
+
+
+def _add_group_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Add `pctx group` and its management and read subcommands (M28.1)."""
+    group_cmd = subparsers.add_parser("group", help="Manage identified groups and membership assertions.")
+    commands = group_cmd.add_subparsers(dest="group_command", required=True)
+    levels = [level.value for level in Sensitivity]
+
+    def json_flag(parser: argparse.ArgumentParser, what: str) -> None:
+        parser.add_argument("--json", action="store_true", help=f"Print {what} as JSON instead of text.")
+
+    def read_flags(parser: argparse.ArgumentParser, subject: str) -> None:
+        parser.add_argument(
+            "--limit",
+            type=int,
+            default=DEFAULT_GROUP_LIMIT,
+            help=f"Maximum {subject} in one page ({MIN_GROUP_LIMIT}..{MAX_GROUP_LIMIT}).",
+        )
+        parser.add_argument(
+            "--include-sensitive",
+            action="store_true",
+            help="Include sensitive and restricted groups and memberships, which MCP reads never disclose.",
+        )
+        json_flag(parser, "the versioned JSON document")
+
+    create = commands.add_parser("create", help="Create a new group; an equal name never reuses an existing one.")
+    create.add_argument("name", help="Group name, e.g. 'Class 1, Grade 6'.")
+    create.add_argument("--kind", required=True, choices=[kind.value for kind in GroupKind], help="Kind of group.")
+    create.add_argument("--organization", default=None, help="Existing organization id to place the group under.")
+    create.add_argument("--sensitivity", choices=levels, default=Sensitivity.PERSONAL.value)
+    json_flag(create, "the created group")
+
+    find = commands.add_parser("find", help="List candidate groups by name; matches are not identity.")
+    find.add_argument("name", nargs="?", default=None, help="Text the normalized group name contains.")
+    find.add_argument("--kind", default=None, choices=[kind.value for kind in GroupKind])
+    read_flags(find, "groups")
+
+    show = commands.add_parser("show", help="Show one group and a bounded page of its memberships.")
+    show.add_argument("group_id", help="Group id.")
+    read_flags(show, "memberships")
+
+    add_member = commands.add_parser("add-member", help="Record that a person held a role in a group.")
+    add_member.add_argument("group_id", help="Group id.")
+    add_member.add_argument("person", help="A person id, or a name to resolve.")
+    add_member.add_argument("--role", choices=[role.value for role in MembershipRole], default="member")
+    add_member.add_argument("--from", dest="valid_from", default=None, help="Known start date (YYYY-MM-DD).")
+    add_member.add_argument("--to", dest="valid_to", default=None, help="Known end date (YYYY-MM-DD).")
+    add_member.add_argument(
+        "--basis",
+        choices=[basis.value for basis in TemporalBasis],
+        default=None,
+        help="What the dates assert; inferred from them when omitted, except `ongoing`.",
+    )
+    add_member.add_argument("--confidence", type=float, default=None)
+    add_member.add_argument("--sensitivity", choices=levels, default=Sensitivity.PERSONAL.value)
+    add_member.add_argument("--stated-by", default=None, help="Who asserted this membership.")
+    json_flag(add_member, "the created membership")
+
+    close_member = commands.add_parser("close-member", help="Record the last day a membership held.")
+    close_member.add_argument("membership_id", help="Membership id.")
+    close_member.add_argument("--ended-on", required=True, help="Last day of the membership (YYYY-MM-DD).")
+    json_flag(close_member, "the closed membership")
+
+    correct = commands.add_parser("correct", help="Correct an erroneous group or membership in place.")
+    correct.add_argument("entity", choices=["group", "membership"])
+    correct.add_argument("entity_id", help="Group or membership id.")
+    correct.add_argument(
+        "--set",
+        action="append",
+        required=True,
+        metavar="FIELD=VALUE",
+        help="Field to correct; repeatable. An empty value clears an optional field.",
+    )
+    json_flag(correct, "the corrected record")
+
+    memberships = commands.add_parser("memberships", help="List one person's memberships with each group.")
+    memberships.add_argument("person", help="A person id, or a name to resolve.")
+    read_flags(memberships, "memberships")
+
+    shared = commands.add_parser("shared", help="Explain how two people share groups, and when (M28.2).")
+    shared.add_argument("person_a", help="A person id, or a name to resolve.")
+    shared.add_argument("person_b", help="A person id, or a name to resolve.")
+    read_flags(shared, "connections and direct relationships")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -534,6 +619,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the versioned source detail JSON document instead of the human summary.",
     )
+
+    _add_group_parser(subparsers)
 
     subparsers.add_parser("init", help="Interactively seed self identity and optional contact data.")
 

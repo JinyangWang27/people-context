@@ -11,6 +11,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from people_context.domain.fact import Fact
+from people_context.domain.group import Group, GroupKind, GroupMembership
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation, Organization
@@ -165,6 +166,17 @@ class FakeContextReader:
             if person_id in (record.relationship.subject_id, record.relationship.object_id)
             and (record.relationship.period.valid_to is None or record.relationship.period.valid_to >= as_of)
         ]
+
+    def list_active_relationships_between(
+        self, person_a_id: str, person_b_id: str, as_of: date, limit: int
+    ) -> list[Relationship]:
+        pair = {person_a_id, person_b_id}
+        rows = [
+            record.relationship
+            for record in self.list_active_relationships(person_a_id, as_of)
+            if {record.relationship.subject_id, record.relationship.object_id} == pair
+        ]
+        return sorted(rows, key=lambda relationship: relationship.id)[: limit + 1]
 
     def list_active_affiliations(self, person_id: str, as_of: date) -> list[AffiliationRecord]:
         return [
@@ -460,6 +472,66 @@ class FakeRecordStore:
                 reminder.id,
             ),
         )
+
+
+class FakeGroupStore:
+    """In-memory `GroupStore` sharing a `FakeRecordStore`, so correction and closure see its rows.
+
+    Reads copy the adapter contract: disclosure is applied before the limit, a membership is
+    visible only with its group, and one row past `limit` is returned.
+    """
+
+    def __init__(self, records: FakeRecordStore) -> None:
+        self.records = records
+
+    def save_group(self, group: Group) -> None:
+        self.records.records[("group", group.id)] = group
+
+    def save_membership(self, membership: GroupMembership) -> None:
+        self.records.records[("group_membership", membership.id)] = membership
+
+    def _all(self, entity_type: str) -> list[Any]:
+        return [record for (kind, _), record in self.records.records.items() if kind == entity_type]
+
+    def find_groups(
+        self,
+        *,
+        name: str | None,
+        kind: GroupKind | None,
+        limit: int,
+        sensitivities: tuple[Sensitivity, ...],
+    ) -> list[Group]:
+        rows = [
+            group
+            for group in self._all("group")
+            if group.sensitivity in sensitivities
+            and (name is None or normalize_name(name) in normalize_name(group.name))
+            and (kind is None or group.kind == kind)
+        ]
+        return sorted(rows, key=lambda group: (normalize_name(group.name), group.id))[: limit + 1]
+
+    def _visible(self, membership: GroupMembership, sensitivities: tuple[Sensitivity, ...]) -> bool:
+        group = self.records.get_record("group", membership.group_id)
+        return membership.sensitivity in sensitivities and group is not None and group.sensitivity in sensitivities
+
+    @staticmethod
+    def _order(membership: GroupMembership) -> tuple[bool, str, str]:
+        start = membership.period.valid_from
+        return (start is None, start.isoformat() if start else "", membership.id)
+
+    def list_group_memberships(
+        self, group_id: str, *, limit: int, sensitivities: tuple[Sensitivity, ...]
+    ) -> list[GroupMembership]:
+        rows = [m for m in self._all("group_membership") if m.group_id == group_id and self._visible(m, sensitivities)]
+        return sorted(rows, key=self._order)[: limit + 1]
+
+    def list_person_memberships(
+        self, person_id: str, *, limit: int, sensitivities: tuple[Sensitivity, ...]
+    ) -> list[tuple[GroupMembership, Group]]:
+        rows = [
+            m for m in self._all("group_membership") if m.person_id == person_id and self._visible(m, sensitivities)
+        ]
+        return [(m, self.records.get_record("group", m.group_id)) for m in sorted(rows, key=self._order)[: limit + 1]]
 
 
 class FakeOrganizationStore:

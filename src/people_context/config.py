@@ -1,7 +1,11 @@
 """Database path and encryption-key resolution.
 
 Precedence (first hit wins): explicit arg -> PEOPLE_CONTEXT_DB env ->
-config.toml db_path -> agent-workspace auto-detect -> XDG data dir.
+config.toml db_path -> the shared per-user default ``~/.pctx/people.db``.
+
+Earlier releases fell back to an OpenClaw workspace or the XDG data directory. Those
+locations are no longer selected; while one holds a database and the shared default does
+not exist yet, opening refuses instead of creating a fresh store beside it.
 
 The optional at-rest encryption key has no such ladder: it comes only from the
 ``PEOPLE_CONTEXT_DB_KEY`` environment variable, never from a flag value or a
@@ -66,12 +70,40 @@ def resolve_db_key(env: Mapping[str, str] | None = None) -> str:
         )
     return key
 
-# Agent workspaces to auto-detect, in priority order. Each entry maps an optional
-# environment variable (checked first) to a home-relative fallback directory.
-# Adding a new agent workspace is a one-line addition here.
-WORKSPACE_CANDIDATES: list[tuple[str | None, str]] = [
-    ("OPENCLAW_WORKSPACE", ".openclaw/workspace"),
-]
+
+
+#: Home-relative directory of the shared per-user default database.
+SHARED_DB_DIRNAME = ".pctx"
+
+#: Where current-environment legacy databases are documented for an explicit transition.
+TRANSITION_DOCS = "docs/cli.md#upgrading-to-the-shared-default"
+
+
+class LegacyDatabaseTransitionError(RuntimeError):
+    """Raised instead of creating the shared default while a legacy database is visible.
+
+    An earlier release selected a workspace or XDG data path implicitly. Creating a fresh
+    `~/.pctx/people.db` next to such a store would quietly strand its records, so the user has
+    to choose explicitly. The message names only local paths the current process can already see.
+    """
+
+    def __init__(self, default: Path, legacy: list[Path]) -> None:
+        self.default = default
+        self.legacy = legacy
+        found = "\n".join(f"  - {path}" for path in legacy)
+        choice = (
+            "Several legacy databases exist; choose one explicitly — they are never selected by discovery order "
+            "or merged."
+            if len(legacy) > 1
+            else "Select it explicitly to keep using it."
+        )
+        super().__init__(
+            f"Refusing to create the shared default database {default} because a database from an earlier "
+            f"release exists at:\n{found}\n{choice} Pass --db PATH, set PEOPLE_CONTEXT_DB, or set db_path in "
+            "the people-context config.toml; or migrate deliberately with every client stopped, then retry. "
+            f"See {TRANSITION_DOCS}. Only this process's environment was checked; other agent environments "
+            "were not inventoried."
+        )
 
 
 def _expand(path: str | Path) -> Path:
@@ -104,44 +136,71 @@ def _config_file_db_path(env: Mapping[str, str]) -> Path | None:
     return _expand(db_path) if isinstance(db_path, str) and db_path else None
 
 
-def _workspace_db_path(env: Mapping[str, str]) -> Path | None:
-    for env_var, home_relative in WORKSPACE_CANDIDATES:
-        if env_var:
-            value = env.get(env_var)
-            if value:
-                candidate = _expand(value)
-                if candidate.is_dir():
-                    return candidate / "people-context" / DEFAULT_DB_FILENAME
-        fallback = _home(env) / home_relative
-        if fallback.is_dir():
-            return fallback / "people-context" / DEFAULT_DB_FILENAME
-    return None
+def shared_default_db_path(env: Mapping[str, str] | None = None) -> Path:
+    """Return `~/.pctx/people.db` for the current user's home directory."""
+    env = os.environ if env is None else env
+    return _home(env) / SHARED_DB_DIRNAME / DEFAULT_DB_FILENAME
+
+
+def legacy_db_candidates(env: Mapping[str, str] | None = None) -> list[Path]:
+    """Return every legacy default location visible to this environment, in documented order.
+
+    Workspace candidates count only when their workspace directory exists, matching where an
+    earlier release could have put a database. Nothing is created or opened.
+    """
+    env = os.environ if env is None else env
+    candidates: list[Path] = []
+    workspace = env.get("OPENCLAW_WORKSPACE")
+    if workspace and _expand(workspace).is_dir():
+        candidates.append(_expand(workspace) / "people-context" / DEFAULT_DB_FILENAME)
+    home_workspace = _home(env) / ".openclaw" / "workspace"
+    if home_workspace.is_dir():
+        candidates.append(home_workspace / "people-context" / DEFAULT_DB_FILENAME)
+    candidates.append(_data_dir(env) / "people-context" / DEFAULT_DB_FILENAME)
+    return list(dict.fromkeys(candidates))
+
+
+def _override_db_path(explicit: str | Path | None, env: Mapping[str, str]) -> Path | None:
+    if explicit is not None:
+        return _expand(explicit)
+    from_env = env.get("PEOPLE_CONTEXT_DB")
+    if from_env:
+        return _expand(from_env)
+    return _config_file_db_path(env)
 
 
 def resolve_db_path(explicit: str | Path | None = None, env: Mapping[str, str] | None = None) -> Path:
     """Resolve the database path following the documented precedence.
 
     `env` defaults to os.environ (injectable for tests). Expands ~ everywhere.
-    Never creates files or directories.
+    Never creates files or directories, and never checks legacy locations: use
+    :func:`resolve_openable_db_path` before opening.
     """
     env = os.environ if env is None else env
+    override = _override_db_path(explicit, env)
+    return override if override is not None else shared_default_db_path(env)
 
-    if explicit is not None:
-        return _expand(explicit)
 
-    from_env = env.get("PEOPLE_CONTEXT_DB")
-    if from_env:
-        return _expand(from_env)
+def blocking_legacy_databases(explicit: str | Path | None = None, env: Mapping[str, str] | None = None) -> list[Path]:
+    """Return the legacy databases that forbid implicitly creating the shared default.
 
-    from_config = _config_file_db_path(env)
-    if from_config is not None:
-        return from_config
+    Empty when an explicit argument, environment variable, or config file selects the path, or
+    when the shared default already exists. Paths are only stat'ed (a dangling link still
+    counts), so encrypted stores are never read.
+    """
+    env = os.environ if env is None else env
+    if _override_db_path(explicit, env) is not None or os.path.lexists(shared_default_db_path(env)):
+        return []
+    return [path for path in legacy_db_candidates(env) if os.path.lexists(path)]
 
-    from_workspace = _workspace_db_path(env)
-    if from_workspace is not None:
-        return from_workspace
 
-    return _data_dir(env) / "people-context" / DEFAULT_DB_FILENAME
+def resolve_openable_db_path(explicit: str | Path | None = None, env: Mapping[str, str] | None = None) -> Path:
+    """Resolve the path a database-opening command may use, refusing a blocked transition."""
+    env = os.environ if env is None else env
+    legacy = blocking_legacy_databases(explicit, env)
+    if legacy:
+        raise LegacyDatabaseTransitionError(shared_default_db_path(env), legacy)
+    return resolve_db_path(explicit, env)
 
 
 def describe_resolution(explicit: str | Path | None = None, env: Mapping[str, str] | None = None) -> list[str]:
@@ -174,18 +233,30 @@ def describe_resolution(explicit: str | Path | None = None, env: Mapping[str, st
         )
     )
 
-    workspace_path = None if explicit_hit or env_val or config_hit else _workspace_db_path(env)
-    workspace_hit = workspace_path is not None
-    lines.append(
-        mark(
-            "agent workspace",
-            workspace_hit,
-            str(workspace_path) if workspace_hit else "(no workspace directory found)",
-        )
-    )
+    default = shared_default_db_path(env)
+    default_hit = not (explicit_hit or env_val or config_hit)
+    if not default_hit:
+        lines.append(mark("shared default", False, f"{default} (not consulted; an override won)"))
+        lines.append(f"=> resolved: {winner}")
+        return lines
 
-    xdg_hit = not (explicit_hit or env_val or config_hit or workspace_hit)
-    lines.append(mark("XDG data dir", xdg_hit, str(_data_dir(env) / "people-context" / DEFAULT_DB_FILENAME)))
-
+    legacy = blocking_legacy_databases(explicit, env)
+    if os.path.lexists(default):
+        state = "exists"
+    elif legacy:
+        state = "BLOCKED: absent, and a legacy database exists"
+    else:
+        state = "absent; created on first database open"
+    lines.append(mark("shared default", True, f"{default} ({state})"))
+    for candidate in legacy_db_candidates(env):
+        found = os.path.lexists(candidate)
+        lines.append(f"[     ] legacy location: {candidate} ({'FOUND' if found else 'not found'})")
     lines.append(f"=> resolved: {winner}")
+    if legacy:
+        lines.append(
+            "=> blocked: commands that open the database refuse rather than create a fresh default. Select a "
+            "legacy database with --db, PEOPLE_CONTEXT_DB, or config.toml db_path, or migrate deliberately; "
+            f"see {TRANSITION_DOCS}."
+        )
+    lines.append("=> note: only this environment was checked; other agent environments were not inventoried.")
     return lines

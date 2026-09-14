@@ -11,6 +11,9 @@ public endpoint, OAuth service, or shared database.
 
 ## Install from GitHub
 
+**Upgrading an existing installation?** Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before a release with the shared `~/.pctx/people.db`
+default starts: inventory each existing client's database with the old version and pin it explicitly.
+
 Add the repository as a marketplace, then install the plugin:
 
 ```bash
@@ -36,14 +39,16 @@ repository. The server runs over stdio and does not listen on a TCP port.
 The plugin passes no `--db` option, so plugin launches use the first matching database location below:
 
 1. `PEOPLE_CONTEXT_DB`;
-2. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`;
-3. `{OPENCLAW_WORKSPACE}/people-context/people.db` when that workspace directory exists;
-4. `~/.openclaw/workspace/people-context/people.db` when that workspace directory exists; or
-5. `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db` as the final fallback.
+2. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`; or
+3. the shared per-user default `~/.pctx/people.db`.
 
 The selected path is outside the installed plugin copy, survives upgrades and uninstallations, and is shared
 with the `pctx` CLI. Run `pctx db-path -v` to inspect the active path and its resolution
 trace.
+
+OpenClaw workspaces and the XDG data directory no longer select a database. If a legacy database is visible
+there and `~/.pctx/people.db` does not exist, the server refuses to start instead of creating a fresh store; see
+the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default).
 
 ## Security model
 
@@ -62,6 +67,8 @@ MCP annotations are advisory metadata, not authorization. Process-level capabili
 high-disclosure boundaries. See [Privacy and Safety](privacy-and-safety.md) for the complete threat model.
 
 ## Update
+
+Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before updating from a release that used the earlier default location.
 
 Refresh the marketplace snapshot and reinstall the plugin after a release:
 

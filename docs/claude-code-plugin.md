@@ -9,6 +9,10 @@ The repository is also a self-hosted Claude Code plugin marketplace. The plugin 
 
 ## Install from GitHub
 
+**Upgrading an existing installation?** Before the plugin updates or starts on a release with the shared
+`~/.pctx/people.db` default, complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default): inventory the database each existing client selects with the old
+version and pin it explicitly. The runtime can only detect legacy stores visible in its own environment.
+
 Add the marketplace:
 
 ```bash
@@ -41,15 +45,19 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
 
 `CLAUDE_PLUGIN_ROOT` points to Claude Code's installed copy of this repository.
 
-The server resolves its database path with the standard chain documented in [cli.md](cli.md) and
-[data-model.md](data-model.md): the `--db` flag, then `PEOPLE_CONTEXT_DB`, then a config file, then an
-agent-workspace directory, and finally the XDG data default `~/.local/share/people-context/people.db`.
-The plugin deliberately passes no `--db` flag, so the database lands at that XDG default. This location
+The server resolves its database path with the standard chain documented in [cli.md](cli.md#database-location-resolution):
+the `--db` flag, then `PEOPLE_CONTEXT_DB`, then a config file, and finally the shared per-user default
+`~/.pctx/people.db`. The plugin deliberately passes no `--db` flag, so the database lands at that shared default. This location
 lives in the user's home directory — entirely outside the plugin's installed copy — so it survives
 marketplace updates, reinstalls, and uninstalls, and it is the same file the `pctx` CLI reads
 by default, so `pctx show` and `pctx export` work against the plugin's data with no
 extra configuration. To isolate or relocate the store, set `PEOPLE_CONTEXT_DB` in the environment that
 launches Claude Code.
+
+Earlier releases fell back to an OpenClaw workspace or `~/.local/share/people-context/people.db`. If such a
+database is visible and `~/.pctx/people.db` does not exist, the server refuses to start rather than creating an
+empty store beside it; select the old store with `PEOPLE_CONTEXT_DB` or relocate it deliberately as described in
+the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default).
 
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
 
@@ -138,7 +146,7 @@ None of the workflows call or suggest enabling the gated
 Installing this plugin executes the repository's Python code locally through `uv` with the permissions of your operating-system user. It is not a sandboxed, data-only extension. Install only revisions you trust.
 
 The durable store is an unencrypted SQLite file at the resolved database path (by default
-`~/.local/share/people-context/people.db`). Normal filesystem permissions and full-disk encryption are the at-rest security boundary. Anyone who can read that file can inspect its contents directly.
+`~/.pctx/people.db`). Normal filesystem permissions and full-disk encryption are the at-rest security boundary. Anyone who can read that file can inspect its contents directly.
 
 The default plugin configuration deliberately does not set either high-disclosure process capability:
 
@@ -151,6 +159,8 @@ MCP annotations are advisory client metadata, not authorization. The process-lev
 See [Privacy and Safety](privacy-and-safety.md) for the complete threat model.
 
 ## Update and release
+
+Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before updating from a release that used the earlier default location.
 
 Refresh the marketplace and plugin after a new release is merged:
 
@@ -190,6 +200,6 @@ Before submitting:
 
 1. Run `claude plugin validate . --strict` on the intended release commit.
 2. Confirm installation from a clean machine using the GitHub marketplace commands above.
-3. Verify that all durable data remains at the resolved database path (by default the XDG data directory).
+3. Verify that all durable data remains at the resolved database path (by default `~/.pctx/people.db`).
 4. Confirm that the default tool surface excludes high-disclosure reads.
 5. Document the local execution model, required `uv` dependency, tool behavior, and privacy properties.

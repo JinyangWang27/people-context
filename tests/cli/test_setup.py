@@ -476,6 +476,76 @@ class TestDatabasePinning:
         written = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
         assert written["mcpServers"]["people-context"]["env"] == {"PEOPLE_CONTEXT_DB": str(chosen)}
 
+    def test_an_openclaw_workspace_is_no_longer_pinned(self, tmp_path: Path) -> None:
+        workspace = tmp_path / "workspace"
+        (workspace / "people-context").mkdir(parents=True)
+
+        assert db_path_to_pin(None, {"HOME": str(tmp_path), "OPENCLAW_WORKSPACE": str(workspace)}) is None
+
+    def test_a_relative_explicit_path_is_still_anchored(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+
+        entry = build_entry(db_path_to_pin("rel.db", {"HOME": str(tmp_path)}), encrypted=False)
+
+        assert entry.env == {"PEOPLE_CONTEXT_DB": str(tmp_path / "rel.db")}
+
+    @pytest.mark.parametrize(("client", "dry_run"), [("cursor", False), ("cursor", True), ("json", False)])
+    def test_setup_refuses_an_unpinned_entry_while_the_transition_is_blocked(
+        self, tmp_path: Path, client: str, dry_run: bool
+    ) -> None:
+        legacy = tmp_path / ".local" / "share" / "people-context" / "people.db"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b"fictional")
+        env = {"HOME": str(tmp_path)}
+
+        with pytest.raises(SetupError) as exc_info:
+            run_setup(
+                client, scope="user", db_path=db_path_to_pin(None, env), encrypted=False, dry_run=dry_run,
+                env=env, platform="linux", cwd=tmp_path,
+            )
+
+        assert str(legacy) in str(exc_info.value)
+        assert not (tmp_path / ".cursor").exists()
+        assert not (tmp_path / ".pctx").exists()
+
+    def test_setup_pins_or_uses_config_despite_legacy_store(self, tmp_path: Path) -> None:
+        legacy = tmp_path / ".local" / "share" / "people-context" / "people.db"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b"fictional")
+        pinned_env = {"HOME": str(tmp_path), "PEOPLE_CONTEXT_DB": str(legacy)}
+        run_setup(
+            "cursor", scope="user", db_path=db_path_to_pin(None, pinned_env), encrypted=False, dry_run=False,
+            env=pinned_env, platform="linux", cwd=tmp_path,
+        )
+        written = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+        assert written["mcpServers"]["people-context"]["env"] == {"PEOPLE_CONTEXT_DB": str(legacy)}
+
+        config = tmp_path / ".config" / "people-context" / "config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text(f'db_path = "{legacy}"\n', encoding="utf-8")
+        config_env = {"HOME": str(tmp_path)}
+        assert db_path_to_pin(None, config_env) is None
+        lines = run_setup(
+            "json", scope="user", db_path=None, encrypted=False, dry_run=False,
+            env=config_env, platform="linux", cwd=tmp_path,
+        )
+        assert "PEOPLE_CONTEXT_DB" not in "\n".join(lines)
+
+    def test_cli_setup_reports_the_blocked_transition(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+        legacy = tmp_path / "data" / "people-context" / "people.db"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_bytes(b"fictional")
+
+        assert cli.main(["setup", "cursor", "--dry-run"]) == 1
+        captured = capsys.readouterr()
+        assert str(legacy) in captured.err
+        assert captured.out == ""
+        assert not (tmp_path / ".cursor").exists()
+
 
 class TestPlainEntry:
     def test_the_plain_entry_is_unchanged(self) -> None:

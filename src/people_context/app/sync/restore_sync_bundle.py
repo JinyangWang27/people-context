@@ -82,6 +82,8 @@ class RestoreSyncBundle:
                 "import sources": len(document.imports.source_sessions),
                 "candidate mappings": len(document.imports.candidate_mappings),
                 "staged candidates": len(document.imports.staging),
+                "groups": len(document.groups),
+                "group memberships": len(document.group_memberships),
             },
         )
 

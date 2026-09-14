@@ -18,7 +18,17 @@ from people_context.ports.forget import ForgetPreviewStore, ForgetStore
 from people_context.ports.lifecycle import ForgetStoreResult, LifecycleTargetNotFoundError
 from people_context.ports.repository import PersonReader
 
-_RECORD_TYPES = {"relationship", "affiliation", "fact", "observation", "trait", "interaction", "reminder"}
+_RECORD_TYPES = {
+    "relationship",
+    "affiliation",
+    "fact",
+    "observation",
+    "trait",
+    "interaction",
+    "reminder",
+    "group",
+    "group_membership",
+}
 
 
 class ForgetError(Exception):

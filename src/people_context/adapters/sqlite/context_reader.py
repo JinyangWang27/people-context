@@ -41,23 +41,28 @@ class SqliteContextReader:
         ).fetchall()
         return [
             RelationshipRecord(
-                relationship=Relationship(
-                    id=row["id"],
-                    subject_id=row["subject_id"],
-                    object_id=row["object_id"],
-                    type=row["type"],
-                    label=row["label"],
-                    period=_period(row),
-                    confidence=row["confidence"],
-                    provenance=_provenance(row),
-                    created_at=datetime.fromisoformat(row["created_at"]),
-                ),
+                relationship=_relationship(row),
                 other_person_id=row["other_person_id"],
                 other_person_name=row["other_person_name"],
                 display_type=_display_type(row, person_id),
             )
             for row in rows
         ]
+
+    def list_active_relationships_between(
+        self, person_a_id: str, person_b_id: str, as_of: date, limit: int
+    ) -> list[Relationship]:
+        rows = self._conn.execute(
+            """
+            SELECT r.* FROM relationships r
+            WHERE ((r.subject_id = :a AND r.object_id = :b) OR (r.subject_id = :b AND r.object_id = :a))
+              AND (r.valid_from IS NULL OR r.valid_from <= :as_of)
+              AND (r.valid_to IS NULL OR r.valid_to >= :as_of)
+            ORDER BY r.id LIMIT :limit
+            """,
+            {"a": person_a_id, "b": person_b_id, "as_of": as_of.isoformat(), "limit": limit + 1},
+        ).fetchall()
+        return [_relationship(row) for row in rows]
 
     def list_active_affiliations(self, person_id: str, as_of: date) -> list[AffiliationRecord]:
         rows = self._conn.execute(
@@ -229,6 +234,20 @@ class SqliteContextReader:
             (interaction_id,),
         ).fetchall()
         return [row["person_id"] for row in rows]
+
+
+def _relationship(row: sqlite3.Row) -> Relationship:
+    return Relationship(
+        id=row["id"],
+        subject_id=row["subject_id"],
+        object_id=row["object_id"],
+        type=row["type"],
+        label=row["label"],
+        period=_period(row),
+        confidence=row["confidence"],
+        provenance=_provenance(row),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
 
 
 def _display_type(row: sqlite3.Row, person_id: str) -> str:

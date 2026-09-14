@@ -17,6 +17,17 @@ SQLite database is plaintext, so rely on filesystem permissions and full-disk en
 excludes elevated sensitive context and full export; those tools require process environment flags and cannot
 be enabled through tool arguments.
 
+## Upgrading to the shared database default
+
+An unpinned `uvx --from people-context` entry picks up new releases on its own, and a reinstalled bundle runs
+the release it pins. Before either starts a release whose default database is `~/.pctx/people.db`, complete the
+[upgrade prerequisite](cli.md#upgrading-to-the-shared-default): with the old version, inventory the path each
+existing client selects in its real launch environment and pin it — with `PEOPLE_CONTEXT_DB` in an editor
+entry, or with `db_path` in the config file for the bundle, whose manifest exposes no environment setting. A desktop host does
+not inherit your shell's environment, so a terminal's `pctx db-path` does not describe it. The server refuses to
+create the shared default while it can see a legacy database, but it cannot see stores that only another
+client's environment points at.
+
 ## Native-UV MCPB Desktop bundle
 
 An [MCPB bundle](https://github.com/modelcontextprotocol/mcpb) (`.mcpb`) is a ZIP archive with a root

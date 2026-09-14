@@ -22,7 +22,7 @@ from people_context.adapters.mcp.prompts import register_prompts
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite.db import EncryptedDatabaseError, UnsafeDatabasePathError
-from people_context.config import MissingDatabaseKeyError
+from people_context.config import LegacyDatabaseTransitionError, MissingDatabaseKeyError
 from people_context.ports.clock import Clock
 
 SERVER_NAME = "people-context"
@@ -76,7 +76,7 @@ def build_server(
 ) -> MCPServer:
     """Build a fully wired MCP server backed by the resolved SQLite database.
 
-    Resolves ``db_path`` via :func:`resolve_db_path`, logs the chosen path to
+    Resolves ``db_path`` via :func:`resolve_openable_db_path`, logs the chosen path to
     STDERR, opens the database, constructs the repository/audit/clock and the
     application use cases, and registers every tool. Does not start any transport.
 
@@ -107,7 +107,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--db",
         metavar="PATH",
         default=None,
-        help="Path to the SQLite database file (overrides env/config/auto-detect).",
+        help="Path to the SQLite database file (overrides env/config/shared default).",
     )
     parser.add_argument(
         "--encrypted",
@@ -142,8 +142,14 @@ def main(argv: list[str] | None = None) -> None:
     args = _build_parser().parse_args(argv)
     try:
         server = build_server(args.db, encrypted=args.encrypted)
-    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
-        # Refuse with the reason only; the message never carries key material.
+    except (
+        MissingDatabaseKeyError,
+        EncryptedDatabaseError,
+        UnsafeDatabasePathError,
+        LegacyDatabaseTransitionError,
+    ) as exc:
+        # Refuse with the reason only; the message never carries key material. The log handler
+        # writes to stderr, so a blocked database transition never reaches the stdio protocol stream.
         _configure_logging().error("%s", exc)
         raise SystemExit(2) from None
     if not args.http:

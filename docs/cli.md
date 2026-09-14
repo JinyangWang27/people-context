@@ -17,6 +17,9 @@ what encryption does and does not protect.
 
 ## Commands
 
+**Planned, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) M28.3 reviewed capture. Commands
+below describe delivered behavior, including M28.1 `group` and M28.2 `group shared`.
+
 | Command | Purpose |
 |---|---|
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
@@ -56,6 +59,13 @@ what encryption does and does not protect.
 | `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
 | `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
 | `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
+| `group create NAME --kind K [--organization ORG_ID] [--sensitivity S] [--json]` | Create a new identified group; an equal name never reuses one. |
+| `group find [NAME] [--kind K] [--limit N] [--include-sensitive] [--json]` | List candidate groups by name. |
+| `group show GROUP_ID [--limit N] [--include-sensitive] [--json]` | Show one group and a bounded page of its memberships. |
+| `group add-member GROUP_ID PERSON [--role R] [--from DATE] [--to DATE] [--basis B] [--confidence C] [--sensitivity S] [--stated-by TEXT] [--json]` | Record one membership assertion. |
+| `group close-member MEMBERSHIP_ID --ended-on DATE [--json]` | Record the last day a membership held. |
+| `group correct {group\|membership} ID --set FIELD=VALUE... [--json]` | Correct an erroneous group or membership in place. |
+| `group memberships PERSON [--limit N] [--include-sensitive] [--json]` | List one person's memberships with each group. |
 
 `show`, `brief`, `timeline`, `edit`, `add-alias`, and `delete` try an active id first and then
 `ResolvePerson`. Unknown references exit 1; ambiguous names exit 2 and print candidates rather than
@@ -94,7 +104,7 @@ Clients that own their configuration through a CLI (Claude Code, Codex) are driv
 project scope. Omitting it means user scope, except for VS Code, which keeps user-level servers in its own
 settings UI and exposes only the workspace file to write, so `pctx setup vscode` defaults to the project one; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints the target path, what the write does to it, and the `people-context` entry alone — never the other servers already in the file, whose `env` blocks routinely hold other tools' API keys. It prints what would be written
 or run and changes nothing; on Windows that command is quoted for PowerShell, whose single quotes are literal, since no `cmd.exe` rendering is safe for a path containing `&` or `%…%`. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
-server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. A database selected through `PEOPLE_CONTEXT_DB` or `OPENCLAW_WORKSPACE` is written into the entry too, because a client launched from the desktop inherits none of the shell's environment and would otherwise open the default database instead; a config-file or XDG default location is left unpinned, since the server resolves those itself. `--encrypted` also decides which command the client should run, because `uvx` builds a fresh isolated
+server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. A database selected through `PEOPLE_CONTEXT_DB` is written into the entry too, because a client launched from the desktop inherits none of the shell's environment and would otherwise open the default database instead; a config-file location or the shared `~/.pctx/people.db` default is left unpinned, since the server resolves those itself. `OPENCLAW_WORKSPACE` no longer selects or pins a database. When an unpinned entry would start a server that refuses a [blocked transition](#upgrading-to-the-shared-default), setup — including `--dry-run` and `setup json` — refuses with the same explanation before writing anything; existing entries are never rewritten merely because the default changed. `--encrypted` also decides which command the client should run, because `uvx` builds a fresh isolated
 environment on every launch. On glibc Linux x86-64 the entry selects `people-context[encrypted]`, whose wheel
 exists. Elsewhere the extra installs nothing, so the entry points at the interpreter running setup when that
 interpreter can already import `sqlcipher3`, and setup refuses rather than writing an entry that cannot start
@@ -330,6 +340,37 @@ interaction date the report prints, so the two always agree; ordering instead co
 recorded with a different offset is placed by when it actually happened, and a naive stored timestamp is read as
 UTC rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and
 id; when more people qualify than `--limit`, the command says so.
+
+## Groups and memberships
+
+```bash
+uv run pctx group create "Class 1, Grade 6" --kind class
+uv run pctx group add-member 01K... "Alice Zhang" --role student --from 2015-09-01 --to 2016-07-15
+uv run pctx group memberships "Alice Zhang" --json
+uv run pctx group close-member 01K... --ended-on 2024-06-30
+uv run pctx group correct membership 01K... --set valid_to=
+uv run pctx group shared "Alice Zhang" "Bob Li" --json
+```
+
+A group is a context people take part in, not proof that they know each other; see
+[data-model.md](data-model.md#groups-and-memberships). `create` always mints a new group, so use `find` first
+and reuse the id you mean. Record only known dates: `--basis` is `unknown`, `period`, or `ongoing`, inferred
+from `--from`/`--to` when omitted except for `ongoing`, and a missing bound means unknown rather than
+open-ended. `close-member` refuses a membership that already has an end or an end before its start; use
+`correct` for data that was wrong, where an empty `--set` value clears an optional field.
+
+Reads show only `public`/`personal` groups and memberships unless `--include-sensitive` is given, which prints a
+warning on stderr so a redirected `--json` document stays pure. `--json` prints the versioned
+`people-context-group-search`, `people-context-group`, or `people-context-person-memberships` document. Unknown
+ids and people exit 1; ambiguous names and invalid input exit 2 with a diagnostic that never echoes submitted
+values. Reads write nothing.
+
+`shared` explains how two people share identified groups, and when, deriving the answer at read time from their
+memberships in the same group. `classmates` and `teammates` labels need two `student` roles in a `class` or two
+`participant` roles in a `team` plus recorded dates that prove a common day; everything else is shared context
+only, with `temporal` `disjoint` or `unknown` when the dates cannot prove overlap. Direct relationships between the
+two are listed separately. `--json` prints the versioned `people-context-shared-connections` document described
+in [mcp-interface.md](mcp-interface.md#explain_shared_connections); naming the same person twice exits 2.
 
 ## Person timeline
 
@@ -844,17 +885,86 @@ redirecting the stream elsewhere is your own disclosure decision.
 
 ## Database location resolution
 
-The CLI and server use the same first-match order:
+The CLI and server use the same first-match order, independent of working directory or agent:
 
 1. explicit `--db`/server argument;
 2. `PEOPLE_CONTEXT_DB`;
 3. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`;
-4. `OPENCLAW_WORKSPACE`, then `~/.openclaw/workspace`, storing `people-context/people.db`;
-5. `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db`.
+4. the shared per-user default `~/.pctx/people.db` in the user's home directory.
 
-Paths are expanded and parent directories are created only when SQLite opens the selected database.
+Paths are expanded and parent directories are created only when SQLite opens the selected database, with the
+existing private-file protections. Resolution and `pctx db-path` never create directories, open SQLite, or apply
+migrations; printing a path does not promise that opening it will succeed. `XDG_DATA_HOME` and OpenClaw workspaces
+(`OPENCLAW_WORKSPACE`, `~/.openclaw/workspace`) no longer select the database. Agents share one store only when
+they run as the same user with the same home, filesystem access, and compatible overrides; this is not a sync
+layer, a service, or a new cross-agent transaction guarantee.
+
 The dedicated `demo` path is the documented exception: it is deliberately isolated from this resolution chain,
-and from `--encrypted` — the fictional demo database is always plain SQLite.
+and from `--encrypted` — the fictional demo database is always plain SQLite. Docker's
+`PEOPLE_CONTEXT_DB=/data/people.db` is an ordinary environment override.
+
+### Legacy transition guard
+
+When no argument, environment variable, or config-file path wins and `~/.pctx/people.db` does not exist yet,
+every legacy location visible to the current process is checked:
+
+- `{OPENCLAW_WORKSPACE}/people-context/people.db` when that workspace is configured and exists;
+- `~/.openclaw/workspace/people-context/people.db` when that workspace exists;
+- `{XDG_DATA_HOME or ~/.local/share}/people-context/people.db`.
+
+If any of them exists, commands that open the database exit with status 2 and the MCP server refuses to start
+(diagnostics on stderr, never on the stdio protocol stream) instead of creating a fresh store beside the old one.
+Candidates are only checked for existence and never opened, so encrypted files are safe to discover. Several
+legacy databases are all reported and require an explicit choice; none is selected by discovery order and nothing
+is merged. A workspace directory that holds no database does not block. An existing `~/.pctx/people.db` wins even
+if legacy files remain, and any explicit override — including one naming the new default — bypasses the check.
+`pctx db-path -v` shows every candidate checked, whether the default is selected, already exists, or is blocked,
+and how to proceed.
+
+The guard sees only the current environment. It cannot discover a custom `XDG_DATA_HOME` or
+`OPENCLAW_WORKSPACE` that another client (a desktop app, a plugin host, another shell) was launched with, so "no
+legacy database found" is not proof that none exists. The inventory below is the cross-environment protection.
+
+### Upgrading to the shared default
+
+This default change is a breaking change under the [compatibility promise](compatibility.md#cli), which keeps the
+documented database-location order stable within a major version; it ships in a new major release.
+
+**Before any client starts the new version** — including plugins, `uvx` entries without a pinned version, and
+desktop bundles that update themselves:
+
+1. With the **old** version still installed, run `pctx db-path -v` with each existing CLI/MCP client's actual
+   arguments, environment, and config — its real launch environment. A terminal shell does not inventory a desktop
+   app or plugin host. Keep these inventories local; do not paste private paths or environment contents into
+   issue reports.
+2. Pin each client's selected absolute path with an existing override: `--db` in its server arguments, or
+   `PEOPLE_CONTEXT_DB` in its environment (`pctx --db PATH setup CLIENT` writes the latter). A single store shared
+   by every client can instead be named once as `db_path` in the config file.
+3. Keep any client whose environment cannot be inventoried stopped until its old path is identified and pinned.
+   Do not treat it as a fresh installation.
+4. Retain pins until each client deliberately transitions. An already-created `~/.pctx/people.db` is not evidence
+   that another client's store was migrated.
+
+Then decide deliberately. To **keep an old store**, leave its pin (or config `db_path`) in place. To **relocate**
+it to the shared default:
+
+1. Stop every client that can open it, so no WAL writes are pending. Never copy only a live `people.db` file.
+2. Create the directory privately and take a SQLite-consistent copy:
+
+   ```bash
+   mkdir -m 700 -p ~/.pctx
+   sqlite3 OLD/people.db ".backup '$HOME/.pctx/people.db'"
+   chmod 600 ~/.pctx/people.db
+   ```
+
+   For an `--encrypted` store the copy must stay encrypted under the same key. With every client still stopped,
+   open it in the SQLCipher shell (`sqlcipher OLD/people.db`), enter `PRAGMA key = '…';` and then
+   `PRAGMA wal_checkpoint(TRUNCATE);`, which must report `0` in its first (busy) column so no WAL content remains.
+   Only then copy the main file privately with `install -m 600 OLD/people.db ~/.pctx/people.db`. Keep the key out
+   of shell history.
+3. Verify with `pctx --db ~/.pctx/people.db list` (add `--encrypted` for an encrypted store), then remove the
+   pins one client at a time. Keep the old file until you are satisfied; nothing here moves, merges, or deletes it
+   for you.
 
 ## Direct SQLite access
 

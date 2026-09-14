@@ -30,7 +30,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from people_context.config import DB_KEY_ENV, resolve_db_path
+from people_context.config import (
+    DB_KEY_ENV,
+    LegacyDatabaseTransitionError,
+    blocking_legacy_databases,
+    shared_default_db_path,
+)
 
 #: The one server name every target registers under, so a re-run replaces rather than duplicates.
 SERVER_NAME = "people-context"
@@ -127,19 +132,19 @@ def db_path_to_pin(explicit: str | None, env: Mapping[str, str] | None = None) -
     """Return the database path the client has to be told about, or None when it can find it itself.
 
     The server resolves its own path, but only from sources the client process will actually have. A
-    config file and the XDG data directory travel with the machine, so a client that starts them
+    config file and the shared `~/.pctx/people.db` default travel with the machine, so a client that starts them
     resolves exactly what the CLI did and pinning would only freeze a location the user may later
     move. An environment variable does not travel: a GUI client launched from the desktop inherits
     the shell's environment for none of it, so `PEOPLE_CONTEXT_DB=~/work.db pctx setup claude-desktop`
     would otherwise wire a client that quietly opens the default database instead — an empty store
-    where the records just imported ought to be.
+    where the records just imported ought to be. An OpenClaw workspace no longer selects a database,
+    so it is never pinned.
     """
     env = os.environ if env is None else env
     if explicit:
         return explicit
-    if env.get("PEOPLE_CONTEXT_DB") or env.get("OPENCLAW_WORKSPACE"):
-        return str(resolve_db_path(None, env))
-    return None
+    from_env = env.get("PEOPLE_CONTEXT_DB")
+    return os.path.expanduser(from_env) if from_env else None
 
 
 def build_entry(
@@ -433,6 +438,12 @@ def run_setup(
     env = os.environ if env is None else env
     platform = sys.platform if platform is None else platform
     cwd = Path.cwd() if cwd is None else cwd
+    if db_path is None:
+        # An unpinned entry lets the server resolve its own default. While that default would be refused
+        # at launch, writing the entry would only produce a configuration that looks finished and is not.
+        legacy = blocking_legacy_databases(None, env)
+        if legacy:
+            raise SetupError(str(LegacyDatabaseTransitionError(shared_default_db_path(env), legacy)))
     entry = build_entry(db_path, encrypted=encrypted, platform=platform)
     if client == "json":
         lines = generic_json(entry)
