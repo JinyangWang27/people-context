@@ -289,6 +289,8 @@ class TestPortability:
             (lambda payload: payload["group_memberships"][0].update(group_id="MISSING"), "unknown group"),
             (lambda payload: payload["groups"][0].update(organization_id="MISSING"), "unknown organization"),
             (lambda payload: payload["groups"].append(dict(payload["groups"][0])), "duplicate group id"),
+            (lambda payload: payload["groups"][0].update(name=" "), "name"),
+            (lambda payload: payload["groups"][0].update(name="x" * 257), "name"),
         ],
     )
     def test_inconsistent_group_state_is_refused_without_echoing_names(
@@ -303,6 +305,7 @@ class TestPortability:
 
         assert any(reason in detail for detail in raised.value.details)
         assert not any("Class 1" in detail for detail in raised.value.details)
+        assert _count(runtime.conn, "identified_groups") == 1
 
     @pytest.mark.parametrize("table", ["identified_groups", "group_memberships"])
     @pytest.mark.parametrize("version", [1, 5])

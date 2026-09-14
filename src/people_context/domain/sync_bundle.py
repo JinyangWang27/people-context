@@ -20,7 +20,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-from people_context.domain.group import GroupKind, MembershipRole, TemporalBasis
+from people_context.domain.group import MAX_GROUP_NAME_CHARS, GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
     REVIEWABLE_SESSION_STATUSES,
@@ -571,11 +571,31 @@ class BundleTraitEvidence(StrictBundleModel):
     created_at: UtcDatetime
 
 
+def _check_group_name(value: str) -> str:
+    """Hold a restored group name to the domain rule without silently rewriting it.
+
+    Every ordinary read rehydrates a stored row through `Group`, so a name that rule refuses would
+    restore a group that `show`, `find`, `export`, and the next bundle all fail to load. The domain
+    model strips surrounding whitespace on input; a restore is verbatim, so padding that this
+    installation would never have stored is refused rather than trimmed.
+    """
+    if not value.strip():
+        raise ValueError("group name must not be blank")
+    if value != value.strip():
+        raise ValueError("group name must not carry surrounding whitespace")
+    if len(value) > MAX_GROUP_NAME_CHARS:
+        raise ValueError(f"group name must be at most {MAX_GROUP_NAME_CHARS} characters")
+    return value
+
+
+BundleGroupName = Annotated[str, AfterValidator(_check_group_name)]
+
+
 class BundleGroup(StrictBundleModel):
     """One bundled identified group row."""
 
     id: Identifier
-    name: str
+    name: BundleGroupName
     kind: GroupKind
     organization_id: Identifier | None
     sensitivity: Sensitivity

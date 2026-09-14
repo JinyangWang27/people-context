@@ -1839,3 +1839,20 @@ def test_group_references_must_resolve_and_refusals_name_ids_only() -> None:
     assert any("unknown group: 01J0000000000000000000GRP9" in detail for detail in raised.value.details)
     assert any("unknown organization: 01J0000000000000000000ORG9" in detail for detail in raised.value.details)
     assert not any("Class 1" in detail for detail in raised.value.details)
+
+
+@pytest.mark.parametrize("name", ["", "   ", " Class 1", "x" * 257])
+def test_a_bundled_group_name_the_domain_would_refuse_is_rejected(name: str) -> None:
+    """Ordinary reads rehydrate through `Group`, so restore must refuse a name they cannot load."""
+    payload = _document()
+    payload["groups"][0]["name"] = name
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_a_bundled_group_name_at_exactly_the_domain_bound_is_accepted() -> None:
+    payload = _document()
+    payload["groups"][0]["name"] = "x" * 256
+
+    assert parse_bundle_payload(payload).groups[0].name == "x" * 256
