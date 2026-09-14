@@ -137,6 +137,9 @@ def _downgraded(document: Any, version: int) -> dict[str, Any]:
     """
     payload = json.loads(render_bundle_json(document))
     payload["version"] = version
+    if version < 5:
+        payload.pop("groups")
+        payload.pop("group_memberships")
     if version < 3:
         payload.pop("trait_evidence")
     if version < 2:
@@ -161,7 +164,7 @@ def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> N
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 4
+    assert document.version == SYNC_BUNDLE_VERSION == 5
     assert [session.id for session in document.imports.source_sessions] == [batch.source_session_id]
     assert len(document.imports.candidate_mappings) == 1
     # The batch is only partially committed, so its reviewable rows travel.
@@ -425,7 +428,7 @@ def test_a_version_one_bundle_carrying_version_two_state_is_refused(tmp_path: Pa
     assert any("imports" in detail for detail in excinfo.value.details)
 
 
-@pytest.mark.parametrize("version", [1, 2, 3, 4])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_a_non_empty_import_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
     origin = _Origin(tmp_path / "origin.db")
     origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
@@ -506,7 +509,7 @@ def test_attribution_on_a_reviewable_staging_row_survives_a_real_round_trip(tmp_
     origin.commit.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "person")])
 
     document = _round_trip(origin.export())
-    assert document.version == SYNC_BUNDLE_VERSION == 4
+    assert document.version == SYNC_BUNDLE_VERSION == 5
 
     conn, outcome = _restore(document, tmp_path / "destination.db")
     try:

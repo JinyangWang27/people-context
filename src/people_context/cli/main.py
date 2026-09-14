@@ -14,6 +14,7 @@ from people_context.adapters.sqlite.db import (
     inspect_schema,
     latest_schema_version,
 )
+from people_context.cli.groups import cmd_group
 from people_context.cli.imports import cmd_import
 from people_context.cli.insights import cmd_stale, cmd_timeline, cmd_upcoming
 from people_context.cli.maintenance import cmd_doctor, cmd_reindex, cmd_stats, cmd_sync_log, cmd_watch
@@ -88,6 +89,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "import": cmd_import,
     "sources": cmd_sources,
     "source": cmd_source,
+    "group": cmd_group,
 }
 
 

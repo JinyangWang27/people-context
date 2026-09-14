@@ -17,8 +17,8 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds group/membership
-management, explicit shared-context lookup, and reviewed capture. Commands below describe delivered behavior.
+**Planned, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) M28.2 explicit shared-context
+lookup and M28.3 reviewed capture. Commands below describe delivered behavior, including M28.1 `group`.
 
 | Command | Purpose |
 |---|---|
@@ -59,6 +59,13 @@ management, explicit shared-context lookup, and reviewed capture. Commands below
 | `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
 | `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
 | `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
+| `group create NAME --kind K [--organization ORG_ID] [--sensitivity S] [--json]` | Create a new identified group; an equal name never reuses one. |
+| `group find [NAME] [--kind K] [--limit N] [--include-sensitive] [--json]` | List candidate groups by name. |
+| `group show GROUP_ID [--limit N] [--include-sensitive] [--json]` | Show one group and a bounded page of its memberships. |
+| `group add-member GROUP_ID PERSON [--role R] [--from DATE] [--to DATE] [--basis B] [--confidence C] [--sensitivity S] [--stated-by TEXT] [--json]` | Record one membership assertion. |
+| `group close-member MEMBERSHIP_ID --ended-on DATE [--json]` | Record the last day a membership held. |
+| `group correct {group\|membership} ID --set FIELD=VALUE... [--json]` | Correct an erroneous group or membership in place. |
+| `group memberships PERSON [--limit N] [--include-sensitive] [--json]` | List one person's memberships with each group. |
 
 `show`, `brief`, `timeline`, `edit`, `add-alias`, and `delete` try an active id first and then
 `ResolvePerson`. Unknown references exit 1; ambiguous names exit 2 and print candidates rather than
@@ -333,6 +340,29 @@ interaction date the report prints, so the two always agree; ordering instead co
 recorded with a different offset is placed by when it actually happened, and a naive stored timestamp is read as
 UTC rather than in the host timezone. Rows are ordered never-contacted first, then oldest interaction, name, and
 id; when more people qualify than `--limit`, the command says so.
+
+## Groups and memberships
+
+```bash
+uv run pctx group create "Class 1, Grade 6" --kind class
+uv run pctx group add-member 01K... "Alice Zhang" --role student --from 2015-09-01 --to 2016-07-15
+uv run pctx group memberships "Alice Zhang" --json
+uv run pctx group close-member 01K... --ended-on 2024-06-30
+uv run pctx group correct membership 01K... --set valid_to=
+```
+
+A group is a context people take part in, not proof that they know each other; see
+[data-model.md](data-model.md#groups-and-memberships). `create` always mints a new group, so use `find` first
+and reuse the id you mean. Record only known dates: `--basis` is `unknown`, `period`, or `ongoing`, inferred
+from `--from`/`--to` when omitted except for `ongoing`, and a missing bound means unknown rather than
+open-ended. `close-member` refuses a membership that already has an end or an end before its start; use
+`correct` for data that was wrong, where an empty `--set` value clears an optional field.
+
+Reads show only `public`/`personal` groups and memberships unless `--include-sensitive` is given, which prints a
+warning on stderr so a redirected `--json` document stays pure. `--json` prints the versioned
+`people-context-group-search`, `people-context-group`, or `people-context-person-memberships` document. Unknown
+ids and people exit 1; ambiguous names and invalid input exit 2 with a diagnostic that never echoes submitted
+values. Reads write nothing.
 
 ## Person timeline
 

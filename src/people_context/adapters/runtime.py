@@ -34,6 +34,7 @@ from people_context.adapters.sqlite.db import open_db, open_encrypted_db
 from people_context.adapters.sqlite.export_reader import SqliteExportReader
 from people_context.adapters.sqlite.forget_store import SqliteForgetStore
 from people_context.adapters.sqlite.graph_reader import SqliteGraphReader
+from people_context.adapters.sqlite.group_store import SqliteGroupStore
 from people_context.adapters.sqlite.hlc import SqliteHybridLogicalClock
 from people_context.adapters.sqlite.import_staging import SqliteImportStagingStore
 from people_context.adapters.sqlite.insights_reader import SqliteRecencyReader
@@ -71,6 +72,8 @@ from people_context.app.exports import (
     ExportVCard,
     ListPersonIndex,
 )
+from people_context.app.groups.commands import AddGroupMembership, CloseGroupMembership, CreateGroup
+from people_context.app.groups.queries import FindGroups, GetGroup, ListPersonMemberships
 from people_context.app.imports import (
     CandidateStager,
     CommitImport,
@@ -157,6 +160,12 @@ class RuntimeUseCases:
     record_interaction: RecordInteraction
     correct_record: CorrectRecord
     supersede_fact: SupersedeFact
+    create_group: CreateGroup
+    add_group_membership: AddGroupMembership
+    close_group_membership: CloseGroupMembership
+    find_groups: FindGroups
+    get_group: GetGroup
+    list_person_memberships: ListPersonMemberships
     set_reminder: SetReminder
     complete_reminder: CompleteReminder
     set_communication_philosophy: SetCommunicationPhilosophy
@@ -279,6 +288,7 @@ def build_runtime(
     import_sources = SqliteImportSourceStore(conn)
     trait_evidence = SqliteTraitEvidenceStore(conn)
     semantic_documents = SqliteSemanticDocumentReader(conn)
+    groups = SqliteGroupStore(conn)
 
     remember_person = RememberPerson(repo, repo, audit, runtime_clock)
     record_interaction = RecordInteraction(repo, records, audit, runtime_clock)
@@ -352,6 +362,12 @@ def build_runtime(
         record_interaction=record_interaction,
         correct_record=CorrectRecord(records, records, audit, runtime_clock, people=repo),
         supersede_fact=SupersedeFact(records, records, audit, runtime_clock, people=repo),
+        create_group=CreateGroup(groups, organizations, audit, runtime_clock),
+        add_group_membership=AddGroupMembership(repo, records, groups, audit, runtime_clock),
+        close_group_membership=CloseGroupMembership(records, records, audit, runtime_clock),
+        find_groups=FindGroups(groups, organizations),
+        get_group=GetGroup(records, groups, organizations),
+        list_person_memberships=ListPersonMemberships(repo, groups, organizations),
         set_reminder=SetReminder(repo, records, audit, runtime_clock),
         complete_reminder=CompleteReminder(records, records, audit, runtime_clock, people=repo),
         set_communication_philosophy=SetCommunicationPhilosophy(preferences, audit, runtime_clock),

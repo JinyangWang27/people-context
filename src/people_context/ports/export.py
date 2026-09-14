@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -21,6 +21,9 @@ class ExportSnapshot:
     reminders: list[dict[str, Any]]
     user_preferences: list[dict[str, Any]]
     audit_log: list[dict[str, Any]]
+    #: M28.1. The strict sync bundle carries these beside its snapshot rather than inside it.
+    groups: list[dict[str, Any]] = field(default_factory=list)
+    group_memberships: list[dict[str, Any]] = field(default_factory=list)
 
 
 @runtime_checkable

@@ -38,6 +38,7 @@ class MergeMovedCounts(BaseModel):
     relationships: int = 0
     interaction_participations: int = 0
     candidate_mappings: int = 0
+    group_memberships: int = 0
 
 
 class MergePeopleResult(BaseModel):

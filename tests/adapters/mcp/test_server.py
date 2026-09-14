@@ -66,6 +66,13 @@ EXPECTED_TOOLS = {
     "stage_candidates",
     "review_import",
     "commit_import",
+    "create_group",
+    "add_group_membership",
+    "close_group_membership",
+    # group reads
+    "find_groups",
+    "get_group",
+    "list_group_memberships",
     # destructive stubs
     "merge_people",
     "forget",

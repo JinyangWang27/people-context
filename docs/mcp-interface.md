@@ -5,9 +5,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 
 ## Annotations
 
-**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds group/membership
-management, an explicit pairwise shared-context lookup, and reviewed capture support. Existing tools and graph
-results keep their current meanings; the planned interfaces are not available yet.
+[M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; see the
+[group contract](#m28-group-and-membership-contract). **Planned, not implemented:** M28.2's explicit pairwise
+shared-context lookup and M28.3's reviewed capture support. Existing tools and graph results keep their meanings.
 
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
 - default write annotation: clients should apply normal write approval.
@@ -42,10 +42,13 @@ block and no structured payload.
 | `upcoming_dates` | Ordinary birthdays and dated active reminders in a window. | `window_days=30`, optional `person_id` or `person` | Ordered entries and `skipped_unparseable`. |
 | `get_person_timeline` | Bounded newest-first chronology of one person's durable records. | `person_id` or `person`, `limit=50` | Ordered entries, `found`, and `truncated`. |
 | `get_consolidation_context` | Bounded maintenance evidence: what is stored about one person and how it relates. | `person_id` or `person`, `limit=50` | Facts, traits, observations, affiliations, deterministic `signals`, and per-collection truncation. |
+| `find_groups` | Candidate groups by name; matches are not identity. | optional `name`, `kind`, `limit=50` | Ordinary groups, `truncated`. |
+| `get_group` | One group and a bounded page of its memberships. | `group_id`, `limit=50` | `found`, group, ordinary memberships, `truncated`. |
+| `list_group_memberships` | One person's memberships with each group. | `person_id` or `person`, `limit=50` | `found`, memberships with group summaries, `truncated`. |
 
 | `review_import` | Staged candidates and statuses for one batch. | `batch_id` | Candidate rows; inspection only. |
 
-All thirteen tools are annotated `readOnlyHint=true`. `review_import` was annotated as a write before M21 even
+All sixteen tools are annotated `readOnlyHint=true`. `review_import` was annotated as a write before M21 even
 though it never mutated anything; correcting the annotation removes a spurious approval prompt.
 
 ### Naming a person instead of passing an id
@@ -529,6 +532,25 @@ every effect of one logical transaction, so without it replay and inspection wou
 supersession as two unrelated changes. The closure is recorded under its own `supersede` op kind rather than
 `correct`, so a replayer and an inspector can tell a transition from an in-place repair.
 
+## M28 group and membership contract
+
+`create_group(name, kind, organization_id?, sensitivity?)` always creates a new group; an equal name is never
+reused. `organization_id` must name an existing organization and only places the group. `add_group_membership(
+person_id, group_id, role?, valid_from?, valid_to?, temporal_basis?, confidence?, sensitivity?)` records one
+assertion; `temporal_basis` is `unknown`, `period`, or `ongoing` and is inferred from the dates when omitted,
+except `ongoing`, which must be stated. `close_group_membership(membership_id, ended_on)` sets the end of a
+membership that has none and refuses with `invalid_membership_closure` and `reason` `already_ended` or
+`ends_before_start` otherwise. `correct_record` accepts entity types `group` (`name`, `kind`, `sensitivity`) and
+`group_membership` (`role`, `valid_from`, `valid_to`, `temporal_basis`, `confidence`, `sensitivity`), and `forget`
+accepts `group:ID` and `group_membership:ID` record targets.
+
+The three reads return the versioned `people-context-group-search`, `people-context-group`, and
+`people-context-person-memberships` documents, with `limit` 1..200 (default 50) and an out-of-range limit
+refused as `invalid_parameter`. They disclose only `public`/`personal` groups and memberships, a membership only
+when its group is also ordinary, and filter before the limit so hidden rows never change `truncated`. A hidden
+group reads as `found: false`. Memberships are ordered by known start, then undated, then id. These reads report
+recorded memberships only; they derive no connection between members and write nothing.
+
 ## Person context compatibility
 
 M7 does not change existing relationship fields. Each hydrated relationship object adds one field:
@@ -570,6 +592,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `record_interaction` | Record a concise summary after participant validation. |
 | `correct_record` | Correct whitelisted fields with lossless before/after audit. |
 | `supersede_fact` | Close a historically correct fact and open its replacement, atomically. |
+| `create_group` / `add_group_membership` / `close_group_membership` | Create an identified group, record a membership, and record the end of one that was true. |
 | `set_reminder` / `complete_reminder` | Create and transition reminders. |
 | `set_communication_philosophy` | Store user-authored guidance; audit stores lengths, not text. |
 | `import_content` / `stage_candidates` / `review_import` / `commit_import` | Reviewable distilled imports without raw source retention. |

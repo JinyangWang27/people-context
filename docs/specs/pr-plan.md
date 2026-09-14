@@ -765,7 +765,7 @@ and has no dependency on unfinished milestones.
 These three planned PRs are additional to all historical and supplemental totals above. Existing statuses and
 M27's scope remain unchanged. M28 is independent of M27; internal dependencies are M28.1 → M28.2 → M28.3.
 
-- [ ] **M28.1 — Store protected groups and memberships**
+- [x] **M28.1 — Store protected groups and memberships**
   - **Scope:** Add identified groups and qualified memberships, additive persistence, bounded CLI/MCP management,
     correction and historical closure, privacy enforcement, and complete lifecycle/portability integration.
   - **Acceptance:** support school, work, clubs, households, and communities with stable group identities;

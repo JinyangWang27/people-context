@@ -269,7 +269,9 @@ in one PR.
 
 ## M28 — Groups, memberships, and shared connections
 
-**Status:** Planned — not implemented.
+**Status:** M28.1 delivered; M28.2 and M28.3 planned — not implemented. M28.1 added identified groups and
+membership assertions with independent sensitivity, explicit temporal basis, bounded `pctx group` and MCP
+management/reads, correction and historical closure, merge, hard forget, plain export, and sync bundle version 5.
 
 Record protected groups and qualified memberships across school, work, clubs, households, and communities.
 Explain shared context through an explicit pairwise lookup, deriving stronger classmate/teammate labels only

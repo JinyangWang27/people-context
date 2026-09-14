@@ -17,6 +17,7 @@ from people_context.app._mutation import (
     unit_of_work_for,
 )
 from people_context.domain.fact import Fact
+from people_context.domain.group import GroupMembership
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation
@@ -35,8 +36,12 @@ _CORRECTABLE_FIELDS: dict[str, set[str]] = {
     "relationship": {"type", "label", "valid_from", "valid_to", "confidence"},
     "affiliation": {"role", "valid_from", "valid_to", "confidence"},
     "reminder": {"text", "kind", "due_at", "recurrence"},
+    # Placement is not correctable here: pointing a group at another organization needs that
+    # organization to exist, which this generic path cannot check.
+    "group": {"name", "kind", "sensitivity"},
+    "group_membership": {"role", "valid_from", "valid_to", "temporal_basis", "confidence", "sensitivity"},
 }
-_PERIOD_TYPES = (Fact, Relationship, Affiliation)
+_PERIOD_TYPES = (Fact, Relationship, Affiliation, GroupMembership)
 
 
 class CorrectRecordInput(BaseModel):
@@ -136,6 +141,6 @@ def _linked_person_ids(record: Record) -> list[str]:
         return [record.subject_id, record.object_id]
     if isinstance(record, Interaction):
         return record.participant_ids
-    if isinstance(record, (Fact, Observation, Trait, Affiliation, Reminder)):
+    if isinstance(record, (Fact, Observation, Trait, Affiliation, Reminder, GroupMembership)):
         return [record.person_id]
     return []
