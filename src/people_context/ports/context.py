@@ -51,6 +51,17 @@ class TraitEvidenceRecord:
 
 
 @runtime_checkable
+class RelationshipPairReader(Protocol):
+    """Read the relationships recorded directly between two people, bounded by the caller."""
+
+    def list_active_relationships_between(
+        self, person_a_id: str, person_b_id: str, as_of: date, limit: int
+    ) -> list[Relationship]:
+        """Return up to `limit + 1` relationships active on `as_of` in either direction, in id order."""
+        ...
+
+
+@runtime_checkable
 class PersonContextReader(Protocol):
     """Read all existing record types needed by retrieval use cases."""
 

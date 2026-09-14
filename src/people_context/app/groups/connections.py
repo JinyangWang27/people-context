@@ -36,7 +36,7 @@ from people_context.domain.group import Group, GroupKind, GroupMembership, Membe
 from people_context.domain.relationship import Relationship
 from people_context.domain.shared import ValidityPeriod, normalize_name
 from people_context.ports.clock import Clock
-from people_context.ports.context import PersonContextReader
+from people_context.ports.context import RelationshipPairReader
 from people_context.ports.groups import GroupStore
 from people_context.ports.records import OrganizationStore
 from people_context.ports.repository import PersonReader
@@ -108,13 +108,13 @@ class ExplainSharedConnections:
         people: PersonReader,
         groups: GroupStore,
         organizations: OrganizationStore,
-        context: PersonContextReader,
+        relationships: RelationshipPairReader,
         clock: Clock,
     ) -> None:
         self._people = people
         self._groups = groups
         self._organizations = organizations
-        self._context = context
+        self._relationships = relationships
         self._clock = clock
 
     def execute(
@@ -161,14 +161,8 @@ class ExplainSharedConnections:
                 summaries[group.id] = _summary(self._organizations, group)
             connections.append(_connection(summaries[group.id], membership_a, membership_b))
 
-        as_of = self._clock.now().date()
-        direct = sorted(
-            (
-                record.relationship
-                for record in self._context.list_active_relationships(person_a_id, as_of)
-                if record.other_person_id == person_b_id
-            ),
-            key=lambda relationship: relationship.id,
+        direct = self._relationships.list_active_relationships_between(
+            person_a_id, person_b_id, self._clock.now().date(), limit
         )
         return document.model_copy(
             update={
@@ -218,12 +212,15 @@ def _established(membership: GroupMembership) -> tuple[date, date] | None:
     """The days the membership is asserted to have held; `None` when no day is known.
 
     One known bound proves only that day. An `ongoing` membership was current when it was recorded,
-    which proves the days from its start to that record date, and nothing after it.
+    which proves the days from its start to that record date, and nothing after it. A start later than
+    the record date contradicts that assertion, so it establishes no day at all.
     """
     start, end = membership.period.valid_from, membership.period.valid_to
     if membership.temporal_basis is TemporalBasis.ONGOING:
         recorded = membership.created_at.date()
-        return (start, max(start, recorded)) if start is not None else (recorded, recorded)
+        if start is None:
+            return (recorded, recorded)
+        return (start, recorded) if start <= recorded else None
     if membership.temporal_basis is not TemporalBasis.PERIOD:
         return None
     if start is None:

@@ -273,6 +273,25 @@ class TestSharedConnections:
         assert document.connections == []
         assert [row.id for row in document.direct_relationships] == [relationship.id]
 
+    def test_direct_relationships_are_read_for_the_pair_only_and_bounded(self, runtime: ApplicationRuntime) -> None:
+        alice, bob = _person(runtime, "Alice"), _person(runtime, "Bob")
+        for index in range(3):
+            other = _person(runtime, f"Other {index}")
+            runtime.use_cases.set_relationship.execute(
+                SetRelationshipInput(subject_id=alice, object_id=other, type="friend_of")
+            )
+        pair = sorted(
+            runtime.use_cases.set_relationship.execute(SetRelationshipInput(subject_id=a, object_id=b, type=kind)).id
+            for a, b, kind in ((alice, bob, "friend_of"), (bob, alice, "mentor_of"))
+        )
+
+        rows = runtime.context_reader.list_active_relationships_between(alice, bob, _NOW.date(), 1)
+        document = runtime.use_cases.explain_shared_connections.execute(alice, bob, limit=1)
+
+        assert [row.id for row in rows] == pair
+        assert [row.id for row in document.direct_relationships] == pair[:1]
+        assert document.direct_relationships_truncated is True
+
     def test_correction_changes_the_next_lookup(self, runtime: ApplicationRuntime) -> None:
         alice, bob, _, first, _ = self._classmates(runtime)
 

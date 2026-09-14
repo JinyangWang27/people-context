@@ -10,9 +10,11 @@ from typing import Any
 import pytest
 
 from people_context import cli
+from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite import SqlitePeopleRepository, open_db
 from people_context.app.groups.connections import SHARED_CONNECTIONS_FORMAT, SHARED_CONNECTIONS_VERSION
 from people_context.app.groups.queries import GROUP_DETAIL_FORMAT, GROUP_DOCUMENT_VERSION, PERSON_MEMBERSHIPS_FORMAT
+from people_context.app.relationships.commands import SetRelationshipInput
 from people_context.cli.groups import GROUP_SENSITIVE_WARNING
 from people_context.domain.person import Person
 
@@ -203,3 +205,28 @@ def test_shared_reports_no_groups_and_refuses_bad_people(tmp_path: Path, capsys:
     assert "No person found" in capsys.readouterr().err
     assert cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Alice Zhang"]) == 2
     assert "two different people" in capsys.readouterr().err
+
+
+def test_shared_text_lists_direct_relationships_and_truncation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = _db(tmp_path)
+    for name in ("Chess", "Go"):
+        group = _json(db_file, capsys, "create", name, "--kind", "club")
+        for person in ("Alice Zhang", "Bob Li"):
+            _json(db_file, capsys, "add-member", group["id"], person)
+    runtime = build_runtime(db_file)
+    try:
+        resolve = runtime.use_cases.resolve_person.execute
+        alice, bob = (resolve(name).candidates[0].person_id for name in ("Alice", "Bob"))
+        relationship = SetRelationshipInput(subject_id=alice, object_id=bob, type="friend_of")
+        runtime.use_cases.set_relationship.execute(relationship)
+    finally:
+        runtime.close()
+
+    assert cli.main(["--db", str(db_file), "group", "shared", "Alice Zhang", "Bob Li", "--limit", "1"]) == 0
+
+    out = capsys.readouterr().out
+    assert "Chess" in out and "Go  " not in out
+    assert "More connections exist" in out
+    assert "Direct relationships:" in out

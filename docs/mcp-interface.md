@@ -584,7 +584,8 @@ unknown or removed person returns `found: false`.
   no connection. No connection means no shared group was found, not that the two do not know each other.
 - **Temporal certainty.** A membership's *established* days are what it asserts: both bounds of a `period`, only
   the single known day when one bound is absent, and for `ongoing` its start (or record date) through the date it
-  was recorded. `unknown` establishes nothing. `temporal` is `overlap` (with the common `overlap` period) when the
+  was recorded; an `ongoing` start after its record date contradicts the assertion and, like `unknown`,
+  establishes nothing. `temporal` is `overlap` (with the common `overlap` period) when the
   established days intersect, `disjoint` when the known bounds exclude any common day, and `unknown` otherwise.
   An absent bound is never read as unbounded.
 - **Labels.** `label` is `classmates` only for two `student` roles in a `class`, and `teammates` only for two
@@ -593,7 +594,8 @@ unknown or removed person returns `found: false`.
   is `shared_context` with `label: null`, which implies no friendship, kinship, or acquaintance. No confidence or
   score is computed.
 - **Direct assertions.** `direct_relationships` lists the currently active recorded relationships between the two
-  people, ordered by id, apart from the derived connections.
+  people, in either direction, ordered by id, apart from the derived connections. They are read for the pair
+  only, at most `limit + 1` rows, with `direct_relationships_truncated` reporting more.
 - **Disclosure and bounds.** Only `public`/`personal` groups and memberships are used, filtered by the store
   before any limit, so hidden records never change connections, their order, or any flag; the tool has no
   sensitivity parameter. Each person's visible memberships are read once, up to 200, and a group's member list

@@ -161,6 +161,18 @@ class TestLabels:
         assert connection.label == "teammates"
         assert connection.overlap == ValidityPeriod(valid_from=date(2025, 3, 1), valid_to=_NOW.date())
 
+    @pytest.mark.parametrize("other", [{"temporal_basis": TemporalBasis.ONGOING}, {"valid_to": "2027-06-30"}])
+    def test_an_ongoing_start_after_its_record_date_establishes_no_future_day(self, other: dict[str, object]) -> None:
+        store = _Store()
+        team = store.group("Platform", GroupKind.TEAM)
+        future = {"role": MembershipRole.PARTICIPANT, "valid_from": "2027-01-01"}
+        store.member(team, "A", temporal_basis=TemporalBasis.ONGOING, **future)
+        store.member(team, "B", **future, **other)
+
+        [connection] = store.run().connections
+
+        assert (connection.temporal, connection.label, connection.overlap) == (TemporalOverlap.UNKNOWN, None, None)
+
     @pytest.mark.parametrize(
         ("kind", "roles"),
         [

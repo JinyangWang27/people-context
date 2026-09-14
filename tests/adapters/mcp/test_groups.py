@@ -178,11 +178,12 @@ def test_shared_connections_resolve_names_use_ordinary_disclosure_and_write_noth
             await _call(client, "explain_shared_connections", person_a="Alice", person_b_id=bob),
             await _call(client, "explain_shared_connections", person_a_id=alice, person_b_id=alice),
             await _call(client, "explain_shared_connections", person_a_id=alice, person_b="Nobody"),
+            await _call(client, "explain_shared_connections", person_a="Nobody", person_b_id=bob),
         )
         assert _history(database) == before
         return results
 
-    shared, same, missing = _run(server, flow)
+    shared, same, missing, missing_first = _run(server, flow)
 
     assert shared["format"] == "people-context-shared-connections"
     [connection] = shared["connections"]
@@ -191,4 +192,4 @@ def test_shared_connections_resolve_names_use_ordinary_disclosure_and_write_noth
     assert connection["overlap"] == {"valid_from": "2015-09-01", "valid_to": "2016-06-30"}
     assert shared["truncated"] is False and shared["memberships_truncated"] is False
     assert same["error"] == "invalid_parameter"
-    assert missing["error"] == "person_not_found"
+    assert missing["error"] == missing_first["error"] == "person_not_found"
