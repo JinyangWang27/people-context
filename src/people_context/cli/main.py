@@ -14,6 +14,7 @@ from people_context.adapters.sqlite.db import (
     inspect_schema,
     latest_schema_version,
 )
+from people_context.cli.groups import cmd_group
 from people_context.cli.imports import cmd_import
 from people_context.cli.insights import cmd_stale, cmd_timeline, cmd_upcoming
 from people_context.cli.maintenance import cmd_doctor, cmd_reindex, cmd_stats, cmd_sync_log, cmd_watch
@@ -42,7 +43,12 @@ from people_context.cli.portability import (
 from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
 from people_context.cli.setup import cmd_setup
 from people_context.cli.sources import cmd_source, cmd_sources
-from people_context.config import MissingDatabaseKeyError, resolve_db_key, resolve_db_path
+from people_context.config import (
+    LegacyDatabaseTransitionError,
+    MissingDatabaseKeyError,
+    resolve_db_key,
+    resolve_openable_db_path,
+)
 
 CommandHandler = Callable[[ApplicationRuntime, argparse.Namespace], int]
 
@@ -83,6 +89,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "import": cmd_import,
     "sources": cmd_sources,
     "source": cmd_source,
+    "group": cmd_group,
 }
 
 
@@ -101,7 +108,7 @@ def _unreadable_stats_target(args: argparse.Namespace) -> tuple[Path, str] | Non
     asks it: every other command keeps the shared runtime exactly as it is. `:memory:` has no
     file to inspect and carries its own explicit storage state in the report.
     """
-    path = resolve_db_path(args.db)
+    path = resolve_openable_db_path(args.db)
     if str(path) == ":memory:":
         return None
     if not path.exists():
@@ -134,7 +141,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "stats":
         try:
             refusal = _unreadable_stats_target(args)
-        except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
+        except (
+        MissingDatabaseKeyError,
+        EncryptedDatabaseError,
+        UnsafeDatabasePathError,
+        LegacyDatabaseTransitionError,
+    ) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
         if refusal is not None:
@@ -155,7 +167,12 @@ def main(argv: list[str] | None = None) -> int:
             warning=lambda message: print(f"Warning: {message}", file=sys.stderr),
             encrypted=args.encrypted,
         )
-    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
+    except (
+        MissingDatabaseKeyError,
+        EncryptedDatabaseError,
+        UnsafeDatabasePathError,
+        LegacyDatabaseTransitionError,
+    ) as exc:
         # Refuse with the reason only; the message never carries key material.
         print(f"Error: {exc}", file=sys.stderr)
         return 2

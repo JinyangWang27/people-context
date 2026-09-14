@@ -245,3 +245,43 @@ new candidate type, or native Ideashell integration. M26 is independent of M25.
 
 **Spec:** [M26 — Transcript attribution review](specs/m26-transcript-attribution-review.md).
 **PRs:** [M26 checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
+
+## M27 — Shared per-user database
+
+**Status:** Delivered. M27.1 made `~/.pctx/people.db` the shared default, removed workspace and XDG data-directory
+selection, added the legacy transition guard to CLI, MCP startup, `stats`, and setup, and documented the
+pre-upgrade inventory and deliberate relocation in [cli.md](cli.md#upgrading-to-the-shared-default). It is a
+breaking change under the compatibility promise.
+
+Use `~/.pctx/people.db` as the common CLI/MCP default, preserving explicit argument, environment, and config-file
+overrides. Remove automatic OpenClaw workspace selection. Require an explicit transition when legacy databases
+would otherwise be stranded; never automatically move, copy, merge, or delete them. Keep demo isolation,
+encryption, and private-file protections. Sharing requires matching user homes, filesystem access, and overrides.
+
+Before upgrading, inventory and pin each existing client's old path in its actual launch environment. Runtime
+legacy discovery sees only the current environment; an existing new default does not prove other stores migrated.
+
+M27.1 delivers resolution, transition protection, setup/diagnostics, regression checks, and shipped documentation
+in one PR.
+
+**Spec:** [M27 — Shared per-user database](specs/m27-shared-user-database.md).
+**PRs:** [M27 checklist](specs/pr-plan.md#m27--shared-per-user-database).
+
+## M28 — Groups, memberships, and shared connections
+
+**Status:** M28.1 and M28.2 delivered; M28.3 planned — not implemented. M28.2 added the explicit
+`explain_shared_connections` / `pctx group shared` lookup. M28.1 added identified groups and
+membership assertions with independent sensitivity, explicit temporal basis, bounded `pctx group` and MCP
+management/reads, correction and historical closure, merge, hard forget, plain export, and sync bundle version 5.
+
+Record protected groups and qualified memberships across school, work, clubs, households, and communities.
+Explain shared context through an explicit pairwise lookup, deriving stronger classmate/teammate labels only
+with compatible roles and established temporal overlap. Keep direct assertions distinct from deductions.
+Support confirmed cohort continuity without inventing yearly placements or automatically advancing grades.
+
+M28.1 delivers storage, management, privacy, and lifecycle/portability; M28.2 delivers explained lookup; M28.3
+delivers reviewed agent capture and usage guidance. No automatic legacy conversion, inferred graph expansion,
+or durable speculative memberships. M28 is independent of M27.
+
+**Spec:** [M28 — Groups, memberships, and shared connections](specs/m28-groups-and-shared-connections.md).
+**PRs:** [M28 checklist](specs/pr-plan.md#m28--groups-memberships-and-shared-connections).

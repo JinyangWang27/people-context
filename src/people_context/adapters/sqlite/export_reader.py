@@ -23,6 +23,8 @@ _RECORD_TABLES = (
     ("traits", "trait"),
     ("interactions", "interaction"),
     ("reminders", "reminder"),
+    ("identified_groups", "group"),
+    ("group_memberships", "group_membership"),
 )
 
 
@@ -73,6 +75,8 @@ class SqliteExportReader:
             reminders=records["reminders"],
             user_preferences=preferences,
             audit_log=audit_log,
+            groups=records["identified_groups"],
+            group_memberships=records["group_memberships"],
         )
 
     def _person_payload(self, person_id: str) -> dict[str, Any]:

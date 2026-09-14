@@ -93,7 +93,11 @@ repurposed, and new fields are additive.
 | Import commit | `people-context-import-commit` | `1` | `pctx import commit --json` |
 | Import source listing | `people-context-import-sources` | `1` | `pctx sources --json` |
 | Import source detail | `people-context-import-source` | `1` | `pctx source show --json` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `4` | `pctx sync push` |
+| Group search | `people-context-group-search` | `1` | `pctx group find --json`, `find_groups` |
+| Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
+| Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
+| Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `5` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -160,14 +164,14 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 4**, which added optional assertion attribution (`stated_by`) to the staged
-  fact and affiliation candidates an incomplete import batch carries. Version 3 before it added the durable
-  trait-evidence relations linking an inferred trait to the observations and interactions it rests on, and
-  version 2 added durable import source receipts, candidate commit mappings, and the staging rows an incomplete
-  import batch still needs. `pctx sync pull` accepts **version 1, version 2, version 3, and version 4**,
-  validating each against its own strict shape: a version-1 document carrying a version-2 collection is refused
-  as an unknown field rather than quietly upgraded, and so is a version-2 document carrying version 3's or a
-  version-3 document carrying version 4's. A released version stays readable; only which version is emitted
+  `pctx sync push` emits **version 5**, which added M28.1's `groups` and `group_memberships` collections. Version
+  4 before it added optional assertion attribution (`stated_by`) to the staged fact and affiliation candidates an
+  incomplete import batch carries, version 3 added the durable trait-evidence relations linking an inferred trait
+  to the observations and interactions it rests on, and version 2 added durable import source receipts, candidate
+  commit mappings, and the staging rows an incomplete import batch still needs. `pctx sync pull` accepts
+  **versions 1 through 5**, validating each against its own strict shape: a version-1 document carrying a
+  version-2 collection is refused as an unknown field rather than quietly upgraded, and so is any older document
+  carrying a later version's field — a version-4 document carrying groups included. A released version stays readable; only which version is emitted
   moves forward.
 
   Version 4 is the case that shows the rule is about fields rather than collections. It adds no collection: the

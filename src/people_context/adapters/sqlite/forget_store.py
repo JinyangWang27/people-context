@@ -98,6 +98,8 @@ class SqliteForgetStore:
             "trait": "traits",
             "interaction": "interactions",
             "reminder": "reminders",
+            "group": "identified_groups",
+            "group_membership": "group_memberships",
         }
         table = tables[entity_type]
         with SqliteUnitOfWork(self._conn):
@@ -121,6 +123,17 @@ class SqliteForgetStore:
                         entity_id=f"{entity_id}:{participant['person_id']}",
                     )
                     for participant in participant_rows
+                )
+            if entity_type == "group":
+                # A group's memberships cascade with it, so they are named here: their history
+                # mentions the erased group and is redacted with it.
+                member_rows = self._conn.execute(
+                    "SELECT id FROM group_memberships WHERE group_id = ? ORDER BY id", (entity_id,)
+                ).fetchall()
+                if member_rows:
+                    deleted["group_memberships"] = len(member_rows)
+                affected_entities.extend(
+                    AffectedEntity(entity_type="group_membership", entity_id=row["id"]) for row in member_rows
                 )
             evidence = self._evidence_cleaner.erase([(entity_type, entity_id)])
             affected_entities.extend(evidence.affected_entities)
@@ -167,6 +180,12 @@ class SqliteForgetStore:
                 f"SELECT COUNT(*) FROM {table} WHERE person_id = ?",  # noqa: S608 - internal table constants
                 (person_id,),
             ).fetchone()[0]
+        memberships = self._conn.execute(
+            "SELECT COUNT(*) FROM group_memberships WHERE person_id = ?", (person_id,)
+        ).fetchone()[0]
+        if memberships:
+            # Omitted when zero, so a forget summary for someone in no group reads as it always did.
+            counts["group_memberships"] = memberships
         counts["relationships"] = self._conn.execute(
             "SELECT COUNT(*) FROM relationships WHERE subject_id = ? OR object_id = ?",
             (person_id, person_id),
@@ -198,6 +217,7 @@ class SqliteForgetStore:
             ("trait", "traits"),
             ("reminder", "reminders"),
             ("affiliation", "affiliations"),
+            ("group_membership", "group_memberships"),
         ):
             entities.extend(
                 AffectedEntity(entity_type=entity_type, entity_id=row["id"])
