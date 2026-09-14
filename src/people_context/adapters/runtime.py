@@ -119,7 +119,7 @@ from people_context.app.relationships import (
 )
 from people_context.app.semantic import ReindexPeople, SemanticSearch
 from people_context.app.sync import RestoreSyncBundle, WatchChangelog
-from people_context.config import resolve_db_key, resolve_db_path
+from people_context.config import resolve_db_key, resolve_openable_db_path
 from people_context.ports.clock import Clock, SystemClock
 from people_context.ports.sleep import Sleeper, SystemSleeper
 
@@ -236,7 +236,7 @@ def build_runtime(
     from the environment. It refuses rather than falling back to plaintext.
     """
     warn = warning or (lambda _message: None)
-    path = resolve_db_path(db_path)
+    path = resolve_openable_db_path(db_path)
     conn = open_encrypted_db(path, resolve_db_key()) if encrypted else open_db(path)
     runtime_clock = clock or SystemClock()
     repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
