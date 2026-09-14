@@ -1,6 +1,6 @@
 # M28 — Groups, memberships, and shared connections
 
-Status: Planned — not implemented. This specification changes no runtime behavior or existing records.
+Status: M28.1 delivered (protected groups and memberships); M28.2 and M28.3 planned — not implemented.
 See [roadmap](../roadmap.md#m28--groups-memberships-and-shared-connections) and
 [PR checklist](pr-plan.md#m28--groups-memberships-and-shared-connections).
 

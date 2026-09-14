@@ -11,9 +11,10 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
 
 ## Layer diagram
 
-**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds protected groups and
-memberships through the existing domain/app/ports/SQLite layers. Explicit pairwise reads derive shared context
-from permitted evidence without persisted inferred edges or a general-purpose inference engine.
+[M28.1](specs/m28-groups-and-shared-connections.md) protected groups and memberships follow the existing layers:
+`domain/group.py`, the `ports/groups.py` `GroupStore`, `app/groups/`, and `adapters/sqlite/group_store.py`.
+**Planned, not implemented:** M28.2 explicit pairwise reads will derive shared context from permitted evidence
+without persisted inferred edges or a general-purpose inference engine.
 
 ```
                          ┌───────────────────────────────────────────┐

@@ -86,12 +86,18 @@ present look tidy, and a value that was historically correct is never overwritte
 
 ## Sensitivity levels and defaults
 
-Facts, observations, traits, and interactions carry a `sensitivity` value. Relationships and affiliations
-currently do not; their fields must not be used to store content that requires sensitivity filtering.
+Facts, observations, traits, interactions, groups, and group memberships carry a `sensitivity` value.
+Relationships and affiliations currently do not; their fields must not be used to store content that requires
+sensitivity filtering.
 
-**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) protects group identity
-and membership assertions independently and filters evidence before deriving shared connections. It does not
-retrofit sensitivity onto existing relationships or affiliations or make those existing records private.
+M28.1 protects group identity and membership assertions independently. A membership is disclosed only when both it
+and its group are readable at the caller's level, so a public group can hold a private membership and a sensitive
+group is never named through an ordinary-looking membership. Filtering happens before each read's limit, so a
+hidden row cannot change a visible page or its `truncated` flag, and a hidden group reads exactly like a missing
+one. The MCP group reads have no sensitivity parameter; only the local CLI's `--include-sensitive` widens them.
+Placement under an organization never writes the organization row. M28.1 does not retrofit sensitivity onto
+existing relationships or affiliations. **Planned, not implemented:** M28.2 filters evidence before deriving
+shared connections.
 
 The existing sensitivity levels are:
 
@@ -562,9 +568,11 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
 - Since M18.1 the bundle carries import receipts, every durable candidate commit mapping, and the staging rows
   of batches that are still reviewable; M18.3 made it version 3 and added the trait-evidence links, and since
-  M22.1 it is **version 4**, whose staged fact and affiliation candidates may name who asserted them. That
+  M22.1 version 4's staged fact and affiliation candidates may name who asserted them. That
   attribution is bounded, distilled text, never a copied document passage, and it travels only inside a staging
-  row a still-reviewable batch already carried. Restore accepts versions 1, 2, and 3, validating each document
+  row a still-reviewable batch already carried. M28.1 made it **version 5**, carrying groups and memberships with
+  their own sensitivity verbatim; a refusal about them names ids only, never a group name. Restore accepts
+  versions 1 through 5, validating each document
   against its own strict shape — an older version refuses the attribution rather than restoring a candidate it
   would then commit with the attribution silently dropped — and
   every new table joins the baseline-empty rule for *all* accepted versions — freshness is a property of the

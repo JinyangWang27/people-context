@@ -3,8 +3,8 @@
 M7 turns relationship types into data, stores one canonical edge per assertion, and exposes bounded structural
 traversal without disclosing a person's facts, traits, observations, or interaction history.
 
-**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds protected groups,
-memberships, and explicit shared-context lookup. It preserves the direct-edge graph/path contracts below and
+[M28.1](specs/m28-groups-and-shared-connections.md) added protected groups and memberships; they add no graph
+edges. **Planned, not implemented:** M28.2 adds explicit shared-context lookup. It preserves the direct-edge graph/path contracts below and
 does not automatically materialize derived relationships or infer transitivity through a common person.
 
 ## Vocabulary model

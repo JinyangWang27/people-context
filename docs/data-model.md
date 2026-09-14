@@ -2,16 +2,15 @@
 
 The primary store is one user-owned SQLite database. Migration `001_initial.sql` creates the core people data,
 `002_sync_foundations.sql` adds local replay capture, and `003_relationship_vocabulary.sql` adds the M7
-relationship vocabulary. `004_curation_indexes.sql` and `005_changelog_replication_order.sql` add indexes only:
+relationship vocabulary. `009_groups.sql` adds M28.1 identified groups and membership assertions. `004_curation_indexes.sql` and `005_changelog_replication_order.sql` add indexes only:
 the latter indexes the changelog's global replication ordering key so an ordered tail seeks to its cursor
 instead of rescanning history. Domain and application code reach these tables only through ports and SQLite
 adapters.
 
 ## Conventions
 
-**Planned change, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) adds protected groups and
-qualified memberships, with explicit temporal evidence and lifecycle/portability support. The tables below remain
-the current model; existing affiliations and relationships are not automatically converted.
+Existing affiliations and relationships are never automatically converted into
+[M28](specs/m28-groups-and-shared-connections.md) groups or memberships.
 
 - Primary entity and record ids are sortable ULID strings.
 - Human names also have normalized columns populated by `normalize_name()` for identity matching.
@@ -36,6 +35,8 @@ the current model; existing affiliations and relationships are not automatically
 | `observations` | Explicitly subjective point-in-time notes. |
 | `traits` | Derived structured characteristics such as communication style or values. |
 | `trait_evidence` | Which observations and interactions a trait was drawn from; ids only, never text. |
+| `identified_groups` | A class, cohort, team, department, club, household, or community, with its own sensitivity and optional placement under an organization. |
+| `group_memberships` | A person's role in one group, with validity, explicit temporal basis, confidence, sensitivity, and provenance. |
 | `interactions` / `interaction_participants` | Concise interaction summaries and participant joins; never raw transcripts. |
 | `reminders` | Follow-up, occasion, and standing communication-note reminders. |
 | `user_preferences` | JSON values such as communication philosophy and semantic model metadata. |
@@ -164,6 +165,36 @@ replay can tell a transition from a repair.
 
 M19 supersedes facts only. Affiliation and relationship transitions already carry validity periods and can be
 given the same operation later if real usage shows the need.
+
+### Groups and memberships
+
+A group (`identified_groups`) is a context people take part in, not proof that its members know each other. It
+has a stable id, a name, a `kind` (`class`, `cohort`, `team`, `department`, `club`, `household`, `community`,
+`other`), an optional `organization_id`, sensitivity, and provenance. Names are lookup candidates only:
+creating a group always mints a new row, and two groups called "Class 1" stay distinct until someone says they
+are the same. Placement under an organization references an existing row and never creates one, creates an
+affiliation, or copies the group's name into that unrestricted table.
+
+A membership (`group_memberships`) asserts that one person held a `role` (`member`, `student`, `teacher`,
+`participant`, `leader`, `staff`, `other`) in one group. Concurrent and historical memberships are all kept.
+Because `ValidityPeriod` reads an absent bound as unbounded, each membership also states what its dates assert
+in `temporal_basis`:
+
+| Basis | Dates | Meaning |
+|---|---|---|
+| `unknown` | none | Nothing is known about when. |
+| `period` | at least one | The known bounds; a missing bound is unknown, not open-ended. |
+| `ongoing` | no `valid_to` | Asserted current when recorded. |
+
+Confirmed cohort continuity ("we stayed together through Grade 9") is a `cohort` group with one membership per
+confirmed person and the known extent — never generated yearly placements.
+
+Group and membership sensitivity are independent and default to `personal`. A membership is visible only when its
+group is too, so a withheld group is never named through one. Closing a membership (`close_group_membership`,
+`pctx group close-member`) records the end of something that was true and refuses to replace an end already
+recorded; `correct_record` is for erroneous data. Merge moves memberships to the survivor without combining
+them. Hard forget of a person removes their memberships and keeps the group and everyone else's; forgetting a
+group removes its memberships with it, and both redact the affected history.
 
 ### Trait evidence
 

@@ -9,9 +9,9 @@ Transport, pairing, exchange, replay, and bootstrap remain M7 work.
 
 ## 1. Goals and non-goals
 
-**Planned change, not implemented:** [M28](../specs/m28-groups-and-shared-connections.md) requires groups and
-memberships to participate in audit/changelog, compatible versioned export/bootstrap, merge, and hard forget
-before their write surfaces ship. Derived connections remain read results and are not portable primary state.
+[M28.1](../specs/m28-groups-and-shared-connections.md) groups and memberships participate in audit/changelog,
+bootstrap bundle version 5, merge, and hard forget. **Planned, not implemented:** M28.2 derived connections will
+remain read results and are not portable primary state.
 
 ### Goals
 
