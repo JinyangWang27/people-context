@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/JinyangWang27/people-context/compare/v1.2.0...v1.2.1) (2026-09-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* the default database location moves from an OpenClaw workspace or {XDG_DATA_HOME or ~/.local/share}/people-context/people.db to ~/.pctx/people.db. Before upgrading, inventory each client's old path with `pctx db-path -v` in its real launch environment and pin it with --db, PEOPLE_CONTEXT_DB, or config.toml db_path.
+
+### Features
+
+* default to the shared ~/.pctx/people.db database (M27.1) ([#151](https://github.com/JinyangWang27/people-context/issues/151)) ([779e745](https://github.com/JinyangWang27/people-context/commit/779e745bf9bfd00c673100b4f764c250238c2f4e))
+* explain shared connections (M28.2) ([#153](https://github.com/JinyangWang27/people-context/issues/153)) ([3ba4741](https://github.com/JinyangWang27/people-context/commit/3ba47411c7302c6b5d78df8501cbaaa18882bc05))
+* store protected groups and memberships (M28.1) ([#152](https://github.com/JinyangWang27/people-context/issues/152)) ([15ec576](https://github.com/JinyangWang27/people-context/commit/15ec5768eb8be2a509bd7d19f62926a19f5a1886))
+
+
+### Documentation
+
+* plan shared database and richer relationships ([#149](https://github.com/JinyangWang27/people-context/issues/149)) ([094128a](https://github.com/JinyangWang27/people-context/commit/094128a1a15f5b66bf981dfcc169261fcf209d4d))
+
+
+### Build System
+
+* **deps:** bump the github-actions group with 4 updates ([#148](https://github.com/JinyangWang27/people-context/issues/148)) ([e3ea819](https://github.com/JinyangWang27/people-context/commit/e3ea819eda420a62705350517aa63dae60208d48))
+
 ## [1.2.0](https://github.com/JinyangWang27/people-context/compare/v1.1.1...v1.2.0) (2026-09-12)
 
 
