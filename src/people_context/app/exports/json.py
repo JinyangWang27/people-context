@@ -28,6 +28,8 @@ class ExportDocument(BaseModel):
     reminders: list[dict[str, Any]] = Field(default_factory=list)
     user_preferences: list[dict[str, Any]] = Field(default_factory=list)
     audit_log: list[dict[str, Any]] = Field(default_factory=list)
+    groups: list[dict[str, Any]] = Field(default_factory=list)
+    group_memberships: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ExportData:

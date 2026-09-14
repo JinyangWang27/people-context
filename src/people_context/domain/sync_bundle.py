@@ -20,6 +20,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
+from people_context.domain.group import GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
     REVIEWABLE_SESSION_STATUSES,
@@ -48,11 +49,12 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: M18.3's trait-evidence relations, and version 4 for M22.1's assertion attribution on staged
 #: fact and affiliation candidates. Version 4 adds no collection — the new field sits inside a
 #: staging row's candidate — but the rule is about fields, not collections: a version-3 reader
-#: forbids unknown keys there and would fail closed on a document carrying one.
-SYNC_BUNDLE_VERSION = 4
+#: forbids unknown keys there and would fail closed on a document carrying one. Version 5 adds
+#: M28.1's identified groups and membership assertions.
+SYNC_BUNDLE_VERSION = 5
 
 #: Versions restore accepts. A released version stays readable; only emission moves forward.
-SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4)
+SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4, 5)
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -569,6 +571,45 @@ class BundleTraitEvidence(StrictBundleModel):
     created_at: UtcDatetime
 
 
+class BundleGroup(StrictBundleModel):
+    """One bundled identified group row."""
+
+    id: Identifier
+    name: str
+    kind: GroupKind
+    organization_id: Identifier | None
+    sensitivity: Sensitivity
+    provenance: BundleProvenance
+    created_at: UtcDatetime
+
+
+class BundleGroupMembership(StrictBundleModel):
+    """One bundled membership assertion row."""
+
+    id: Identifier
+    person_id: Identifier
+    group_id: Identifier
+    role: MembershipRole
+    period: BundleValidityPeriod
+    temporal_basis: TemporalBasis
+    confidence: Confidence
+    sensitivity: Sensitivity
+    provenance: BundleProvenance
+    created_at: UtcDatetime
+
+    @model_validator(mode="after")
+    def _check_basis(self) -> BundleGroupMembership:
+        """Mirror the domain basis rule, so a restored row still hydrates on every ordinary read."""
+        has_dates = self.period.valid_from is not None or self.period.valid_to is not None
+        if self.temporal_basis is TemporalBasis.UNKNOWN and has_dates:
+            raise ValueError("temporal_basis 'unknown' cannot carry dates")
+        if self.temporal_basis is TemporalBasis.PERIOD and not has_dates:
+            raise ValueError("temporal_basis 'period' needs valid_from or valid_to")
+        if self.temporal_basis is TemporalBasis.ONGOING and self.period.valid_to is not None:
+            raise ValueError("temporal_basis 'ongoing' cannot carry valid_to")
+        return self
+
+
 class SyncBundleDocumentV1(StrictBundleModel):
     """The released version-1 bundle, still accepted by restore and no longer emitted."""
 
@@ -602,6 +643,8 @@ class SyncBundleDocumentV1(StrictBundleModel):
             changelog=self.changelog,
             imports=BundleImportState(source_sessions=[], candidate_mappings=[], staging=[]),
             trait_evidence=[],
+            groups=[],
+            group_memberships=[],
         )
 
 
@@ -633,6 +676,8 @@ class SyncBundleDocumentV2(StrictBundleModel):
             changelog=self.changelog,
             imports=self.imports.current(),
             trait_evidence=[],
+            groups=[],
+            group_memberships=[],
         )
 
 
@@ -671,16 +716,13 @@ class SyncBundleDocumentV3(StrictBundleModel):
             changelog=self.changelog,
             imports=self.imports.current(),
             trait_evidence=self.trait_evidence,
+            groups=[],
+            group_memberships=[],
         )
 
 
-class SyncBundleDocument(StrictBundleModel):
-    """One complete, point-in-time bootstrap bundle.
-
-    Trait evidence sits beside the snapshot rather than inside it. `BundleSnapshot` is the
-    established portable export shape that the released JSON export also emits, and widening that
-    shape to carry a relation would change a document this milestone does not touch.
-    """
+class SyncBundleDocumentV4(StrictBundleModel):
+    """The M22.1 version-4 bundle, still accepted by restore and no longer emitted."""
 
     format: Literal["people-context-sync-bundle"]
     version: Literal[4]
@@ -693,6 +735,47 @@ class SyncBundleDocument(StrictBundleModel):
     changelog: list[BundleChangelogEntry]
     imports: BundleImportState
     trait_evidence: list[BundleTraitEvidence]
+
+    def upgraded(self) -> SyncBundleDocument:
+        """Return this document in the current in-memory shape; version 4 predates groups."""
+        return SyncBundleDocument(
+            format=self.format,
+            version=SYNC_BUNDLE_VERSION,
+            created_at=self.created_at,
+            origin_device_id=self.origin_device_id,
+            watermark=self.watermark,
+            devices=self.devices,
+            snapshot=self.snapshot,
+            relationship_vocabulary=self.relationship_vocabulary,
+            changelog=self.changelog,
+            imports=self.imports,
+            trait_evidence=self.trait_evidence,
+            groups=[],
+            group_memberships=[],
+        )
+
+
+class SyncBundleDocument(StrictBundleModel):
+    """One complete, point-in-time bootstrap bundle.
+
+    Trait evidence, groups, and memberships sit beside the snapshot rather than inside it.
+    `BundleSnapshot` is the established shape the strict bundle validates, and widening it would
+    change what every released version's snapshot accepts.
+    """
+
+    format: Literal["people-context-sync-bundle"]
+    version: Literal[5]
+    created_at: UtcDatetime
+    origin_device_id: Identifier
+    watermark: BundleWatermark
+    devices: list[BundleDevice]
+    snapshot: BundleSnapshot
+    relationship_vocabulary: BundleRelationshipVocabulary
+    changelog: list[BundleChangelogEntry]
+    imports: BundleImportState
+    trait_evidence: list[BundleTraitEvidence]
+    groups: list[BundleGroup]
+    group_memberships: list[BundleGroupMembership]
 
 
 def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
@@ -710,6 +793,8 @@ def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
         return SyncBundleDocumentV2.model_validate(payload).upgraded()
     if declared == 3:
         return SyncBundleDocumentV3.model_validate(payload).upgraded()
+    if declared == 4:
+        return SyncBundleDocumentV4.model_validate(payload).upgraded()
     return SyncBundleDocument.model_validate(payload)
 
 
@@ -764,6 +849,7 @@ def validate_bundle_document(document: SyncBundleDocument) -> None:
         *_reference_details(document),
         *_import_details(document),
         *_trait_evidence_details(document),
+        *_group_details(document),
     ]
     if details:
         raise InvalidBundleError(details)
@@ -993,6 +1079,30 @@ def _trait_evidence_details(document: SyncBundleDocument) -> list[str]:
         elif subject not in interaction:
             details.append(f"trait {row.trait_id} references an interaction its subject did not join")
     return details
+
+
+def _group_details(document: SyncBundleDocument) -> list[str]:
+    """Check that restored groups and memberships name only rows the bundle carries.
+
+    Messages carry ids only: a group name is exactly the kind of protected value a refusal must not
+    print.
+    """
+    people = {person.id for person in document.snapshot.people}
+    organizations = {row.id for row in document.snapshot.organizations}
+    groups = {row.id for row in document.groups}
+    memberships = document.group_memberships
+    return [
+        *_repeated("group id", (row.id for row in document.groups)),
+        *_repeated("group membership id", (row.id for row in document.group_memberships)),
+        *_missing(
+            "group",
+            ((row.id, row.organization_id) for row in document.groups if row.organization_id is not None),
+            organizations,
+            "organization",
+        ),
+        *_missing("group membership", ((row.id, row.person_id) for row in memberships), people, "person"),
+        *_missing("group membership", ((row.id, row.group_id) for row in memberships), groups, "group"),
+    ]
 
 
 def _emptied_session_details(imports: BundleImportState) -> list[str]:

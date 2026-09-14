@@ -9,12 +9,13 @@ from typing import Any
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.fact import Fact
+from people_context.domain.group import Group, GroupKind, GroupMembership, MembershipRole, TemporalBasis
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
-from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod
+from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
 from people_context.domain.trait import Trait, TraitCategory
 from people_context.ports.records import Record
 
@@ -26,6 +27,8 @@ _TABLES = {
     "trait": "traits",
     "interaction": "interactions",
     "reminder": "reminders",
+    "group": "identified_groups",
+    "group_membership": "group_memberships",
 }
 
 _UPDATE_COLUMNS = {
@@ -36,6 +39,8 @@ _UPDATE_COLUMNS = {
     "trait": {"category", "value", "evidence_note", "confidence", "sensitivity", "updated_at"},
     "interaction": {"summary", "occurred_at", "channel", "sensitivity"},
     "reminder": {"text", "kind", "due_at", "recurrence", "status"},
+    "group": {"name", "kind", "sensitivity"},
+    "group_membership": {"role", "valid_from", "valid_to", "temporal_basis", "confidence", "sensitivity"},
 }
 
 
@@ -169,6 +174,8 @@ class SqliteRecordStore:
         if table is None or allowed is None or not fields or not fields.keys() <= allowed:
             return None
         values = {key: _sqlite_value(value) for key, value in fields.items()}
+        if entity_type == "group" and "name" in values:
+            values["name_normalized"] = normalize_name(values["name"])
         assignments = ", ".join(f"{column} = ?" for column in values)
         with SqliteUnitOfWork(self._conn):
             cursor = self._conn.execute(
@@ -352,6 +359,63 @@ def _reminder(row: sqlite3.Row, _: Callable[[str], list[str]] | None = None) -> 
     )
 
 
+def hydrate_group(row: sqlite3.Row, _: Callable[[str], list[str]] | None = None) -> Group:
+    return Group(
+        id=row["id"],
+        name=row["name"],
+        kind=GroupKind(row["kind"]),
+        organization_id=row["organization_id"],
+        sensitivity=Sensitivity(row["sensitivity"]),
+        provenance=_provenance(row),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def hydrate_group_membership(row: sqlite3.Row, _: Callable[[str], list[str]] | None = None) -> GroupMembership:
+    return GroupMembership(
+        id=row["id"],
+        person_id=row["person_id"],
+        group_id=row["group_id"],
+        role=MembershipRole(row["role"]),
+        period=_period(row),
+        temporal_basis=TemporalBasis(row["temporal_basis"]),
+        confidence=row["confidence"],
+        sensitivity=Sensitivity(row["sensitivity"]),
+        provenance=_provenance(row),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def group_values(group: Group) -> dict[str, Any]:
+    """Return the stored columns of one group."""
+    return {
+        "id": group.id,
+        "name": group.name,
+        "name_normalized": normalize_name(group.name),
+        "kind": group.kind.value,
+        "organization_id": group.organization_id,
+        "sensitivity": group.sensitivity.value,
+        **_provenance_values(group.provenance),
+        "created_at": group.created_at.isoformat(),
+    }
+
+
+def group_membership_values(membership: GroupMembership) -> dict[str, Any]:
+    """Return the stored columns of one membership."""
+    return {
+        "id": membership.id,
+        "person_id": membership.person_id,
+        "group_id": membership.group_id,
+        "role": membership.role.value,
+        **_period_values(membership.period),
+        "temporal_basis": membership.temporal_basis.value,
+        "confidence": membership.confidence,
+        "sensitivity": membership.sensitivity.value,
+        **_provenance_values(membership.provenance),
+        "created_at": membership.created_at.isoformat(),
+    }
+
+
 _HYDRATORS: dict[str, Callable[[sqlite3.Row, Callable[[str], list[str]]], Record]] = {
     "relationship": _relationship,
     "affiliation": _affiliation,
@@ -360,4 +424,6 @@ _HYDRATORS: dict[str, Callable[[sqlite3.Row, Callable[[str], list[str]]], Record
     "trait": _trait,
     "interaction": _interaction,
     "reminder": _reminder,
+    "group": hydrate_group,
+    "group_membership": hydrate_group_membership,
 }

@@ -10,6 +10,8 @@ from people_context.domain.sync_bundle import (
     BundleCandidateMapping,
     BundleChangelogEntry,
     BundleDevice,
+    BundleGroup,
+    BundleGroupMembership,
     BundleImportState,
     BundleRelationshipSynonym,
     BundleRelationshipType,
@@ -25,6 +27,9 @@ from people_context.ports.clock import Clock
 from people_context.ports.sync_bundle import BundleReader
 
 SYNC_BUNDLE_FILENAME = "people-context-sync-bundle.json"
+
+#: Export collections the bundle carries as its own top-level fields, not inside `BundleSnapshot`.
+_BESIDE_SNAPSHOT = frozenset({"groups", "group_memberships"})
 
 
 class ExportSyncBundle:
@@ -47,7 +52,9 @@ class ExportSyncBundle:
                 hlc_logical=source.watermark.logical_counter,
             ),
             devices=[BundleDevice.model_validate(row) for row in source.devices],
-            snapshot=BundleSnapshot.model_validate(source.snapshot.__dict__),
+            snapshot=BundleSnapshot.model_validate(
+                {key: value for key, value in source.snapshot.__dict__.items() if key not in _BESIDE_SNAPSHOT}
+            ),
             relationship_vocabulary=BundleRelationshipVocabulary(
                 types=[BundleRelationshipType.model_validate(row) for row in source.relationship_types],
                 synonyms=[BundleRelationshipSynonym.model_validate(row) for row in source.relationship_synonyms],
@@ -63,6 +70,8 @@ class ExportSyncBundle:
                 staging=[BundleStagingRow.model_validate(row) for row in source.staging],
             ),
             trait_evidence=[BundleTraitEvidence.model_validate(row) for row in source.trait_evidence],
+            groups=[BundleGroup.model_validate(row) for row in source.snapshot.groups],
+            group_memberships=[BundleGroupMembership.model_validate(row) for row in source.snapshot.group_memberships],
         )
 
 

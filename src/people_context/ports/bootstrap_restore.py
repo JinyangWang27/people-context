@@ -44,6 +44,9 @@ class RestoreOutcome:
     #: M18.3 trait evidence, defaulted for the same reason: a version-1 or version-2 bundle
     #: carries none of it.
     trait_evidence: int = 0
+    #: M28.1 groups and memberships; a bundle older than version 5 carries none.
+    groups: int = 0
+    group_memberships: int = 0
 
 
 @runtime_checkable

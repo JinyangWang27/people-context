@@ -33,6 +33,8 @@ _CANDIDATE_ID = "01J0000000000000000000CND1"
 _TRAIT_ID = "01J000000000000000000TRAIT"
 _OBSERVATION_ID = "01J00000000000000000000OBS"
 _EVIDENCE_ROW_ID = "01J0000000000000000STAGE03"
+_GROUP_ID = "01J0000000000000000000GRP1"
+_MEMBERSHIP_ID = "01J0000000000000000000MEM1"
 
 
 def _document() -> dict[str, Any]:
@@ -215,7 +217,38 @@ def _document() -> dict[str, Any]:
                 "created_at": "2026-07-03T00:00:00Z",
             }
         ],
+        "groups": [
+            {
+                "id": _GROUP_ID,
+                "name": "Class 1, Grade 6",
+                "kind": "class",
+                "organization_id": None,
+                "sensitivity": "personal",
+                "provenance": {"source": "agent", "session": None, "stated_by": None},
+                "created_at": "2026-07-03T00:00:00Z",
+            }
+        ],
+        "group_memberships": [
+            {
+                "id": _MEMBERSHIP_ID,
+                "person_id": _PERSON_ID,
+                "group_id": _GROUP_ID,
+                "role": "student",
+                "period": {"valid_from": "2015-09-01", "valid_to": "2016-07-15"},
+                "temporal_basis": "period",
+                "confidence": 1.0,
+                "sensitivity": "sensitive",
+                "provenance": {"source": "agent", "session": None, "stated_by": "Alice"},
+                "created_at": "2026-07-03T00:00:00Z",
+            }
+        ],
     }
+
+
+def _drop_groups(payload: dict[str, Any]) -> None:
+    """Remove the version-5 collections from a payload declaring an older version."""
+    payload.pop("groups")
+    payload.pop("group_memberships")
 
 
 def _imports(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1051,6 +1084,7 @@ def test_a_version_two_document_rejects_a_staged_trait_carrying_m18_3_fields(fie
     candidate.pop("evidence_candidate_ids", None)
     candidate[field] = [_EVIDENCE_ROW_ID if field == "evidence_candidate_ids" else _OBSERVATION_ID]
     payload["version"] = 2
+    _drop_groups(payload)
     payload.pop("trait_evidence")
 
     with pytest.raises(ValidationError):
@@ -1061,6 +1095,7 @@ def test_a_version_two_document_without_those_fields_still_parses() -> None:
     """The narrowing is exactly one field pair; everything else a v2 bundle carries is untouched."""
     payload = _document()
     payload["version"] = 2
+    _drop_groups(payload)
     payload.pop("trait_evidence")
 
     document = parse_bundle_payload(payload)
@@ -1103,13 +1138,13 @@ def _staged_attribution(payload: dict[str, Any], candidate_type: str) -> None:
 
 @pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
 def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(candidate_type: str) -> None:
-    """Version 4 is what M22.1 attribution travels in."""
+    """Version 4 introduced M22.1 attribution, and the current version still carries it."""
     payload = _document()
     _staged_attribution(payload, candidate_type)
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 4
+    assert document.version == SYNC_BUNDLE_VERSION == 5
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1129,6 +1164,7 @@ def test_a_document_predating_m22_1_rejects_a_staged_candidate_carrying_attribut
     payload = _document()
     _staged_attribution(payload, candidate_type)
     payload["version"] = version
+    _drop_groups(payload)
     if version < 3:
         payload.pop("trait_evidence")
 
@@ -1140,6 +1176,7 @@ def test_a_version_three_document_without_attribution_still_parses() -> None:
     """The narrowing is exactly one field; everything else a v3 bundle carries is untouched."""
     payload = _document()
     payload["version"] = 3
+    _drop_groups(payload)
 
     document = parse_bundle_payload(payload)
 
@@ -1184,6 +1221,7 @@ def test_a_version_two_document_rejects_attribution_as_well_as_evidence() -> Non
     payload = _document()
     _staged_attribution(payload, "fact")
     payload["version"] = 2
+    _drop_groups(payload)
     payload.pop("trait_evidence")
 
     with pytest.raises(ValidationError):
@@ -1240,7 +1278,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 5, "4"])
+@pytest.mark.parametrize("version", [0, 6, "5"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version
@@ -1771,3 +1809,33 @@ def test_an_impossible_relationship_direction_is_rejected(overrides: dict[str, A
 
     with pytest.raises(ValidationError):
         SyncBundleDocument.model_validate(payload)
+
+
+def test_a_bundled_membership_whose_basis_contradicts_its_dates_is_rejected() -> None:
+    """Every ordinary read rehydrates through the domain rule, so restore must refuse what it would."""
+    payload = _document()
+    payload["group_memberships"][0]["temporal_basis"] = "unknown"
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_a_version_four_document_declaring_groups_is_rejected() -> None:
+    payload = _document()
+    payload["version"] = 4
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_group_references_must_resolve_and_refusals_name_ids_only() -> None:
+    payload = _document()
+    payload["group_memberships"][0]["group_id"] = "01J0000000000000000000GRP9"
+    payload["groups"][0]["organization_id"] = "01J0000000000000000000ORG9"
+
+    with pytest.raises(InvalidBundleError) as raised:
+        validate_bundle_document(parse_bundle_payload(payload))
+
+    assert any("unknown group: 01J0000000000000000000GRP9" in detail for detail in raised.value.details)
+    assert any("unknown organization: 01J0000000000000000000ORG9" in detail for detail in raised.value.details)
+    assert not any("Class 1" in detail for detail in raised.value.details)

@@ -10,6 +10,7 @@ import pydantic_core
 from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ValidationError
 
+from people_context.app.groups.commands import InvalidMembershipClosureError
 from people_context.app.records import (
     InvalidCorrectionError,
     InvalidReminderError,
@@ -102,6 +103,13 @@ def call_action(action: Callable[[], BaseModel]) -> dict[str, Any]:
             "error": "invalid_supersession",
             "message": str(exc),
             "fact_id": exc.fact_id,
+            "reason": exc.reason,
+        }
+    except InvalidMembershipClosureError as exc:
+        return {
+            "error": "invalid_membership_closure",
+            "message": str(exc),
+            "membership_id": exc.membership_id,
             "reason": exc.reason,
         }
     except ReminderNotActiveError as exc:

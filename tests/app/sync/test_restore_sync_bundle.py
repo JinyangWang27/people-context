@@ -69,6 +69,8 @@ def _payload() -> dict[str, Any]:
         "changelog": [],
         "imports": {"source_sessions": [], "candidate_mappings": [], "staging": []},
         "trait_evidence": [],
+        "groups": [],
+        "group_memberships": [],
     }
 
 
