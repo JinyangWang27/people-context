@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Protocol, TypeAlias, runtime_checkable
 
 from people_context.domain.fact import Fact
+from people_context.domain.group import Group, GroupMembership
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation, Organization
@@ -13,7 +14,9 @@ from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.trait import Trait
 
-Record: TypeAlias = Relationship | Affiliation | Fact | Observation | Trait | Interaction | Reminder
+Record: TypeAlias = (
+    Relationship | Affiliation | Fact | Observation | Trait | Interaction | Reminder | Group | GroupMembership
+)
 
 
 @runtime_checkable

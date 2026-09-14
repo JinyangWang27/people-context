@@ -83,6 +83,9 @@ def _downgraded(document: Any, version: int) -> dict[str, Any]:
     """Present the export as an older accepted version by dropping what that version predates."""
     payload = json.loads(render_bundle_json(document))
     payload["version"] = version
+    if version < 5:
+        payload.pop("groups")
+        payload.pop("group_memberships")
     if version < 3:
         payload.pop("trait_evidence")
     if version < 2:
@@ -118,7 +121,7 @@ def test_export_emits_the_current_version_carrying_every_link(tmp_path: Path) ->
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 4
+    assert document.version == SYNC_BUNDLE_VERSION == 5
     assert [(row.trait_id, row.evidence_type, row.evidence_id) for row in document.trait_evidence] == [
         (trait_id, "interaction", interaction_id),
         (trait_id, "observation", observation_id),
@@ -159,6 +162,8 @@ def test_an_older_bundle_carrying_version_three_state_is_refused(tmp_path: Path,
     _grounded(origin)
     payload = json.loads(render_bundle_json(origin.export()))
     payload["version"] = version
+    payload.pop("groups")
+    payload.pop("group_memberships")
     if version < 2:
         payload.pop("imports")
 
@@ -168,7 +173,7 @@ def test_an_older_bundle_carrying_version_three_state_is_refused(tmp_path: Path,
     assert any("trait_evidence" in detail for detail in excinfo.value.details)
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_a_non_empty_evidence_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
     """Freshness is a property of the destination, not of the document being restored."""
     origin = _Origin(tmp_path / "origin.db")

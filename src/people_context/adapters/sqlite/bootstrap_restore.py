@@ -54,6 +54,8 @@ _BASELINE_EMPTY_TABLES = (
     "import_source_sessions",
     "import_candidate_mappings",
     "trait_evidence",
+    "identified_groups",
+    "group_memberships",
     "audit_log",
     "changelog",
     "sync_conflicts",
@@ -410,6 +412,29 @@ class SqliteBootstrapRestorer:
                 for row in document.trait_evidence
             ),
         )
+        # Groups after organizations, memberships after people and groups: each foreign key names a
+        # row already written. A bundle older than version 5 carries neither and writes nothing.
+        self._insert_many(
+            "identified_groups",
+            ("id", "name", "name_normalized", "kind", "organization_id", "sensitivity",
+             "provenance_source", "provenance_session", "provenance_stated_by", "created_at"),
+            (
+                (row.id, row.name, normalize_name(row.name), row.kind.value, row.organization_id,
+                 row.sensitivity.value, *_provenance(row.provenance), row.created_at.isoformat())
+                for row in document.groups
+            ),
+        )
+        self._insert_many(
+            "group_memberships",
+            ("id", "person_id", "group_id", "role", "valid_from", "valid_to", "temporal_basis", "confidence",
+             "sensitivity", "provenance_source", "provenance_session", "provenance_stated_by", "created_at"),
+            (
+                (row.id, row.person_id, row.group_id, row.role.value, *_period(row.period),
+                 row.temporal_basis.value, row.confidence, row.sensitivity.value, *_provenance(row.provenance),
+                 row.created_at.isoformat())
+                for row in document.group_memberships
+            ),
+        )
 
     def _insert_imports(self, document: SyncBundleDocument) -> None:
         """Restore source receipts, commit mappings, and incomplete staging verbatim.
@@ -532,4 +557,6 @@ def _outcome(
         candidate_mappings=len(document.imports.candidate_mappings),
         staged_candidates=len(document.imports.staging),
         trait_evidence=len(document.trait_evidence),
+        groups=len(document.groups),
+        group_memberships=len(document.group_memberships),
     )

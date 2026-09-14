@@ -26,6 +26,9 @@ _LINKED_TABLES = {
     "trait": "traits",
     "reminder": "reminders",
     "affiliation": "affiliations",
+    # Memberships move to the survivor unchanged. Two memberships in one group stay two
+    # assertions: combining them would manufacture a claim neither source made.
+    "group_membership": "group_memberships",
 }
 
 

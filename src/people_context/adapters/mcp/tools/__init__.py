@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from people_context.adapters.mcp.tools import (
     graph,
+    groups,
     guidance,
     imports,
     insights,
@@ -31,6 +32,7 @@ def register_all(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     reminders.register(mcp, deps)
     records.register(mcp, deps)
     graph.register(mcp, deps)
+    groups.register(mcp, deps)
     insights.register(mcp, deps)
     lifecycle.register(mcp, deps)
     portability.register(mcp, deps)

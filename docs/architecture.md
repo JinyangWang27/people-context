@@ -11,6 +11,11 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
 
 ## Layer diagram
 
+[M28.1](specs/m28-groups-and-shared-connections.md) protected groups and memberships follow the existing layers:
+`domain/group.py`, the `ports/groups.py` `GroupStore`, `app/groups/`, and `adapters/sqlite/group_store.py`.
+M28.2's `app/groups/connections.py` derives pairwise shared context at read time from the same `GroupStore`
+reads, without persisted inferred edges or a general-purpose inference engine.
+
 ```
                          ┌───────────────────────────────────────────┐
                          │                 adapters                    │
@@ -121,7 +126,8 @@ Concrete implementations of the ports, plus anything that talks to the outside w
   application runtime as the MCP tools while preserving `people_context.cli:main`.
 - `adapters/runtime.py` — the shared composition root for SQLite, optional semantic decorators, clocks, and
   application use cases. Process entrypoints inject their own warning sink.
-- `config.py` — DB path resolution (flag → env → config file → agent workspace → XDG); this is itself an
+- `config.py` — DB path resolution (flag → env → config file → shared `~/.pctx/people.db`) and the legacy
+  transition guard used by every database-opening entry point; this is itself an
   adapter concern (it reads environment and filesystem) but is small enough to live at the package root.
 
 ## Dependency rule
