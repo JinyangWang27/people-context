@@ -736,15 +736,23 @@ and has no dependency on unfinished milestones.
 - [ ] **M27.1 — Adopt the shared user database default**
   - **Scope:** Default CLI/MCP to `~/.pctx/people.db`; remove implicit workspace selection; add explicit-transition
     protection, consistent path diagnostics, setup handling, regression tests, and shipped documentation.
+  - **Upgrade prerequisite:** before any upgraded client starts, inventory every existing agent's old-version
+    path in its actual launch environment and explicitly pin each client's selected absolute path. Keep unknown
+    clients stopped pending inventory; retain pins until a deliberate transition, even if the new default already
+    exists. Publish this prerequisite ahead of upgrade/first-start and plugin auto-update instructions. Runtime
+    discovery covers only the current environment and cannot certify absence of stores in another environment.
   - **Acceptance:** preserve argument → environment → config precedence and config-file location. Without an
-    override or existing new default, any legacy OpenClaw/XDG database blocks fresh-store creation before writes;
-    multiple stores require explicit choice. Never open legacy contents during discovery, including encrypted
+    override or existing new default, any visible legacy OpenClaw/XDG database blocks fresh-store creation before
+    writes; multiple stores require explicit choice. Never open legacy contents during discovery, including encrypted
     files. Existing new defaults win; explicit overrides bypass discovery. Path diagnostics are non-mutating and
     verbose output explains blocked transitions. Setup refuses blocked transitions before writing and preserves
     explicit pinning/relative-path anchoring while dropping workspace-derived pinning; existing pinned entries
     remain effective. Cover different agent environments/working directories, custom XDG settings, all legacy
     candidates, fresh installs, encrypted stores, CLI/MCP/setup agreement, dry runs, and absence of unintended
-    writes. Preserve demo isolation, explicit Docker paths, encryption, and private-file protections. Update
+    writes. Preserve demo isolation, explicit Docker paths, encryption, and private-file protections. Cover
+    custom XDG/OpenClaw stores invisible to another agent: the old-version inventory
+    and explicit pins preserve each selected store across upgrade, including after creation of the new default.
+    Diagnostics must not claim cross-environment discovery. Update
     current-behavior guides with deliberate, SQLite-consistent transition instructions and record compatibility
     and release classification before shipping. Run focused tests and required repository checks plus `uv build`.
   - **Out:** automatic relocation/copy/merge/deletion, schema changes, new migration command, dependencies,
