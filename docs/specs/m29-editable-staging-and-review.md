@@ -28,15 +28,19 @@ M24-style maintenance proposals over already-committed records stay conversation
 ## Staging model and boundaries
 
 `import_staging(id, batch_id, source, candidate_json, status, created_at)` is review state, not domain state. Its rows
-are not audited, appear in no changelog, and reach no sync bundle: a bundle carries the durable outcomes of a commit,
-never a pending row. Every M29 operation stays inside that boundary. Amending a candidate writes no audit entry and
-mints no changelog row, for the same reason staging one never did — nothing has been asserted about anybody yet.
+are not audited and appear in no changelog. A sync bundle does carry them: since bundle version 2,
+`SqliteBundleReader._incomplete_staging()` exports the staging rows of every receipt that is still reviewable, and the
+strict `BundleStagingRow.status` admits exactly `pending` and `committed`. M29 keeps that contract unchanged. The
+reader keeps exporting only `pending` and `committed` rows, so a withdrawn row never enters a bundle, and an amended
+row travels as its current content under the same `check_staged_candidate` gate restore already applies. No bundle
+version advances. Amending a candidate writes no audit entry and mints no changelog row, for the same reason staging
+one never did — nothing has been asserted about anybody yet.
 
 Editing is amendment in place on the existing row, not a new revision. The row keeps its id, its batch, its receipt,
 and its position in the batch's staging order, so an id printed before an amendment still selects the same candidate
 after one. There is no new table and no migration: `status` is already a `TEXT` column and gains one further value.
 
-Four rules bound what an amendment may do.
+Six rules bound what an amendment may do.
 
 | Rule | Reason |
 |---|---|
@@ -44,16 +48,31 @@ Four rules bound what an amendment may do.
 | The result re-validates through `STAGED_CANDIDATE_MODELS`, `extra="forbid"`, exactly as staging validated it. | One persisted shape gate. An amended row and a staged row are the same kind of object. |
 | `type` cannot change. | A different type is a different candidate with different dependents; re-stage instead. |
 | Only a `pending` row may be amended or withdrawn. | A committed row is a durable record and belongs to `correct_record`. |
+| The amended batch re-runs the batch-wide reference validation `CandidateStager._validate` applies at staging: every `person_candidate_id`, participant, relationship, and evidence reference must name a row of the same batch with the right type. | Shape validation is per row; a dangling, foreign-batch, or wrong-type reference passes it and leaves the candidate permanently unresolved. |
+| A patch is bounded like a `stage-candidates` request — at most 1 MiB of patch JSON and 8 KiB per string — and the batch is re-measured against the `PreflightImportBatch` ceiling with the amended row substituted, before anything is written. | An amendment that grows a batch past the review ceiling makes `review` and `commit` refuse it, and none of the bounded commands could repair it. |
 
-A person candidate's match fields re-run the ambiguity-preserving matcher staging used, on the amended values. "It is
-the Priya Sharma at Acme, not the other one" is therefore recorded as an amendment whose match result was recomputed,
-not as a guess written over an ambiguity. An amendment that leaves the reference ambiguous leaves it ambiguous, and
-its dependents stay unresolved at commit exactly as they do today.
+A person candidate's `matched_person_id` and `match_disposition` are computed fields. `match_person_candidate` unions
+every active person whose normalized name or handle matches the candidate's tokens and reports a count, not the
+colliding ids. Amending the name or handles re-runs that matcher on the amended values, and an amendment that leaves
+the reference ambiguous leaves it ambiguous, its dependents unresolved at commit exactly as today.
+
+"It is the Priya Sharma at Acme, not the other one" cannot be expressed through those tokens: adding a unique handle
+while keeping the colliding name still unions both people. Choosing needs a second, explicit mechanism. A patch may
+set `matched_person_id` to one active person id, and the use case accepts it only when that id is in the set the
+matcher computes for the candidate's current tokens; any other id refuses with `person_not_a_match`. An accepted
+choice stores `match_disposition` `matched` with that id, so dependents commit against the chosen person. This is the
+only way a patch may touch either field: the choice is a reviewer's decision recorded on the row, not a guess written
+over an ambiguity. So that a reviewer can make it, `review_import` and `pctx import review` list, for an ambiguous
+person row, the id and canonical name of each colliding active person in an additive `match_candidates` field,
+computed at read time and never stored — the stored row keeps its count. M30's ambiguity picker uses exactly this
+field and this patch.
 
 Withdrawal is the second verb. A withdrawn row moves to status `rejected`, stays in its batch, keeps being listed by
 review, and is never committed. It is not deleted: a reviewer who cannot see what they dropped cannot check that they
 dropped the right thing. Rejected rows follow the same cleanup path as pending rows in
-`adapters/sqlite/import_cleanup.py`, so hard forget erases them with the rest of a batch's retained staging.
+`adapters/sqlite/import_cleanup.py`, so hard forget erases them with the rest of a batch's retained staging. They do
+not travel in a sync bundle, so they do not survive a bootstrap restore: withdrawal is final for the installation
+that made it, and a restored batch is numbered without the rows it dropped.
 
 ## Planned PRs and compatibility
 
@@ -62,7 +81,9 @@ dropped the right thing. Rejected rows follow the same cleanup path as pending r
 Add `AmendStagedCandidate(batch_id, candidate_id, patch)` and `WithdrawStagedCandidates(batch_id, candidate_ids)`
 beside `ReviewImport` and `CommitImport` in `app/imports/workflow.py`, with the merge, revalidation, type, and match
 rules above. A non-`pending` target refuses with a new `ImportPipelineError` code `candidate_not_pending`; a target
-outside the batch keeps the existing `candidate_not_in_batch` refusal. Neither use case touches audit or changelog.
+outside the batch keeps the existing `candidate_not_in_batch` refusal; a reference the amended batch cannot resolve
+refuses with `candidate_reference_invalid`; a patch or resulting batch over its ceiling refuses with the existing
+size refusals. Every refusal is atomic and writes nothing. Neither use case touches audit or changelog.
 
 `ImportStagingStore` gains `update_candidate(candidate_id, candidate)` and `mark_status(candidate_ids, status)`
 alongside `stage_batch`, `list_batch`, and `mark_committed`. The SQLite adapter updates `candidate_json` and `status`
@@ -106,9 +127,12 @@ people are new, how many match an existing person, how many are ambiguous, count
 withdrawn. The summary is what tells a reviewer whether the list is worth reading line by line.
 
 `parse_candidate_selection` accepts ordinals, ranges, and ids, mixed in one selection — `--accept 1 3-5`,
-`--accept 2,01J...CANDIDATE`. An unknown ordinal, an out-of-range ordinal, or an unknown id still refuses the whole
-selection. The parser is shared with the vCard step of `cli/onboarding.py`, so `pctx init` gets numbered selection
-without a second implementation and without a second set of rules.
+`--accept 2,01J...CANDIDATE`. A token that exactly equals a candidate id of the batch is that id, before any shorthand
+parsing: staging ids are format-opaque in the released bundle contract, so a restored batch may hold an id spelled
+`1` or `3-5`, and an existing invocation naming it keeps its meaning. Shorthand applies only to a token that is not a
+known id. An unknown ordinal, an out-of-range ordinal, or an unknown id still refuses the whole selection. The
+parser is shared with the vCard step of `cli/onboarding.py`, so `pctx init` gets numbered selection without a second
+implementation and without a second set of rules.
 
 `pctx import review BATCH --interactive` steps through the pending candidates one at a time, offering
 `[a]ccept [s]kip [w]ithdraw [e]dit [q]uit`. `e` prompts for a field patch and runs the M29.1 amend use case, so an
@@ -128,7 +152,8 @@ given. The temporary file is deleted afterwards. The review document carries dis
 disclosure warning applies to the file the editor opens. With neither variable set, the command refuses with exit
 status 2 and names both variables it checked.
 
-`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything, so
+`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything, read
+under the same 1 MiB bound as `stage-candidates --input`, so
 `pctx import review BATCH --json > f; $EDITOR f; pctx import edit BATCH --from f` is the same workflow for a script,
 or for an agent working through the CLI without MCP.
 
@@ -149,27 +174,36 @@ promise that new fields are additive and a consumer ignoring unknown fields keep
 `rejected` status is an additive value of a field that already exists. `amend`, `reject`, `edit`, `--interactive`,
 `--patch`, `--from`, and `--no-commit` are new commands and flags; every existing invocation keeps its meaning.
 
-Sync bundles carry durable commit outcomes and no staging rows, so amendment and withdrawal are invisible to export,
-restore, and peers by construction. Hard forget removes rejected rows exactly as it removes pending ones. Person merge
-and forget behaviour over committed records is untouched by this milestone.
+Sync bundles keep their released contract: the reader exports only `pending` and `committed` staging rows, so a
+bundle taken after a withdrawal omits the rejected row, and a bundle taken after an amendment carries the amended
+content, which restore validates exactly as it validates a row staged that way. No bundle version advances and no
+reader changes. Hard forget removes rejected rows exactly as it removes pending ones. Person merge and forget
+behaviour over committed records is untouched by this milestone.
 
 ## Acceptance scenarios and verification
 
 - An amendment adding an unknown field, changing `type`, or targeting a committed or rejected row is refused; the
   stored candidate is unchanged and the refusal names the field, not the patch.
-- An ambiguous person candidate amended with disambiguating fields resolves and its dependents commit; one amended
-  without them stays ambiguous and its dependents stay `unresolved`. Neither path guesses.
+- An amendment pointing `person_candidate_id`, a participant, a relationship end, or an evidence reference at a
+  missing, foreign-batch, or wrong-type row refuses with `candidate_reference_invalid`. A patch over 1 MiB, a string
+  over 8 KiB, or an amendment that would push the batch past the review ceiling refuses before any write, and the
+  batch stays reviewable and committable afterwards.
+- An ambiguous person row lists its `match_candidates`. Amended with a `matched_person_id` from that list, it
+  resolves and its dependents commit; naming a person outside the list refuses with `person_not_a_match`; amended
+  without a choice it stays ambiguous and its dependents stay `unresolved`. Neither path guesses.
 - A withdrawn candidate is skipped by `--all` and by "commit everything" over MCP; naming its id in `--accept` or in
   `accepted_ids` refuses the whole commit with `candidate_withdrawn` and commits nothing.
 - Ordinals are unchanged by an intervening amendment or withdrawal, and a review taken before and after one selects
-  the same candidates. A mixed `1,3-5,01J...` selection resolves; one unknown member refuses all of it.
+  the same candidates. A mixed `1,3-5,01J...` selection resolves; one unknown member refuses all of it. In a batch
+  whose restored candidate ids include the literal `1`, `--accept 1` selects that id, not the first ordinal.
 - `--interactive` accepting some and quitting commits nothing on `q`, commits exactly the accepted set otherwise, and
   survives an invalid edit mid-loop without losing the accepted set. `--interactive --json` refuses.
 - An editor round trip with one row removed, one row changed, one invalid edit, and a document naming a foreign batch
   produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a whole-apply refusal.
   With no editor configured the command exits 2 and says which variables were checked; the temp file never survives.
-- Hard forget removes rejected staging rows with pending ones; bundle export and restore are byte-identical to a run
-  where the same batch was reviewed without amendment or withdrawal.
+- Hard forget removes rejected staging rows with pending ones. A bundle exported after a withdrawal validates under
+  the released contract and omits the rejected row; one exported after an amendment restores the amended content;
+  `pctx sync push` never emits a `rejected` status.
 - MCP prompt, packaged guide, and usage-skill parity tests assert the chat review loop wording, including that
   confirming an amendment is not acceptance of the batch.
 - Implementing PRs add fake-port and real-SQLite tests for the new use cases and store methods, in-memory tests for
@@ -182,8 +216,13 @@ and forget behaviour over committed records is untouched by this milestone.
   need its own lifecycle, cleanup, and forget integration to express what one status value and an in-place update do.
 - Storing amendment history, or an audit trail over staging, would make review state durable state. Staging is
   discarded at commit; what survives is the committed record, whose history the changelog already owns.
-- A revision token on staged rows, or compare-and-swap on commit, is deferred. Single-user staging has one reviewer,
-  and M24 already establishes that rereading before applying is a workflow safeguard rather than an isolation promise.
+- No stored revision token on staged rows, and no compare-and-swap in `CommitImport`. Single-user staging has one
+  reviewer, and M24 establishes that rereading before applying is a workflow safeguard rather than an isolation
+  promise. M30.2, whose confirmation is separated in time from its display, compares the reviewed content with the
+  stored row at commit time instead; that comparison is computed from `candidate_json`, and nothing new is stored.
+- Advancing the bundle contract to carry `rejected` rows was rejected for now: withdrawal is a local review decision,
+  and a version bump would cost a strict row model, a reader, and a restore path to preserve rows nothing will ever
+  commit. A later bundle version can admit the status if withdrawn rows must survive restore.
 - Reinstating a withdrawn candidate is out of scope: re-stage the material instead. So is appending candidates to an
   existing batch, which would break the batch's one-source-one-receipt meaning.
 - A proposals lifecycle for `correct_record` and `supersede_fact` stays out. Those act on committed records and their

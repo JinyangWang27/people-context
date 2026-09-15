@@ -24,7 +24,7 @@ second person reaches the data. The local-first promise and the loopback-only HT
 and the page is built so that the same boundary holds against a hostile web page open in another browser tab.
 
 Three PRs follow the verbs: view (M30.1), review (M30.2), edit (M30.3). Each is independently useful and
-independently mergeable, and each later PR only adds pages and endpoints to the process the first one starts.
+independently mergeable, and each later PR only adds views and endpoints to the process the first one starts.
 This specification delivers no code.
 
 ## Shared foundation and security model
@@ -37,12 +37,16 @@ with the standard-library `webbrowser`, and exits on Ctrl-C or when the page pos
 daemon, no configuration file, no PID file, and no state that survives the process. Starting it twice starts two
 unrelated processes with two unrelated tokens.
 
-Each view is one HTML document with its CSS and JavaScript inline, served from Python string constants or
-package data. No bundler, no Node toolchain, no CDN, no external font, and no third-party script: everything the
-browser executes was reviewed in this repository, and a page that fails to load a resource cannot exist because
-there is nothing external to load. `Content-Security-Policy: default-src 'self'` is sent on every HTML response,
-with the inline script admitted by a nonce generated per response — not by `'unsafe-inline'`, which would forfeit
-the protection the header is being sent for.
+The page is one HTML document with its CSS and JavaScript inline, served from Python string constants or package
+data. Every view — people, person, pending batches, and later one batch — is rendered by that document from JSON
+endpoints, and navigation between views is client-side. There is no second document to link to, which is what lets
+the token stay out of every URL after the first load: an ordinary link or form submission cannot carry a request
+header, so a multi-document design would have had to copy the token into every `href`. No bundler, no Node
+toolchain, no CDN, no external font, and no third-party script: everything the browser executes was reviewed in
+this repository, and a page that fails to load a resource cannot exist because there is nothing external to load.
+`Content-Security-Policy: default-src 'self'` is sent on every HTML response, with the inline script admitted by a
+nonce generated per response — not by `'unsafe-inline'`, which would forfeit the protection the header is being
+sent for.
 
 The security model is identical in all three PRs:
 
@@ -51,7 +55,10 @@ The security model is identical in all three PRs:
 - A per-launch token from `secrets.token_urlsafe` is required on every request: as a query parameter on the
   first load, then as a request header the page sets on every subsequent request. It is compared with
   `secrets.compare_digest`. It is never written to the database, a file, a log line, or an error message; the
-  printed URL on stdout is the only place it appears.
+  printed URL on stdout is the only place it appears. uvicorn is started with `access_log=False` and a log
+  configuration that never formats a request path, because its default access log writes the first
+  `GET /?token=...` line before application code runs. A subprocess test exercises the launched server, not only
+  a `TestClient`, and asserts that the token occurs on stderr and stdout exactly once, in the printed URL.
 - `Host` and `Origin`, and `Sec-Fetch-Site` where the browser sends it, are checked against the bound address on
   every request. This defeats DNS rebinding and cross-tab request forgery from an ordinary web page, which can
   guess a loopback port but cannot read the token or forge these headers.
@@ -87,10 +94,11 @@ M30.3 depends on M29.1 for amendment. All three are independent of M28.3.
 
 ### M30.1 — Read-only local viewer
 
-Deliver `pctx browse`, the foundation above, and three read-only pages.
+Deliver `pctx browse`, the foundation above, and three read-only views.
 
-- People list: name, relationship to self, and last interaction, from the same read the `pctx list --json`
-  command uses. Rows link to the person page.
+- People list: canonical name, aliases, and summary — exactly the columns `ListPersonIndex`, the read behind
+  `pctx list --json`, already carries. No relationship-to-self or last-interaction column is added, because
+  neither exists in that read and a composed read is not introduced here. Rows open the person view.
 - Person page: the `brief` content — summary, affiliations, facts, interactions, reminders, and traits — from the
   same use case behind `pctx brief` and `get_person_context`, with the same section bounds and the same
   `truncated` flags. A section truncated for the CLI is truncated here, and says so.
@@ -98,9 +106,9 @@ Deliver `pctx browse`, the foundation above, and three read-only pages.
   that `pctx sources` and `ListImportSources` already expose.
 
 JSON endpoints wrap the existing read use cases and return what those use cases return. There is no new read
-model, no cache, no search index, and no semantic search. Every page is read-only: no page carries a form, and
-no endpoint in this PR writes. The batches list shows batch identity and counts only, and links into M30.2's
-review page once that PR exists.
+model, no cache, no search index, and no semantic search. Every view is read-only: no view carries a form, and
+no endpoint in this PR writes. The batches list shows batch identity and counts only, and opens M30.2's batch
+view once that PR exists.
 
 This realizes the post-roadmap candidate "read-only local web viewer (`pctx browse`)"; that candidate is retired
 from the roadmap's deferred list by the PR that delivers this.
@@ -123,9 +131,13 @@ repeating the value.
 Commit requires one explicit click on a confirmation naming the number of candidates that will be committed.
 There is no auto-commit, no commit as a side effect of accepting, and no single control that selects everything
 and commits it. After every mutation the page reloads its state from the server rather than patching a local
-copy, so what is displayed is what the store holds and a stale tab cannot act on a view the store has moved past.
-The size ceilings that bound `pctx import review` apply unchanged; a batch too large to review in the CLI is not
-made reviewable by being viewed in a browser.
+copy. Reloading alone cannot protect the commit: another tab, a CLI invocation, or an MCP client may amend a
+candidate between that reload and the confirmation click, and `CommitImport` addresses stable ids. The commit
+request therefore carries, for every accepted row, a digest of the candidate content the page displayed; the
+endpoint recomputes each digest from the stored `candidate_json`, and if any differs it refuses the whole commit
+with `candidate_changed` and commits nothing, so the page reloads and the reviewer sees what changed. Nothing is
+stored for this check, and `CommitImport` itself is unchanged. The size ceilings that bound `pctx import review`
+apply unchanged; a batch too large to review in the CLI is not made reviewable by being viewed in a browser.
 
 ### M30.3 — Inline edit in the browser
 
@@ -137,9 +149,10 @@ an endpoint wrapping `AmendStagedCandidate`, which re-validates and re-resolves 
 amendment path does. Validation refusals are shown against the field they name, one message per field, without
 repeating the submitted value.
 
-An ambiguous person candidate gets a picker listing the matcher's candidates with enough context to tell them
-apart, so the user chooses one or leaves it unresolved. The choice is recorded through the same amendment path
-M29.1 defines, not through a browser-specific resolution step.
+An ambiguous person candidate gets a picker listing the `match_candidates` M29.1 adds to the review row — the id
+and canonical name of each colliding person — so the user chooses one or leaves it unresolved. The choice is a
+patch setting `matched_person_id`, validated by `AmendStagedCandidate` against that same set, not a
+browser-specific resolution step.
 
 There is no free-text form for adding a candidate that the importer did not produce: the browser edits what was
 staged, it does not author records. Committed and withdrawn rows are not editable.
@@ -169,18 +182,22 @@ same trust boundary the loopback MCP transport already states.
 - A request with no token, a wrong token, an unexpected `Host`, or a foreign `Origin` is refused with a generic
   response carrying no person, candidate, batch, or file data, and no indication of which check failed.
 - The token appears in the printed URL and nowhere else: not in stderr, not in log records, not in refusal
-  bodies, not in any file the process writes.
+  bodies, not in any file the process writes. This is asserted against the launched server's output, because
+  a `TestClient` bypasses the server's own access logger.
 - An inline script without the response's nonce is blocked by the Content-Security-Policy; the page's own script
   runs.
 - A candidate whose value contains markup renders as text on the review page and in the edit form, and executes
   nothing.
 - Sensitive and restricted records are absent from every page without elevation and present with
   `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process; no page control changes that state.
-- Person-page section bounds and `truncated` flags match `pctx brief` for the same person.
+- The people list carries exactly the person-index columns, in the order `pctx list --json` returns them.
+- Person-view section bounds and `truncated` flags match `pctx brief` for the same person.
 - The pending-batches list matches `pctx sources` for the same database.
 - The review page's row order matches `pctx import review` for the same batch, including withdrawn rows.
 - Withdraw and commit refusals display the use-case error code and never the refused payload.
 - The commit confirmation names the count that is committed, and the count committed equals it.
+- A candidate amended through the CLI after the page displayed it and before the confirmation click makes the
+  commit refuse with `candidate_changed` and commit nothing; the page then shows the amended content.
 - After accept, withdraw, commit, and amend, the page state is refetched from the server and matches a fresh
   `pctx import review` of the same batch.
 - An invalid edit is refused per field; a valid edit is visible through `pctx import review` afterwards.
