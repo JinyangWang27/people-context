@@ -119,8 +119,11 @@ Deliver `pctx browse`, the foundation above, and three read-only views.
   pending-status filter and no counts, and scanning every page to build a pending-only list would be unbounded, so
   the view does not claim to be one. A batch staged without a receipt is not listed; it is opened by batch id.
 
-JSON endpoints wrap the existing read use cases and return what those use cases return. There is no new read
-model, no cache, no search index, and no semantic search. Every view is read-only: no view carries a form, and
+JSON endpoints wrap the existing read use cases and return what those use cases return, with one exception. The
+source-detail endpoint builds its response on the server from `ShowImportSource`'s receipt summary, `staged_total`,
+and `staged_by_status` only; `mappings`, `mappings_total`, and `mappings_by_disposition` never leave the process, so
+the JSON response itself, not just the rendered view, discloses no committed entity id and no count of hidden
+records. There is no new read model, no cache, no search index, and no semantic search. Every view is read-only: no view carries a form, and
 no endpoint in this PR writes, other than the additive brief flag above. A receipt with a batch opens M30.2's
 batch view once that PR exists.
 
@@ -134,8 +137,9 @@ Depends on M29.1 and M29.2. Add one batch page and the endpoints it needs.
 The page lists candidates as a table ordered by `ordinal`, the same order `pctx import review` prints, with a
 checkbox on each pending row, a one-line summary of the candidate, and the match state for person candidates:
 new, matches an existing person, or ambiguous with a stated number of candidates. Withdrawn and committed rows
-appear with a status badge and no checkbox. A header carries the batch summary: source, staged time, and counts
-by status. The actions are "Accept selected", "Withdraw selected", and "Commit accepted".
+appear with a status badge and no checkbox. A header carries the batch id and counts by status. It shows no source
+label or staged time: a batch staged through `stage_candidates` without `source_kind` has no receipt, and
+`ReviewImport` exposes no batch timestamp, so neither could be filled for every batch. The actions are "Accept selected", "Withdraw selected", and "Commit accepted".
 
 Endpoints wrap `ReviewImport`, `WithdrawStagedCandidates`, and `CommitImport`. A refusal is displayed as the use
 case's own error code — `candidate_not_pending`, `candidate_withdrawn`, and the rest — and never echoes the
