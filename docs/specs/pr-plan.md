@@ -834,25 +834,29 @@ M29.1 → M29.2 → M29.3.
     `_require_tracking_for_evidence`. `ReviewImport` returns a read-time `batch_digest`; amend, withdraw, and commit
     accept an optional `expected_batch_digest` checked under an immediate write lock, refusing with `batch_changed`.
     Only `pending` rows are reviewable for receipt status and duplicate detection; a withdrawal recomputes the receipt
-    in the same transaction, to `committed` or to a new terminal `withdrawn` status when nothing was committed.
+    in the same transaction, to `committed` or to a new terminal `withdrawn` status when nothing was committed. The
+    receipt update is journalled through `audit_mutation` with a full after-image; staging rows stay unaudited.
+    Projected `match_candidates` names are cut to 256 characters, and their worst-case bytes are charged to the review
+    ceiling.
   - **Acceptance:** an amendment adding an unknown field, changing `type`, or targeting a committed or rejected row is
-    refused, the stored candidate is unchanged, and the refusal names the field, never the patch. A dangling,
-    foreign-batch, or wrong-type reference, an oversized patch, or an amendment that would push the batch past the
-    review ceiling refuses atomically. An ambiguous person candidate amended with a `matched_person_id` in the matcher's
-    set resolves and its dependents commit, including one beyond the 10-entry display cap; one naming another person
-    refuses with `person_not_a_match`; one amended without a choice stays ambiguous. A withdrawn person row with a live
-    `matched_person_id` leaves its pending dependents `unresolved` under `--all`. A withdrawn candidate is skipped by
-    `--all` and by "commit everything" over MCP; naming its id in `--accept` or in `accepted_ids` refuses the whole
-    commit with `candidate_withdrawn` and commits nothing; rerunning `--all` on a partially committed batch still
-    reports earlier rows in `skipped_ids`. Hard forget removes `rejected` staging rows with `pending` ones. After
-    withdrawing a person whose facts stay pending, `pctx sync push` succeeds and restore reproduces the rejected row,
-    its dependents, and their ordinals; an older-version bundle carrying `rejected` is refused and every released
-    version still restores. `amend`/`reject --json` print the full batch document. MCP prompt, packaged guide, and
-    usage-skill parity tests assert the chat review loop wording, including that confirming an amendment is not
-    acceptance of the batch. A patched `relationship_type` of `---`, identical relationship endpoints, and a same-batch
-    evidence citation added to a receiptless batch each refuse. Withdrawing the last pending rows sets the receipt to
-    `committed` or `withdrawn` atomically, and both round-trip through a bundle. A stale `expected_batch_digest` refuses
-    amend, withdraw, and commit with `batch_changed`; omitting it keeps today's behaviour.
+    refused, the stored candidate is unchanged, and the refusal names a declared field, never the patch or an undeclared
+    key, which it shows as `(redacted)`. A dangling, foreign-batch, or wrong-type reference, an oversized patch, or an
+    amendment that would push the batch past the review ceiling refuses atomically. An ambiguous person candidate
+    amended with a `matched_person_id` in the matcher's set resolves and its dependents commit, including one beyond the
+    10-entry display cap; one naming another person refuses with `person_not_a_match`; one amended without a choice
+    stays ambiguous. A withdrawn person row with a live `matched_person_id` leaves its pending dependents `unresolved`
+    under `--all`. A withdrawn candidate is skipped by `--all` and by "commit everything" over MCP; naming its id in
+    `--accept` or in `accepted_ids` refuses the whole commit with `candidate_withdrawn` and commits nothing; rerunning
+    `--all` on a partially committed batch still reports earlier rows in `skipped_ids`. Hard forget removes `rejected`
+    staging rows with `pending` ones. After withdrawing a person whose facts stay pending, `pctx sync push` succeeds and
+    restore reproduces the rejected row, its dependents, and their ordinals; an older-version bundle carrying `rejected`
+    is refused and every released version still restores. `amend`/`reject --json` print the full batch document. MCP
+    prompt, packaged guide, and usage-skill parity tests assert the chat review loop wording, including that confirming
+    an amendment is not acceptance of the batch. A patched `relationship_type` of `---`, identical relationship
+    endpoints, and a same-batch evidence citation added to a receiptless batch each refuse. Withdrawing the last pending
+    rows sets the receipt to `committed` or `withdrawn` atomically, and both round-trip through a bundle. A stale
+    `expected_batch_digest` refuses amend, withdraw, and commit with `batch_changed`; omitting it keeps today's
+    behaviour.
   - **Out:** a separate proposals table for edits, amendment history or an audit trail over staging, a stored revision
     token, reinstating a withdrawn candidate, and appending candidates to an existing batch.
 
@@ -880,10 +884,11 @@ M29.1 → M29.2 → M29.3.
     withdrawn, a changed one is amended, and an untouched one is a no-op, all through one `ApplyReviewEdits` use case
     that first checks the document's `batch_digest` that validates every row against the resulting batch and writes
     inside one write-locked unit of work. Read the edited document under a bound of the batch's current rendered review
-    document plus the remaining staged-payload headroom, not the 1 MiB request bound. Print the batch summary and ask
-    `Commit N pending candidates? [y/N]` on the controlling terminal unless `--no-commit`, only after the editor exits
-    zero, then delete the temp file. Add `pctx import edit BATCH --from FILE|-` to apply an already-edited document
-    without opening an editor or prompting, refused together with `--no-commit`.
+    document plus the remaining staged-payload headroom times the renderer's pinned worst-case expansion, not the 1 MiB
+    request bound. Print the batch summary and ask `Commit N pending candidates? [y/N]` on the controlling terminal
+    unless `--no-commit`, only after the editor exits zero, then delete the temp file. Add `pctx import edit BATCH
+    --from FILE|-` to apply an already-edited document without opening an editor or prompting, refused together with
+    `--no-commit`.
   - **Acceptance:** an editor round trip with one row removed, one row changed, one invalid edit, and a document naming
     a foreign batch produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a
     whole-apply refusal that changes nothing; \1 A row amended by another client after the document was rendered refuses
@@ -908,32 +913,33 @@ independent of M28.3.
 - [ ] **M30.1 — Read-only local viewer**
   - **Scope:** Add `pctx browse [--open] [--port N]`, a Starlette application under uvicorn bound to `127.0.0.1` only,
     printing a URL carrying a per-launch `secrets.token_urlsafe` token, checked with `secrets.compare_digest` on every
-    request alongside `Host`/`Origin`/`Sec-Fetch-Site`. Send `Content-Security-Policy: default-src 'self'` with a
-    per-response nonce, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer` on every response; HTML-escape
-    every rendered value; print and show the existing review disclosure warning wherever staged candidates appear. Start
-    uvicorn with `access_log=False` and a log configuration that never formats a request path. Serve one inline
-    HTML/CSS/JS document from Python string constants or package data that renders every view client-side, with no
-    bundler, CDN, or third-party script. Add three read-only views — people list (person-index columns only, paged by an
-    optional cursor added to `ListPersonIndex`, 1–200 per page, default 50), person view, and paged import sources with
-    per-source staged counts only — as JSON-endpoint wrappers over the existing `pctx list --json`, `pctx brief`, and
-    `pctx sources`/`pctx source show` reads, plus an additive top-level `truncated` on the version-1 brief document,
-    applying the same ordinary-disclosure and process-level sensitivity-elevation rules as MCP reads. Declare
-    `starlette` and `uvicorn` in `pyproject.toml` with ranges compatible with what `mcp` already pins.
+    request alongside `Host`/`Origin`/`Sec-Fetch-Site`. Send `Content-Security-Policy: default-src 'self'` with
+    `script-src` and `style-src` sharing a per-response nonce, `Cache-Control: no-store`, and `Referrer-Policy:
+    no-referrer` on every response; HTML-escape every rendered value; print and show the existing review disclosure
+    warning wherever staged candidates appear. Start uvicorn with `access_log=False` and a log configuration that never
+    formats a request path. Serve one inline HTML/CSS/JS document from Python string constants or package data that
+    renders every view client-side, with no bundler, CDN, or third-party script. Add three read-only views — people list
+    (person-index columns only, paged by an optional cursor added to `ListPersonIndex`, 1–200 per page, default 50,
+    applied only to cursor and browser requests so `pctx list --limit N` keeps its meaning), person view, and paged
+    import sources with per-source staged counts only — as JSON-endpoint wrappers over the existing `pctx list --json`,
+    `pctx brief`, and `pctx sources`/`pctx source show` reads, plus an additive top-level `truncated` on the version-1
+    brief document, applying the same ordinary-disclosure and process-level sensitivity-elevation rules as MCP reads.
+    Declare `starlette` and `uvicorn` in `pyproject.toml` with ranges compatible with what `mcp` already pins.
   - **Acceptance:** a bind to any address other than `127.0.0.1` is refused; the ephemeral default and an explicit
     `--port` both serve on loopback only. A request with no token, a wrong token, an unexpected `Host`, or a foreign
     `Origin` is refused with one generic, unlogged response carrying no person, candidate, batch, or file data and no
     indication of which check failed. After the first load the address bar and history entry carry no token, replaced by
     `history.replaceState` before any request. The token appears in the printed URL and nowhere else, asserted against
     the launched server's stdout and stderr by a subprocess test, not only a `TestClient`. An inline script without the
-    response's nonce is blocked by the Content-Security-Policy; the page's own script runs. A candidate or person value
-    containing markup renders as text and executes nothing. Sensitive and restricted durable records are absent from the
-    people and person views without elevation and present with `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx
-    browse` process, with no page control changing that state. A person over `BRIEF_CONTEXT_ITEMS` shows `truncated` in
-    the view and in `pctx brief` text and JSON, and each sources page and per-source staged count matches `pctx
-    sources`/`pctx source show`, with no committed mapping exposed and an identical response with and without elevation.
-    Following the people list's `next_cursor` reaches every person exactly once on a 10,000-person store. \1 change
-    after `starlette` and `uvicorn` are declared. Starlette `TestClient` tests cover every endpoint and every security
-    header, including the refusal paths.
+    response's nonce, script or style, is blocked by the Content-Security-Policy; the page's own script runs and its
+    stylesheet applies. A candidate or person value containing markup renders as text and executes nothing. Sensitive
+    and restricted durable records are absent from the people and person views without elevation and present with
+    `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process, with no page control changing that state. A
+    person over `BRIEF_CONTEXT_ITEMS` shows `truncated` in the view and in `pctx brief` text and JSON, and each sources
+    page and per-source staged count matches `pctx sources`/`pctx source show`, with no committed mapping exposed and an
+    identical response with and without elevation. Following the people list's `next_cursor` reaches every person
+    exactly once on a 10,000-person store. \1 change after `starlette` and `uvicorn` are declared. Starlette
+    `TestClient` tests cover every endpoint and every security header, including the refusal paths.
   - **Out:** remote or LAN access, any authentication scheme, HTTPS, multi-user operation, a background daemon,
     a JavaScript framework or build step, editing durable records, displaying sensitive records without the
     existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.

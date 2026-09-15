@@ -81,11 +81,11 @@ integer `version`, and follows the same additive rule as MCP responses: existing
 repurposed, and new fields are additive.
 
 **Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds additive `ordinal`,
-`match_candidates`, `match_candidates_truncated`, and `batch_digest` fields and an additive `rejected` status value to
-the import review document and the `review_import` response, with no format string or version change; adds an
-additive `withdrawn` import receipt status; and advances the sync bundle one version so staging rows admit
-`rejected`. [M30](specs/m30-local-web-review.md) adds an additive top-level `truncated` to the version-1 person brief
-and an additive `next_cursor` to the version-1 person index.
+`match_candidates` (with a per-entry `name_truncated`), `match_candidates_truncated`, and `batch_digest` fields and an
+additive `rejected` status value to the import review document and the `review_import` response, with no format string
+or version change; adds an additive `withdrawn` import receipt status; and advances the sync bundle one version so
+staging rows admit `rejected`. [M30](specs/m30-local-web-review.md) adds an additive top-level `truncated` to the
+version-1 person brief and an additive `next_cursor` to the version-1 person index.
 
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|

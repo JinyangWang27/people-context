@@ -60,19 +60,22 @@ colliding ids. Amending the name or handles re-runs that matcher on the amended 
 the reference ambiguous leaves it ambiguous, its dependents unresolved at commit exactly as today.
 
 "It is the Priya Sharma at Acme, not the other one" cannot be expressed through those tokens: adding a unique handle
-while keeping the colliding name still unions both people. Choosing needs a second, explicit mechanism. A patch may
-set `matched_person_id` to one active person id, and the use case accepts it only when that id is in the set the
-matcher computes for the candidate's current tokens; any other id refuses with `person_not_a_match`. An accepted
-choice stores `match_disposition` `matched` with that id, so dependents commit against the chosen person. This is the
-only way a patch may touch either field: the choice is a reviewer's decision recorded on the row, not a guess written
-over an ambiguity. So that a reviewer can make it, `review_import` and `pctx import review` list, for an ambiguous
-person row, the id and canonical name of colliding active people in an additive `match_candidates` field, computed at
-read time and never stored — the stored row keeps its count. The list is capped at 10 per row, ordered by canonical
-name then id, with an additive `match_candidates_truncated` flag, because a common name can collide with any number
-of people and the review read must stay bounded by the staged payload it already measures. The cap limits display,
-not choice: a patch naming any person in the matcher's full set is accepted, and a reviewer finds one beyond the cap
-through the bounded `resolve_person` and `search_people` reads. M30's ambiguity picker uses exactly this field, this
-flag, and this patch.
+while keeping the colliding name still unions both people. Choosing needs a second, explicit mechanism. A patch may set
+`matched_person_id` to one active person id, and the use case accepts it only when that id is in the set the matcher
+computes for the candidate's current tokens; any other id refuses with `person_not_a_match`. An accepted choice stores
+`match_disposition` `matched` with that id, so dependents commit against the chosen person. This is the only way a patch
+may touch either field: the choice is a reviewer's decision recorded on the row, not a guess written over an ambiguity.
+So that a reviewer can make it, `review_import` and `pctx import review` list, for an ambiguous person row, the id and
+canonical name of colliding active people in an additive `match_candidates` field, computed at read time and never
+stored — the stored row keeps its count. Each projected canonical name is cut to at most 256 characters with an additive
+`name_truncated` flag, because stored names have no length bound, and the list is capped at 10 per row, ordered by
+canonical name then id, with an additive `match_candidates_truncated` flag, because a common name can collide with any
+number of people and the review read must stay bounded by the staged payload it already measures. The projection's
+worst-case size — ten entries of an id and a 256-character name per ambiguous row — is charged to the same review
+ceiling `PreflightImportBatch` measures, before any name is read, so an ambiguous batch that would exceed it is refused
+like any oversized batch rather than rendered. The cap limits display, not choice: a patch naming any person in the
+matcher's full set is accepted, and a reviewer finds one beyond the cap through the bounded `resolve_person` and
+`search_people` reads. M30's ambiguity picker uses exactly this field, this flag, and this patch.
 
 Withdrawal is the second verb. A withdrawn row moves to status `rejected`, stays in its batch, keeps being listed by
 review, and is never committed. It is not deleted: a reviewer who cannot see what they dropped cannot check that they
@@ -82,6 +85,9 @@ travel in a sync bundle under the advanced version while their receipt is still 
 its withdrawals and its numbering.
 
 A withdrawal changes what the receipt means, so it recomputes the receipt in the same transaction as the row status.
+A source session is primary replicated state, so when the status changes the update goes through `audit_mutation` with
+the whole row as its after-image, exactly as `CommitImport._record_provenance()` records the transitions it makes, and
+`sync-log` shows it. The staging-row changes themselves stay unaudited, and an unchanged status writes nothing.
 Today `workflow._session_status()` treats every row that is not `committed` as reviewable, while duplicate detection
 looks for `pending` rows; with `rejected` added, both use one rule: only a `pending` row is reviewable. The receipt
 status follows. Rows still pending leave it `staged` or `partially_committed` as today. No pending rows and at least
@@ -103,8 +109,9 @@ above. A non-`pending` target refuses with a new `ImportPipelineError` code `can
 the batch keeps the existing `candidate_not_in_batch` refusal; a reference the amended batch cannot resolve refuses with
 `candidate_reference_invalid`; a candidate failing a staging input rule refuses with the stager's own validation
 refusal, as does a same-batch evidence citation added to a receiptless batch; a patch or resulting batch over its
-ceiling refuses with the existing size refusals. Every refusal is atomic and writes nothing. Neither use case touches
-audit or changelog.
+ceiling refuses with the existing size refusals. Every refusal is atomic and writes nothing. Neither use case audits the
+staging rows it changes. The one durable state a withdrawal can change, the source receipt, is journalled as it is at
+commit: see below.
 
 Every review surface has a gap between showing a batch and acting on it, and another CLI or MCP client may amend,
 withdraw, or commit in that gap. `ReviewImport` therefore returns an additive `batch_digest`: a hash over every row's
@@ -139,12 +146,13 @@ every other tool in `adapters/mcp/tools/imports.py`. `review_import` reports `re
 returns. `commit_import` keeps its `(batch_id, accepted_ids)` shape.
 
 CLI gains `pctx import amend BATCH CANDIDATE --patch JSON|-` and `pctx import reject BATCH CANDIDATE...`, both with
-`--json`. Their `--json` output is the refreshed full `people-context-import-review` version-1 document for the
-batch, exactly what `pctx import review BATCH --json` would print next. That document defines `candidates` as every
-candidate in the batch, so emitting only the affected rows under the same format would repurpose an absent row from
-"not in the batch" to "omitted". Returning the whole document keeps that meaning, needs no new format, and gives a
-caller the updated ordinals and summary in one read. `amend_candidate` and `withdraw_candidates` return the same
-refreshed review. Refusals name the candidate index and the offending field and never echo the patch payload.
+`--json`. Their `--json` output is the refreshed full `people-context-import-review` version-1 document for the batch,
+exactly what `pctx import review BATCH --json` would print next. That document defines `candidates` as every candidate
+in the batch, so emitting only the affected rows under the same format would repurpose an absent row from "not in the
+batch" to "omitted". Returning the whole document keeps that meaning, needs no new format, and gives a caller the
+updated ordinals and summary in one read. `amend_candidate` and `withdraw_candidates` return the same refreshed review.
+Refusals name the candidate index, and a field only when the candidate models declare it; an undeclared key is shown as
+`(redacted)`, because its name is untrusted input that may carry private text. They never echo the patch payload.
 
 Guidance gains the chat review loop: `skills/people-context-usage/SKILL.md`, the MCP prompts `remember` and
 `end_of_session_capture`, and the packaged `people-context://guide` resource all describe presenting a staged batch as
@@ -198,18 +206,22 @@ controlling terminal, never a pipe. The temporary file is deleted afterwards in 
 distilled personal data, so the existing disclosure warning applies to the file the editor opens. With neither variable
 set, the command refuses with exit status 2 and names both variables it checked.
 
-`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything and
-never prompts: `--from -` consumes stdin, so no confirmation could be read from it, and a script has nobody to ask.
-It applies the edits, prints the summary, and leaves committing to `pctx import commit`. `--no-commit` is therefore
-meaningless with `--from` and is refused together with it. So
-`pctx import review BATCH --json > f; $EDITOR f; pctx import edit BATCH --from f` is the same workflow for a script,
-or for an agent working through the CLI without MCP. Both paths read the edited document under a bound derived from
-the batch itself, not from the 1 MiB `stage-candidates` request bound or a fixed per-row allowance: the byte length of
-the review document the command renders for the batch at apply time, with every field it emits — restored
-format-opaque ids and read-time `match_candidates` names included — plus the headroom left under the staged-payload
-ceiling. An unchanged document therefore always fits, whatever its ids and names, and growth the ceiling could never
-admit is refused before parsing. The resulting batch is then re-measured against the ceiling like any amendment.
-The 1 MiB bound still applies to a single `pctx import amend --patch`.
+`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything and never
+prompts: `--from -` consumes stdin, so no confirmation could be read from it, and a script has nobody to ask. It applies
+the edits, prints the summary, and leaves committing to `pctx import commit`. `--no-commit` is therefore meaningless
+with `--from` and is refused together with it. So `pctx import review BATCH --json > f; $EDITOR f; pctx import edit
+BATCH --from f` is the same workflow for a script, or for an agent working through the CLI without MCP. Both paths read
+the edited document under a bound derived from the batch itself, not from the 1 MiB `stage-candidates` request bound or
+a fixed per-row allowance: the byte length of the review document the command renders for the batch at apply time, with
+every field it emits — restored format-opaque ids and read-time `match_candidates` names included — plus the headroom
+left under the staged-payload ceiling multiplied by the renderer's worst-case expansion. The review document is
+indented, so a value added to it costs more rendered bytes than persisted bytes; because the strict candidate schema
+fixes the maximum nesting depth and the renderer fixes its indentation, the largest ratio of rendered to compact bytes
+for any added token is a constant, computed once from those two facts and pinned by a test. An unchanged document
+therefore always fits, whatever its ids and names; a batch grown to the ceiling by the smallest list entries, such as
+one-character aliases, is accepted back; and growth the ceiling could never admit is refused before parsing. The
+resulting batch is then re-measured against the ceiling like any amendment. The 1 MiB bound still applies to a single
+`pctx import amend --patch`.
 
 Applying a document is all-or-nothing. Rows are addressed by `ordinal` or `id` and must belong to the named batch; a
 document naming another batch, an unknown id, a changed `type`, or an added row refuses the whole apply and changes
@@ -217,18 +229,20 @@ nothing. Calling the M29.1 use cases row by row cannot keep that promise, becaus
 before a later row's refusal is found. M29.3 therefore adds one `ApplyReviewEdits(batch_id, amendments, withdrawals)`
 use case: it checks the document's `batch_digest` against the stored batch under the write lock, refusing with
 `batch_changed` if another client changed it since the document was rendered, then validates every amendment and
-withdrawal against the batch as it would stand after all of them — shape,
-references, match choices, and ceilings — and then writes every row inside one unit of work from the staging store that
-takes the write lock before it reads, so a refusal anywhere writes nothing and no other writer changes the batch between
-validation and write. `AmendStagedCandidate` and `WithdrawStagedCandidates` share its validation; a multi-row withdrawal
-is likewise one transaction. Refusals name the index and the field, never the payload — an edited file is untrusted
-input, and a field name an editor invented is not safe to echo.
+withdrawal against the batch as it would stand after all of them — shape, references, match choices, and ceilings — and
+then writes every row inside one unit of work from the staging store that takes the write lock before it reads, so a
+refusal anywhere writes nothing and no other writer changes the batch between validation and write.
+`AmendStagedCandidate` and `WithdrawStagedCandidates` share its validation; a multi-row withdrawal is likewise one
+transaction. Refusals name the index and, when the models declare it, the field; never the payload and never an
+undeclared key, which is shown as `(redacted)` — an edited file is untrusted input, and a field name an editor invented
+is not safe to echo.
 
 ## Privacy and compatibility
 
 No raw source text enters staging through amendment. A patch carries candidate fields and nothing else, and the
 existing rule that raw import bodies never become staging metadata, logs, errors, or provenance receipts is unchanged.
-Refusal reporting follows the established candidate-JSON rule throughout: index and field, never the rejected value.
+Refusal reporting follows the established candidate-JSON rule throughout: the index, a location part only when the
+models declare it and otherwise `(redacted)`, a message only when the schema derived it, and never the rejected value.
 
 `ordinal` is an additive field on the version-1 review document and the `review_import` response, under the existing
 promise that new fields are additive and a consumer ignoring unknown fields keeps working. `candidate_not_pending` and
@@ -246,8 +260,9 @@ behaviour over committed records is untouched by this milestone.
 
 ## Acceptance scenarios and verification
 
-- An amendment adding an unknown field, changing `type`, or targeting a committed or rejected row is refused; the
-  stored candidate is unchanged and the refusal names the field, not the patch.
+- An amendment adding an unknown field, changing `type`, or targeting a committed or rejected row is refused; the stored
+  candidate is unchanged and the refusal names a declared field, not the patch. A patch whose unknown key is itself
+  private text refuses with that key shown as `(redacted)`.
 - A patched `relationship_type` of `---`, a relationship whose two endpoints become the same person candidate, and a
   same-batch `evidence_candidate_ids` citation added in a batch without a receipt each refuse with the stager's
   refusal and store nothing; the same citation in a source-tracked batch is accepted.
@@ -274,6 +289,8 @@ behaviour over committed records is untouched by this milestone.
   produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a whole-apply refusal. A
   document with a valid change on row 1 and an invalid change on row 5 refuses and leaves row 1 unchanged.
   With no editor configured the command exits 2 and says which variables were checked; the temp file never survives.
+- A batch within a few bytes of the staged-payload ceiling, grown there through `edit` by many one-character aliases,
+  applies back and then passes re-measurement; one more alias is refused by re-measurement, not by the read bound.
 - An unchanged review document applies back through `edit --from` for a batch over 1 MiB, one with long restored
   candidate ids, and one whose `match_candidates` carry long canonical names.
 - A row amended by another client after `pctx import edit` rendered its document, or after `review --json` wrote the

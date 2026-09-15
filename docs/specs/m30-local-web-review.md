@@ -44,9 +44,10 @@ the token stay out of every URL after the first load: an ordinary link or form s
 header, so a multi-document design would have had to copy the token into every `href`. No bundler, no Node
 toolchain, no CDN, no external font, and no third-party script: everything the browser executes was reviewed in
 this repository, and a page that fails to load a resource cannot exist because there is nothing external to load.
-`Content-Security-Policy: default-src 'self'` is sent on every HTML response, with the inline script admitted by a
-nonce generated per response — not by `'unsafe-inline'`, which would forfeit the protection the header is being
-sent for.
+`Content-Security-Policy: default-src 'self'; script-src 'nonce-N'; style-src 'nonce-N'` is sent on every HTML
+response, with one nonce `N` generated per response and set on both the inline `<script>` and the inline `<style>`.
+`default-src 'self'` alone would block that stylesheet, so the page would render unstyled; `'unsafe-inline'` would
+forfeit the protection the header is being sent for. The page uses no `style` attributes, which a nonce cannot admit.
 
 The security model is identical in all three PRs:
 
@@ -103,15 +104,17 @@ M30.3 depends on M29.1 for amendment. All three are independent of M28.3.
 
 Deliver `pctx browse`, the foundation above, and three read-only views.
 
-- People list: canonical name, aliases, and summary — exactly the columns `ListPersonIndex`, the read behind
-  `pctx list --json`, already carries — one bounded page at a time. `ListPersonIndex` today reads every person when
-  no `limit` is given and has no way to continue past one, so a large store would build one unbounded response and
-  DOM, and a fixed limit would leave later people unreachable. M30.1 adds an optional cursor to it: pages of
-  `limit` 1–200, default 50, ordered by canonical name with id as the tie-breaker, and an additive `next_cursor` on
-  the person index document when more remain, encoded like the import-sources cursor. The view pages with Next and
-  Previous. `pctx list` without a cursor keeps its output, except that people with equal names now always appear in
-  id order. No relationship-to-self or last-interaction column is added, because
-  neither exists in that read and a composed read is not introduced here. Rows open the person view.
+- People list: canonical name, aliases, and summary — exactly the columns `ListPersonIndex`, the read behind `pctx list
+  --json`, already carries — one bounded page at a time. `ListPersonIndex` today reads every person when no `limit` is
+  given and has no way to continue past one, so a large store would build one unbounded response and DOM, and a fixed
+  limit would leave later people unreachable. M30.1 adds an optional cursor to it. A cursor request pages at `limit`
+  1–200, default 50, ordered by canonical name with id as the tie-breaker, and an additive `next_cursor` on the person
+  index document when more remain, encoded like the import-sources cursor. The view pages with Next and Previous. The
+  1–200 range and default apply only to cursor requests and at the browser endpoint; a request without a cursor keeps
+  today's contract, so `pctx list --json --limit 1000` still returns up to 1,000 people and no limit still returns
+  everyone. The only visible change there is that people with equal names now always appear in id order. No
+  relationship-to-self or last-interaction column is added, because neither exists in that read and a composed read is
+  not introduced here. Rows open the person view.
 - Person view: the `brief` content — summary, affiliations, facts, interactions, reminders, and traits — from
   `ComposePersonBrief`, the use case behind `pctx brief`. That projection bounds facts and interactions at
   `BRIEF_CONTEXT_ITEMS` but does not copy `PersonContextResult.truncated` into `PersonBriefDocument`, so neither
@@ -193,8 +196,9 @@ and `evidence_candidate_ids` are multi-selects offering only rows of the same ba
 validation accepts, so the control cannot express a reference the use case would refuse. `evidence_ids` names durable
 records outside the batch, so the form shows it read-only with the equivalent `pctx import amend` command rather than
 inventing a record search. Saving posts a field patch to an endpoint wrapping `AmendStagedCandidate`, which re-validates
-and re-resolves the candidate exactly as the CLI amendment path does. Validation refusals are shown against the field
-they name, one message per field, without repeating the submitted value.
+and re-resolves the candidate exactly as the CLI amendment path does. Validation refusals are shown against the declared
+field they name, one message per field, without repeating the submitted value; a refusal whose location is `(redacted)`
+is shown for the row, not a field.
 
 An ambiguous person candidate gets a picker listing the `match_candidates` M29.1 adds to the review row — the id
 and canonical name of up to 10 colliding people — so the user chooses one or leaves it unresolved. When
@@ -237,8 +241,8 @@ same trust boundary the loopback MCP transport already states.
 - The token appears in the printed URL and nowhere else: not in stderr, not in log records, not in refusal
   bodies, not in any file the process writes. This is asserted against the launched server's output, because
   a `TestClient` bypasses the server's own access logger.
-- An inline script without the response's nonce is blocked by the Content-Security-Policy; the page's own script
-  runs.
+- An inline script or `<style>` without the response's nonce is blocked by the Content-Security-Policy; the page's own
+  script runs and its own stylesheet applies.
 - A candidate whose value contains markup renders as text on the review page and in the edit form, and executes
   nothing.
 - Sensitive and restricted durable records are absent from the people and person views without elevation and
@@ -249,7 +253,8 @@ same trust boundary the loopback MCP transport already states.
   shows it, under the review disclosure warning.
 - The people list carries exactly the person-index columns, in the order `pctx list --json` returns them. On a store
   of 10,000 people it returns 50 by default, never more than 200, and following `next_cursor` reaches every person
-  exactly once; people with equal canonical names page deterministically by id.
+  exactly once; people with equal canonical names page deterministically by id. `pctx list --json --limit 1000` on the
+  same store returns 1,000 people, as before.
 - A person with more than `BRIEF_CONTEXT_ITEMS` eligible facts and interactions shows `truncated` in the view,
   in `pctx brief --json`, and in `pctx brief`'s text; a person under the bound shows it unset in all three.
 - Each import-sources page matches the same `pctx sources --limit N --cursor C` page, and a receipt's staged counts
