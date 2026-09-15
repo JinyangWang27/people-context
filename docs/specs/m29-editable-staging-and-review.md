@@ -163,20 +163,24 @@ given. The temporary file is deleted afterwards. The review document carries dis
 disclosure warning applies to the file the editor opens. With neither variable set, the command refuses with exit
 status 2 and names both variables it checked.
 
-`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything, read
-under the same 1 MiB bound as `stage-candidates --input`, so
+`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything, so
 `pctx import review BATCH --json > f; $EDITOR f; pctx import edit BATCH --from f` is the same workflow for a script,
-or for an agent working through the CLI without MCP.
+or for an agent working through the CLI without MCP. Both paths read the edited document under a bound derived from
+the review ceiling, not from the 1 MiB `stage-candidates` request bound: 64 MiB of staged payload plus a fixed
+per-row envelope allowance over at most 100,000 rows, so any document `pctx import review --json` can print for a
+reviewable batch is accepted back. The resulting batch is then re-measured against the ceiling like any amendment.
+The 1 MiB bound still applies to a single `pctx import amend --patch`.
 
 Applying a document is all-or-nothing. Rows are addressed by `ordinal` or `id` and must belong to the named batch; a
 document naming another batch, an unknown id, a changed `type`, or an added row refuses the whole apply and changes
 nothing. Calling the M29.1 use cases row by row cannot keep that promise, because each would commit its own transaction
 before a later row's refusal is found. M29.3 therefore adds one `ApplyReviewEdits(batch_id, amendments, withdrawals)`
 use case: it validates every amendment and withdrawal against the batch as it would stand after all of them — shape,
-references, match choices, and ceilings — and then writes every row inside one unit of work from the staging store, so a
-refusal anywhere writes nothing. `AmendStagedCandidate` and `WithdrawStagedCandidates` share its validation; a multi-row
-withdrawal is likewise one transaction. Refusals name the index and the field, never the payload — an edited file is
-untrusted input, and a field name an editor invented is not safe to echo.
+references, match choices, and ceilings — and then writes every row inside one unit of work from the staging store that
+takes the write lock before it reads, so a refusal anywhere writes nothing and no other writer changes the batch between
+validation and write. `AmendStagedCandidate` and `WithdrawStagedCandidates` share its validation; a multi-row withdrawal
+is likewise one transaction. Refusals name the index and the field, never the payload — an edited file is untrusted
+input, and a field name an editor invented is not safe to echo.
 
 ## Privacy and compatibility
 
@@ -239,10 +243,10 @@ behaviour over committed records is untouched by this milestone.
   need its own lifecycle, cleanup, and forget integration to express what one status value and an in-place update do.
 - Storing amendment history, or an audit trail over staging, would make review state durable state. Staging is
   discarded at commit; what survives is the committed record, whose history the changelog already owns.
-- No stored revision token on staged rows, and no compare-and-swap in `CommitImport`. Single-user staging has one
-  reviewer, and M24 establishes that rereading before applying is a workflow safeguard rather than an isolation
-  promise. M30.2, whose confirmation is separated in time from its display, compares the reviewed content with the
-  stored row at commit time instead; that comparison is computed from `candidate_json`, and nothing new is stored.
+- No stored revision token on staged rows. The CLI and MCP commit paths keep today's behaviour: M24 establishes that
+  rereading before applying is a workflow safeguard rather than an isolation promise. M30.2, whose confirmation is
+  separated in time from its display, adds an optional whole-batch digest that `CommitImport` compares inside its
+  write-locked transaction; the digest is computed from the stored rows, and nothing new is stored.
 - Leaving rejected rows out of the bundle was rejected: a withdrawn person row's pending dependents keep referencing
   it, so omitting the row breaks bundle validation, and rewriting or dropping dependents on export would change what
   the reviewer left pending.

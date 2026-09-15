@@ -72,13 +72,17 @@ The security model is identical in all three PRs:
 - The review disclosure warning (`REVIEW_DISCLOSURE_WARNING`, already shown by `pctx import review`) is printed
   on stderr at startup and shown in the page wherever staged candidates are displayed.
 
-Disclosure parity is part of the foundation. The browser's ordinary reads apply the same sensitivity policy as
-ordinary MCP reads: no `sensitive` or `restricted` material, no signal that a hidden record exists. Sensitive
-material appears only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` is set in the environment of the `pctx browse`
-process itself, through the existing `process_elevation_enabled` rule, exactly as the MCP server consults it. The
-page never offers a toggle, a checkbox, or a URL parameter for that: elevation is an operator decision made
-before the process starts, and a decision the page could change would be a decision an open browser tab could
-change.
+Disclosure parity is part of the foundation, and it has two parts because the page shows two kinds of data. Reads of
+durable person records apply the same sensitivity policy as ordinary MCP reads: no `sensitive` or `restricted` material,
+no signal that a hidden record exists. Staged candidates are not durable records: `ReviewImport` returns them verbatim,
+including a fact or interaction candidate marked `sensitive` or `restricted`, because the reviewer must see what they
+are about to commit — exactly as `pctx import review` and `review_import` show it today. The batch view keeps that
+parity and shows the review disclosure warning above every staged candidate, instead of filtering them, which would make
+the review incomplete. Elevated durable material appears only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` is set in the
+environment of the `pctx browse` process itself, through the existing `process_elevation_enabled` rule, exactly as the
+MCP server consults it. The page never offers a toggle, a checkbox, or a URL parameter for that: elevation is an
+operator decision made before the process starts, and a decision the page could change would be a decision an open
+browser tab could change.
 
 `starlette`, `uvicorn`, `sse-starlette`, and `httpx` are already present in the resolved environment as
 transitive dependencies of `mcp>=2,<3`, but they are not declared. The PR that first imports `starlette` and
@@ -134,53 +138,66 @@ case's own error code — `candidate_not_pending`, `candidate_withdrawn`, and th
 payload that was refused, in keeping with M29's rule that a refusal names the index and the field rather than
 repeating the value.
 
-Commit requires one explicit click on a confirmation naming the number of candidates that will be committed.
-There is no auto-commit, no commit as a side effect of accepting, and no single control that selects everything
-and commits it. After every mutation the page reloads its state from the server rather than patching a local
-copy. Reloading alone cannot protect the commit: another tab, a CLI invocation, or an MCP client may amend a
-candidate between that reload and the confirmation click, and `CommitImport` addresses stable ids. The commit
-request therefore carries, for every accepted row, a digest of the candidate content and row status the page
-displayed. The endpoint first refuses the whole commit with `candidate_not_pending` if any accepted row is no
-longer `pending` — a row another tab or the CLI committed has unchanged content, and `CommitImport` would skip it,
-committing fewer rows than the confirmation named. It then recomputes each digest from the stored `candidate_json`
-and status, and if any differs it refuses the whole commit with `candidate_changed`. Either refusal commits nothing,
-so the page reloads and the reviewer sees what changed. Nothing is stored for this check, and `CommitImport` itself
-is unchanged. The size ceilings that bound `pctx import review`
-apply unchanged; a batch too large to review in the CLI is not made reviewable by being viewed in a browser.
+Commit requires one explicit click on a confirmation naming the number of candidates being accepted. It does not
+promise that number will be committed: `CommitImport` intentionally reports a pending row it cannot resolve — an
+ambiguous person, or a fact whose person candidate was withdrawn — in `unresolved_ids`. After the commit the page
+shows the committed, unresolved, and already-committed counts from `CommitImportResult`. There is no auto-commit,
+no commit as a side effect of accepting, and no single control that selects everything and commits it. After every
+mutation the page reloads its state from the server rather than patching a local copy.
+
+Reloading alone cannot protect the commit. Another tab, a CLI invocation, or an MCP client may amend or commit a
+row between that reload and the confirmation click, and the rows that decide the outcome are not only the accepted
+ones: an accepted fact resolves through its person candidate even when that row is unselected. The commit request
+therefore carries one digest of the whole batch as the page displayed it — every row's id, status, and candidate
+content, in ordinal order. `CommitImport` gains an optional `expected_batch_digest` argument. When it is given,
+`CommitImport` recomputes the digest from the stored rows inside its own transaction, and that transaction takes
+the SQLite write lock before it reads — `SqliteUnitOfWork(immediate=True)`, the mode source receipts already use
+because a deferred `BEGIN` lets another writer act between a read and the decision based on it. A mismatch refuses
+the whole commit with `batch_changed` and writes nothing; the page reloads and the reviewer sees what changed. No
+writer can change the batch between the comparison and the commit. Nothing is stored for the check, and callers
+that omit the argument, including the CLI and `commit_import`, keep today's behaviour.
+
+The size ceilings that bound `pctx import review` apply unchanged; a batch too large to review in the CLI is not
+made reviewable by being viewed in a browser.
 
 ### M30.3 — Inline edit in the browser
 
 Depends on M29.1. Add editing to the batch page from M30.2.
 
-Each pending row expands into an edit form generated from the candidate type's field list: strings, dates, the
-sensitivity enum, and confidence, each rendered with the native input type for it. Saving posts a field patch to
-an endpoint wrapping `AmendStagedCandidate`, which re-validates and re-resolves the candidate exactly as the CLI
-amendment path does. Validation refusals are shown against the field they name, one message per field, without
-repeating the submitted value.
+Each pending row expands into an edit form generated from the candidate type's field list. Scalar strings, dates, the
+sensitivity enum, and confidence use the native input for each. List-valued fields have bounded controls. `aliases` is a
+list of kind-and-value rows the reviewer can add to and remove from, up to the persisted model's bounds.
+`participant_candidate_ids` and `evidence_candidate_ids` are multi-selects offering only rows of the same batch whose
+type the batch-wide reference validation accepts, so the control cannot express a reference the use case would refuse.
+`evidence_ids` names durable records outside the batch, so the form shows it read-only with the equivalent `pctx import
+amend` command rather than inventing a record search. Saving posts a field patch to an endpoint wrapping
+`AmendStagedCandidate`, which re-validates and re-resolves the candidate exactly as the CLI amendment path does.
+Validation refusals are shown against the field they name, one message per field, without repeating the submitted value.
 
 An ambiguous person candidate gets a picker listing the `match_candidates` M29.1 adds to the review row — the id
 and canonical name of up to 10 colliding people — so the user chooses one or leaves it unresolved. When
 `match_candidates_truncated` is set, the picker says more people share the name and accepts a person id the
 reviewer found through `resolve_person` or `search_people`; `AmendStagedCandidate` validates it against the
-matcher's full set either way. The choice is a
-patch setting `matched_person_id`, validated by `AmendStagedCandidate` against that same set, not a
-browser-specific resolution step.
+matcher's full set either way. The choice is a patch setting `matched_person_id`, not a browser-specific
+resolution step.
 
 There is no free-text form for adding a candidate that the importer did not produce: the browser edits what was
 staged, it does not author records. Committed and withdrawn rows are not editable.
 
 ## Privacy and compatibility
 
-No new durable record, table, migration, or machine JSON contract is introduced. The endpoints are HTTP
-projections of existing use cases, and the versioned envelopes documented for integrations are untouched.
-Reads write nothing; mutations flow through the existing use cases and therefore through the existing
-transaction, audit, and changelog seam.
+No new durable record, table, migration, or machine JSON format is introduced. The endpoints are HTTP projections of
+existing use cases. Two changes are additive: a top-level `truncated` on the version-1 person brief, and an optional
+`expected_batch_digest` argument on `CommitImport` with its `batch_changed` refusal, which callers that omit the
+argument never see. Reads write nothing; mutations flow through the existing use cases and therefore through the
+existing transaction, audit, and changelog seam.
 
 Nothing leaves the machine. The page loads no external resource, the process makes no outbound request, and the
 ordinary-commands-never-touch-the-network rule holds for `pctx browse` as it does for every other command. A
 browser page is a new surface on which recorded data is displayed, so the disclosure rules are the ones already
-in force: ordinary reads only, operator elevation from the process environment only, no signal that withheld
-records exist, and the review disclosure warning wherever staged candidates are shown.
+in force: ordinary reads of durable records, operator elevation from the process environment only, no signal that
+withheld records exist, and staged candidates shown as `pctx import review` shows them, under the review disclosure
+warning.
 
 What is explicitly not promised: no authentication, no HTTPS, no multi-user separation, and no protection
 against another process running as the same user on the same machine. The token and the origin checks defend
@@ -200,8 +217,11 @@ same trust boundary the loopback MCP transport already states.
   runs.
 - A candidate whose value contains markup renders as text on the review page and in the edit form, and executes
   nothing.
-- Sensitive and restricted records are absent from every page without elevation and present with
-  `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process; no page control changes that state.
+- Sensitive and restricted durable records are absent from the people, person, and sources views without
+  elevation and present with `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process; no page
+  control changes that state.
+- A staged `sensitive` fact candidate appears in the batch view without elevation, exactly as `pctx import review`
+  shows it, under the review disclosure warning.
 - The people list carries exactly the person-index columns, in the order `pctx list --json` returns them.
 - A person with more than `BRIEF_CONTEXT_ITEMS` eligible facts and interactions shows `truncated` in the view,
   in `pctx brief --json`, and in `pctx brief`'s text; a person under the bound shows it unset in all three.
@@ -209,15 +229,20 @@ same trust boundary the loopback MCP transport already states.
   `pctx source show` for it. A pending batch behind many committed receipts is reached by paging, not by a scan.
 - The review page's row order matches `pctx import review` for the same batch, including withdrawn rows.
 - Withdraw and commit refusals display the use-case error code and never the refused payload.
-- The commit confirmation names the count that is committed, and the count committed equals it.
-- A candidate amended through the CLI after the page displayed it and before the confirmation click makes the
-  commit refuse with `candidate_changed` and commit nothing; the page then shows the amended content.
-- A checked candidate committed by another tab or `pctx import commit` before the confirmation click makes the
-  commit refuse with `candidate_not_pending` and commit nothing, so the count committed never falls below the count
-  confirmed.
+- The commit confirmation names the number of candidates accepted. Accepting an ambiguous person and its fact
+  commits neither, and the page then reports both as unresolved from the commit result, with no refusal.
+- Amending a checked row, amending an unchecked person row an accepted fact resolves through, or committing a
+  checked row from another tab or `pctx import commit`, after display and before confirmation, refuses with
+  `batch_changed` and commits nothing; the page then shows the current batch.
+- A test that amends a row from a second connection while `CommitImport` holds its write lock observes the
+  amendment wait for the commit, and the commit either matches the digest or refuses; there is no interleaving in
+  which changed content is committed.
+- `pctx import commit` and `commit_import` without `expected_batch_digest` behave exactly as before.
 - After accept, withdraw, commit, and amend, the page state is refetched from the server and matches a fresh
   `pctx import review` of the same batch.
 - An invalid edit is refused per field; a valid edit is visible through `pctx import review` afterwards.
+- An interaction's participants, a person's aliases, and a trait's `evidence_candidate_ids` can each be corrected
+  from the form; the participant and evidence selectors never offer a row of another batch or the wrong type.
 - Choosing a match in the ambiguity picker records the resolution through amendment, visible to the CLI.
 - `uv lock --check` reports no change after `starlette` and `uvicorn` are declared in `pyproject.toml`.
 - Starlette `TestClient` tests cover every endpoint and every security header, including the refusal paths.
