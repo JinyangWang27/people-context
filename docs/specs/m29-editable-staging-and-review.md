@@ -175,9 +175,11 @@ It applies the edits, prints the summary, and leaves committing to `pctx import 
 meaningless with `--from` and is refused together with it. So
 `pctx import review BATCH --json > f; $EDITOR f; pctx import edit BATCH --from f` is the same workflow for a script,
 or for an agent working through the CLI without MCP. Both paths read the edited document under a bound derived from
-the review ceiling, not from the 1 MiB `stage-candidates` request bound: 64 MiB of staged payload plus a fixed
-per-row envelope allowance over at most 100,000 rows, so any document `pctx import review --json` can print for a
-reviewable batch is accepted back. The resulting batch is then re-measured against the ceiling like any amendment.
+the batch itself, not from the 1 MiB `stage-candidates` request bound or a fixed per-row allowance: the byte length of
+the review document the command renders for the batch at apply time, with every field it emits — restored
+format-opaque ids and read-time `match_candidates` names included — plus the headroom left under the staged-payload
+ceiling. An unchanged document therefore always fits, whatever its ids and names, and growth the ceiling could never
+admit is refused before parsing. The resulting batch is then re-measured against the ceiling like any amendment.
 The 1 MiB bound still applies to a single `pctx import amend --patch`.
 
 Applying a document is all-or-nothing. Rows are addressed by `ordinal` or `id` and must belong to the named batch; a
@@ -237,6 +239,8 @@ behaviour over committed records is untouched by this milestone.
   produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a whole-apply refusal. A
   document with a valid change on row 1 and an invalid change on row 5 refuses and leaves row 1 unchanged.
   With no editor configured the command exits 2 and says which variables were checked; the temp file never survives.
+- An unchanged review document applies back through `edit --from` for a batch over 1 MiB, one with long restored
+  candidate ids, and one whose `match_candidates` carry long canonical names.
 - An editor exiting nonzero applies nothing and never shows the commit prompt. `--from -` applies its edits and
   exits without reading a confirmation; `--from` with `--no-commit` refuses.
 - Hard forget removes rejected staging rows with pending ones. After withdrawing a person candidate whose facts stay

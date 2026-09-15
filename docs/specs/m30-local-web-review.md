@@ -52,13 +52,16 @@ The security model is identical in all three PRs:
 
 - Loopback bind only. There is no `--host`; a request to bind anything other than `127.0.0.1` is refused rather
   than honoured. Remote access, LAN access, and tunnelling remain out of scope, as they are for the MCP server.
-- A per-launch token from `secrets.token_urlsafe` is required on every request: as a query parameter on the
-  first load, then as a request header the page sets on every subsequent request. It is compared with
-  `secrets.compare_digest`. It is never written to the database, a file, a log line, or an error message; the
-  printed URL on stdout is the only place it appears. uvicorn is started with `access_log=False` and a log
-  configuration that never formats a request path, because its default access log writes the first
-  `GET /?token=...` line before application code runs. A subprocess test exercises the launched server, not only
-  a `TestClient`, and asserts that the token occurs on stderr and stdout exactly once, in the printed URL.
+- A per-launch token from `secrets.token_urlsafe` is required on every request: as a query parameter on the first load,
+  then as a request header the page sets on every subsequent request. It is compared with `secrets.compare_digest`. It
+  is never written to the database, a file, a log line, or an error message; the printed URL on stdout is the only place
+  the process emits it. The page's script reads the token from the query string and immediately calls
+  `history.replaceState` to replace the initial entry with a token-free URL, before its first request, so the token does
+  not stay in the address bar or browser history for copying, bookmarking, or revisiting while the server runs.
+  Reloading that token-free URL is refused; the user reopens the printed URL. uvicorn is started with `access_log=False`
+  and a log configuration that never formats a request path, because its default access log writes the first `GET
+  /?token=...` line before application code runs. A subprocess test exercises the launched server, not only a
+  `TestClient`, and asserts that the token occurs on stderr and stdout exactly once, in the printed URL.
 - `Host` and `Origin`, and `Sec-Fetch-Site` where the browser sends it, are checked against the bound address on
   every request. This defeats DNS rebinding and cross-tab request forgery from an ordinary web page, which can
   guess a loopback port but cannot read the token or forge these headers.
@@ -181,13 +184,15 @@ Depends on M29.1. Add editing to the batch page from M30.2.
 
 Each pending row expands into an edit form generated from the candidate type's field list. Scalar strings, dates, the
 sensitivity enum, and confidence use the native input for each. List-valued fields have bounded controls. `aliases` is a
-list of kind-and-value rows the reviewer can add to and remove from, up to the persisted model's bounds.
-`participant_candidate_ids` and `evidence_candidate_ids` are multi-selects offering only rows of the same batch whose
-type the batch-wide reference validation accepts, so the control cannot express a reference the use case would refuse.
-`evidence_ids` names durable records outside the batch, so the form shows it read-only with the equivalent `pctx import
-amend` command rather than inventing a record search. Saving posts a field patch to an endpoint wrapping
-`AmendStagedCandidate`, which re-validates and re-resolves the candidate exactly as the CLI amendment path does.
-Validation refusals are shown against the field they name, one message per field, without repeating the submitted value.
+list of rows the reviewer can add to and remove from, up to the persisted model's bounds, each with every `StagedAlias`
+field: `value`, `kind`, and optional `lang` and `script` inputs. A row the reviewer does not touch is sent back with its
+fields exactly as staged, so rebuilding the list never discards language or script metadata. `participant_candidate_ids`
+and `evidence_candidate_ids` are multi-selects offering only rows of the same batch whose type the batch-wide reference
+validation accepts, so the control cannot express a reference the use case would refuse. `evidence_ids` names durable
+records outside the batch, so the form shows it read-only with the equivalent `pctx import amend` command rather than
+inventing a record search. Saving posts a field patch to an endpoint wrapping `AmendStagedCandidate`, which re-validates
+and re-resolves the candidate exactly as the CLI amendment path does. Validation refusals are shown against the field
+they name, one message per field, without repeating the submitted value.
 
 An ambiguous person candidate gets a picker listing the `match_candidates` M29.1 adds to the review row — the id
 and canonical name of up to 10 colliding people — so the user chooses one or leaves it unresolved. When
@@ -225,6 +230,8 @@ same trust boundary the loopback MCP transport already states.
   serve on loopback only.
 - A request with no token, a wrong token, an unexpected `Host`, or a foreign `Origin` is refused with a generic
   response carrying no person, candidate, batch, or file data, and no indication of which check failed.
+- After the first load, the address bar and the current history entry carry no token, and the page's first request
+  happens only after `history.replaceState`; reloading the token-free URL is refused.
 - The token appears in the printed URL and nowhere else: not in stderr, not in log records, not in refusal
   bodies, not in any file the process writes. This is asserted against the launched server's output, because
   a `TestClient` bypasses the server's own access logger.
@@ -232,9 +239,10 @@ same trust boundary the loopback MCP transport already states.
   runs.
 - A candidate whose value contains markup renders as text on the review page and in the edit form, and executes
   nothing.
-- Sensitive and restricted durable records are absent from the people, person, and sources views without
-  elevation and present with `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process; no page
-  control changes that state.
+- Sensitive and restricted durable records are absent from the people and person views without elevation and
+  present with `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process; no page control changes that
+  state. The sources view is excluded: its fixed projection never shows committed records and is identical either
+  way.
 - A staged `sensitive` fact candidate appears in the batch view without elevation, exactly as `pctx import review`
   shows it, under the review disclosure warning.
 - The people list carries exactly the person-index columns, in the order `pctx list --json` returns them.
@@ -263,8 +271,9 @@ same trust boundary the loopback MCP transport already states.
 - After accept, withdraw, commit, and amend, the page state is refetched from the server and matches a fresh
   `pctx import review` of the same batch.
 - An invalid edit is refused per field; a valid edit is visible through `pctx import review` afterwards.
-- An interaction's participants, a person's aliases, and a trait's `evidence_candidate_ids` can each be corrected
-  from the form; the participant and evidence selectors never offer a row of another batch or the wrong type.
+- An interaction's participants, a person's aliases including an alias's `lang` and `script`, and a trait's
+  `evidence_candidate_ids` can each be corrected from the form; editing one alias leaves another alias's `lang` and
+  `script` unchanged; the participant and evidence selectors never offer a row of another batch or the wrong type.
 - Choosing a match in the ambiguity picker records the resolution through amendment, visible to the CLI.
 - `uv lock --check` reports no change after `starlette` and `uvicorn` are declared in `pyproject.toml`.
 - Starlette `TestClient` tests cover every endpoint and every security header, including the refusal paths.
