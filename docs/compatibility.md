@@ -80,6 +80,10 @@ A JSON document that this repository documents as a stable interface carries an 
 integer `version`, and follows the same additive rule as MCP responses: existing fields are not removed or
 repurposed, and new fields are additive.
 
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds an additive `ordinal` field
+and an additive `rejected` status value to the import review document and the `review_import` response; no
+format string or version changes.
+
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |

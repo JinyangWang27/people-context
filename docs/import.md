@@ -482,6 +482,10 @@ The same lifecycle is available to a person at the terminal through `pctx import
 candidate type, and no matching or commit policy of its own, and it keeps the review gate as separate commands
 because a staged batch is durable review state that may be inspected in a later invocation.
 
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds amend, reject, numbered and
+interactive review, and an `$EDITOR` round-trip over this same lifecycle; [M30](specs/m30-local-web-review.md)
+adds a loopback-only browser page over the same use cases.
+
 What the CLI does add is a process boundary that is bounded from its first release, because a path typed at a
 terminal is a much weaker promise than a file an MCP caller already chose:
 

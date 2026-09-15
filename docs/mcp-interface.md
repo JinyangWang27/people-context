@@ -8,7 +8,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 [M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; M28.2
 added the explicit pairwise `explain_shared_connections` lookup; see the
 [group contract](#m28-group-and-membership-contract). **Planned, not implemented:** M28.3's reviewed capture
-support. Existing tools and graph results keep their meanings.
+support, and [M29](specs/m29-editable-staging-and-review.md)'s `amend_candidate` and `withdraw_candidates` tools
+and its additive `ordinal` field and `rejected` status on `review_import`. Existing tools and graph results keep
+their meanings.
 
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
 - default write annotation: clients should apply normal write approval.

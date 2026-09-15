@@ -62,6 +62,9 @@ Check the matching box only in the PR that delivers it.
   and must not change the ceilings or the values it already carries.
 - M20.1 → M20.2/M20.3: the shared streaming reader and budget exist before the mbox and WhatsApp conversions
   consume them.
+- M16.1/M17.2 → M29.1: amend and withdraw extend the single stage/review/commit lifecycle rather than adding a
+  second one.
+- M29.1/M29.2 → M30.2/M30.3: the browser page is a fourth client of the same use cases and review ordinals.
 
 ## M8 — Distribution & reach
 
@@ -805,3 +808,140 @@ M27's scope remain unchanged. M28 is independent of M27; internal dependencies a
 
 Each PR runs focused checks plus repository-required gates; public surface changes also run `uv build`.
 Specifications do not deliver any of these PRs; boxes remain unchecked until implementation.
+
+## M29 — Editable staging and ergonomic review
+
+**Spec:** [M29 — Editable staging and ergonomic review](m29-editable-staging-and-review.md).
+
+These three planned PRs are additional to all historical and supplemental totals above. Existing statuses,
+including M28's, remain unchanged. M29 is independent of M28.3; internal dependencies are
+M29.1 → M29.2 → M29.3.
+
+- [ ] **M29.1 — Amend and withdraw staged candidates**
+  - **Scope:** Add `AmendStagedCandidate` and `WithdrawStagedCandidates` beside `ReviewImport`/`CommitImport` in
+    `app/imports/workflow.py`, with shallow-merge patching, re-validation through `STAGED_CANDIDATE_MODELS`,
+    an immutable `type`, and re-run person matching. Add `update_candidate`/`mark_status` to `ImportStagingStore`
+    and the additive `rejected` status value, no migration required. Teach `CommitImport` the
+    `candidate_withdrawn` refusal. Add MCP `amend_candidate`/`withdraw_candidates` (both `_WRITE`, wrapped by
+    `flag_refusals`) and `review_import` reporting `rejected`. Add CLI `pctx import amend` and
+    `pctx import reject`, both with `--json`. Extend the usage skill, the `remember`/`end_of_session_capture`
+    MCP prompts, and the packaged `people-context://guide` with the chat review loop.
+  - **Acceptance:** an amendment adding an unknown field, changing `type`, or targeting a committed or rejected
+    row is refused, the stored candidate is unchanged, and the refusal names the field, never the patch. An
+    ambiguous person candidate amended with disambiguating fields resolves and its dependents commit; one amended
+    without them stays ambiguous and its dependents stay `unresolved`. A withdrawn candidate is skipped by
+    `--all` and by "commit everything" over MCP; naming its id in `--accept` or in `accepted_ids` refuses the
+    whole commit with `candidate_withdrawn` and commits nothing. Hard forget removes `rejected` staging rows with
+    `pending` ones, and bundle export/restore are byte-identical to a run reviewed without amendment or
+    withdrawal. MCP prompt, packaged guide, and usage-skill parity tests assert the chat review loop wording,
+    including that confirming an amendment is not acceptance of the batch.
+  - **Out:** a separate proposals table for edits, amendment history or an audit trail over staging, a revision
+    token or compare-and-swap on commit, reinstating a withdrawn candidate, and appending candidates to an
+    existing batch.
+
+- [ ] **M29.2 — Numbered review and commit by number**
+  - **Scope:** Add an additive, read-time `ordinal` to `ImportReviewRow`, assigned over the batch's deterministic
+    `created_at`-then-id order; withdrawn rows stay listed and keep their ordinal. Rewrite `print_import_review`
+    to lead each line with `#n` and print a batch summary above the list. Extend `parse_candidate_selection` to
+    accept ordinals, ranges, and ids mixed in one selection, sharing the parser with the vCard step of
+    `cli/onboarding.py`. Add `pctx import review BATCH --interactive` with
+    `[a]ccept [s]kip [w]ithdraw [e]dit [q]uit`, using `input()`, committing the accepted set through
+    `CommitImport` at the end.
+  - **Acceptance:** ordinals are unchanged by an intervening amendment or withdrawal, and a review taken before
+    and after one selects the same candidates. A mixed `1,3-5,01J...` selection resolves; one unknown member
+    refuses all of it. `--interactive` accepting some and quitting commits nothing on `q`, commits exactly the
+    accepted set otherwise, and survives an invalid edit mid-loop without losing the accepted set.
+    `--interactive --json` refuses.
+  - **Out:** a TUI dependency — `input()` and the existing review document are enough for the loop.
+
+- [ ] **M29.3 — Edit a batch in `$EDITOR`**
+  - **Scope:** Add `pctx import edit BATCH`, writing the review document through the shared atomic private-file
+    writer at mode `0600`, opening it with `$VISUAL` then `$EDITOR` resolved through `shlex.split` and run with
+    `subprocess.run` without a shell, then diffing the edited document against the batch: a removed candidate is
+    withdrawn, a changed one is amended through the M29.1 use case, and an untouched one is a no-op. Print the
+    batch summary and ask `Commit N pending candidates? [y/N]` unless `--no-commit`, then delete the temp file.
+    Add `pctx import edit BATCH --from FILE|-` to apply an already-edited document without opening an editor.
+  - **Acceptance:** an editor round trip with one row removed, one row changed, one invalid edit, and a document
+    naming a foreign batch produces, respectively, a withdrawal, an amendment, a refusal naming index and field,
+    and a whole-apply refusal that changes nothing. With no editor configured the command exits 2 and names both
+    variables it checked; the temp file never survives.
+  - **Out:** YAML — the existing JSON review document round-trips through `$EDITOR` unchanged; a browser
+    surface for this workflow, which is delivered separately by M30.
+
+Each PR runs focused checks plus repository-required gates; `uv run pytest -q` adds fake-port and real-SQLite
+tests for the new use cases and store methods, in-memory tests for the new MCP tools, and CLI tests for `amend`,
+`reject`, `--interactive`, and `edit`; public surface changes also run `uv build`.
+
+## M30 — Local web view, review, and edit
+
+**Spec:** [M30 — Local web view, review, and edit](m30-local-web-review.md).
+
+These three planned PRs are additional to all historical and supplemental totals above, including M29's. Internal
+dependencies are M30.1 → M30.2 → M30.3; M30.2 depends on M29.1 and M29.2; M30.3 depends on M29.1. M30 is
+independent of M28.3.
+
+- [ ] **M30.1 — Read-only local viewer**
+  - **Scope:** Add `pctx browse [--open] [--port N]`, a Starlette application under uvicorn bound to `127.0.0.1`
+    only, printing a URL carrying a per-launch `secrets.token_urlsafe` token, checked with
+    `secrets.compare_digest` on every request alongside `Host`/`Origin`/`Sec-Fetch-Site`. Send
+    `Content-Security-Policy: default-src 'self'` with a per-response nonce, `Cache-Control: no-store`, and
+    `Referrer-Policy: no-referrer` on every response; HTML-escape every rendered value; print and show the
+    existing review disclosure warning wherever staged candidates appear. Serve every view as inline HTML/CSS/JS
+    from Python string constants or package data, with no bundler, CDN, or third-party script. Add three
+    read-only pages — people list, person page, pending-batches list — as JSON-endpoint wrappers over the
+    existing `pctx list --json`, `pctx brief`/`get_person_context`, and `pctx sources`/`ListImportSources` reads,
+    applying the same ordinary-disclosure and process-level sensitivity-elevation rules as MCP reads. Declare
+    `starlette` and `uvicorn` in `pyproject.toml` with ranges compatible with what `mcp` already pins.
+  - **Acceptance:** a bind to any address other than `127.0.0.1` is refused; the ephemeral default and an
+    explicit `--port` both serve on loopback only. A request with no token, a wrong token, an unexpected `Host`,
+    or a foreign `Origin` is refused with one generic, unlogged response carrying no person, candidate, batch, or
+    file data and no indication of which check failed. The token appears in the printed URL and nowhere else. An
+    inline script without the response's nonce is blocked by the Content-Security-Policy; the page's own script
+    runs. A candidate or person value containing markup renders as text and executes nothing. Sensitive and
+    restricted records are absent from every page without elevation and present with
+    `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process, with no page control changing that
+    state. Person-page section bounds and `truncated` flags match `pctx brief` for the same person, and the
+    pending-batches list matches `pctx sources` for the same database. `uv lock --check` reports no resolution
+    change after `starlette` and `uvicorn` are declared. Starlette `TestClient` tests cover every endpoint and
+    every security header, including the refusal paths.
+  - **Out:** remote or LAN access, any authentication scheme, HTTPS, multi-user operation, a background daemon,
+    a JavaScript framework or build step, editing durable records, displaying sensitive records without the
+    existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.
+
+- [ ] **M30.2 — Batch review in the browser**
+  - **Scope:** Depends on M29.1 and M29.2. Add one batch page listing candidates ordered by `ordinal`, with a
+    checkbox on each `pending` row, a one-line candidate summary, person-candidate match state, and a status
+    badge with no checkbox on withdrawn/committed rows; a header carrying the batch summary. Add endpoints
+    wrapping `ReviewImport`, `WithdrawStagedCandidates`, and `CommitImport` for the "Accept selected", "Withdraw
+    selected", and "Commit accepted" actions, displaying a refusal as the use case's own error code and never the
+    refused payload. Commit requires one explicit confirmation click naming the count to be committed; after
+    every mutation the page reloads its state from the server.
+  - **Acceptance:** the review page's row order matches `pctx import review` for the same batch, including
+    withdrawn rows. Withdraw and commit refusals display the use-case error code and never the refused payload.
+    The commit confirmation names the count that is committed, and the count committed equals it. After accept,
+    withdraw, and commit, the page state is refetched from the server and matches a fresh `pctx import review` of
+    the same batch. There is no auto-commit, no commit as a side effect of accepting, and no single control that
+    selects everything and commits it. The size ceilings that bound `pctx import review` apply unchanged.
+  - **Out:** remote or LAN access, any authentication scheme, HTTPS, multi-user operation, a background daemon,
+    a JavaScript framework or build step, editing durable records, displaying sensitive records without the
+    existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.
+
+- [ ] **M30.3 — Inline edit in the browser**
+  - **Scope:** Depends on M29.1. Add an edit form to each pending row on the M30.2 batch page, generated from the
+    candidate type's field list with the native input type for each field. Saving posts a field patch to an
+    endpoint wrapping `AmendStagedCandidate`, re-validating and re-resolving exactly as the CLI amendment path
+    does, with one refusal message per named field and no repeated submitted value. Add an ambiguity picker for
+    an ambiguous person candidate, listing the matcher's candidates with distinguishing context; the choice is
+    recorded through the same amendment path. Committed and withdrawn rows are not editable, and there is no
+    free-text form for authoring a candidate the importer did not produce.
+  - **Acceptance:** an invalid edit is refused per field; a valid edit is visible through `pctx import review`
+    afterwards. Choosing a match in the ambiguity picker records the resolution through amendment, visible to the
+    CLI.
+  - **Out:** remote or LAN access, any authentication scheme, HTTPS, multi-user operation, a background daemon,
+    a JavaScript framework or build step, editing durable records other than staged candidates, displaying
+    sensitive records without the existing operator elevation, replacing the Obsidian plugin, search, and graphs
+    or visualisations.
+
+Each PR runs focused checks plus repository-required gates; `uv run pytest -q` adds Starlette `TestClient`
+coverage for every endpoint and security header. Public surface changes also run `uv build`, and the PR that
+first declares `starlette`/`uvicorn` shows `uv lock --check` reporting no resolution change.
