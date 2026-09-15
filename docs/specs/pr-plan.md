@@ -929,14 +929,14 @@ independent of M28.3.
 - [ ] **M30.2 — Batch review in the browser**
   - **Scope:** Depends on M29.1 and M29.2. Add one batch page listing candidates ordered by `ordinal`, with a checkbox
     on each `pending` row, a one-line candidate summary, person-candidate match state, and a status badge with no
-    checkbox on withdrawn/committed rows; a header carrying the batch id and counts by status, with no source label or staged time. Add endpoints wrapping `ReviewImport`,
-    `WithdrawStagedCandidates`, and `CommitImport` for the "Accept selected", "Withdraw selected", and "Commit accepted"
-    actions, displaying a refusal as the use case's own error code and never the refused payload, and showing staged
-    candidates verbatim under the review disclosure warning as `pctx import review` does. Commit requires one explicit
-    confirmation click naming the count accepted, then shows the commit result's committed, unresolved, and
-    already-committed counts. `CommitImport` and `WithdrawStagedCandidates` gain an optional `expected_batch_digest`
-    over every row's id, status, and content, compared inside its transaction under an immediate write lock. After every
-    mutation the page reloads its state from the server.
+    checkbox on withdrawn/committed rows; a header carrying the batch id and counts by status, with no source label or
+    staged time. Add endpoints wrapping `ReviewImport`, `WithdrawStagedCandidates`, and `CommitImport` for the "Accept
+    selected", "Withdraw selected", and "Commit accepted" actions, displaying a refusal as the use case's own error code
+    and never the refused payload, and showing staged candidates verbatim under the review disclosure warning as `pctx
+    import review` does. Commit requires one explicit confirmation click naming the count accepted, then shows the
+    commit result's committed, unresolved, and already-committed counts. `CommitImport` and `WithdrawStagedCandidates`
+    gain an optional `expected_batch_digest` over every row's id, status, and content, compared inside its transaction
+    under an immediate write lock. After every mutation the page reloads its state from the server.
   - **Acceptance:** the review page's row order matches `pctx import review` for the same batch, including withdrawn
     rows. Withdraw and commit refusals display the use-case error code and never the refused payload. The commit
     confirmation names the count accepted; accepting an ambiguous person and its fact commits neither and reports both

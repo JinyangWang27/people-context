@@ -120,11 +120,11 @@ Deliver `pctx browse`, the foundation above, and three read-only views.
   the view does not claim to be one. A batch staged without a receipt is not listed; it is opened by batch id.
 
 JSON endpoints wrap the existing read use cases and return what those use cases return, with one exception. The
-source-detail endpoint builds its response on the server from `ShowImportSource`'s receipt summary, `staged_total`,
-and `staged_by_status` only; `mappings`, `mappings_total`, and `mappings_by_disposition` never leave the process, so
-the JSON response itself, not just the rendered view, discloses no committed entity id and no count of hidden
-records. There is no new read model, no cache, no search index, and no semantic search. Every view is read-only: no view carries a form, and
-no endpoint in this PR writes, other than the additive brief flag above. A receipt with a batch opens M30.2's
+source-detail endpoint builds its response on the server from `ShowImportSource`'s receipt summary, `staged_total`, and
+`staged_by_status` only; `mappings`, `mappings_total`, and `mappings_by_disposition` never leave the process, so the
+JSON response itself, not just the rendered view, discloses no committed entity id and no count of hidden records. There
+is no new read model, no cache, no search index, and no semantic search. Every view is read-only: no view carries a
+form, and no endpoint in this PR writes, other than the additive brief flag above. A receipt with a batch opens M30.2's
 batch view once that PR exists.
 
 This realizes the post-roadmap candidate "read-only local web viewer (`pctx browse`)"; that candidate is retired
@@ -134,12 +134,13 @@ from the roadmap's deferred list by the PR that delivers this.
 
 Depends on M29.1 and M29.2. Add one batch page and the endpoints it needs.
 
-The page lists candidates as a table ordered by `ordinal`, the same order `pctx import review` prints, with a
-checkbox on each pending row, a one-line summary of the candidate, and the match state for person candidates:
-new, matches an existing person, or ambiguous with a stated number of candidates. Withdrawn and committed rows
-appear with a status badge and no checkbox. A header carries the batch id and counts by status. It shows no source
-label or staged time: a batch staged through `stage_candidates` without `source_kind` has no receipt, and
-`ReviewImport` exposes no batch timestamp, so neither could be filled for every batch. The actions are "Accept selected", "Withdraw selected", and "Commit accepted".
+The page lists candidates as a table ordered by `ordinal`, the same order `pctx import review` prints, with a checkbox
+on each pending row, a one-line summary of the candidate, and the match state for person candidates: new, matches an
+existing person, or ambiguous with a stated number of candidates. Withdrawn and committed rows appear with a status
+badge and no checkbox. A header carries the batch id and counts by status. It shows no source label or staged time: a
+batch staged through `stage_candidates` without `source_kind` has no receipt, and `ReviewImport` exposes no batch
+timestamp, so neither could be filled for every batch. The actions are "Accept selected", "Withdraw selected", and
+"Commit accepted".
 
 Endpoints wrap `ReviewImport`, `WithdrawStagedCandidates`, and `CommitImport`. A refusal is displayed as the use
 case's own error code — `candidate_not_pending`, `candidate_withdrawn`, and the rest — and never echoes the
@@ -240,9 +241,11 @@ same trust boundary the loopback MCP transport already states.
 - A person with more than `BRIEF_CONTEXT_ITEMS` eligible facts and interactions shows `truncated` in the view,
   in `pctx brief --json`, and in `pctx brief`'s text; a person under the bound shows it unset in all three.
 - Each import-sources page matches the same `pctx sources --limit N --cursor C` page, and a receipt's staged counts
-  match `pctx source show` for it. A source that committed a `sensitive` fact exposes no mapping, entity id, or mapping
-  count, and the response is byte-identical with and without elevation. A pending batch behind many committed receipts
-  is reached by paging, not by a scan.
+  match `pctx source show` for it. For a source that committed a `sensitive` fact, the source-detail JSON response
+  itself contains no `mappings`, entity id, `mappings_total`, or `mappings_by_disposition`, and it is byte-identical
+  with and without elevation. A pending batch behind many committed receipts is reached by paging, not by a scan.
+- A batch staged through `stage_candidates` without `source_kind` opens by batch id and renders its header from
+  `ReviewImport` alone.
 - The review page's row order matches `pctx import review` for the same batch, including withdrawn rows.
 - Withdraw and commit refusals display the use-case error code and never the refused payload.
 - The commit confirmation names the number of candidates accepted. Accepting an ambiguous person and its fact
