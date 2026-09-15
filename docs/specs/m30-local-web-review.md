@@ -104,7 +104,13 @@ M30.3 depends on M29.1 for amendment. All three are independent of M28.3.
 Deliver `pctx browse`, the foundation above, and three read-only views.
 
 - People list: canonical name, aliases, and summary — exactly the columns `ListPersonIndex`, the read behind
-  `pctx list --json`, already carries. No relationship-to-self or last-interaction column is added, because
+  `pctx list --json`, already carries — one bounded page at a time. `ListPersonIndex` today reads every person when
+  no `limit` is given and has no way to continue past one, so a large store would build one unbounded response and
+  DOM, and a fixed limit would leave later people unreachable. M30.1 adds an optional cursor to it: pages of
+  `limit` 1–200, default 50, ordered by canonical name with id as the tie-breaker, and an additive `next_cursor` on
+  the person index document when more remain, encoded like the import-sources cursor. The view pages with Next and
+  Previous. `pctx list` without a cursor keeps its output, except that people with equal names now always appear in
+  id order. No relationship-to-self or last-interaction column is added, because
   neither exists in that read and a composed read is not introduced here. Rows open the person view.
 - Person view: the `brief` content — summary, affiliations, facts, interactions, reminders, and traits — from
   `ComposePersonBrief`, the use case behind `pctx brief`. That projection bounds facts and interactions at
@@ -160,20 +166,16 @@ mutation the page reloads its state from the server rather than patching a local
 Reloading alone cannot protect the commit. Another tab, a CLI invocation, or an MCP client may amend or commit a
 row between that reload and the confirmation click, and the rows that decide the outcome are not only the accepted
 ones: an accepted fact resolves through its person candidate even when that row is unselected. The commit request
-therefore carries one digest of the whole batch as the page displayed it — every row's id, status, and candidate
-content, in ordinal order. `CommitImport` gains an optional `expected_batch_digest` argument. When it is given,
-`CommitImport` recomputes the digest from the stored rows inside its own transaction, and that transaction takes
-the SQLite write lock before it reads — `SqliteUnitOfWork(immediate=True)`, the mode source receipts already use
-because a deferred `BEGIN` lets another writer act between a read and the decision based on it. A mismatch refuses
-the whole commit with `batch_changed` and writes nothing; the page reloads and the reviewer sees what changed. No
-writer can change the batch between the comparison and the commit. Nothing is stored for the check, and callers
-that omit the argument, including the CLI and `commit_import`, keep today's behaviour.
+therefore carries the `batch_digest` M29.1 adds to `ReviewImport`, from the review the page displayed — every row's
+id, status, and candidate content — as `CommitImport`'s `expected_batch_digest`. `CommitImport` compares it under
+the write lock before it reads, as M29.1 defines, so no writer can change the batch between the comparison and the
+commit. A mismatch refuses the whole commit with `batch_changed` and writes nothing; the page reloads and the reviewer
+sees what changed.
 
 A withdrawal from a stale view has the same problem, and a worse outcome: withdrawing a row another client just
-corrected rejects content the reviewer never saw, and M29 has no reinstatement. `WithdrawStagedCandidates` gains the
-same optional `expected_batch_digest`, checked the same way inside its write-locked unit of work before any status
-changes, and the "Withdraw selected" action always sends it. M30.3 gives `AmendStagedCandidate` the argument too, so
-an edit made from a stale view cannot overwrite another client's amendment.
+corrected rejects content the reviewer never saw, and M29 has no reinstatement. The "Withdraw selected" action therefore
+always sends the same `batch_digest` to `WithdrawStagedCandidates`, and M30.3's edit form sends it to
+`AmendStagedCandidate`, so an edit made from a stale view cannot overwrite another client's amendment.
 
 The size ceilings that bound `pctx import review` apply unchanged; a batch too large to review in the CLI is not
 made reviewable by being viewed in a browser.
@@ -207,10 +209,10 @@ staged, it does not author records. Committed and withdrawn rows are not editabl
 ## Privacy and compatibility
 
 No new durable record, table, migration, or machine JSON format is introduced. The endpoints are HTTP projections of
-existing use cases. Two changes are additive: a top-level `truncated` on the version-1 person brief, and an optional
-`expected_batch_digest` argument on `CommitImport`, `WithdrawStagedCandidates`, and `AmendStagedCandidate` with its
-`batch_changed` refusal, which callers that omit the argument never see. Reads write nothing; mutations flow through the
-existing use cases and therefore through the existing transaction, audit, and changelog seam.
+existing use cases. Its additive contract changes are a top-level `truncated` on the version-1 person brief and an
+optional cursor on the person index read; the `batch_digest` and `batch_changed` it relies on are M29.1's. Reads write
+nothing; mutations flow through the existing use cases and therefore through the existing transaction, audit, and
+changelog seam.
 
 Nothing leaves the machine. The page loads no external resource, the process makes no outbound request, and the
 ordinary-commands-never-touch-the-network rule holds for `pctx browse` as it does for every other command. A
@@ -245,7 +247,9 @@ same trust boundary the loopback MCP transport already states.
   way.
 - A staged `sensitive` fact candidate appears in the batch view without elevation, exactly as `pctx import review`
   shows it, under the review disclosure warning.
-- The people list carries exactly the person-index columns, in the order `pctx list --json` returns them.
+- The people list carries exactly the person-index columns, in the order `pctx list --json` returns them. On a store
+  of 10,000 people it returns 50 by default, never more than 200, and following `next_cursor` reaches every person
+  exactly once; people with equal canonical names page deterministically by id.
 - A person with more than `BRIEF_CONTEXT_ITEMS` eligible facts and interactions shows `truncated` in the view,
   in `pctx brief --json`, and in `pctx brief`'s text; a person under the bound shows it unset in all three.
 - Each import-sources page matches the same `pctx sources --limit N --cursor C` page, and a receipt's staged counts

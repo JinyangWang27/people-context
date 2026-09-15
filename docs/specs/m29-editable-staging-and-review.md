@@ -48,10 +48,10 @@ Six rules bound what an amendment may do.
 | Rule | Reason |
 |---|---|
 | The patch is a shallow merge of fields into the stored candidate dict. | Deep merge makes removing a nested field unexpressible and its absence ambiguous. |
-| The result re-validates through `STAGED_CANDIDATE_MODELS`, `extra="forbid"`, exactly as staging validated it. | One persisted shape gate. An amended row and a staged row are the same kind of object. |
+| The result re-validates through `STAGED_CANDIDATE_MODELS`, `extra="forbid"`, and through every input rule staging applied to the candidate: the `CANDIDATE_MODELS` normalization and length limits, such as a normalizable, bounded `relationship_type`, and distinct relationship endpoints. | The persisted shape is deliberately looser than staging input. A patched `relationship_type` of `---` or a relationship from a person candidate to itself passes that shape, then raises in `SetRelationship` or sits unresolved forever. |
 | `type` cannot change. | A different type is a different candidate with different dependents; re-stage instead. |
 | Only a `pending` row may be amended or withdrawn. | A committed row is a durable record and belongs to `correct_record`. |
-| The amended batch re-runs the batch-wide reference validation `CandidateStager._validate` applies at staging: every `person_candidate_id`, participant, relationship, and evidence reference must name a row of the same batch with the right type. | Shape validation is per row; a dangling, foreign-batch, or wrong-type reference passes it and leaves the candidate permanently unresolved. |
+| The amended batch re-runs every batch-wide rule `CandidateStager` applies at staging: `_validate`'s reference checks, so every `person_candidate_id`, participant, relationship, and evidence reference names a row of the same batch with the right type, and `_require_tracking_for_evidence`, so a receiptless batch still cannot gain a same-batch `evidence_candidate_ids` citation. The stager's rules are factored so they run over a persisted batch; amendment adds no copy of them. | Shape validation is per row. A dangling or wrong-type reference passes it, and a citation added to a receiptless batch strands its trait when the evidence commits separately, because only a source-tracked batch records the candidate mapping that resolves it. |
 | A patch is bounded like a `stage-candidates` request — at most 1 MiB of patch JSON and 8 KiB per string — and the batch is re-measured against the `PreflightImportBatch` ceiling with the amended row substituted, before anything is written. | An amendment that grows a batch past the review ceiling makes `review` and `commit` refuse it, and none of the bounded commands could repair it. |
 
 A person candidate's `matched_person_id` and `match_disposition` are computed fields. `match_person_candidate` unions
@@ -78,18 +78,44 @@ Withdrawal is the second verb. A withdrawn row moves to status `rejected`, stays
 review, and is never committed. It is not deleted: a reviewer who cannot see what they dropped cannot check that they
 dropped the right thing. Rejected rows follow the same cleanup path as pending rows in
 `adapters/sqlite/import_cleanup.py`, so hard forget erases them with the rest of a batch's retained staging. They
-travel in a sync bundle under the advanced version, so a restored batch keeps its withdrawals and its numbering.
+travel in a sync bundle under the advanced version while their receipt is still reviewable, so a restored batch keeps
+its withdrawals and its numbering.
+
+A withdrawal changes what the receipt means, so it recomputes the receipt in the same transaction as the row status.
+Today `workflow._session_status()` treats every row that is not `committed` as reviewable, while duplicate detection
+looks for `pending` rows; with `rejected` added, both use one rule: only a `pending` row is reviewable. The receipt
+status follows. Rows still pending leave it `staged` or `partially_committed` as today. No pending rows and at least
+one committed row make it `committed`, exactly as a final commit does, and export then carries its mappings and no
+staging rows, as for any committed receipt. No pending rows and nothing committed — every candidate withdrawn — make
+it a new terminal status `withdrawn`: nothing is left to review and nothing was recorded. A `withdrawn` receipt keeps
+its staging rows locally for review and forget, exports as a receipt with no staging rows and no mappings, and is
+accepted by restore in that shape. Staging the same source again reports the withdrawn batch as having nothing left to
+review, as it does for a committed one, and `--force` stages it afresh. Commit recomputes the receipt by the same rule,
+so `sync_bundle` validation's "reviewable row" check counts `pending` rows only.
 
 ## Planned PRs and compatibility
 
 ### M29.1 — Amend and withdraw staged candidates
 
-Add `AmendStagedCandidate(batch_id, candidate_id, patch)` and `WithdrawStagedCandidates(batch_id, candidate_ids)`
-beside `ReviewImport` and `CommitImport` in `app/imports/workflow.py`, with the merge, revalidation, type, and match
-rules above. A non-`pending` target refuses with a new `ImportPipelineError` code `candidate_not_pending`; a target
-outside the batch keeps the existing `candidate_not_in_batch` refusal; a reference the amended batch cannot resolve
-refuses with `candidate_reference_invalid`; a patch or resulting batch over its ceiling refuses with the existing
-size refusals. Every refusal is atomic and writes nothing. Neither use case touches audit or changelog.
+Add `AmendStagedCandidate(batch_id, candidate_id, patch)` and `WithdrawStagedCandidates(batch_id, candidate_ids)` beside
+`ReviewImport` and `CommitImport` in `app/imports/workflow.py`, with the merge, revalidation, type, and match rules
+above. A non-`pending` target refuses with a new `ImportPipelineError` code `candidate_not_pending`; a target outside
+the batch keeps the existing `candidate_not_in_batch` refusal; a reference the amended batch cannot resolve refuses with
+`candidate_reference_invalid`; a candidate failing a staging input rule refuses with the stager's own validation
+refusal, as does a same-batch evidence citation added to a receiptless batch; a patch or resulting batch over its
+ceiling refuses with the existing size refusals. Every refusal is atomic and writes nothing. Neither use case touches
+audit or changelog.
+
+Every review surface has a gap between showing a batch and acting on it, and another CLI or MCP client may amend,
+withdraw, or commit in that gap. `ReviewImport` therefore returns an additive `batch_digest`: a hash over every row's
+id, status, and stored candidate content in staging order, computed at read time and never stored. Read-time
+`match_candidates` are not part of it. `AmendStagedCandidate`, `WithdrawStagedCandidates`, and `CommitImport` each
+accept an optional `expected_batch_digest`. When it is given, the use case recomputes the digest from the stored rows
+inside a unit of work that takes the SQLite write lock before reading — `SqliteUnitOfWork(immediate=True)`, the mode
+source receipts already use because a deferred `BEGIN` lets another writer act between a read and the decision based
+on it — and a mismatch refuses with `batch_changed` and writes nothing. Callers that omit it, including plain
+`pctx import commit` and `commit_import`, keep today's behaviour. The interactive loop, the editor round trip, and
+M30's browser page always pass it.
 
 `ImportStagingStore` gains `update_candidate(candidate_id, candidate)` and `mark_status(candidate_ids, status)`
 alongside `stage_batch`, `list_batch`, and `mark_committed`. The SQLite adapter updates `candidate_json` and `status`
@@ -148,12 +174,15 @@ known id. An unknown ordinal, an out-of-range ordinal, or an unknown id still re
 parser is shared with the vCard step of `cli/onboarding.py`, so `pctx init` gets numbered selection without a second
 implementation and without a second set of rules.
 
-`pctx import review BATCH --interactive` steps through the pending candidates one at a time, offering
-`[a]ccept [s]kip [w]ithdraw [e]dit [q]uit`. `e` prompts for a field patch and runs the M29.1 amend use case, so an
-invalid edit refuses that candidate and leaves the loop where it was. At the end the accepted set is committed through
-`CommitImport` and the commit result is printed. `q` exits having committed nothing; skipping leaves a row pending for
-a later pass. It uses `input()` like the onboarding loop — the only interactive loop in the repository — and adds no
-TUI dependency. `--interactive` and `--json` are mutually exclusive and refuse together.
+`pctx import review BATCH --interactive` steps through the pending candidates one at a time, offering `[a]ccept [s]kip
+[w]ithdraw [e]dit [q]uit`. `e` prompts for a field patch and runs the M29.1 amend use case, so an invalid edit refuses
+that candidate and leaves the loop where it was. The loop keeps the `batch_digest` of the review it is showing and
+passes it to every amendment, withdrawal, and the final commit; after each of its own writes it rereads the batch and
+continues from the new digest. If another client changed the batch, the action refuses with `batch_changed`, the loop
+says so, and it re-shows the current candidate rather than acting on the old one. At the end the accepted set is
+committed through `CommitImport` and the commit result is printed. `q` exits having committed nothing; skipping leaves a
+row pending for a later pass. It uses `input()` like the onboarding loop — the only interactive loop in the repository —
+and adds no TUI dependency. `--interactive` and `--json` are mutually exclusive and refuse together.
 
 ### M29.3 — Edit a batch in `$EDITOR`
 
@@ -186,7 +215,9 @@ Applying a document is all-or-nothing. Rows are addressed by `ordinal` or `id` a
 document naming another batch, an unknown id, a changed `type`, or an added row refuses the whole apply and changes
 nothing. Calling the M29.1 use cases row by row cannot keep that promise, because each would commit its own transaction
 before a later row's refusal is found. M29.3 therefore adds one `ApplyReviewEdits(batch_id, amendments, withdrawals)`
-use case: it validates every amendment and withdrawal against the batch as it would stand after all of them — shape,
+use case: it checks the document's `batch_digest` against the stored batch under the write lock, refusing with
+`batch_changed` if another client changed it since the document was rendered, then validates every amendment and
+withdrawal against the batch as it would stand after all of them — shape,
 references, match choices, and ceilings — and then writes every row inside one unit of work from the staging store that
 takes the write lock before it reads, so a refusal anywhere writes nothing and no other writer changes the batch between
 validation and write. `AmendStagedCandidate` and `WithdrawStagedCandidates` share its validation; a multi-row withdrawal
@@ -202,7 +233,8 @@ Refusal reporting follows the established candidate-JSON rule throughout: index 
 `ordinal` is an additive field on the version-1 review document and the `review_import` response, under the existing
 promise that new fields are additive and a consumer ignoring unknown fields keeps working. `candidate_not_pending` and
 `candidate_withdrawn` are additive error codes, and a consumer should ignore a code it does not recognize. The
-`rejected` status is an additive value of a field that already exists. `amend`, `reject`, `edit`, `--interactive`,
+`rejected` status is an additive value of a field that already exists, as is the `withdrawn` receipt status that
+`pctx sources` and `pctx source show` may now report. `amend`, `reject`, `edit`, `--interactive`,
 `--patch`, `--from`, and `--no-commit` are new commands and flags; every existing invocation keeps its meaning.
 
 The sync bundle advances one version so that its staging row admits `rejected`. The bundle is deliberately not
@@ -216,6 +248,9 @@ behaviour over committed records is untouched by this milestone.
 
 - An amendment adding an unknown field, changing `type`, or targeting a committed or rejected row is refused; the
   stored candidate is unchanged and the refusal names the field, not the patch.
+- A patched `relationship_type` of `---`, a relationship whose two endpoints become the same person candidate, and a
+  same-batch `evidence_candidate_ids` citation added in a batch without a receipt each refuse with the stager's
+  refusal and store nothing; the same citation in a source-tracked batch is accepted.
 - An amendment pointing `person_candidate_id`, a participant, a relationship end, or an evidence reference at a
   missing, foreign-batch, or wrong-type row refuses with `candidate_reference_invalid`. A patch over 1 MiB, a string
   over 8 KiB, or an amendment that would push the batch past the review ceiling refuses before any write, and the
@@ -241,8 +276,16 @@ behaviour over committed records is untouched by this milestone.
   With no editor configured the command exits 2 and says which variables were checked; the temp file never survives.
 - An unchanged review document applies back through `edit --from` for a batch over 1 MiB, one with long restored
   candidate ids, and one whose `match_candidates` carry long canonical names.
+- A row amended by another client after `pctx import edit` rendered its document, or after `review --json` wrote the
+  file `--from` reads, makes the apply refuse with `batch_changed` and keeps the newer amendment; so does a change
+  between the editor apply and the commit prompt. In `--interactive`, a row amended elsewhere mid-loop refuses the
+  next action with `batch_changed` instead of overwriting or committing it.
 - An editor exiting nonzero applies nothing and never shows the commit prompt. `--from -` applies its edits and
   exits without reading a confirmation; `--from` with `--no-commit` refuses.
+- Withdrawing the last pending rows of a source-tracked batch makes its receipt `committed` when something was
+  committed and `withdrawn` when nothing was, in the same transaction; `pctx sources` then reports no unfinished work,
+  a bundle round trip restores either receipt, and restaging the source reports nothing left to review until
+  `--force`.
 - Hard forget removes rejected staging rows with pending ones. After withdrawing a person candidate whose facts stay
   pending, `pctx sync push` succeeds and restore reproduces the rejected row, its pending dependents, and their
   ordinals; a bundle exported after an amendment restores the amended content. An older-version bundle carrying
@@ -259,10 +302,10 @@ behaviour over committed records is untouched by this milestone.
   need its own lifecycle, cleanup, and forget integration to express what one status value and an in-place update do.
 - Storing amendment history, or an audit trail over staging, would make review state durable state. Staging is
   discarded at commit; what survives is the committed record, whose history the changelog already owns.
-- No stored revision token on staged rows. The CLI and MCP commit paths keep today's behaviour: M24 establishes that
-  rereading before applying is a workflow safeguard rather than an isolation promise. M30.2, whose confirmation is
-  separated in time from its display, adds an optional whole-batch digest that `CommitImport` compares inside its
-  write-locked transaction; the digest is computed from the stored rows, and nothing new is stored.
+- No stored revision token on staged rows. The read-time `batch_digest` covers the gap between display and action
+  without one. Plain `pctx import commit` and `commit_import` keep today's behaviour: M24 establishes that rereading
+  before applying is a workflow safeguard rather than an isolation promise, and those commands display nothing before
+  they act.
 - Leaving rejected rows out of the bundle was rejected: a withdrawn person row's pending dependents keep referencing
   it, so omitting the row breaks bundle validation, and rewriting or dropping dependents on export would change what
   the reviewer left pending.
