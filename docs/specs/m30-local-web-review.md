@@ -38,7 +38,7 @@ daemon, no configuration file, no PID file, and no state that survives the proce
 unrelated processes with two unrelated tokens.
 
 The page is one HTML document with its CSS and JavaScript inline, served from Python string constants or package
-data. Every view — people, person, pending batches, and later one batch — is rendered by that document from JSON
+data. Every view — people, person, import sources, and later one batch — is rendered by that document from JSON
 endpoints, and navigation between views is client-side. There is no second document to link to, which is what lets
 the token stay out of every URL after the first load: an ordinary link or form submission cannot carry a request
 header, so a multi-document design would have had to copy the token into every `href`. No bundler, no Node
@@ -99,16 +99,22 @@ Deliver `pctx browse`, the foundation above, and three read-only views.
 - People list: canonical name, aliases, and summary — exactly the columns `ListPersonIndex`, the read behind
   `pctx list --json`, already carries. No relationship-to-self or last-interaction column is added, because
   neither exists in that read and a composed read is not introduced here. Rows open the person view.
-- Person page: the `brief` content — summary, affiliations, facts, interactions, reminders, and traits — from the
-  same use case behind `pctx brief` and `get_person_context`, with the same section bounds and the same
-  `truncated` flags. A section truncated for the CLI is truncated here, and says so.
-- Pending batches list: batch id, source label, staged time, and candidate counts, read from the source receipts
-  that `pctx sources` and `ListImportSources` already expose.
+- Person view: the `brief` content — summary, affiliations, facts, interactions, reminders, and traits — from
+  `ComposePersonBrief`, the use case behind `pctx brief`. That projection bounds facts and interactions at
+  `BRIEF_CONTEXT_ITEMS` but does not copy `PersonContextResult.truncated` into `PersonBriefDocument`, so neither
+  `pctx brief` nor this view could say a section was cut. M30.1 adds that flag as an additive top-level `truncated`
+  on the version-1 brief document — the same name and meaning `get_person_context` uses — and `pctx brief` prints
+  it in words. The view shows the same flag, so a bounded section is never presented as complete.
+- Import sources: one page at a time of the receipts `ListImportSources` returns, with its existing limit and
+  cursor, showing each receipt's kind, label, status, and batch id exactly as `pctx sources` does. Opening one
+  shows `ShowImportSource`'s aggregate `staged_by_status` counts, as `pctx source show` does. The listing has no
+  pending-status filter and no counts, and scanning every page to build a pending-only list would be unbounded, so
+  the view does not claim to be one. A batch staged without a receipt is not listed; it is opened by batch id.
 
 JSON endpoints wrap the existing read use cases and return what those use cases return. There is no new read
 model, no cache, no search index, and no semantic search. Every view is read-only: no view carries a form, and
-no endpoint in this PR writes. The batches list shows batch identity and counts only, and opens M30.2's batch
-view once that PR exists.
+no endpoint in this PR writes, other than the additive brief flag above. A receipt with a batch opens M30.2's
+batch view once that PR exists.
 
 This realizes the post-roadmap candidate "read-only local web viewer (`pctx browse`)"; that candidate is retired
 from the roadmap's deferred list by the PR that delivers this.
@@ -133,10 +139,13 @@ There is no auto-commit, no commit as a side effect of accepting, and no single 
 and commits it. After every mutation the page reloads its state from the server rather than patching a local
 copy. Reloading alone cannot protect the commit: another tab, a CLI invocation, or an MCP client may amend a
 candidate between that reload and the confirmation click, and `CommitImport` addresses stable ids. The commit
-request therefore carries, for every accepted row, a digest of the candidate content the page displayed; the
-endpoint recomputes each digest from the stored `candidate_json`, and if any differs it refuses the whole commit
-with `candidate_changed` and commits nothing, so the page reloads and the reviewer sees what changed. Nothing is
-stored for this check, and `CommitImport` itself is unchanged. The size ceilings that bound `pctx import review`
+request therefore carries, for every accepted row, a digest of the candidate content and row status the page
+displayed. The endpoint first refuses the whole commit with `candidate_not_pending` if any accepted row is no
+longer `pending` — a row another tab or the CLI committed has unchanged content, and `CommitImport` would skip it,
+committing fewer rows than the confirmation named. It then recomputes each digest from the stored `candidate_json`
+and status, and if any differs it refuses the whole commit with `candidate_changed`. Either refusal commits nothing,
+so the page reloads and the reviewer sees what changed. Nothing is stored for this check, and `CommitImport` itself
+is unchanged. The size ceilings that bound `pctx import review`
 apply unchanged; a batch too large to review in the CLI is not made reviewable by being viewed in a browser.
 
 ### M30.3 — Inline edit in the browser
@@ -150,7 +159,10 @@ amendment path does. Validation refusals are shown against the field they name, 
 repeating the submitted value.
 
 An ambiguous person candidate gets a picker listing the `match_candidates` M29.1 adds to the review row — the id
-and canonical name of each colliding person — so the user chooses one or leaves it unresolved. The choice is a
+and canonical name of up to 10 colliding people — so the user chooses one or leaves it unresolved. When
+`match_candidates_truncated` is set, the picker says more people share the name and accepts a person id the
+reviewer found through `resolve_person` or `search_people`; `AmendStagedCandidate` validates it against the
+matcher's full set either way. The choice is a
 patch setting `matched_person_id`, validated by `AmendStagedCandidate` against that same set, not a
 browser-specific resolution step.
 
@@ -191,13 +203,18 @@ same trust boundary the loopback MCP transport already states.
 - Sensitive and restricted records are absent from every page without elevation and present with
   `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for the `pctx browse` process; no page control changes that state.
 - The people list carries exactly the person-index columns, in the order `pctx list --json` returns them.
-- Person-view section bounds and `truncated` flags match `pctx brief` for the same person.
-- The pending-batches list matches `pctx sources` for the same database.
+- A person with more than `BRIEF_CONTEXT_ITEMS` eligible facts and interactions shows `truncated` in the view,
+  in `pctx brief --json`, and in `pctx brief`'s text; a person under the bound shows it unset in all three.
+- Each import-sources page matches the same `pctx sources --limit N --cursor C` page, and a receipt's counts match
+  `pctx source show` for it. A pending batch behind many committed receipts is reached by paging, not by a scan.
 - The review page's row order matches `pctx import review` for the same batch, including withdrawn rows.
 - Withdraw and commit refusals display the use-case error code and never the refused payload.
 - The commit confirmation names the count that is committed, and the count committed equals it.
 - A candidate amended through the CLI after the page displayed it and before the confirmation click makes the
   commit refuse with `candidate_changed` and commit nothing; the page then shows the amended content.
+- A checked candidate committed by another tab or `pctx import commit` before the confirmation click makes the
+  commit refuse with `candidate_not_pending` and commit nothing, so the count committed never falls below the count
+  confirmed.
 - After accept, withdraw, commit, and amend, the page state is refetched from the server and matches a fresh
   `pctx import review` of the same batch.
 - An invalid edit is refused per field; a valid edit is visible through `pctx import review` afterwards.

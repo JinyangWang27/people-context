@@ -314,7 +314,7 @@ Add `pctx browse`, a loopback-only Starlette/uvicorn page — `starlette` and `u
 transitive dependencies of `mcp` and only need declaring — with a per-launch token, `Host`/`Origin` checks, and
 a per-response CSP nonce. The browser is a fourth client of the same use cases the CLI and MCP already call, with
 the same ordinary-disclosure rules as MCP reads. Three PRs follow the verbs: M30.1 delivers read-only people,
-person, and pending-batches pages; M30.2 adds batch review with accept/withdraw/commit; M30.3 adds inline edit and
+person, and import-sources views; M30.2 adds batch review with accept/withdraw/commit; M30.3 adds inline edit and
 an ambiguity picker. M30.1 depends on nothing in M29; M30.2 depends on M29.1 and M29.2; M30.3 depends on M29.1.
 There is no remote access, no authentication, no daemon, and no JavaScript build step.
 

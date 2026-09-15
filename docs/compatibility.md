@@ -80,9 +80,11 @@ A JSON document that this repository documents as a stable interface carries an 
 integer `version`, and follows the same additive rule as MCP responses: existing fields are not removed or
 repurposed, and new fields are additive.
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds an additive `ordinal` field
-and an additive `rejected` status value to the import review document and the `review_import` response; no
-format string or version changes.
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds additive `ordinal`,
+`match_candidates`, and `match_candidates_truncated` fields and an additive `rejected` status value to the import
+review document and the `review_import` response, with no format string or version change, and advances the sync
+bundle one version so staging rows admit `rejected`. [M30](specs/m30-local-web-review.md) adds an additive
+top-level `truncated` to the version-1 person brief.
 
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|
