@@ -178,7 +178,7 @@ The following remain candidates, not commitments:
 - multi-user ownership and sharing;
 - authenticated remote transport;
 - reminder notification daemon (M13 ships only a pull-based calendar-feed export);
-- read-only local web viewer (`pctx browse`; M14's Obsidian plugin covers browsing for Obsidian users);
+- (moved) the read-only local web viewer is now planned as M30.1;
 - CardDAV synchronization (M14 ships only one-way vCard export);
 - watched-folder/background ingestion orchestration outside the core import transaction;
 - source-session rollback/retraction after safe lifecycle semantics are designed from real usage.
@@ -285,3 +285,38 @@ or durable speculative memberships. M28 is independent of M27.
 
 **Spec:** [M28 — Groups, memberships, and shared connections](specs/m28-groups-and-shared-connections.md).
 **PRs:** [M28 checklist](specs/pr-plan.md#m28--groups-memberships-and-shared-connections).
+
+## M29 — Editable staging and ergonomic review
+
+**Status:** Planned — not implemented.
+
+Amend and withdraw staged candidates in place, without a migration: `status` gains the additive value `rejected`
+on the existing `TEXT` column. MCP gains `amend_candidate` and `withdraw_candidates`; chat guidance in the usage
+skill, MCP prompts, and the packaged guide describes translating "change X" and "drop Y" into those tools and
+re-presenting the revised batch before commit. Numbered review adds an additive `ordinal` to the review row and
+accepts numbered and ranged selections (`--accept 1 3-5`) alongside ids, plus a batch summary and
+`pctx import review --interactive`. `pctx import edit` round-trips a batch through `$EDITOR`, or through
+`--from FILE` without one. Direct-write tools (`remember`, `record_*`, `correct_record`, `supersede_fact`) and
+M24 proposals are unchanged by this milestone.
+
+M29.1 delivers amend/withdraw and the chat review loop guidance; M29.2 delivers numbered review, ranged
+`--accept`, and the interactive loop; M29.3 delivers the `$EDITOR` round trip. Internal order is M29.1 → M29.2 →
+M29.3, and M29 is independent of M28.3.
+
+**Spec:** [M29 — Editable staging and ergonomic review](specs/m29-editable-staging-and-review.md).
+**PRs:** [M29 checklist](specs/pr-plan.md#m29--editable-staging-and-ergonomic-review).
+
+## M30 — Local web view, review, and edit
+
+**Status:** Planned — not implemented.
+
+Add `pctx browse`, a loopback-only Starlette/uvicorn page — `starlette` and `uvicorn` are already resolved as
+transitive dependencies of `mcp` and only need declaring — with a per-launch token, `Host`/`Origin` checks, and
+a per-response CSP nonce. The browser is a fourth client of the same use cases the CLI and MCP already call, with
+the same ordinary-disclosure rules as MCP reads. Three PRs follow the verbs: M30.1 delivers read-only people,
+person, and import-sources views; M30.2 adds batch review with accept/withdraw/commit; M30.3 adds inline edit and
+an ambiguity picker. M30.1 depends on nothing in M29; M30.2 depends on M29.1 and M29.2; M30.3 depends on M29.1.
+There is no remote access, no authentication, no daemon, and no JavaScript build step.
+
+**Spec:** [M30 — Local web view, review, and edit](specs/m30-local-web-review.md).
+**PRs:** [M30 checklist](specs/pr-plan.md#m30--local-web-view-review-and-edit).
