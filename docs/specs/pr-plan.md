@@ -837,7 +837,9 @@ M29.1 → M29.2 → M29.3.
     in the same transaction, to `committed` or to a new terminal `withdrawn` status when nothing was committed. The
     receipt update is journalled through `audit_mutation` with a full after-image; staging rows stay unaudited.
     Projected `match_candidates` names are cut to 256 characters, and their worst-case bytes are charged to the review
-    ceiling.
+    ceiling. The collision lookup uses a distinct count, a ten-entry page, and an existence check instead of loading
+    every matching person. The bundle's new version has its own staging-row and source-session models; older versions
+    carrying `rejected` or `withdrawn` are refused.
   - **Acceptance:** an amendment adding an unknown field, changing `type`, or targeting a committed or rejected row is
     refused, the stored candidate is unchanged, and the refusal names a declared field, never the patch or an undeclared
     key, which it shows as `(redacted)`. A dangling, foreign-batch, or wrong-type reference, an oversized patch, or an
@@ -868,13 +870,13 @@ M29.1 → M29.2 → M29.3.
     `cli/onboarding.py`. Add `pctx import review BATCH --interactive` with
     `[a]ccept [s]kip [w]ithdraw [e]dit [q]uit`, using `input()`, committing the accepted set through
     `CommitImport` at the end.
-  - **Acceptance:** ordinals are unchanged by an intervening amendment or withdrawal, and a review taken before
-    and after one selects the same candidates. A mixed `1,3-5,01J...` selection resolves; one unknown member
-    refuses all of it; a token that exactly equals a candidate id is that id before any shorthand parsing, so a
-    restored id spelled `1` keeps its meaning. `--interactive` accepting some and quitting commits nothing on `q`,
-    commits exactly the accepted set otherwise, and survives an invalid edit mid-loop without losing the accepted
-    set.
-    \1 A row amended elsewhere mid-loop refuses the next `--interactive` action with `batch_changed`.
+  - **Acceptance:** ordinals are unchanged by an intervening amendment or withdrawal, and a review taken before and
+    after one selects the same candidates. A mixed `1,3-5,01J...` selection resolves; one unknown member refuses all of
+    it; a token that exactly equals a candidate id is that id before any shorthand parsing, so a restored id spelled `1`
+    keeps its meaning. `--interactive` accepting some and quitting commits nothing on `q`, commits exactly the accepted
+    set otherwise, and survives an invalid edit mid-loop without losing the accepted set. \1 A row amended elsewhere
+    mid-loop refuses the next `--interactive` action with `batch_changed`. A conflict clears every collected acceptance
+    and restarts the loop, so an earlier accepted row amended elsewhere is not committed unseen.
   - **Out:** a TUI dependency — `input()` and the existing review document are enough for the loop.
 
 - [ ] **M29.3 — Edit a batch in `$EDITOR`**
@@ -892,9 +894,10 @@ M29.1 → M29.2 → M29.3.
   - **Acceptance:** an editor round trip with one row removed, one row changed, one invalid edit, and a document naming
     a foreign batch produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a
     whole-apply refusal that changes nothing; \1 A row amended by another client after the document was rendered refuses
-    the apply with `batch_changed`. An unchanged document `pctx import review --json` printed applies back, including
-    one over 1 MiB, with long restored ids, or with long `match_candidates` names. With no editor configured the command
-    exits 2 and names both variables it checked; the temp file never survives.
+    the apply with `batch_changed`. Editing any rendered field other than a row's `candidate`, such as `status`,
+    `source`, or `ordinal`, refuses with `review_field_changed`. An unchanged document `pctx import review --json`
+    printed applies back, including one over 1 MiB, with long restored ids, or with long `match_candidates` names. With
+    no editor configured the command exits 2 and names both variables it checked; the temp file never survives.
   - **Out:** YAML — the existing JSON review document round-trips through `$EDITOR` unchanged; a browser
     surface for this workflow, which is delivered separately by M30.
 

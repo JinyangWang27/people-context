@@ -73,9 +73,16 @@ canonical name then id, with an additive `match_candidates_truncated` flag, beca
 number of people and the review read must stay bounded by the staged payload it already measures. The projection's
 worst-case size — ten entries of an id and a 256-character name per ambiguous row — is charged to the same review
 ceiling `PreflightImportBatch` measures, before any name is read, so an ambiguous batch that would exceed it is refused
-like any oversized batch rather than rendered. The cap limits display, not choice: a patch naming any person in the
-matcher's full set is accepted, and a reviewer finds one beyond the cap through the bounded `resolve_person` and
-`search_people` reads. M30's ambiguity picker uses exactly this field, this flag, and this patch.
+like any oversized batch rather than rendered. Capping the output does not bound the read beneath it:
+`PersonReader.find_by_normalized_name()` loads every matching `Person`, and `match_person_candidate()` unions that whole
+result, so thousands of people sharing a name would materialize thousands of records per ambiguous row. M29.1 replaces
+that with three bounded queries on the person reader, run once over all of a candidate's tokens: a distinct count, a
+page of at most ten distinct ids and canonical names ordered by canonical name then id, and an existence check for one
+person id against those tokens. `match_person_candidate()` is rebuilt on the count and a one-id page, so staging,
+commit, review, and amendment stay bounded, and a `matched_person_id` choice is validated by the existence check without
+reading the collision set. The cap limits display, not choice: a patch naming any person in the matcher's full set is
+accepted, and a reviewer finds one beyond the cap through the bounded `resolve_person` and `search_people` reads. M30's
+ambiguity picker uses exactly this field, this flag, and this patch.
 
 Withdrawal is the second verb. A withdrawn row moves to status `rejected`, stays in its batch, keeps being listed by
 review, and is never committed. It is not deleted: a reviewer who cannot see what they dropped cannot check that they
@@ -186,11 +193,13 @@ implementation and without a second set of rules.
 [w]ithdraw [e]dit [q]uit`. `e` prompts for a field patch and runs the M29.1 amend use case, so an invalid edit refuses
 that candidate and leaves the loop where it was. The loop keeps the `batch_digest` of the review it is showing and
 passes it to every amendment, withdrawal, and the final commit; after each of its own writes it rereads the batch and
-continues from the new digest. If another client changed the batch, the action refuses with `batch_changed`, the loop
-says so, and it re-shows the current candidate rather than acting on the old one. At the end the accepted set is
-committed through `CommitImport` and the commit result is printed. `q` exits having committed nothing; skipping leaves a
-row pending for a later pass. It uses `input()` like the onboarding loop — the only interactive loop in the repository —
-and adds no TUI dependency. `--interactive` and `--json` are mutually exclusive and refuse together.
+continues from the new digest. If another client changed the batch, the action refuses with `batch_changed`, and the
+loop discards every acceptance it has collected, says so, and restarts from the first pending candidate of the reread
+batch. Keeping earlier acceptances would let the final commit match the new digest while committing an earlier row whose
+new content the reviewer never saw. At the end the accepted set is committed through `CommitImport` and the commit
+result is printed. `q` exits having committed nothing; skipping leaves a row pending for a later pass. It uses `input()`
+like the onboarding loop — the only interactive loop in the repository — and adds no TUI dependency. `--interactive` and
+`--json` are mutually exclusive and refuse together.
 
 ### M29.3 — Edit a batch in `$EDITOR`
 
@@ -198,13 +207,18 @@ and adds no TUI dependency. `--interactive` and `--json` are mutually exclusive 
 writer at mode 0600, opens it with `$VISUAL` and then `$EDITOR` resolved through `shlex.split` and run with
 `subprocess.run` without a shell, and on exit diffs the edited document against the batch: a candidate that is gone is
 withdrawn, a candidate whose fields changed is amended through the M29.1 use case, and an untouched candidate is a
-no-op. The editor's exit status is checked first: `subprocess.run` does not raise on a nonzero status, so a crashed
-editor, or one that could not save, would otherwise lead straight to a commit prompt over an unreviewed batch. A nonzero
-status applies nothing, asks nothing, and exits nonzero naming the status. After a successful edit the command prints
-the batch summary and asks `Commit N pending candidates? [y/N]` unless `--no-commit` was given. The prompt reads the
-controlling terminal, never a pipe. The temporary file is deleted afterwards in every case. The review document carries
-distilled personal data, so the existing disclosure warning applies to the file the editor opens. With neither variable
-set, the command refuses with exit status 2 and names both variables it checked.
+no-op. Only a row's `candidate` object is editable. Every other field the document renders — the document's `format`,
+`version`, `batch_id`, and `batch_digest`, and each row's `id`, `ordinal`, `source`, `status`, `match_candidates`, and
+truncation flags — must match the rendered document exactly; any change refuses the whole apply with
+`review_field_changed`, naming the row index and the declared field. Deleting a row is the only way to withdraw it, so
+changing `status` to `rejected` cannot be mistaken for a no-op that the commit prompt then commits. The editor's exit
+status is checked first: `subprocess.run` does not raise on a nonzero status, so a crashed editor, or one that could not
+save, would otherwise lead straight to a commit prompt over an unreviewed batch. A nonzero status applies nothing, asks
+nothing, and exits nonzero naming the status. After a successful edit the command prints the batch summary and asks
+`Commit N pending candidates? [y/N]` unless `--no-commit` was given. The prompt reads the controlling terminal, never a
+pipe. The temporary file is deleted afterwards in every case. The review document carries distilled personal data, so
+the existing disclosure warning applies to the file the editor opens. With neither variable set, the command refuses
+with exit status 2 and names both variables it checked.
 
 `pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything and never
 prompts: `--from -` consumes stdin, so no confirmation could be read from it, and a script has nobody to ask. It applies
@@ -251,12 +265,14 @@ promise that new fields are additive and a consumer ignoring unknown fields keep
 `pctx sources` and `pctx source show` may now report. `amend`, `reject`, `edit`, `--interactive`,
 `--patch`, `--from`, and `--no-commit` are new commands and flags; every existing invocation keeps its meaning.
 
-The sync bundle advances one version so that its staging row admits `rejected`. The bundle is deliberately not
-additively extensible within a version, so this follows the established rule: emission moves to the new version,
-every released version stays readable, and a document of an older version is refused if it carries `rejected`. A
+The sync bundle advances one version so that its staging row admits `rejected` and its source session admits
+`withdrawn`. Both models are shared by every released version today, so the new version gets its own staging-row and
+source-session models rather than widening the shared literals. The bundle is deliberately not additively extensible
+within a version, so this follows the established rule: emission moves to the new version, every released version stays
+readable, and a document of an older version is refused if it carries a `rejected` row or a `withdrawn` receipt. A
 bundle taken after an amendment carries the amended content, which restore validates exactly as it validates a row
-staged that way. Hard forget removes rejected rows exactly as it removes pending ones. Person merge and forget
-behaviour over committed records is untouched by this milestone.
+staged that way. Hard forget removes rejected rows exactly as it removes pending ones. Person merge and forget behaviour
+over committed records is untouched by this milestone.
 
 ## Acceptance scenarios and verification
 
@@ -273,6 +289,8 @@ behaviour over committed records is untouched by this milestone.
 - An ambiguous person row lists its `match_candidates`. Amended with a `matched_person_id` the matcher computes, it
   resolves and its dependents commit; naming a person outside that set refuses with `person_not_a_match`; amended
   without a choice it stays ambiguous and its dependents stay `unresolved`. Neither path guesses.
+- With 5,000 active people sharing a name, reviewing a batch of ambiguous rows for it loads no `Person` records for the
+  projection, and choosing the 5,000th person is validated by a single existence check.
 - A name colliding with 25 people lists 10 `match_candidates` in canonical-name, id order with
   `match_candidates_truncated` set, and a `matched_person_id` naming the 25th is still accepted.
 - A withdrawn candidate is skipped by `--all` and by "commit everything" over MCP; naming its id in `--accept` or in
@@ -295,8 +313,11 @@ behaviour over committed records is untouched by this milestone.
   candidate ids, and one whose `match_candidates` carry long canonical names.
 - A row amended by another client after `pctx import edit` rendered its document, or after `review --json` wrote the
   file `--from` reads, makes the apply refuse with `batch_changed` and keeps the newer amendment; so does a change
-  between the editor apply and the commit prompt. In `--interactive`, a row amended elsewhere mid-loop refuses the
-  next action with `batch_changed` instead of overwriting or committing it.
+  between the editor apply and the commit prompt. In `--interactive`, a row amended elsewhere mid-loop refuses the next
+  action with `batch_changed` instead of overwriting or committing it, and an earlier row that was already accepted and
+  then amended elsewhere is not committed until the restarted loop shows it and the reviewer accepts it again.
+- Changing a row's `status` from `pending` to `rejected`, or its `source` or `ordinal`, without touching `candidate`
+  refuses the whole apply with `review_field_changed` and never reaches the commit prompt.
 - An editor exiting nonzero applies nothing and never shows the commit prompt. `--from -` applies its edits and
   exits without reading a confirmation; `--from` with `--no-commit` refuses.
 - Withdrawing the last pending rows of a source-tracked batch makes its receipt `committed` when something was
@@ -305,8 +326,8 @@ behaviour over committed records is untouched by this milestone.
   `--force`.
 - Hard forget removes rejected staging rows with pending ones. After withdrawing a person candidate whose facts stay
   pending, `pctx sync push` succeeds and restore reproduces the rejected row, its pending dependents, and their
-  ordinals; a bundle exported after an amendment restores the amended content. An older-version bundle carrying
-  `rejected` is refused, and every released version still restores.
+  ordinals; a bundle exported after an amendment restores the amended content. An older-version bundle carrying a
+  `rejected` row or a `withdrawn` receipt is refused, and every released version still restores.
 - MCP prompt, packaged guide, and usage-skill parity tests assert the chat review loop wording, including that
   confirming an amendment is not acceptance of the batch.
 - Implementing PRs add fake-port and real-SQLite tests for the new use cases and store methods, in-memory tests for
