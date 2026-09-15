@@ -838,11 +838,12 @@ M29.1 → M29.2 → M29.3.
     refuses with `person_not_a_match`; one amended without a choice stays ambiguous. A withdrawn person row with a live
     `matched_person_id` leaves its pending dependents `unresolved` under `--all`. A withdrawn candidate is skipped by
     `--all` and by "commit everything" over MCP; naming its id in `--accept` or in `accepted_ids` refuses the whole
-    commit with `candidate_withdrawn` and commits nothing. Hard forget removes `rejected` staging rows with `pending`
-    ones. After withdrawing a person whose facts stay pending, `pctx sync push` succeeds and restore reproduces the
-    rejected row, its dependents, and their ordinals; an older-version bundle carrying `rejected` is refused and every
-    released version still restores. `amend`/`reject --json` print the full batch document. MCP prompt, packaged guide,
-    and usage-skill parity tests assert the chat review loop wording, including that confirming an amendment is not
+    commit with `candidate_withdrawn` and commits nothing; rerunning `--all` on a partially committed batch still
+    reports earlier rows in `skipped_ids`. Hard forget removes `rejected` staging rows with `pending` ones. After
+    withdrawing a person whose facts stay pending, `pctx sync push` succeeds and restore reproduces the rejected row,
+    its dependents, and their ordinals; an older-version bundle carrying `rejected` is refused and every released
+    version still restores. `amend`/`reject --json` print the full batch document. MCP prompt, packaged guide, and
+    usage-skill parity tests assert the chat review loop wording, including that confirming an amendment is not
     acceptance of the batch.
   - **Out:** a separate proposals table for edits, amendment history or an audit trail over staging, a stored revision
     token, reinstating a withdrawn candidate, and appending candidates to an existing batch.
@@ -871,8 +872,9 @@ M29.1 → M29.2 → M29.3.
     withdrawn, a changed one is amended, and an untouched one is a no-op, all through one `ApplyReviewEdits` use case
     that validates every row against the resulting batch and writes inside one write-locked unit of work. Read the
     edited document under a bound derived from the review ceiling, not the 1 MiB request bound. Print the batch summary
-    and ask `Commit N pending candidates? [y/N]` unless `--no-commit`, then delete the temp file. Add `pctx import edit
-    BATCH --from FILE|-` to apply an already-edited document without opening an editor.
+    and ask `Commit N pending candidates? [y/N]` on the controlling terminal unless `--no-commit`, only after the editor
+    exits zero, then delete the temp file. Add `pctx import edit BATCH --from FILE|-` to apply an already-edited
+    document without opening an editor or prompting, refused together with `--no-commit`.
   - **Acceptance:** an editor round trip with one row removed, one row changed, one invalid edit, and a document naming
     a foreign batch produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a
     whole-apply refusal that changes nothing; a valid change on row 1 with an invalid change on row 5 leaves row 1
@@ -902,10 +904,11 @@ independent of M28.3.
     uvicorn with `access_log=False` and a log configuration that never formats a request path. Serve one inline
     HTML/CSS/JS document from Python string constants or package data that renders every view client-side, with no
     bundler, CDN, or third-party script. Add three read-only views — people list (person-index columns only), person
-    view, and paged import sources with per-source counts — as JSON-endpoint wrappers over the existing `pctx list
-    --json`, `pctx brief`, and `pctx sources`/`pctx source show` reads, plus an additive top-level `truncated` on the
-    version-1 brief document, applying the same ordinary-disclosure and process-level sensitivity-elevation rules as MCP
-    reads. Declare `starlette` and `uvicorn` in `pyproject.toml` with ranges compatible with what `mcp` already pins.
+    view, and paged import sources with per-source staged counts only — as JSON-endpoint wrappers over the existing
+    `pctx list --json`, `pctx brief`, and `pctx sources`/`pctx source show` reads, plus an additive top-level
+    `truncated` on the version-1 brief document, applying the same ordinary-disclosure and process-level
+    sensitivity-elevation rules as MCP reads. Declare `starlette` and `uvicorn` in `pyproject.toml` with ranges
+    compatible with what `mcp` already pins.
   - **Acceptance:** a bind to any address other than `127.0.0.1` is refused; the ephemeral default and an explicit
     `--port` both serve on loopback only. A request with no token, a wrong token, an unexpected `Host`, or a foreign
     `Origin` is refused with one generic, unlogged response carrying no person, candidate, batch, or file data and no
@@ -915,9 +918,10 @@ independent of M28.3.
     containing markup renders as text and executes nothing. Sensitive and restricted durable records are absent from the
     people, person, and sources views without elevation and present with `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` set for
     the `pctx browse` process, with no page control changing that state. A person over `BRIEF_CONTEXT_ITEMS` shows
-    `truncated` in the view and in `pctx brief` text and JSON, and each sources page and per-source count matches `pctx
-    sources`/`pctx source show`. `uv lock --check` reports no resolution change after `starlette` and `uvicorn` are
-    declared. Starlette `TestClient` tests cover every endpoint and every security header, including the refusal paths.
+    `truncated` in the view and in `pctx brief` text and JSON, and each sources page and per-source staged count matches
+    `pctx sources`/`pctx source show`, with no committed mapping exposed and an identical response with and without
+    elevation. `uv lock --check` reports no resolution change after `starlette` and `uvicorn` are declared. Starlette
+    `TestClient` tests cover every endpoint and every security header, including the refusal paths.
   - **Out:** remote or LAN access, any authentication scheme, HTTPS, multi-user operation, a background daemon,
     a JavaScript framework or build step, editing durable records, displaying sensitive records without the
     existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.
@@ -930,20 +934,20 @@ independent of M28.3.
     actions, displaying a refusal as the use case's own error code and never the refused payload, and showing staged
     candidates verbatim under the review disclosure warning as `pctx import review` does. Commit requires one explicit
     confirmation click naming the count accepted, then shows the commit result's committed, unresolved, and
-    already-committed counts. `CommitImport` gains an optional `expected_batch_digest` over every row's id, status, and
-    content, compared inside its transaction under an immediate write lock. After every mutation the page reloads its
-    state from the server.
+    already-committed counts. `CommitImport` and `WithdrawStagedCandidates` gain an optional `expected_batch_digest`
+    over every row's id, status, and content, compared inside its transaction under an immediate write lock. After every
+    mutation the page reloads its state from the server.
   - **Acceptance:** the review page's row order matches `pctx import review` for the same batch, including withdrawn
     rows. Withdraw and commit refusals display the use-case error code and never the refused payload. The commit
     confirmation names the count accepted; accepting an ambiguous person and its fact commits neither and reports both
     unresolved. Amending a checked row, amending an unchecked person row an accepted fact resolves through, or
     committing a checked row elsewhere, after display and before confirmation, refuses with `batch_changed` and commits
-    nothing, including when the amendment comes from a second connection during the commit. A staged `sensitive` fact
-    appears in the batch view without elevation, as in `pctx import review`. CLI and MCP commits without the digest
-    behave as before. After accept, withdraw, and commit, the page state is refetched from the server and matches a
-    fresh `pctx import review` of the same batch. There is no auto-commit, no commit as a side effect of accepting, and
-    no single control that selects everything and commits it. The size ceilings that bound `pctx import review` apply
-    unchanged.
+    nothing, including when the amendment comes from a second connection during the commit. A withdrawal of a row
+    amended elsewhere after display refuses the same way and changes no status. A staged `sensitive` fact appears in the
+    batch view without elevation, as in `pctx import review`. CLI and MCP commits without the digest behave as before.
+    After accept, withdraw, and commit, the page state is refetched from the server and matches a fresh `pctx import
+    review` of the same batch. There is no auto-commit, no commit as a side effect of accepting, and no single control
+    that selects everything and commits it. The size ceilings that bound `pctx import review` apply unchanged.
   - **Out:** remote or LAN access, any authentication scheme, HTTPS, multi-user operation, a background daemon,
     a JavaScript framework or build step, editing durable records, displaying sensitive records without the
     existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.
@@ -953,11 +957,12 @@ independent of M28.3.
     candidate type's field list: native inputs for scalars, an add/remove list for `aliases`, and multi-selects for
     `participant_candidate_ids` and `evidence_candidate_ids` offering only same-batch rows of an accepted type;
     `evidence_ids` is shown read-only with the equivalent `pctx import amend` command. Saving posts a field patch to an
-    endpoint wrapping `AmendStagedCandidate`, re-validating and re-resolving exactly as the CLI amendment path does,
-    with one refusal message per named field and no repeated submitted value. Add an ambiguity picker for an ambiguous
-    person candidate, listing the review row's `match_candidates`; the choice is a `matched_person_id` patch validated
-    through the same amendment path. Committed and withdrawn rows are not editable, and there is no free-text form for
-    authoring a candidate the importer did not produce.
+    endpoint wrapping `AmendStagedCandidate` with the batch digest, so an edit from a stale view refuses with\n
+    `batch_changed`, re-validating and re-resolving exactly as the CLI amendment path does, with one refusal message per
+    named field and no repeated submitted value. Add an ambiguity picker for an ambiguous person candidate, listing the
+    review row's `match_candidates`; the choice is a `matched_person_id` patch validated through the same amendment
+    path. Committed and withdrawn rows are not editable, and there is no free-text form for authoring a candidate the
+    importer did not produce.
   - **Acceptance:** an invalid edit is refused per field; a valid edit is visible through `pctx import review`
     afterwards. Choosing a match in the ambiguity picker records the resolution through amendment, visible to the CLI.
     Participants, aliases, and evidence candidate references can each be corrected, and the selectors never offer a row

@@ -85,7 +85,7 @@ repurposed, and new fields are additive.
 review document and the `review_import` response, with no format string or version change, and advances the sync
 bundle one version so staging rows admit `rejected`. [M30](specs/m30-local-web-review.md) adds an additive
 top-level `truncated` to the version-1 person brief and an optional `expected_batch_digest` argument to the import
-commit use case, which existing CLI and MCP commits do not pass.
+commit, withdraw, and amend use cases, which existing CLI and MCP calls do not pass.
 
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|

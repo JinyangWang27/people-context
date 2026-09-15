@@ -111,7 +111,11 @@ Deliver `pctx browse`, the foundation above, and three read-only views.
   it in words. The view shows the same flag, so a bounded section is never presented as complete.
 - Import sources: one page at a time of the receipts `ListImportSources` returns, with its existing limit and
   cursor, showing each receipt's kind, label, status, and batch id exactly as `pctx sources` does. Opening one
-  shows `ShowImportSource`'s aggregate `staged_by_status` counts, as `pctx source show` does. The listing has no
+  shows only the `staged_total` and `staged_by_status` counts from `ShowImportSource`. Its `mappings` and
+  `mappings_by_disposition` are not exposed: they name and count committed durable records, including a
+  `sensitive` or `restricted` fact, without any disclosure filter, so returning them would signal hidden records.
+  Staged counts describe review state, which the batch view shows verbatim anyway. The projection is the same with
+  or without elevation, and committed outcomes stay with the operator-only `pctx source show`. The listing has no
   pending-status filter and no counts, and scanning every page to build a pending-only list would be unbounded, so
   the view does not claim to be one. A batch staged without a receipt is not listed; it is opened by batch id.
 
@@ -157,6 +161,12 @@ the whole commit with `batch_changed` and writes nothing; the page reloads and t
 writer can change the batch between the comparison and the commit. Nothing is stored for the check, and callers
 that omit the argument, including the CLI and `commit_import`, keep today's behaviour.
 
+A withdrawal from a stale view has the same problem, and a worse outcome: withdrawing a row another client just
+corrected rejects content the reviewer never saw, and M29 has no reinstatement. `WithdrawStagedCandidates` gains the
+same optional `expected_batch_digest`, checked the same way inside its write-locked unit of work before any status
+changes, and the "Withdraw selected" action always sends it. M30.3 gives `AmendStagedCandidate` the argument too, so
+an edit made from a stale view cannot overwrite another client's amendment.
+
 The size ceilings that bound `pctx import review` apply unchanged; a batch too large to review in the CLI is not
 made reviewable by being viewed in a browser.
 
@@ -188,9 +198,9 @@ staged, it does not author records. Committed and withdrawn rows are not editabl
 
 No new durable record, table, migration, or machine JSON format is introduced. The endpoints are HTTP projections of
 existing use cases. Two changes are additive: a top-level `truncated` on the version-1 person brief, and an optional
-`expected_batch_digest` argument on `CommitImport` with its `batch_changed` refusal, which callers that omit the
-argument never see. Reads write nothing; mutations flow through the existing use cases and therefore through the
-existing transaction, audit, and changelog seam.
+`expected_batch_digest` argument on `CommitImport`, `WithdrawStagedCandidates`, and `AmendStagedCandidate` with its
+`batch_changed` refusal, which callers that omit the argument never see. Reads write nothing; mutations flow through the
+existing use cases and therefore through the existing transaction, audit, and changelog seam.
 
 Nothing leaves the machine. The page loads no external resource, the process makes no outbound request, and the
 ordinary-commands-never-touch-the-network rule holds for `pctx browse` as it does for every other command. A
@@ -225,8 +235,10 @@ same trust boundary the loopback MCP transport already states.
 - The people list carries exactly the person-index columns, in the order `pctx list --json` returns them.
 - A person with more than `BRIEF_CONTEXT_ITEMS` eligible facts and interactions shows `truncated` in the view,
   in `pctx brief --json`, and in `pctx brief`'s text; a person under the bound shows it unset in all three.
-- Each import-sources page matches the same `pctx sources --limit N --cursor C` page, and a receipt's counts match
-  `pctx source show` for it. A pending batch behind many committed receipts is reached by paging, not by a scan.
+- Each import-sources page matches the same `pctx sources --limit N --cursor C` page, and a receipt's staged counts
+  match `pctx source show` for it. A source that committed a `sensitive` fact exposes no mapping, entity id, or mapping
+  count, and the response is byte-identical with and without elevation. A pending batch behind many committed receipts
+  is reached by paging, not by a scan.
 - The review page's row order matches `pctx import review` for the same batch, including withdrawn rows.
 - Withdraw and commit refusals display the use-case error code and never the refused payload.
 - The commit confirmation names the number of candidates accepted. Accepting an ambiguous person and its fact
@@ -237,7 +249,10 @@ same trust boundary the loopback MCP transport already states.
 - A test that amends a row from a second connection while `CommitImport` holds its write lock observes the
   amendment wait for the commit, and the commit either matches the digest or refuses; there is no interleaving in
   which changed content is committed.
-- `pctx import commit` and `commit_import` without `expected_batch_digest` behave exactly as before.
+- Withdrawing or editing a row another client amended after display refuses with `batch_changed`, changes no status
+  or content, and reloads the view.
+- `pctx import commit`, `commit_import`, and the CLI and MCP amend and withdraw paths without
+  `expected_batch_digest` behave exactly as before.
 - After accept, withdraw, commit, and amend, the page state is refetched from the server and matches a fresh
   `pctx import review` of the same batch.
 - An invalid edit is refused per field; a valid edit is visible through `pctx import review` afterwards.

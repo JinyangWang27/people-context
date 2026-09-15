@@ -98,8 +98,11 @@ in place. `status` gains the value `rejected` with no migration, because the col
 `CommitImport` learns one rule: an accepted id whose row is `rejected` refuses the whole commit with
 `candidate_withdrawn`. That matches the existing selection contract, where one unknown id refuses the whole selection
 rather than committing the part that parsed — a reviewer who names a withdrawn candidate has a stale list, and the
-safe response is to say so. `--all`, and "commit everything" over MCP, mean every `pending` row: withdrawn rows are
-skipped silently because withdrawing them was the instruction. Withdrawing a person candidate leaves its dependents
+safe response is to say so. `--all` today submits every review row, and `CommitImport` reports rows committed by an
+earlier invocation in the version-1 commit document's `skipped_ids`. M29 keeps that: `--all`, and "commit
+everything" over MCP, submit every row except `rejected` ones, so a rerun on a partially committed batch still
+reports its already-committed rows. Withdrawn rows are left out silently because withdrawing them was the
+instruction. Withdrawing a person candidate leaves its dependents
 `unresolved` at commit. That needs a second change: `CommitImport._existing_resolution()` today adds a person row's
 stored `matched_person_id` to the batch resolution before it looks at the row's status, so a withdrawn person row
 that matched an existing person would still resolve its dependents. Rejected rows are skipped before any stored
@@ -154,16 +157,22 @@ TUI dependency. `--interactive` and `--json` are mutually exclusive and refuse t
 
 ### M29.3 — Edit a batch in `$EDITOR`
 
-`pctx import edit BATCH` writes the review document to a private temporary file through the shared atomic
-private-file writer at mode 0600, opens it with `$VISUAL` and then `$EDITOR` resolved through `shlex.split` and run
-with `subprocess.run` without a shell, and on exit diffs the edited document against the batch: a candidate that is
-gone is withdrawn, a candidate whose fields changed is amended through the M29.1 use case, and an untouched candidate
-is a no-op. It then prints the batch summary and asks `Commit N pending candidates? [y/N]` unless `--no-commit` was
-given. The temporary file is deleted afterwards. The review document carries distilled personal data, so the existing
-disclosure warning applies to the file the editor opens. With neither variable set, the command refuses with exit
-status 2 and names both variables it checked.
+`pctx import edit BATCH` writes the review document to a private temporary file through the shared atomic private-file
+writer at mode 0600, opens it with `$VISUAL` and then `$EDITOR` resolved through `shlex.split` and run with
+`subprocess.run` without a shell, and on exit diffs the edited document against the batch: a candidate that is gone is
+withdrawn, a candidate whose fields changed is amended through the M29.1 use case, and an untouched candidate is a
+no-op. The editor's exit status is checked first: `subprocess.run` does not raise on a nonzero status, so a crashed
+editor, or one that could not save, would otherwise lead straight to a commit prompt over an unreviewed batch. A nonzero
+status applies nothing, asks nothing, and exits nonzero naming the status. After a successful edit the command prints
+the batch summary and asks `Commit N pending candidates? [y/N]` unless `--no-commit` was given. The prompt reads the
+controlling terminal, never a pipe. The temporary file is deleted afterwards in every case. The review document carries
+distilled personal data, so the existing disclosure warning applies to the file the editor opens. With neither variable
+set, the command refuses with exit status 2 and names both variables it checked.
 
-`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything, so
+`pctx import edit BATCH --from FILE|-` applies an already-edited review document without opening anything and
+never prompts: `--from -` consumes stdin, so no confirmation could be read from it, and a script has nobody to ask.
+It applies the edits, prints the summary, and leaves committing to `pctx import commit`. `--no-commit` is therefore
+meaningless with `--from` and is refused together with it. So
 `pctx import review BATCH --json > f; $EDITOR f; pctx import edit BATCH --from f` is the same workflow for a script,
 or for an agent working through the CLI without MCP. Both paths read the edited document under a bound derived from
 the review ceiling, not from the 1 MiB `stage-candidates` request bound: 64 MiB of staged payload plus a fixed
@@ -215,7 +224,8 @@ behaviour over committed records is untouched by this milestone.
 - A name colliding with 25 people lists 10 `match_candidates` in canonical-name, id order with
   `match_candidates_truncated` set, and a `matched_person_id` naming the 25th is still accepted.
 - A withdrawn candidate is skipped by `--all` and by "commit everything" over MCP; naming its id in `--accept` or in
-  `accepted_ids` refuses the whole commit with `candidate_withdrawn` and commits nothing.
+  `accepted_ids` refuses the whole commit with `candidate_withdrawn` and commits nothing. Rerunning `--all` on a
+  partially committed batch that also has a withdrawn row reports the earlier rows in `skipped_ids`, as today.
 - A withdrawn person candidate whose row carries a live `matched_person_id` resolves nothing: `--all` leaves its
   pending facts, interactions, and relationships `unresolved` rather than committing them to the matched person.
 - Ordinals are unchanged by an intervening amendment or withdrawal, and a review taken before and after one selects
@@ -227,6 +237,8 @@ behaviour over committed records is untouched by this milestone.
   produces, respectively, a withdrawal, an amendment, a refusal naming index and field, and a whole-apply refusal. A
   document with a valid change on row 1 and an invalid change on row 5 refuses and leaves row 1 unchanged.
   With no editor configured the command exits 2 and says which variables were checked; the temp file never survives.
+- An editor exiting nonzero applies nothing and never shows the commit prompt. `--from -` applies its edits and
+  exits without reading a confirmation; `--from` with `--no-commit` refuses.
 - Hard forget removes rejected staging rows with pending ones. After withdrawing a person candidate whose facts stay
   pending, `pctx sync push` succeeds and restore reproduces the rejected row, its pending dependents, and their
   ordinals; a bundle exported after an amendment restores the amended content. An older-version bundle carrying
