@@ -121,7 +121,7 @@ def test_export_emits_the_current_version_carrying_every_link(tmp_path: Path) ->
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 6
+    assert document.version == SYNC_BUNDLE_VERSION == 7
     assert [(row.trait_id, row.evidence_type, row.evidence_id) for row in document.trait_evidence] == [
         (trait_id, "interaction", interaction_id),
         (trait_id, "observation", observation_id),

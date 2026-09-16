@@ -1105,6 +1105,124 @@ def test_a_version_two_document_without_those_fields_still_parses() -> None:
     assert len(document.imports.staging) == 1
 
 
+def _withdrawn_receipt(payload: dict[str, Any]) -> None:
+    """Turn the bundled receipt into a terminal withdrawal, as a fully withdrawn batch leaves it.
+
+    Such a receipt exports with no staging rows and no mappings, exactly as a redacted one does,
+    because the reviewability rule that selects staging for export counts pending rows only.
+    """
+    imports = _imports(payload)
+    imports["source_sessions"][0]["status"] = "withdrawn"
+    imports["staging"].clear()
+    imports["candidate_mappings"].clear()
+    # Trait evidence links a committed trait to committed records; a receipt that committed
+    # nothing has none.
+    payload["trait_evidence"] = []
+
+
+def test_the_current_version_accepts_a_rejected_staging_row() -> None:
+    """Version 7 is M29.1: a candidate the reviewer withdrew travels as `rejected`."""
+    payload = _document()
+    _imports(payload)["staging"][0]["status"] = "rejected"
+    _imports(payload)["candidate_mappings"].clear()
+
+    document = parse_bundle_payload(payload)
+
+    assert document.version == SYNC_BUNDLE_VERSION == 7
+    assert document.imports.staging[0].status == "rejected"
+
+
+def test_the_current_version_accepts_a_withdrawn_receipt() -> None:
+    payload = _document()
+    _withdrawn_receipt(payload)
+
+    document = parse_bundle_payload(payload)
+
+    assert document.imports.source_sessions[0].status == "withdrawn"
+    validate_bundle_document(document)
+
+
+@pytest.mark.parametrize("version", [2, 3, 4, 5, 6])
+def test_every_version_predating_m29_1_rejects_a_rejected_staging_row(version: int) -> None:
+    """Withdrawal is not a value an older reader can degrade safely.
+
+    It would have to restore the row as one of the two statuses it does know, and both are wrong:
+    read as pending, a candidate the reviewer explicitly dropped becomes committable again; read
+    as committed, it claims a durable record that was never written. Unlike the earlier bumps this
+    is a new value of a shared `Literal` rather than a new field, and the closed-shape rule treats
+    the two the same way.
+    """
+    payload = _document()
+    _imports(payload)["staging"][0]["status"] = "rejected"
+    _imports(payload)["candidate_mappings"].clear()
+    payload["version"] = version
+    if version < 5:
+        _drop_groups(payload)
+    if version < 3:
+        payload.pop("trait_evidence")
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+@pytest.mark.parametrize("version", [2, 3, 4, 5, 6])
+def test_every_version_predating_m29_1_rejects_a_withdrawn_receipt(version: int) -> None:
+    payload = _document()
+    _withdrawn_receipt(payload)
+    payload["version"] = version
+    if version < 5:
+        _drop_groups(payload)
+    if version < 3:
+        payload.pop("trait_evidence")
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_a_version_six_document_without_either_new_status_still_parses() -> None:
+    """The narrowing is exactly two status values; everything else a v6 bundle carries is untouched."""
+    payload = _document()
+    payload["version"] = 6
+
+    document = parse_bundle_payload(payload)
+
+    assert document.version == SYNC_BUNDLE_VERSION
+    assert len(document.imports.staging) == 1
+    assert len(document.groups) == 1
+
+
+def test_a_withdrawn_receipt_is_not_the_dead_end_an_empty_live_receipt_is() -> None:
+    """A live receipt owning neither a mapping nor a reviewable row is refused; this is not one.
+
+    A withdrawn receipt owns nothing on purpose — the review finished and recorded nothing — so it
+    is skipped by that check exactly as a redacted one is.
+    """
+    payload = _document()
+    _withdrawn_receipt(payload)
+
+    validate_bundle_document(parse_bundle_payload(payload))
+
+    live = _document()
+    _imports(live)["staging"].clear()
+    _imports(live)["candidate_mappings"].clear()
+    with pytest.raises(InvalidBundleError):
+        validate_bundle_document(parse_bundle_payload(live))
+
+
+def test_a_rejected_row_does_not_keep_its_receipt_reviewable() -> None:
+    """Only a pending row owes a review, so a batch of withdrawals cannot be `staged`."""
+    payload = _document()
+    imports = _imports(payload)
+    imports["source_sessions"][0]["status"] = "staged"
+    imports["staging"][0]["status"] = "rejected"
+    imports["candidate_mappings"].clear()
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(parse_bundle_payload(payload))
+
+    assert any("owns no reviewable staging row" in detail for detail in excinfo.value.details)
+
+
 def _staged_attribution(payload: dict[str, Any], candidate_type: str) -> None:
     """Add a fact or affiliation staging row naming who asserted it."""
     candidate: dict[str, Any] = (
@@ -1144,7 +1262,7 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 6
+    assert document.version == SYNC_BUNDLE_VERSION == 7
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1278,7 +1396,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 7, "6"])
+@pytest.mark.parametrize("version", [0, 8, "7"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version
