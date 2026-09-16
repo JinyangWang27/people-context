@@ -164,7 +164,7 @@ def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> N
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 5
+    assert document.version == SYNC_BUNDLE_VERSION == 6
     assert [session.id for session in document.imports.source_sessions] == [batch.source_session_id]
     assert len(document.imports.candidate_mappings) == 1
     # The batch is only partially committed, so its reviewable rows travel.
@@ -509,7 +509,7 @@ def test_attribution_on_a_reviewable_staging_row_survives_a_real_round_trip(tmp_
     origin.commit.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "person")])
 
     document = _round_trip(origin.export())
-    assert document.version == SYNC_BUNDLE_VERSION == 5
+    assert document.version == SYNC_BUNDLE_VERSION == 6
 
     conn, outcome = _restore(document, tmp_path / "destination.db")
     try:

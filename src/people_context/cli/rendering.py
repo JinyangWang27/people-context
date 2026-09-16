@@ -86,6 +86,11 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         for row in rows
         if row.candidate["type"] == "person"
     }
+    group_names = {
+        row.id: str(row.candidate["name"])
+        for row in rows
+        if row.candidate["type"] == "group"
+    }
     for row in rows:
         candidate = row.candidate
         candidate_type = candidate["type"]
@@ -110,6 +115,10 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
             )
         elif candidate_type == "relationship":
             detail = _import_relationship(candidate, person_names)
+        elif candidate_type == "group":
+            detail = _import_group(candidate)
+        elif candidate_type == "group_membership":
+            detail = _import_membership(candidate, person_names, group_names)
         else:
             detail = _import_interaction(candidate, person_names)
         print(f"  {row.id}  {row.status}  {candidate_type}  {detail}")
@@ -174,6 +183,43 @@ def _import_relationship(candidate: dict[str, object], person_names: dict[str, s
     subject = f"{person_names.get(from_id, 'unknown person')} ({from_id})"
     obj = f"{person_names.get(to_id, 'unknown person')} ({to_id})"
     return f"{subject} —{candidate['relationship_type']}→ {obj}"
+
+
+def _import_group(candidate: dict[str, object]) -> str:
+    """Describe one proposed group, saying plainly whether it would create or reuse one.
+
+    The difference is the whole decision a reviewer is making here. Committing a candidate that
+    names no `group_id` adds another group under a name that may already exist, and M28 offers
+    no merge to undo it, so "new group" is said in words rather than left to a missing field.
+    """
+    detail = f"{candidate['name']} ({candidate['kind']})"
+    group_id = candidate.get("group_id")
+    detail += f" — records into existing group {group_id}" if group_id else " — new group"
+    return detail + _import_attribution(candidate)
+
+
+def _import_membership(
+    candidate: dict[str, object],
+    person_names: dict[str, str],
+    group_names: dict[str, str],
+) -> str:
+    """Describe one proposed membership, stating what its dates do and do not establish.
+
+    The basis is shown rather than the dates alone, because absent bounds are the one thing a
+    reviewer must not read as "still going": an `unknown` membership supports shared context and
+    never a classmate or teammate label, and that difference has to be visible before commit.
+    """
+    group_candidate_id = str(candidate["group_candidate_id"])
+    group = f"{group_names.get(group_candidate_id, 'unknown group')} ({group_candidate_id})"
+    basis = str(candidate["temporal_basis"])
+    if basis == "unknown":
+        period = "dates unknown"
+    else:
+        period = f"{candidate.get('valid_from') or '?'}–{candidate.get('valid_to') or '?'}"
+    return (
+        f"{_import_owner(candidate, person_names)} as {candidate.get('role', 'member')} in {group} "
+        f"— {basis}: {period}{_import_attribution(candidate)}"
+    )
 
 
 def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) -> str:

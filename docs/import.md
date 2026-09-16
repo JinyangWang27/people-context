@@ -955,6 +955,61 @@ run hand-authored candidate batches through the real stores in
 against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution). See the
 [PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
 
+## Capturing a shared context (M28.3)
+
+[M28 — Groups, memberships, and shared connections](specs/m28-groups-and-shared-connections.md) adds two staged
+candidate types to the lifecycle documented above, so an agent that hears "we were in the same class" has a
+reviewed path to record it. A `group` names the identified context — a class, cohort, team, department, club,
+household, or community — and carries a batch-local `ref`. A `group_membership` places one `person_ref` in one
+`group_ref` with a `role`. Both go through stage → review → explicit acceptance → commit, and both commit through
+the `create_group` and `add_group_membership` use cases a direct write already uses, in the same transaction and
+through the same audit and changelog seam.
+
+Three rules shape the contract, and each is enforced rather than merely documented:
+
+- **Group identity is explicit.** Staging performs no name lookup, because M28.1 offers no get-or-create by name
+  and no group merge exists to undo a wrong reuse. Absent `group_id`, commit creates a new group; present, it
+  records into exactly that group, or leaves the candidate unresolved if the group is gone. Resolve an existing
+  group with `find_groups` and pass back the id exactly as it was returned: `group_id` and `organization_id` are
+  opaque identifiers, preserved character for character rather than trimmed, because they are matched against a
+  stored row. An `organization_id` that no longer resolves leaves the group unresolved too, rather than aborting
+  the commit — the whole batch stays committable once the reference is corrected.
+- **Dates mean what they say.** `temporal_basis` is resolved at staging from the dates the source gave — none is
+  `unknown`, any is `period`, and `ongoing` is never inferred — so review shows what the row asserts, and an
+  absent bound reads as unknown rather than as open-ended. A membership whose declared basis contradicts its own
+  dates is refused at the boundary rather than at its durable write, as is a reversed date range — the latter on
+  `affiliation` and `fact` too, which carried the same hole before memberships existed.
+- **A group reference resolves within its batch.** A `group_membership` names a `group` candidate of the same batch, and
+  commit writes groups before the memberships that name them. A membership whose group was not accepted, or whose
+  group failed, is reported `unresolved` and stays committable on a later pass, where it resolves through the
+  stored commit mapping the earlier pass wrote. A batch whose group reference names nothing is refused whole, and
+  so is one that stages a membership without `source_kind` — the mapping is the only thing that can reattach a
+  membership to a group committed earlier, since matching the group by name is what this milestone forbids.
+
+Both types opt into the M17 extraction bounds, participate in export and bootstrap restore as sync bundle
+**version 6**, and are erased with their person by hard forget — a member's erasure removes their placements and
+leaves the group candidate and everybody else's placements intact. Forgetting a *group* works the other way: it
+removes the commit mappings of the memberships that cascade with it, and any still-pending candidate naming it
+through `group_id`, because a candidate whose only possible target is gone could never commit and a bundle
+carrying one is refused.
+
+A refused batch names the rule that broke and the candidate that broke it, never the value: a `ref`, a
+`person_ref`, and a `group_ref` are all free-form text the agent chose, and the MCP adapter returns those
+diagnostics verbatim. Every version through 5 refuses the two types
+by name, because a discriminator picks the model before any field is inspected and a reader that could not resolve
+a group reference would restore a batch commit could never finish.
+
+Nothing here writes automatically, extrapolates a roster, or records a speculative progression, and no new review
+framework is introduced. Eight fictional worked captures — a class with a proven term, the same school with
+different classes, a class with no dates, known disjoint dates, a teacher and a pupil, a cross-company team,
+confirmed cohort continuity, and two friends of one person — are in
+[shared-connections-examples.md](shared-connections-examples.md). The lifecycle checks behind them run
+hand-authored candidate batches through the real stores in `tests/adapters/importers/test_group_staging.py`,
+`tests/adapters/importers/test_group_commit.py`, and `tests/adapters/sqlite/test_bootstrap_group_candidates.py`;
+capture quality itself is assessed by a person against
+[Human review of shared-context capture](evals.md#human-review-of-shared-context-capture). See the
+[PR checklist](specs/pr-plan.md#m28--groups-memberships-and-shared-connections).
+
 ## M6 changelog and export boundary
 
 Accepted import candidates reach ordinary application write use cases and therefore produce the same atomic

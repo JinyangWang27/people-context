@@ -17,10 +17,10 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** [M28](specs/m28-groups-and-shared-connections.md) M28.3 reviewed capture;
-[M29](specs/m29-editable-staging-and-review.md) `import amend`, `import reject`, `import review --interactive`,
-and `import edit`; and [M30](specs/m30-local-web-review.md) `browse`. Commands below describe delivered behavior,
-including M28.1 `group` and M28.2 `group shared`.
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) `import amend`, `import reject`,
+`import review --interactive`, and `import edit`; and [M30](specs/m30-local-web-review.md) `browse`. Commands
+below describe delivered behavior, including M28.1 `group`, M28.2 `group shared`, and M28.3's `group` and
+`group_membership` candidate types accepted by `import stage-candidates`.
 
 | Command | Purpose |
 |---|---|

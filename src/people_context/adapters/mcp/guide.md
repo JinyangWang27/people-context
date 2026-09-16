@@ -153,7 +153,7 @@ The staged flow has three distinct steps. Keep them distinct:
 
 ### Use only the strict candidate vocabulary
 
-`stage_candidates` accepts exactly seven candidate `type`s. Nothing else validates:
+`stage_candidates` accepts exactly nine candidate `type`s. Nothing else validates:
 
 - `person` — `ref`, `name`, and strict `aliases`; optional `summary`, `message_id`,
   `date`.
@@ -170,6 +170,13 @@ The staged flow has three distinct steps. Keep them distinct:
   call — a **required** `evidence_note` and `confidence`; optional `evidence_refs` and
   `evidence_ids`.
 - `relationship` — `from_ref`, `to_ref`, `relationship_type`; optional `confidence`.
+- `group` — `ref`, `name`, `kind` (`class`, `cohort`, `team`, `department`, `club`,
+  `household`, `community`, `other`); optional `organization_id`, `group_id`,
+  `sensitivity`, `stated_by`.
+- `group_membership` — `person_ref`, `group_ref`; optional `role` (`member`, `student`,
+  `teacher`, `participant`, `leader`, `staff`, `other`), `valid_from`, `valid_to`,
+  `temporal_basis`, `confidence`, `sensitivity`, `stated_by`. Requires `source_kind` on
+  the request; see below.
 
 `stated_by` on a `fact` or `affiliation` records **who asserted the claim**, in at most 256
 characters — a person, a document, or a role. It is not `source`, which names the process that
@@ -178,8 +185,9 @@ fact whose value says so and whose `stated_by` names them, never an inferred `tr
 when the attribution is unknown rather than guessing at a speaker.
 
 References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
-`trait`, or `relationship` points at a `person` candidate's `ref` within the same
-`stage_candidates` call. Extract concise, structured field values only. Never copy raw
+`trait`, `relationship`, or `group_membership` points at a `person` candidate's `ref` within the
+same `stage_candidates` call, and a `group_membership`'s `group_ref` points at a `group`
+candidate's `ref` in that same call. Extract concise, structured field values only. Never copy raw
 conversation, transcript, note, or email body text into any candidate field; summarise
 it into the strict fields above.
 
@@ -381,6 +389,76 @@ which were filled in.
 Neither pass claims to be complete. A capture records what one document asserted and one person accepted;
 it is not a survey of what is knowable about someone, and nothing here notices that a newly staged claim
 means the same thing as one already stored.
+
+### Capturing a shared context: school, work, club, household
+
+"We were in the same class", "she was on my team at Globex", "they are in my running
+club" describes a **group**, and a group is what later answers how two people know each
+other. Two candidates record it: a `group` for the context, and one `group_membership` per
+person placed in it. Both go through the same stage → review → commit flow as everything
+else; nothing here is a direct write.
+
+Four rules, and they are the whole difficulty:
+
+- **Name the material with `source_kind`.** A batch containing a `group_membership` is
+  refused without it. The receipt is what lets a group committed in one call be named by a
+  membership committed in the next; without it the membership could only be reattached by
+  matching the group's name, which is exactly what the next rule forbids.
+- **Never guess a group.** Staging looks nothing up by name, so committing a `group`
+  candidate creates a *new* group unless you pass `group_id` — and there is no merge to
+  undo a wrong one. If the user may already have the group stored, call `find_groups`
+  first, show what came back, and pass the id they confirm. Two groups called "Class 1"
+  are different rooms until the user says otherwise.
+- **Never fill in a date.** Record `valid_from` and `valid_to` only where the source
+  gave them, and never a start later than the end — that is refused, as it is on a `fact`
+  and an `affiliation`. Absent means unknown, not "still going": `temporal_basis` is then `unknown`,
+  and unknown timing supports a shared context and never a `classmates` or `teammates`
+  label. Set `ongoing` only when the user actually said it is current.
+- **Never extrapolate a roster or a year.** "We stayed together through Grade 9" records
+  the people the user named and the extent they confirmed — one membership each, one
+  known span. It is not a placement per grade, not a class number, not an assumption the
+  rest of the class came along. Progression from a known year to a later one is a
+  question to ask, never a record to write.
+- **A label with no group is still a relationship.** "My classmate Dana", with no
+  identified class, is a `relationship` candidate. Confirm which class it was before a
+  group exists at all.
+
+Placement is context, not employment: `organization_id` says a team sits under an
+organization and asserts nothing about who anyone works for. Default `sensitivity` is
+`personal`; raise it on the group, the membership, or both when the user would not want
+it in an ordinary read.
+
+### Answering "how do they know each other"
+
+`explain_shared_connections` is the tool for shared-background, introduction, and
+connection questions — "how do Alice and Bob know each other", "do they already know each
+other", "what do we have in common". Call it when the question is about a pair, without
+waiting for the user to name a tool, and resolve both people first as always.
+
+Read what it returns exactly as it is written, and say the difference out loud:
+
+- `shared_context` means both people hold a membership in one group. That is all it
+  means. It is not evidence they know each other, are friends, or ever met.
+- `derived_relation` with a `label` of `classmates` or `teammates` additionally required
+  compatible roles and an established common time. A teacher and a pupil of one class are
+  not classmates.
+- `temporal` says what the dates establish: `overlap` proves a common day, `disjoint`
+  excludes one, and `unknown` means the recorded dates prove neither. Report `unknown` as
+  unknown rather than as "probably".
+- `direct_relationships` are assertions somebody recorded. Keep them distinct from
+  anything derived — they are a different kind of claim.
+
+Two different negatives, and they must not be reported the same way. An **empty
+`connections` list with `found: true`** is the scoped negative: both people were read, and
+no shared group was found among the records you may see. It is not proof that they are
+unrelated or have never met, and must never be reported as such. **`found: false`** is not
+a result about the pair at all — one of the two could not be read, because the id is
+unknown or the person was forgotten or merged away. Resolve the people again rather than
+telling the user there is no connection.
+
+The lookup is explicit and stays explicit. Do not add derived classmates or colleagues to
+ordinary `get_person_context` results, to graph reads, or to a meeting brief: those tools
+keep the meanings they already have. Nothing here writes anything.
 
 ## Maintaining what is already stored: propose, wait, then write
 

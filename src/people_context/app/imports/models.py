@@ -8,9 +8,17 @@ from typing import Annotated, Any, Final, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from people_context.domain.group import (
+    GroupKind,
+    GroupName,
+    MembershipRole,
+    TemporalBasis,
+    check_temporal_basis,
+    resolve_temporal_basis,
+)
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
-from people_context.domain.shared import Confidence, Sensitivity, StatedByText
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -169,6 +177,35 @@ EvidenceReference = Annotated[
     AfterValidator(_non_blank_token),
 ]
 
+#: A durable record id a candidate names directly, preserved exactly as the caller gave it.
+#:
+#: Not `NonBlank`: that strips, and an id is an identity rather than text a person typed. The
+#: bundle's own `Identifier` contract accepts any non-blank string, whitespace included, so a
+#: restored id can legitimately carry it — and `find_groups` hands that exact id back. Trimming
+#: one here would make the group the user confirmed unfindable at commit, or resolve it to a
+#: different record whose id happens to be the trimmed form.
+#:
+#: Unbounded in length for the same reason, and unlike `EvidenceReference`. That ceiling is the
+#: caller-supplied *label* half of the evidence contract, which a durable group reference has no
+#: equivalent of: there is nothing free-form to bound here, only an id that either matches a
+#: stored row or does not. Capping it would refuse an id this installation can legitimately hold
+#: after a restore, while protecting nothing — a group or membership candidate always opts the
+#: request into the extraction budget, where every string is already held to 8 KiB.
+DurableIdentifier = Annotated[str, AfterValidator(_non_blank_token)]
+
+
+def check_candidate_period(valid_from: date | None, valid_to: date | None) -> None:
+    """Hold a candidate's date range to the rule its durable record already enforces.
+
+    Every dated record here stores a `ValidityPeriod`, which refuses a start after its end. That
+    check is constructed at commit, inside the transaction, after earlier candidates in the same
+    batch have already written — so a reversed range staged today is a Pydantic error raised out
+    of `commit_import` tomorrow, with an immutable batch that can never be completed. Reusing the
+    domain type here refuses it at the door instead, and refuses it identically, without a second
+    copy of the rule drifting from the first.
+    """
+    ValidityPeriod(valid_from=valid_from, valid_to=valid_to)
+
 
 class CandidateAlias(BaseModel):
     """Strict alias accepted in a staged person candidate."""
@@ -229,6 +266,11 @@ class AffiliationCandidateInput(BaseModel):
     #: See `FactCandidateInput.stated_by`; absent when the attribution is unknown.
     stated_by: StatedBy | None = None
 
+    @model_validator(mode="after")
+    def _check_period(self) -> AffiliationCandidateInput:
+        check_candidate_period(self.valid_from, self.valid_to)
+        return self
+
 
 class FactCandidateInput(BaseModel):
     """Strict fact candidate referencing one batch-local person."""
@@ -251,6 +293,11 @@ class FactCandidateInput(BaseModel):
     #: person's own claim about themselves, not a verified characteristic, and recording who said
     #: it is what keeps the two apart. Unknown attribution stays absent: never invent a speaker.
     stated_by: StatedBy | None = None
+
+    @model_validator(mode="after")
+    def _check_period(self) -> FactCandidateInput:
+        check_candidate_period(self.valid_from, self.valid_to)
+        return self
 
 
 class ObservationCandidateInput(BaseModel):
@@ -335,6 +382,76 @@ class RelationshipCandidateInput(BaseModel):
     confidence: Confidence | None = None
 
 
+class GroupCandidateInput(BaseModel):
+    """Strict group candidate: one identified context the source named, addressed by `ref`.
+
+    A group candidate never resolves by name. M28.1 offers no get-or-create by name because
+    two groups called "Class 1" are different rooms until somebody says otherwise, and staging
+    is not the place that judgement gets made silently. `group_id` is therefore the only way to
+    reuse a stored group: the agent resolves it in conversation through `find_groups` and passes
+    the id it was given. Without one, commit creates a new group, which is the honest outcome
+    when nobody has confirmed which existing group this is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["group"]
+    #: The batch-local label memberships in this same request cite through `group_ref`.
+    ref: CandidateRef
+    name: GroupName
+    kind: GroupKind
+    #: An existing organization this group sits under. Placement is context, never employment.
+    organization_id: DurableIdentifier | None = None
+    #: An existing group to record memberships against instead of creating another one.
+    group_id: DurableIdentifier | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: Who said this group exists. See `FactCandidateInput.stated_by`; absent when unknown.
+    stated_by: StatedBy | None = None
+
+
+class MembershipCandidateInput(BaseModel):
+    """Strict membership candidate placing one batch-local person in one batch-local group.
+
+    Dates stay exactly as reported. `temporal_basis` defaults the way `AddGroupMembershipInput`
+    already defaults it — no dates is `unknown`, any date is `period`, and `ongoing` is never
+    inferred — so a source that did not say when produces a membership that does not claim to
+    know. Filling an unknown bound to make a later lookup return `classmates` is the one thing
+    this candidate exists to prevent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["group_membership"]
+    person_ref: CandidateRef
+    #: The `ref` of a group candidate in this same request.
+    group_ref: CandidateRef
+    role: MembershipRole = MembershipRole.MEMBER
+    valid_from: date | None = None
+    valid_to: date | None = None
+    temporal_basis: TemporalBasis | None = None
+    confidence: Confidence | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: Who asserted this membership. See `FactCandidateInput.stated_by`.
+    stated_by: StatedBy | None = None
+
+    @model_validator(mode="after")
+    def _check_basis(self) -> MembershipCandidateInput:
+        """Refuse dates, or a declared basis, that the durable write would reject.
+
+        Only an explicit basis can contradict anything — a defaulted one is derived from these
+        same dates. Left to commit, either failure would raise mid-transaction after earlier
+        candidates in the batch had already written, and until then review would show a
+        membership whose dates say one thing and whose basis says another.
+        """
+        check_candidate_period(self.valid_from, self.valid_to)
+        check_temporal_basis(
+            resolve_temporal_basis(self.temporal_basis, self.valid_from, self.valid_to),
+            self.valid_from,
+            self.valid_to,
+        )
+        return self
+
+
 CandidateInput = Annotated[
     PersonCandidateInput
     | InteractionCandidateInput
@@ -342,7 +459,9 @@ CandidateInput = Annotated[
     | FactCandidateInput
     | ObservationCandidateInput
     | TraitCandidateInput
-    | RelationshipCandidateInput,
+    | RelationshipCandidateInput
+    | GroupCandidateInput
+    | MembershipCandidateInput,
     Field(discriminator="type"),
 ]
 
@@ -354,11 +473,18 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
     "observation": ObservationCandidateInput,
     "trait": TraitCandidateInput,
     "relationship": RelationshipCandidateInput,
+    "group": GroupCandidateInput,
+    "group_membership": MembershipCandidateInput,
 }
 
-#: The candidate types M17 introduced. A staging request that uses one of them opts into the
-#: bounded extraction contract; a request built only from the four released types does not.
-EXTRACTION_CANDIDATE_TYPES: Final = frozenset({"observation", "trait", "relationship"})
+#: The candidate types M17 introduced, plus M28.3's. A staging request that uses one of them
+#: opts into the bounded extraction contract; a request built only from the four released types
+#: does not. Groups and memberships belong here because they are distilled from unstructured
+#: material exactly as an observation is, and an unbounded batch of them would be the one
+#: extraction path the budgets do not reach.
+EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
+    {"observation", "trait", "relationship", "group", "group_membership"}
+)
 
 
 def contains_extraction_candidate(candidates: list[Any]) -> bool:

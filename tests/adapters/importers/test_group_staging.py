@@ -1,0 +1,376 @@
+"""Staging group and membership candidates (M28.3).
+
+What is checked here is the half of the contract that happens before anything durable is
+written: the caller's batch-local labels become canonical ids, a batch whose references cannot
+be rewritten deterministically is refused whole, and the dates a source did not give stay
+absent instead of becoming an assertion about when two people were in the same room.
+
+Group identity is the load-bearing rule. M28.1 offers no get-or-create by name, and staging must
+not quietly reintroduce one: a candidate names an existing group through `group_id` or it names
+none at all, whatever the name happens to match.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+
+import pytest
+
+from people_context.adapters.sqlite import (
+    SqliteAuditLog,
+    SqliteImportSourceStore,
+    SqliteImportStagingStore,
+    SqliteOrganizationStore,
+    SqlitePeopleRepository,
+    open_db,
+)
+from people_context.adapters.sqlite.group_store import SqliteGroupStore
+from people_context.app.groups.commands import CreateGroup, CreateGroupInput
+from people_context.app.imports import (
+    CANDIDATE_STRING_TOO_LONG,
+    MAX_EXTRACTION_STRING_BYTES,
+    CandidateStager,
+    ImportPipelineError,
+    ReviewImport,
+    StageCandidates,
+)
+from people_context.app.imports.models import MAX_EVIDENCE_REF_CHARS
+from people_context.domain.group import TemporalBasis
+
+_NOW = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
+
+
+class _Clock:
+    def now(self) -> datetime:
+        return _NOW
+
+
+def _use_cases(conn):
+    people = SqlitePeopleRepository(conn)
+    staging_store = SqliteImportStagingStore(conn)
+    stager = CandidateStager(people, staging_store, _Clock(), SqliteImportSourceStore(conn), SqliteAuditLog(conn))
+    return _Staging(StageCandidates(stager)), ReviewImport(staging_store)
+
+
+class _Staging:
+    """Stages source-tracked by default, which is what a membership candidate requires."""
+
+    def __init__(self, stage: StageCandidates) -> None:
+        self.stage = stage
+
+    def execute(self, source: str, candidates: list[dict], **kwargs):
+        kwargs.setdefault("source_kind", "conversation")
+        return self.stage.execute(source, candidates, **kwargs)
+
+
+def _person(ref: str, name: str) -> dict:
+    return {"type": "person", "ref": ref, "name": name, "aliases": []}
+
+
+def _group(ref: str = "class-1", **overrides) -> dict:
+    return {"type": "group", "ref": ref, "name": "Class 1, Grade 6", "kind": "class", **overrides}
+
+
+def _membership(person_ref: str = "alice", group_ref: str = "class-1", **overrides) -> dict:
+    return {"type": "group_membership", "person_ref": person_ref, "group_ref": group_ref, **overrides}
+
+
+def _candidates(review: ReviewImport, batch_id: str) -> dict[str, dict]:
+    return {row.candidate["type"]: row.candidate for row in review.execute(batch_id).candidates}
+
+
+def test_batch_local_refs_become_canonical_candidate_ids() -> None:
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_person("alice", "Alice"), _group(), _membership(role="student")])
+    rows = review.execute(batch.batch_id).candidates
+
+    person_row = next(row for row in rows if row.candidate["type"] == "person")
+    group_row = next(row for row in rows if row.candidate["type"] == "group")
+    membership = next(row for row in rows if row.candidate["type"] == "group_membership").candidate
+
+    # The caller's own labels never reach storage: review and commit read canonical ids only.
+    assert "ref" not in group_row.candidate
+    assert membership["person_candidate_id"] == person_row.id
+    assert membership["group_candidate_id"] == group_row.id
+    assert "person_ref" not in membership and "group_ref" not in membership
+
+
+def test_a_group_ref_and_a_person_ref_are_separate_namespaces() -> None:
+    """One label may name both, exactly as an `evidence_ref` may repeat a person `ref`."""
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_person("six-b", "Alice"), _group("six-b"), _membership("six-b", "six-b")])
+    rows = review.execute(batch.batch_id).candidates
+
+    membership = next(row for row in rows if row.candidate["type"] == "group_membership").candidate
+    person_row = next(row for row in rows if row.candidate["type"] == "person")
+    group_row = next(row for row in rows if row.candidate["type"] == "group")
+    assert membership["person_candidate_id"] == person_row.id
+    assert membership["group_candidate_id"] == group_row.id
+
+
+def test_a_name_that_matches_an_existing_group_resolves_to_nothing() -> None:
+    """The rule M28.1 states: equal names are lookup candidates, never identity proof."""
+    conn = open_db(":memory:")
+    existing = CreateGroup(
+        SqliteGroupStore(conn), SqliteOrganizationStore(conn), SqliteAuditLog(conn), _Clock()
+    ).execute(CreateGroupInput(name="Class 1, Grade 6", kind="class"))
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_group()])
+
+    staged = _candidates(review, batch.batch_id)["group"]
+    assert "group_id" not in staged
+    assert existing.id not in json.dumps(staged)
+
+
+def test_an_explicit_group_id_is_carried_through_untouched() -> None:
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_group(group_id="grp-1")])
+
+    assert _candidates(review, batch.batch_id)["group"]["group_id"] == "grp-1"
+
+
+@pytest.mark.parametrize(
+    ("dates", "expected"),
+    [
+        ({}, TemporalBasis.UNKNOWN),
+        ({"valid_from": "2015-09-01"}, TemporalBasis.PERIOD),
+        ({"valid_to": "2016-06-30"}, TemporalBasis.PERIOD),
+        ({"valid_from": "2015-09-01", "valid_to": "2016-06-30"}, TemporalBasis.PERIOD),
+        ({"temporal_basis": "ongoing"}, TemporalBasis.ONGOING),
+    ],
+)
+def test_the_staged_basis_is_the_one_the_durable_write_would_have_chosen(dates: dict, expected: TemporalBasis) -> None:
+    """Absent dates stay absent and read as unknown; `ongoing` is only ever explicit."""
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_person("alice", "Alice"), _group(), _membership(**dates)])
+
+    staged = _candidates(review, batch.batch_id)["group_membership"]
+    assert staged["temporal_basis"] == expected.value
+    if not dates.get("valid_from"):
+        assert "valid_from" not in staged
+    if not dates.get("valid_to"):
+        assert "valid_to" not in staged
+
+
+def test_a_membership_naming_an_undeclared_group_is_refused_whole() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_person("alice", "Alice"), _membership(group_ref="never-declared")])
+
+    assert raised.value.code == "invalid_candidates"
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_duplicate_group_ref_is_refused_whole() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_group("six-b"), _group("six-b", name="Class 2, Grade 6")])
+
+    assert raised.value.code == "invalid_candidates"
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "candidates",
+    [
+        [_group("secret-label-alice-was-bullied")],
+        [_person("alice", "Alice"), _membership(group_ref="secret-label-alice-was-bullied")],
+    ],
+)
+def test_a_refused_reference_is_never_echoed_back(candidates: list[dict]) -> None:
+    """A `ref` is free-form agent text, so it can carry source wording like any other string."""
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+    duplicated = [*candidates, *candidates] if candidates[-1]["type"] == "group" else candidates
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", duplicated)
+
+    reported = json.dumps({"message": str(raised.value), "details": raised.value.details})
+    assert "secret-label-alice-was-bullied" not in reported
+
+
+def test_a_membership_needs_a_source_tracked_batch() -> None:
+    """Without a receipt there is no mapping, so a group committed earlier can never be named.
+
+    Re-deriving it by name is what M28 forbids, so the dependency is refused at the door rather
+    than stranding the membership unresolved through every later commit.
+    """
+    conn = open_db(":memory:")
+    stage = StageCandidates(
+        CandidateStager(
+            SqlitePeopleRepository(conn),
+            SqliteImportStagingStore(conn),
+            _Clock(),
+            SqliteImportSourceStore(conn),
+            SqliteAuditLog(conn),
+        )
+    )
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_person("alice", "Alice"), _group(), _membership()])
+
+    assert raised.value.code == "membership_requires_source_tracking"
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_group_alone_still_stages_without_a_receipt() -> None:
+    """Only the batch-local reference needs the mapping; a group names nothing."""
+    conn = open_db(":memory:")
+    stage = StageCandidates(
+        CandidateStager(
+            SqlitePeopleRepository(conn),
+            SqliteImportStagingStore(conn),
+            _Clock(),
+            SqliteImportSourceStore(conn),
+            SqliteAuditLog(conn),
+        )
+    )
+
+    assert stage.execute("notes", [_group()]).candidate_count == 1
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        {"type": "affiliation", "person_ref": "alice", "org": "Globex", "role": "Designer"},
+        {"type": "fact", "person_ref": "alice", "predicate": "city", "value": "Berlin"},
+    ],
+)
+def test_a_reversed_date_range_is_refused_at_staging(candidate: dict) -> None:
+    """`ValidityPeriod` refuses it at the durable write, which is mid-transaction and too late.
+
+    Affiliation and fact carried this hole before memberships existed: a reversed range staged
+    cleanly and then raised an uncaught Pydantic error out of commit, leaving an immutable batch
+    that could never be completed. One guard at the boundary covers all three dated types.
+    """
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+    reversed_dates = {"valid_from": "2016-06-30", "valid_to": "2015-09-01"}
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute("notes", [_person("alice", "Alice"), {**candidate, **reversed_dates}])
+
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_membership_with_a_reversed_range_is_refused_at_staging() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute(
+            "notes",
+            [
+                _person("alice", "Alice"),
+                _group(),
+                _membership(valid_from="2016-06-30", valid_to="2015-09-01"),
+            ],
+        )
+
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_membership_contradicting_its_own_dates_is_refused() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute(
+            "notes",
+            [_person("alice", "Alice"), _group(), _membership(temporal_basis="unknown", valid_from="2015-09-01")],
+        )
+
+
+def test_no_raw_source_field_survives_onto_a_staged_row() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_group(transcript="Alice said they were all in 6B together")])
+
+    assert raised.value.code == "invalid_candidates"
+
+
+def test_a_durable_id_is_preserved_exactly_as_the_caller_gave_it() -> None:
+    """A restored id may carry whitespace the bundle's `Identifier` contract allows.
+
+    `find_groups` hands that id back verbatim, so trimming it here would make the group the user
+    confirmed unfindable at commit — or resolve it to a different row whose id is the trimmed
+    form. The evidence-id path already reasons this way; durable group and organization ids are
+    the same kind of value.
+    """
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_group(group_id=" grp-1 ", organization_id=" org-1 ")])
+
+    staged = _candidates(review, batch.batch_id)["group"]
+    assert staged["group_id"] == " grp-1 "
+    assert staged["organization_id"] == " org-1 "
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_blank_durable_id_is_still_refused(blank: str) -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute("notes", [_group(group_id=blank)])
+
+
+def test_an_unknown_person_reference_is_reported_without_its_value() -> None:
+    """A `person_ref` is agent-authored text, and the MCP adapter returns `details` verbatim."""
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+    sentinel = "SOURCE-WORDING-MUST-NOT-LEAK-9f2a"
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_group(), _membership(person_ref=sentinel)])
+
+    reported = json.dumps({"message": str(raised.value), "details": raised.value.details})
+    assert sentinel not in reported
+    # Still located and named: which rule broke, how many refs, and which candidate broke it.
+    assert "unknown person reference" in reported
+    assert raised.value.details["details"][0]["loc"] == [1]
+
+
+def test_a_durable_id_longer_than_a_staging_label_is_still_accepted() -> None:
+    """The bundle's `Identifier` has no ceiling, so a restored group may carry a long id.
+
+    `find_groups` hands that id back, and refusing it here would make the restored group unusable
+    through the one workflow that points a caller at it. Nothing is unbounded as a result: a group
+    candidate always opts the request into the extraction budget, where every string is held to
+    8 KiB.
+    """
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+    long_id = "g" * (MAX_EVIDENCE_REF_CHARS + 44)
+
+    batch = stage.execute("notes", [_group(group_id=long_id)])
+
+    assert _candidates(review, batch.batch_id)["group"]["group_id"] == long_id
+
+
+def test_a_durable_id_past_the_extraction_string_budget_is_still_refused() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_group(group_id="g" * (MAX_EXTRACTION_STRING_BYTES + 1))])
+
+    assert raised.value.code == CANDIDATE_STRING_TOO_LONG

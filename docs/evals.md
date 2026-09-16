@@ -196,6 +196,63 @@ Same three fields as coaching, and the same reason: a review that is not written
 **No transcript review is recorded in this repository yet.** Nothing here claims the workflow extracts reliably.
 When a review is recorded it will appear as its own dated section, naming the model and the date.
 
+## Human review of shared-context capture
+
+The [shared-context capture guidance](../skills/people-context-usage/SKILL.md) is assessed the same way, and for a
+reason the other two share: the correct output depends on what a user confirmed, not on what a fixture contains. A
+capture that records one class and leaves the years out is right when the user never gave the years, and wrong
+when they did. No score over a fixed answer key can tell those apart.
+
+The same two kinds of evidence look like they bear on it and do not:
+
+- **Lifecycle checks.** `tests/adapters/importers/test_group_staging.py`,
+  `tests/adapters/importers/test_group_commit.py`, and
+  `tests/adapters/sqlite/test_bootstrap_group_candidates.py` stage, commit, export, restore, and forget
+  hand-authored group and membership batches through the real stores. Those batches were written by hand. They
+  prove the server accepts and refuses the shapes the guidance describes; they prove nothing about whether a
+  model, handed a conversation, would produce them.
+- **Instruction-text tests.** `tests/test_usage_skill.py` and `tests/test_shared_connections_examples.py` assert
+  that the guidance and the worked examples say what they are supposed to say. That the instructions are correct
+  is not evidence that an agent followed them.
+
+### The criteria
+
+Six, assessed separately and never totalled, against the cases in
+[shared-connections-examples.md](shared-connections-examples.md). A review is a paragraph per criterion.
+
+- **Group identity restraint.** Passes when an existing group is looked up and confirmed before it is reused, and
+  a new group is created knowingly. Catches a second group silently created under a name already stored, and a
+  near-matching name treated as the same room.
+- **Temporal honesty.** Passes when dates are recorded only where the source gave them and an absent bound stays
+  absent. Catches an invented school year, a month rounded to a day, and an open end recorded as `ongoing`
+  because nobody said it had stopped.
+- **No extrapolation.** Passes when a confirmation covers exactly the people and extent it covered. Catches a
+  placement generated per grade, a class number nobody gave, a roster assumed unchanged, and a progression
+  recorded before it was confirmed.
+- **Evidence separation.** Passes when a shared context, a derived label, and a direct assertion stay three
+  different claims in what the agent says. Catches "they were classmates" from a group with unknown dates, a
+  teacher reported as a peer, and a relationship invented to summarise a membership.
+- **Explicit lookup.** Passes when a connection question reaches `explain_shared_connections` without the user
+  naming a tool, and ordinary context reads keep their existing meaning. Catches derived classmates added to a
+  person brief, a graph read, or a meeting preparation.
+- **Honest negatives.** Passes when an empty `connections` list and `temporal: unknown` are reported as what was
+  not established, and when `found: false` is recognised as an unreadable person rather than an answer about the
+  pair. Catches a negative lookup reported as proof two people are unrelated, and an unknown overlap softened
+  into "probably".
+
+### Recording a review
+
+Same three fields as the other two workflows, and the same reason: a review that is not written down is not
+evidence.
+
+- **Scenario** — which case was run and the exact prompt. Use fictional people; a real conversation turns the
+  review record into a personal export of somebody's school, workplace, or household.
+- **Output** — the agent's reply in full, the questions it asked, and the batch it staged.
+- **Reviewer reasoning** — per criterion, why it passed or failed, in the reviewer's words.
+
+**No shared-context review is recorded in this repository yet.** Nothing here claims the guidance captures
+reliably. When a review is recorded it will appear as its own dated section, naming the model and the date.
+
 ## Running it
 
 ### Offline dry run — no key, no network
@@ -319,6 +376,9 @@ not, and a claim of bit-for-bit input equality between two runs would be false.
 - It is not a claim about transcript attribution. No task here supplies a recording, and the quality of a review
   is mostly in what it declines to stage; that is assessed by a person against
   [Human review of transcript attribution](#human-review-of-transcript-attribution).
+- It is not a claim about shared-context capture. No task here asks an agent to record a group, and the quality of
+  a capture is mostly in the dates and people it declines to invent; that is assessed by a person against
+  [Human review of shared-context capture](#human-review-of-shared-context-capture).
 
 ## Privacy
 

@@ -5,7 +5,18 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from people_context.app._mutation import audit_mutation, transactional, unit_of_work_for
+from people_context.app._mutation import (
+    OrganizationNotFoundError,
+    audit_mutation,
+    transactional,
+    unit_of_work_for,
+)
+from people_context.app.groups.commands import (
+    AddGroupMembership,
+    AddGroupMembershipInput,
+    CreateGroup,
+    CreateGroupInput,
+)
 from people_context.app.imports.identity import (
     MatchDisposition,
     candidate_identity_tokens,
@@ -33,6 +44,7 @@ from people_context.app.records.observations import RecordObservation, RecordObs
 from people_context.app.records.trait_evidence import TraitEvidenceError, resolve_trait_evidence
 from people_context.app.records.traits import RecordTrait, RecordTraitInput
 from people_context.app.relationships.commands import SetRelationship, SetRelationshipInput
+from people_context.domain.group import TemporalBasis
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import new_id, normalize_name
 from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
@@ -46,6 +58,7 @@ from people_context.ports.imports import (
     StableSourceExtractor,
     StagedImportRow,
 )
+from people_context.ports.records import RecordReader
 from people_context.ports.repository import PersonReader
 from people_context.ports.sources import (
     DISPOSITION_ENTITY,
@@ -296,6 +309,9 @@ class CommitImport:
         audit: AuditLog | None = None,
         clock: Clock | None = None,
         evidence: TraitEvidenceReader | None = None,
+        create_group: CreateGroup | None = None,
+        add_group_membership: AddGroupMembership | None = None,
+        records: RecordReader | None = None,
     ) -> None:
         self._people = people
         self._staging = staging
@@ -310,6 +326,9 @@ class CommitImport:
         self._audit = audit
         self._clock = clock
         self._evidence = evidence
+        self._create_group = create_group
+        self._add_group_membership = add_group_membership
+        self._records = records
         self._uow = unit_of_work_for(staging, sources, audit)
 
     @property
@@ -379,6 +398,34 @@ class CommitImport:
                 continue
             entity_id = self._commit_person_scoped(str(candidate_type), person_id, row, transaction_id)
             produced[row.id] = (str(candidate_type), entity_id)
+        # Groups depend on nothing, so they are committed before the memberships that name them.
+        # A membership whose group was not accepted, or whose group failed, stays unresolved and
+        # is committable on a later pass — the same "not yet, never wrong" rule traits follow.
+        groups: dict[str, str] = {}
+        for row in rows:
+            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "group":
+                continue
+            sequence.append(row.id)
+            group_id = self._commit_group(row, transaction_id)
+            if group_id is None:
+                unresolved_rows.add(row.id)
+                continue
+            groups[row.id] = group_id
+            produced[row.id] = ("group", group_id)
+        for row in rows:
+            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "group_membership":
+                continue
+            sequence.append(row.id)
+            writer = self._add_group_membership
+            person_id = resolution.get(row.candidate["person_candidate_id"])
+            group_id = groups.get(row.candidate["group_candidate_id"]) or _mapped_group_id(
+                stored_mappings.get(row.candidate["group_candidate_id"])
+            )
+            if person_id is None or group_id is None or writer is None:
+                unresolved_rows.add(row.id)
+                continue
+            membership_id = _commit_membership(writer, row, person_id, group_id, transaction_id)
+            produced[row.id] = ("group_membership", membership_id)
         for row in rows:
             if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "relationship":
                 continue
@@ -444,6 +491,45 @@ class CommitImport:
             unresolved_ids=unresolved,
             skipped_ids=skipped,
         )
+
+    def _commit_group(self, row: StagedImportRow, transaction_id: str) -> str | None:
+        """Return the durable group this candidate names, creating one unless it names an existing.
+
+        `group_id` is the only way a candidate reuses a stored group, and it is verified here
+        rather than trusted: a group deleted between staging and commit leaves the candidate
+        unresolved, which a corrected batch can still fix, instead of silently creating a second
+        group under the same name — the merge M28 deliberately does not offer.
+
+        An organization that no longer resolves is the same kind of answer. `CreateGroup` refuses
+        it before writing anything, and letting that refusal escape would abort the whole commit:
+        `commit_import` turns only `ImportPipelineError` into a result, so a caller would get a
+        tool failure and a batch whose rows are immutable and now uncommittable. Unresolved keeps
+        the promise every other dependency here makes — not yet, never wrong.
+        """
+        if self._create_group is None:
+            return None
+        existing = row.candidate.get("group_id")
+        if isinstance(existing, str):
+            if self._records is None or self._records.get_record("group", existing) is None:
+                return None
+            return existing
+        try:
+            group = self._create_group.execute(
+                CreateGroupInput(
+                    name=row.candidate["name"],
+                    kind=row.candidate["kind"],
+                    organization_id=row.candidate.get("organization_id"),
+                    sensitivity=row.candidate.get("sensitivity", "personal"),
+                    source=row.source,
+                    stated_by=row.candidate.get("stated_by"),
+                ),
+                transaction_id=transaction_id,
+            )
+        except OrganizationNotFoundError:
+            # Raised before any write, and the inner unit of work joins this transaction rather
+            # than owning it, so nothing already committed in this pass is disturbed.
+            return None
+        return group.id
 
     def _trait_evidence_ids(
         self,
@@ -768,6 +854,50 @@ def _mapped_evidence(mapping: CandidateMappingRow | None) -> EvidenceReference |
     if mapping.entity_type not in TRAIT_EVIDENCE_TYPES or mapping.entity_id is None:
         return None
     return EvidenceReference(mapping.entity_id, mapping.entity_type)
+
+
+def _commit_membership(
+    writer: AddGroupMembership,
+    row: StagedImportRow,
+    person_id: str,
+    group_id: str,
+    transaction_id: str,
+) -> str:
+    """Record one membership, passing its staged temporal basis through unchanged.
+
+    The basis was resolved at staging from the dates the source actually gave, so it is sent
+    explicitly rather than re-derived: re-deriving it would turn a caller's deliberate `ongoing`
+    back into a bare `period`, and an unknown date is never filled in on the way.
+    """
+    membership = writer.execute(
+        AddGroupMembershipInput(
+            person_id=person_id,
+            group_id=group_id,
+            role=row.candidate.get("role", "member"),
+            valid_from=row.candidate.get("valid_from"),
+            valid_to=row.candidate.get("valid_to"),
+            temporal_basis=TemporalBasis(row.candidate["temporal_basis"]),
+            confidence=row.candidate.get("confidence"),
+            sensitivity=row.candidate.get("sensitivity", "personal"),
+            source=row.source,
+            stated_by=row.candidate.get("stated_by"),
+        ),
+        transaction_id=transaction_id,
+    )
+    return membership.id
+
+
+def _mapped_group_id(mapping: CandidateMappingRow | None) -> str | None:
+    """Return the group a group candidate already produced, for a membership committed later.
+
+    A batch is routinely committed in parts — accept the groups today, the placements once the
+    dates are confirmed — and the second commit no longer sees the first one's in-memory map.
+    The stored mapping is what makes the group reference resolve across that gap, exactly as it
+    does for a trait citing an interaction committed in an earlier pass.
+    """
+    if mapping is None or mapping.disposition != DISPOSITION_ENTITY or mapping.entity_type != "group":
+        return None
+    return mapping.entity_id
 
 
 def _mapped_person_id(mapping: CandidateMappingRow | None) -> str | None:

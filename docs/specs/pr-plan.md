@@ -794,7 +794,7 @@ M27's scope remain unchanged. M28 is independent of M27; internal dependencies a
   - **Out:** elevated MCP lookup, automatic context expansion, inferred graph traversal, materialized deductions,
     probabilistic scoring, or a general-purpose inference engine.
 
-- [ ] **M28.3 — Capture and use shared context through agents**
+- [x] **M28.3 — Capture and use shared context through agents**
   - **Scope:** Extend reviewed staging for group/membership assertions; add shared/packaged agent guidance and
     fictional school/work/social examples that exercise M28.2's lookup.
   - **Acceptance:** versioned bounded candidates preserve group/person resolution, source attribution, receipts,

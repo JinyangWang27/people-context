@@ -52,8 +52,15 @@ from pydantic import (
     model_validator,
 )
 
+from people_context.domain.group import (
+    GroupKind,
+    GroupName,
+    MembershipRole,
+    TemporalBasis,
+    check_temporal_basis,
+)
 from people_context.domain.person import AliasKind
-from people_context.domain.shared import Confidence, Sensitivity, StatedByText
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -81,6 +88,15 @@ EvidenceIdentifier = Annotated[
     StringConstraints(max_length=MAX_EVIDENCE_REFERENCE_CHARS),
     AfterValidator(_non_blank_token),
 ]
+
+#: A durable id a persisted candidate names, with no ceiling of its own.
+#:
+#: The evidence ceiling above is the caller-supplied label's, shared by the durable id beside it.
+#: A group reference has no label half, so there is nothing free-form to bound — only an id that
+#: matches a stored row or does not. The bundle's `Identifier` accepts any non-blank string, and
+#: a restored group may carry one longer than any staging label would be; refusing it here would
+#: make that group unusable through the very workflow `find_groups` points a caller at.
+DurableIdentifier = Annotated[str, AfterValidator(_non_blank_token)]
 
 #: What identity matching concluded about a staged person candidate.
 #:
@@ -230,6 +246,69 @@ class StagedRelationship(StrictStagedModel):
     confidence: Confidence | None = None
 
 
+class StagedGroup(StrictStagedModel):
+    """A persisted group candidate: the input fields minus the batch-local `ref`.
+
+    `group_id` is the caller's explicit decision to record against a group that already exists.
+    It is kept here rather than resolved at staging time because resolving it would mean a read
+    whose answer could change before commit, and because a group deleted between the two is a
+    candidate commit must decline — not one it silently redirects.
+
+    Both ids use the opaque identifier type rather than a stripped string, for the reason spelled
+    out on `EvidenceIdentifier`: an id is matched exactly against a durable row, and a restored
+    one may carry whatever the bundle's `Identifier` contract allowed — including its length,
+    which is why `DurableIdentifier` imposes no ceiling where the evidence type does.
+    """
+
+    type: Literal["group"]
+    name: GroupName
+    kind: GroupKind
+    organization_id: DurableIdentifier | None = None
+    group_id: DurableIdentifier | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    stated_by: StatedByText | None = None
+
+
+class StagedMembership(StrictStagedModel):
+    """A persisted membership candidate, its person and group already rewritten to candidate ids.
+
+    The discriminator is `group_membership` rather than `membership` because a candidate's type
+    and the entity type of the commit mapping it produces are checked against each other: a
+    restore refuses a mapping that "claims a group_membership for a membership candidate". Every
+    other type already spells the two the same way, and naming this one for the record it becomes
+    keeps that one-to-one rule instead of adding a correspondence table beside it.
+
+    `temporal_basis` is resolved at staging rather than left absent, so the row states plainly
+    what it asserts to anyone running `import review` — and so a restore cannot put back a
+    membership whose basis and dates disagree, which would fail at its durable write after
+    earlier candidates in the same commit had already written.
+
+    The bounds are held to the same order the durable `ValidityPeriod` requires, and for the same
+    reason rather than a different one: the staging boundary refuses a reversed range, so nothing
+    this installation stored can carry one, and holding a restored row to it turns away only a
+    document that was hand-edited or corrupted — one whose batch would otherwise restore, list
+    for review, and then raise from inside the commit transaction.
+    """
+
+    type: Literal["group_membership"]
+    person_candidate_id: NonBlank
+    group_candidate_id: NonBlank
+    role: MembershipRole = MembershipRole.MEMBER
+    valid_from: date | None = None
+    valid_to: date | None = None
+    temporal_basis: TemporalBasis
+    confidence: Confidence | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    stated_by: StatedByText | None = None
+
+    @model_validator(mode="after")
+    def _check_basis(self) -> StagedMembership:
+        # Constructing the durable type is the check: one rule, in the place that owns it.
+        ValidityPeriod(valid_from=self.valid_from, valid_to=self.valid_to)
+        check_temporal_basis(self.temporal_basis, self.valid_from, self.valid_to)
+        return self
+
+
 StagedCandidate = Annotated[
     StagedPerson
     | StagedInteraction
@@ -237,7 +316,9 @@ StagedCandidate = Annotated[
     | StagedFact
     | StagedObservation
     | StagedTrait
-    | StagedRelationship,
+    | StagedRelationship
+    | StagedGroup
+    | StagedMembership,
     Field(discriminator="type"),
 ]
 
@@ -249,6 +330,8 @@ STAGED_CANDIDATE_MODELS: dict[str, type[StrictStagedModel]] = {
     "observation": StagedObservation,
     "trait": StagedTrait,
     "relationship": StagedRelationship,
+    "group": StagedGroup,
+    "group_membership": StagedMembership,
 }
 
 _STAGED_ADAPTER: TypeAdapter[Any] = TypeAdapter(StagedCandidate)
@@ -274,12 +357,22 @@ EVIDENCE_STAGED_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids", "evi
 #: attribution that keeps a source's claim from being read as verified fact.
 ATTRIBUTION_STAGED_FIELDS: Final[tuple[str, ...]] = ("stated_by",)
 
+#: The candidate types M28.3 added.
+#:
+#: Gated like the fields above, and for a stronger reason: a whole type is not something a
+#: reader fails closed on by forbidding extras, because the discriminator picks the model before
+#: any field is seen. A bundle version that predates these types must refuse them outright, or a
+#: reader written against that version would restore a membership whose group reference it has
+#: no way to resolve and then report the batch as committable.
+GROUP_STAGED_TYPES: Final[tuple[str, ...]] = ("group", "group_membership")
+
 
 def staged_candidate_error(
     candidate: dict[str, Any],
     *,
     evidence_allowed: bool = True,
     attribution_allowed: bool = True,
+    group_types_allowed: bool = True,
 ) -> str | None:
     """Return why a persisted candidate is unacceptable, naming no value it carries.
 
@@ -293,7 +386,13 @@ def staged_candidate_error(
     predates it, and a version-3 document an M22.1 one, which is exactly the silent upgrade the
     per-version contract exists to prevent. The flags are independent because the versions are:
     version 2 predates both fields, version 3 only the attribution.
+
+    ``group_types_allowed`` is the same idea one level up, for the candidate types M28.3 added.
+    It is checked before the models are consulted at all, because the discriminated union would
+    otherwise accept a type no version through 5 had any way to commit.
     """
+    if not group_types_allowed and candidate.get("type") in GROUP_STAGED_TYPES:
+        return "type (literal_error)"
     forbidden: tuple[str, ...] = ()
     if not evidence_allowed:
         forbidden += EVIDENCE_STAGED_FIELDS

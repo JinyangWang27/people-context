@@ -26,7 +26,14 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.group import Group, GroupKind, GroupMembership, MembershipRole, TemporalBasis
+from people_context.domain.group import (
+    Group,
+    GroupKind,
+    GroupMembership,
+    MembershipRole,
+    TemporalBasis,
+    resolve_temporal_basis,
+)
 from people_context.domain.shared import Confidence, Sensitivity, ValidityPeriod
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -72,7 +79,7 @@ class CreateGroup:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: CreateGroupInput) -> Group:
+    def execute(self, data: CreateGroupInput, *, transaction_id: str | None = None) -> Group:
         if data.organization_id is not None and self._organizations.get(data.organization_id) is None:
             raise OrganizationNotFoundError(data.organization_id)
         group = Group(
@@ -91,6 +98,7 @@ class CreateGroup:
             entity_type="group",
             entity_id=group.id,
             payload=snapshot(group),
+            transaction_id=transaction_id,
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,
@@ -101,8 +109,10 @@ class CreateGroup:
 class AddGroupMembershipInput(BaseModel):
     """Input for one membership assertion.
 
-    Without an explicit basis, dates decide it: none is `unknown`, any is `period`. `ongoing` is
-    never inferred, because an absent end date is not a claim that the membership continues.
+    Without an explicit basis, `resolve_temporal_basis` decides it from the dates: none is
+    `unknown`, any is `period`. `ongoing` is never inferred, because an absent end date is not a
+    claim that the membership continues. Agent staging reads that same rule, so a staged
+    membership and a directly recorded one never disagree about what their dates assert.
     """
 
     person_id: str
@@ -137,13 +147,11 @@ class AddGroupMembership:
         self._uow = unit_of_work_for(audit)
 
     @transactional
-    def execute(self, data: AddGroupMembershipInput) -> GroupMembership:
+    def execute(self, data: AddGroupMembershipInput, *, transaction_id: str | None = None) -> GroupMembership:
         require_active_person(self._people, data.person_id)
         if self._records.get_record("group", data.group_id) is None:
             raise RecordNotFoundError("group", data.group_id)
-        basis = data.temporal_basis
-        if basis is None:
-            basis = TemporalBasis.UNKNOWN if data.valid_from is None and data.valid_to is None else TemporalBasis.PERIOD
+        basis = resolve_temporal_basis(data.temporal_basis, data.valid_from, data.valid_to)
         membership = GroupMembership(
             person_id=data.person_id,
             group_id=data.group_id,
@@ -163,6 +171,7 @@ class AddGroupMembership:
             entity_type="group_membership",
             entity_id=membership.id,
             payload=snapshot(membership),
+            transaction_id=transaction_id,
             source=data.source,
             session=data.session,
             stated_by=data.stated_by,

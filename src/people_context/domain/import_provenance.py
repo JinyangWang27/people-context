@@ -68,7 +68,17 @@ REVIEWABLE_SESSION_STATUSES: Final[tuple[str, ...]] = ("staged", "partially_comm
 
 #: Candidate types the stager persists.
 STAGED_CANDIDATE_TYPES: Final[frozenset[str]] = frozenset(
-    {"person", "interaction", "affiliation", "fact", "observation", "trait", "relationship"}
+    {
+        "person",
+        "interaction",
+        "affiliation",
+        "fact",
+        "observation",
+        "trait",
+        "relationship",
+        "group",
+        "group_membership",
+    }
 )
 
 #: Canonical fields naming exactly one other candidate in the same batch.
@@ -76,6 +86,7 @@ STAGED_REFERENCE_FIELDS: Final[tuple[str, ...]] = (
     "person_candidate_id",
     "from_candidate_id",
     "to_candidate_id",
+    "group_candidate_id",
 )
 
 #: Canonical fields naming a list of other candidates in the same batch.
@@ -94,8 +105,26 @@ STAGED_EVIDENCE_REFERENCE_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_
 #: Staged candidate types that may be cited as another candidate's evidence.
 EVIDENCE_CAPABLE_STAGED_TYPES: Final[frozenset[str]] = frozenset({"observation", "interaction"})
 
+#: The subset of the canonical references that name a group rather than a person (M28.3).
+#:
+#: A third namespace, for the same reason evidence needed a second one: commit resolves a
+#: membership's group through the group candidates in its batch, and a validator that checked
+#: this field against the person map would refuse every membership ever staged.
+STAGED_GROUP_REFERENCE_FIELDS: Final[tuple[str, ...]] = ("group_candidate_id",)
+
+#: Staged candidate types a group reference may name.
+GROUP_CAPABLE_STAGED_TYPES: Final[frozenset[str]] = frozenset({"group"})
+
 #: Canonical fields naming durable records rather than batch-local candidates.
 STAGED_DURABLE_REFERENCE_FIELDS: Final[tuple[str, ...]] = ("evidence_ids",)
+
+#: Canonical fields naming one durable *group* rather than a batch-local candidate (M28.3).
+#:
+#: Declared apart from the evidence ids above because it resolves against a different table: one
+#: set checked against both would let a group id satisfy itself through an observation. A group
+#: is erasable — `pctx forget record group:<id>` removes it and cascades its memberships — so a
+#: staged candidate naming one is exactly as danglable as a trait citing an erased observation.
+STAGED_DURABLE_GROUP_FIELDS: Final[tuple[str, ...]] = ("group_id",)
 
 #: What each staged type must carry for commit to resolve it. Commit indexes these directly, so a
 #: row missing one is not a candidate commit can decline — it is a row that would raise.
@@ -107,6 +136,8 @@ REQUIRED_STAGED_REFERENCES: Final[dict[str, tuple[str, ...]]] = {
     "observation": ("person_candidate_id",),
     "trait": ("person_candidate_id",),
     "relationship": ("from_candidate_id", "to_candidate_id"),
+    "group": (),
+    "group_membership": ("person_candidate_id", "group_candidate_id"),
 }
 
 
@@ -115,6 +146,7 @@ def check_staged_candidate(
     *,
     evidence_allowed: bool = True,
     attribution_allowed: bool = True,
+    group_types_allowed: bool = True,
 ) -> str:
     """Return the accepted persisted candidate's type, or raise ``ValueError``.
 
@@ -128,9 +160,9 @@ def check_staged_candidate(
     property of one candidate: they name *other rows in the same batch*, and the message that
     names the missing one is what the batch-local closure elsewhere reports against.
 
-    ``evidence_allowed`` and ``attribution_allowed`` are passed through by a bundle version that
-    predates trait evidence or assertion attribution, so that document keeps the closed shape it
-    was released with.
+    ``evidence_allowed``, ``attribution_allowed``, and ``group_types_allowed`` are passed through
+    by a bundle version that predates trait evidence, assertion attribution, or the group and
+    membership candidate types, so that document keeps the closed shape it was released with.
     """
     candidate_type = candidate.get("type")
     if candidate_type not in STAGED_CANDIDATE_TYPES:
@@ -142,7 +174,10 @@ def check_staged_candidate(
         if not resolved:
             raise ValueError(f"staged {kind} candidate must carry {field_name}")
     reason = staged_candidate_error(
-        candidate, evidence_allowed=evidence_allowed, attribution_allowed=attribution_allowed
+        candidate,
+        evidence_allowed=evidence_allowed,
+        attribution_allowed=attribution_allowed,
+        group_types_allowed=group_types_allowed,
     )
     if reason is not None:
         raise ValueError(f"staged {kind} candidate is not a valid persisted candidate: {reason}")
@@ -211,12 +246,30 @@ def staged_evidence_references(candidate: dict[str, Any]) -> set[str]:
     return references
 
 
+def staged_group_references(candidate: dict[str, Any]) -> set[str]:
+    """Return the batch-local group candidate ids one persisted candidate names."""
+    return {
+        value
+        for field_name in STAGED_GROUP_REFERENCE_FIELDS
+        if isinstance(value := candidate.get(field_name), str)
+    }
+
+
 def staged_durable_references(candidate: dict[str, Any]) -> set[str]:
     """Return the durable record ids one persisted candidate cites directly."""
     references: set[str] = set()
     for field_name in STAGED_DURABLE_REFERENCE_FIELDS:
         references |= identifier_list(candidate.get(field_name))
     return references
+
+
+def staged_durable_group_references(candidate: dict[str, Any]) -> set[str]:
+    """Return the durable group ids one persisted candidate names directly."""
+    return {
+        value
+        for field_name in STAGED_DURABLE_GROUP_FIELDS
+        if isinstance(value := candidate.get(field_name), str)
+    }
 
 
 def identifier_list(value: Any) -> set[str]:

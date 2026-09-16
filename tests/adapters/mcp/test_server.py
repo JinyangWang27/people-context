@@ -586,6 +586,8 @@ def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> N
         "observation",
         "trait",
         "relationship",
+        "group",
+        "group_membership",
     ]
     assert payload["valid_fields"]["person"] == [
         "type",

@@ -1144,7 +1144,7 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 5
+    assert document.version == SYNC_BUNDLE_VERSION == 6
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1278,7 +1278,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 6, "5"])
+@pytest.mark.parametrize("version", [0, 7, "6"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version

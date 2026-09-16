@@ -9,7 +9,7 @@ Two rules shape everything here.
 
 **Structure, never text.** Dependent staging rows are found through the canonical typed reference
 fields the stager wrote — `person_candidate_id`, `participant_candidate_ids`, the relationship end
-points, evidence references — and never by scanning candidate text for a name. Guessing by name
+points, group and evidence references — and never by scanning candidate text for a name. Guessing by name
 would erase unrelated people who happen to share one and miss the ones spelled differently.
 
 **Opaque metadata cannot be attributed.** A receipt label like `Interview with Alice` is the
@@ -26,6 +26,7 @@ import sqlite3
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from people_context.adapters.sqlite.import_staging import json_text_fragment
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.sources import STATUS_REDACTED
 
@@ -35,6 +36,10 @@ _CANDIDATE_REFERENCE_FIELDS: tuple[str, ...] = (
     "person_candidate_id",
     "from_candidate_id",
     "to_candidate_id",
+    # A membership's group. Erasure never targets a group candidate — forget erases people —
+    # so this never starts a closure; it is declared so the closure stays structurally complete
+    # if a later erasure ever does remove one, rather than quietly missing its dependants.
+    "group_candidate_id",
 )
 
 #: The same idea for fields holding a list of candidate ids.
@@ -43,8 +48,22 @@ _CANDIDATE_REFERENCE_LISTS: tuple[str, ...] = (
     "evidence_candidate_ids",
 )
 
-#: Staging fields that name a durable record rather than a batch-local candidate.
-_DURABLE_REFERENCE_LISTS: tuple[str, ...] = ("evidence_ids",)
+#: Staging fields that name a durable record rather than a batch-local candidate, and the entity
+#: types each may name.
+#:
+#: The type is kept rather than flattened away with the id. An id is opaque here — the bundle
+#: contract accepts any non-blank string and a restore puts back whatever the document carried —
+#: so one string can legitimately name a row in two tables. Comparing every erased id against
+#: every durable field would then let forgetting an observation delete a group candidate that
+#: merely shares its id, and the dependent closure would take that candidate's memberships too.
+_DURABLE_REFERENCE_LISTS: dict[str, frozenset[str]] = {
+    "evidence_ids": frozenset({"observation", "interaction"}),
+}
+
+#: The same, for fields holding one durable id rather than a list of them.
+_DURABLE_REFERENCE_FIELDS: dict[str, frozenset[str]] = {
+    "group_id": frozenset({"group"}),
+}
 
 
 @dataclass(frozen=True)
@@ -178,15 +197,26 @@ class ImportProvenanceCleaner:
         }
 
     def _durable_evidence_staging_ids(self, entity_targets: Sequence[tuple[str, str]]) -> set[str]:
-        """Return staged candidates citing an erased record as durable evidence."""
-        erased = {entity_id for _entity_type, entity_id in entity_targets}
+        """Return staged candidates naming an erased record directly.
+
+        A trait cites evidence as a list of ids; a group candidate names one group it would
+        record into. Both are durable references, and a row left holding either after the record
+        is gone is a batch that stays reviewable and can only ever commit unresolved — while its
+        receipt's claim keeps suppressing the restage that would fix it.
+
+        Each field is compared only against targets of the type it can name, so an erased
+        observation never matches a `group_id` that happens to carry the same opaque string.
+        """
         matched: set[str] = set()
-        for entity_id in erased:
+        for entity_type, entity_id in {(kind, value) for kind, value in entity_targets}:
+            lists = [name for name, kinds in _DURABLE_REFERENCE_LISTS.items() if entity_type in kinds]
+            fields = [name for name, kinds in _DURABLE_REFERENCE_FIELDS.items() if entity_type in kinds]
+            if not lists and not fields:
+                continue
             for row in self._staging_rows_mentioning(entity_id):
                 candidate = json.loads(row["candidate_json"])
-                if any(
-                    entity_id in _as_ids(candidate.get(field_name))
-                    for field_name in _DURABLE_REFERENCE_LISTS
+                if any(entity_id in _as_ids(candidate.get(name)) for name in lists) or any(
+                    candidate.get(name) == entity_id for name in fields
                 ):
                     matched.add(row["id"])
         return matched
@@ -195,11 +225,14 @@ class ImportProvenanceCleaner:
         """Narrow the scan to rows whose stored JSON could contain one id, then decide exactly.
 
         The `LIKE` is only a filter: every candidate it returns is parsed and checked against the
-        canonical field it must appear in, so a coincidental substring never deletes a row.
+        canonical field it must appear in, so a coincidental substring never deletes a row. The
+        needle is encoded the way the row was written, because an id that escapes into JSON — a
+        quote, a backslash, a newline — is stored in that form and a raw search would skip the
+        one row that must be erased.
         """
         return self._conn.execute(
             "SELECT id, candidate_json FROM import_staging WHERE candidate_json LIKE ?",
-            (f"%{value}%",),
+            (f"%{json_text_fragment(value)}%",),
         ).fetchall()
 
     def _dependent_closure(self, seeds: set[str]) -> set[str]:
