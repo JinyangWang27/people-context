@@ -9,6 +9,7 @@ from datetime import date
 from typing import cast
 
 from people_context.adapters.sqlite.audit_log import SqliteAuditLog
+from people_context.adapters.sqlite.import_staging import json_text_fragment
 from people_context.adapters.sqlite.record_store import SqliteRecordStore
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
@@ -347,7 +348,7 @@ class SqliteMergeStore:
         """
         rows = self._conn.execute(
             "SELECT id, candidate_json FROM import_staging WHERE candidate_json LIKE ?",
-            (f"%{duplicate_id}%",),
+            (f"%{json_text_fragment(duplicate_id)}%",),
         ).fetchall()
         updated = 0
         for row in rows:

@@ -26,6 +26,7 @@ import sqlite3
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from people_context.adapters.sqlite.import_staging import json_text_fragment
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.sources import STATUS_REDACTED
 
@@ -224,11 +225,14 @@ class ImportProvenanceCleaner:
         """Narrow the scan to rows whose stored JSON could contain one id, then decide exactly.
 
         The `LIKE` is only a filter: every candidate it returns is parsed and checked against the
-        canonical field it must appear in, so a coincidental substring never deletes a row.
+        canonical field it must appear in, so a coincidental substring never deletes a row. The
+        needle is encoded the way the row was written, because an id that escapes into JSON — a
+        quote, a backslash, a newline — is stored in that form and a raw search would skip the
+        one row that must be erased.
         """
         return self._conn.execute(
             "SELECT id, candidate_json FROM import_staging WHERE candidate_json LIKE ?",
-            (f"%{value}%",),
+            (f"%{json_text_fragment(value)}%",),
         ).fetchall()
 
     def _dependent_closure(self, seeds: set[str]) -> set[str]:

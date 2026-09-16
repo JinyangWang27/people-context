@@ -20,8 +20,10 @@ from pydantic import ValidationError
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.exports.sync_bundle import render_bundle_json
+from people_context.app.groups.commands import CreateGroupInput
 from people_context.app.people import RememberPersonInput
 from people_context.app.records import RecordObservationInput
+from people_context.domain.group import GroupKind
 from people_context.domain.sync_bundle import (
     SYNC_BUNDLE_VERSION,
     InvalidBundleError,
@@ -346,3 +348,34 @@ def test_a_bundle_carrying_a_reversed_membership_period_is_refused(runtime: Appl
 
     with pytest.raises(ValidationError):
         parse_bundle_payload(payload)
+
+
+@pytest.mark.parametrize("group_id", ['grp-"quoted"-1', "grp-\nline-1", "grp-back\\slash-1"])
+def test_a_group_id_that_escapes_into_json_is_still_found_by_cleanup(
+    runtime: ApplicationRuntime, group_id: str
+) -> None:
+    """The cleanup prefilter searches stored JSON, where such an id sits in its escaped form.
+
+    Ids are opaque — the bundle's `Identifier` accepts any non-blank string and a restore puts
+    back whatever the document carried — so this is a shape the store can legitimately hold.
+    Searching for the raw value would skip exactly the row that has to be erased, leaving a
+    reviewable batch whose group is gone and a bundle that will not restore.
+    """
+    created = runtime.use_cases.create_group.execute(CreateGroupInput(name="Class 1", kind=GroupKind.CLASS))
+    # Stand in for a group restored from a bundle that allowed this identifier.
+    runtime.conn.execute("UPDATE identified_groups SET id = ? WHERE id = ?", (group_id, created.id))
+    runtime.conn.commit()
+    batch = runtime.use_cases.stage_candidates.execute(
+        "classroom-chat",
+        [
+            {"type": "person", "ref": "cara", "name": "Cara Diaz", "aliases": []},
+            {"type": "group", "ref": "class-1", "name": "Class 1", "kind": "class", "group_id": group_id},
+            {"type": "group_membership", "person_ref": "cara", "group_ref": "class-1", "role": "student"},
+        ],
+        source_kind="conversation",
+    ).batch_id
+
+    runtime.use_cases.forget.execute(f"group:{group_id}", "record")
+
+    remaining = [row.candidate["type"] for row in runtime.use_cases.review_import.execute(batch).candidates]
+    assert remaining == ["person"]

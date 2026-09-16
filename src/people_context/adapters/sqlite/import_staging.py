@@ -9,6 +9,20 @@ from datetime import datetime
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.imports import StagedBatchSize, StagedImportRow
 
+
+def json_text_fragment(value: str) -> str:
+    """Return ``value`` as it appears *inside* a stored ``candidate_json`` string.
+
+    Staging rows are written with ``json.dumps(..., ensure_ascii=False)``, so a value carrying a
+    quote, a backslash, or a control character is stored in its escaped form. A prefilter that
+    searched for the raw value would miss exactly those rows — and the ids here are opaque, since
+    the sync bundle's `Identifier` accepts any non-blank string and a restore puts back whatever
+    the document carried. Encoding the needle the way the haystack was written is what keeps a
+    `LIKE` prefilter honest; the quotes `json.dumps` adds around the whole string are stripped
+    because the value is being matched as a fragment.
+    """
+    return json.dumps(value, ensure_ascii=False)[1:-1]
+
 #: Measures the batch a bounded caller is about to read without loading a single candidate
 #: body. `LENGTH(CAST(... AS BLOB))` is the stored UTF-8 byte count, which is exactly what a
 #: reader has to materialize, and the inner `LIMIT` stops the scan one row past the caller's

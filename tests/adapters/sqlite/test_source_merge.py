@@ -337,3 +337,49 @@ def test_a_failed_merge_rolls_back_the_staging_retarget(harness: _Harness) -> No
 
     assert harness.staged(person_row.id)["matched_person_id"] == duplicate
     assert harness.mappings()[ids["Ally Ahmed"]]["entity_id"] == duplicate
+
+
+def test_a_person_id_that_escapes_into_json_is_still_retargeted(harness: _Harness) -> None:
+    """The retarget prefilter searches stored JSON, where such an id sits in its escaped form.
+
+    A person id is opaque for the same reason a group id is: the sync bundle's `Identifier`
+    accepts any non-blank string, so a restore can put one back carrying a quote or a newline.
+    Searching for the raw value would skip the row, leaving a staged candidate pointing at the
+    identity this merge retired — the state the retarget exists to remove.
+    """
+    ids = _stage_and_commit(
+        harness,
+        [_person("a", "Alice Ahmed", "alice@example.com"), _person("b", "Ally Ahmed", "ally@example.com")],
+    )
+    mappings = harness.mappings()
+    primary = mappings[ids["Alice Ahmed"]]["entity_id"]
+    duplicate = mappings[ids["Ally Ahmed"]]["entity_id"]
+    escaped = 'person-"quoted"\nid'
+    # Stand in for a person restored from a bundle whose `Identifier` allowed this string. The
+    # pragma is toggled because every table referencing the old id moves with it.
+    harness.conn.execute("PRAGMA foreign_keys = OFF")
+    for table, column in (
+        ("persons", "id"),
+        ("aliases", "person_id"),
+        ("import_candidate_mappings", "entity_id"),
+    ):
+        harness.conn.execute(
+            f"UPDATE {table} SET {column} = ? WHERE {column} = ?",  # noqa: S608 - fixed constants
+            (escaped, duplicate),
+        )
+    harness.conn.commit()
+    harness.conn.execute("PRAGMA foreign_keys = ON")
+    pending = harness.stage.execute(
+        "call-note",
+        [_person("b2", "Ally Ahmed", "ally@example.com")],
+        source_kind="call_note",
+        content_digest=_OTHER_DIGEST,
+    )
+    person_row = next(
+        row for row in harness.review.execute(pending.batch_id).candidates if row.candidate["type"] == "person"
+    )
+    assert harness.staged(person_row.id)["matched_person_id"] == escaped
+
+    harness.merge.execute(primary, escaped)
+
+    assert harness.staged(person_row.id)["matched_person_id"] == primary
