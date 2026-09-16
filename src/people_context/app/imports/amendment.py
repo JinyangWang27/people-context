@@ -69,6 +69,9 @@ IMMUTABLE_PATCH_FIELDS: frozenset[str] = frozenset({"type", "match_disposition",
 #: unrelated edit discard a resolution the reviewer explicitly made.
 IDENTITY_PATCH_FIELDS: frozenset[str] = frozenset({"name", "aliases", "matched_person_id"})
 
+#: The computed match fields a person row carries, which survive a re-dump unchanged.
+_MATCH_OUTCOME_FIELDS: tuple[str, ...] = ("matched_person_id", "match_disposition", "match_count")
+
 #: What a refusal says instead of a field name the candidate models do not declare.
 #:
 #: A patch key is untrusted input. An agent or a hand-edited document may put source wording in
@@ -282,11 +285,13 @@ def _amended_candidate(
     merged = {**row.candidate, **patch}
     # The shape is checked before the match, not after: matching reads `name` and walks `aliases`,
     # so a patch carrying `{"aliases": null}` or a bare string in that list would raise out of the
-    # matcher — a traceback where this boundary promises an atomic refusal.
-    _check_persisted_shape(row, merged, kind)
-    _apply_person_match(row, merged, patch, people=people, identity_locked=identity_locked)
-    _check_input_rules(row, merged, kind)
-    return merged
+    # matcher — a traceback where this boundary promises an atomic refusal. What it returns is the
+    # *normalized* candidate, because validating and then storing the raw input would persist
+    # exactly what the boundary promised to clean up.
+    normalized = _check_persisted_shape(row, merged, kind)
+    _apply_person_match(row, normalized, patch, people=people, identity_locked=identity_locked)
+    _check_input_rules(row, normalized, kind)
+    return normalized
 
 
 def _immutable_reason(field_name: str) -> str:
@@ -406,16 +411,31 @@ def _legacy_match(people: PersonReader, tokens: list[str]) -> str | None:
     return None
 
 
-def _check_persisted_shape(row: StagedImportRow, merged: dict[str, Any], kind: str) -> None:
-    """Hold the amended candidate to the shape staging persists, naming no rejected value."""
+def _check_persisted_shape(row: StagedImportRow, merged: dict[str, Any], kind: str) -> dict[str, Any]:
+    """Return the amended candidate as staging would persist it, or refuse it naming no value.
+
+    The model's own dump, not the input dict. The persisted string types strip whitespace, so
+    validating and then storing what arrived would let an amendment keep padding that staging
+    removes — and an amended, unmatched person would commit under a visibly padded canonical name.
+    Staging persists `model_dump(...)` for exactly this reason; amendment now does the same.
+
+    The three match fields are carried over rather than dumped, because a person row holds
+    `matched_person_id` as present-and-null when nothing matched, which `exclude_none` would drop.
+    `_apply_person_match` overwrites them next when the patch reopens identity.
+    """
     try:
-        parse_staged_candidate(merged)
+        model = parse_staged_candidate(merged)
     except ValidationError as exc:
         raise _amendment_refusal(
             row,
             _safe_field(exc.errors()[0].get("loc", ())),
             "the amended candidate is not a valid staged candidate",
         ) from exc
+    normalized: dict[str, Any] = model.model_dump(mode="json", exclude_none=True)
+    for field_name in _MATCH_OUTCOME_FIELDS:
+        if field_name in merged:
+            normalized[field_name] = merged[field_name]
+    return normalized
 
 
 def _check_input_rules(row: StagedImportRow, merged: dict[str, Any], kind: str) -> None:

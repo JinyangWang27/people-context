@@ -1386,12 +1386,19 @@ def _emptied_session_details(imports: BundleImportState) -> list[str]:
         elif session.status == "withdrawn":
             # A withdrawn receipt is a review that finished and recorded nothing, so owning
             # nothing is its *legitimate* shape rather than the contradiction the branches below
-            # refuse. It is still held to what it claims: a mapping would mean something did
-            # commit, and the pending check above already caught a row still owing a decision —
-            # which matters because export carries staging only for a reviewable receipt, so a
+            # refuse. It is still held to everything it claims. A mapping would mean something
+            # did commit, and the pending check above already caught a row still owing a decision
+            # — which matters because export carries staging only for a reviewable receipt, so a
             # restored contradiction would drop those candidates from the very next bundle.
             if session.id in mapped_sessions:
                 details.append(f"source session {session.id} is withdrawn but owns a commit mapping")
+            if session.batch_id is None:
+                # Withdrawal keeps the batch, so a null one here is not a shape this installation
+                # produces. Restoring it would make the source unrestageable in a way nothing
+                # explains: duplicate detection reads a claim-backed receipt with no batch as a
+                # forgotten one and refuses with `source_previously_redacted`, which is a claim
+                # about erasure that never happened.
+                details.append(f"source session {session.id} is withdrawn but names no batch")
         elif session.status == "staged" and not has_pending:
             # `staged` means nothing has committed, so mappings cannot stand in for the rows.
             details.append(f"source session {session.id} is staged but owns no reviewable staging row")

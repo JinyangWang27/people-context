@@ -992,3 +992,49 @@ def test_the_review_ceiling_counts_the_bytes_a_projected_person_id_really_costs(
         runtime.use_cases.review_import.execute(batch_id, budget=budget)
 
     assert raised.value.code == "staged_payload_too_large"
+
+
+def test_an_amendment_persists_the_normalized_value_not_the_raw_patch(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Regression: validation normalized a discarded copy while the raw patch was stored.
+
+    Staging persists the model's own dump, so a padded name never reaches storage. Amendment
+    validated and then wrote what arrived, so an amended, unmatched person committed under a
+    visibly padded canonical name.
+    """
+    batch_id = _stage(runtime, [_person("p1", "Ada Lovelace")])
+    candidate_id = _ids(runtime, batch_id)[0]
+
+    runtime.use_cases.amend_staged_candidate.execute(
+        batch_id,
+        candidate_id,
+        {"name": "  Ada Byron  ", "aliases": [{"value": "  AB  ", "kind": "other"}]},
+    )
+
+    amended = _candidate(runtime, batch_id, candidate_id)
+    assert amended["name"] == "Ada Byron"
+    assert amended["aliases"][0]["value"] == "AB"
+    runtime.use_cases.commit_import.execute(batch_id, [candidate_id])
+    stored = runtime.conn.execute("SELECT canonical_name FROM persons").fetchone()
+    assert stored["canonical_name"] == "Ada Byron"
+
+
+def test_re_dumping_an_amended_person_keeps_its_present_and_null_match_fields(
+    runtime: ApplicationRuntime,
+) -> None:
+    """A person row holds `matched_person_id` as present-and-null, which `exclude_none` would drop.
+
+    The field's absence and its null are different states to every reader of a staged row, so
+    normalizing the candidate must not quietly change which one it is in.
+    """
+    batch_id = _stage(runtime, [_person("p1", "Ada Lovelace")])
+    candidate_id = _ids(runtime, batch_id)[0]
+    assert _candidate(runtime, batch_id, candidate_id)["matched_person_id"] is None
+
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, candidate_id, {"summary": "a note"})
+
+    amended = _candidate(runtime, batch_id, candidate_id)
+    assert "matched_person_id" in amended
+    assert amended["matched_person_id"] is None
+    assert amended["match_disposition"] == "unmatched"

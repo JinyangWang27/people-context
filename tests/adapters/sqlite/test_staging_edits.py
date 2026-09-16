@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from people_context.adapters.sqlite import SqliteImportStagingStore, SqlitePeopleRepository, open_db
+from people_context.adapters.sqlite.repository import _matching_people_sql
 from people_context.app.imports.identity import (
     MatchDisposition,
     match_person_candidate,
@@ -181,3 +182,57 @@ def test_matching_a_common_name_loads_no_person_records(conn: sqlite3.Connection
     assert repo.page_by_normalized_names(["priya sharma"], 10) != []
     assert person_candidate_matches(repo, ["Priya Sharma"], ids[-1]) is True
     assert loaded == []
+
+
+def test_the_matching_queries_use_both_normalized_name_indexes(conn: sqlite3.Connection) -> None:
+    """Regression: an `OR` across the join scanned `persons` end to end.
+
+    SQLite cannot satisfy a disjunction spanning two tables from either index, so the readable
+    form planned as a full scan plus an alias probe per row — and this runs once per staged person
+    candidate and again per ambiguous row at review, so the cost was the whole store times the
+    batch. Asserting the plan is the only way to keep that from coming back unnoticed.
+    """
+    plan = [
+        row["detail"]
+        for row in conn.execute("EXPLAIN QUERY PLAN " + _matching_people_sql(2), ("a", "b", "a", "b"))
+    ]
+
+    assert any("idx_persons_canonical_norm" in step for step in plan), plan
+    assert any("idx_aliases_value_norm" in step for step in plan), plan
+    assert not any(step.startswith("SCAN p") for step in plan), plan
+
+
+def test_a_token_matching_only_an_alias_still_resolves(conn: sqlite3.Connection) -> None:
+    """The union must not lose the alias half the single query used to cover."""
+    repo = SqlitePeopleRepository(conn)
+    repo.save_person(
+        Person(
+            id="01M29ALIASONLY00000000000001",
+            canonical_name="P. Sharma",
+            aliases=[Alias(value="priya@acme.test", kind=AliasKind.HANDLE)],
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    conn.commit()
+
+    assert repo.count_distinct_by_normalized_names(["priya@acme.test"]) == 1
+    assert repo.matches_normalized_names("01M29ALIASONLY00000000000001", ["priya@acme.test"]) is True
+
+
+def test_one_person_matched_by_both_a_name_and_an_alias_counts_once(conn: sqlite3.Connection) -> None:
+    """`UNION` does the deduplication the old `DISTINCT` did."""
+    repo = SqlitePeopleRepository(conn)
+    repo.save_person(
+        Person(
+            id="01M29BOTHHALVES00000000000001",
+            canonical_name="Priya Sharma",
+            aliases=[Alias(value="priya@acme.test", kind=AliasKind.HANDLE)],
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    conn.commit()
+
+    assert repo.count_distinct_by_normalized_names(["priya sharma", "priya@acme.test"]) == 1
+    assert len(repo.page_by_normalized_names(["priya sharma", "priya@acme.test"], 10)) == 1

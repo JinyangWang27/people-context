@@ -20,12 +20,25 @@ _LIKE_SCORE_ALIAS = 0.4
 #: One statement over every token of a candidate, rather than one statement per token unioned in
 #: Python: the union is what the matcher means, and doing it in SQL is what keeps a name shared by
 #: thousands of people from materializing thousands of rows.
+#:
+#: A `UNION` of two single-table lookups rather than one `OR` across a join. The `OR` form reads
+#: naturally and plans terribly: SQLite cannot satisfy a disjunction spanning two tables from
+#: either index, so it scans `persons` end to end and probes aliases once per row. This form lets
+#: `idx_persons_canonical_norm` and `idx_aliases_value_norm` each serve their own branch, and
+#: `UNION` does the deduplication the `DISTINCT` used to. It matters because this runs once per
+#: staged person candidate and again per ambiguous row at review, so a scan here costs the size
+#: of the whole store times the size of the batch.
 _MATCHING_PEOPLE_SQL = """
-    SELECT DISTINCT p.id AS id, p.canonical_name AS canonical_name
-    FROM persons p
-    LEFT JOIN aliases a ON a.person_id = p.id
-    WHERE p.deleted_at IS NULL
-      AND (p.canonical_name_normalized IN ({placeholders}) OR a.value_normalized IN ({placeholders}))
+    SELECT id, canonical_name FROM (
+        SELECT p.id AS id, p.canonical_name AS canonical_name
+        FROM persons p
+        WHERE p.deleted_at IS NULL AND p.canonical_name_normalized IN ({placeholders})
+        UNION
+        SELECT p.id AS id, p.canonical_name AS canonical_name
+        FROM aliases a
+        JOIN persons p ON p.id = a.person_id
+        WHERE p.deleted_at IS NULL AND a.value_normalized IN ({placeholders})
+    )
 """
 
 

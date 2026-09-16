@@ -1213,6 +1213,28 @@ def test_a_withdrawn_receipt_carrying_what_it_denies_is_refused(carries: str) ->
         validate_bundle_document(parse_bundle_payload(payload))
 
 
+def test_a_withdrawn_receipt_that_names_no_batch_is_refused() -> None:
+    """Regression: exempting the terminal shape also exempted one the application never makes.
+
+    Withdrawal keeps the batch. A claim-backed receipt with none is what *erasure* leaves, so
+    duplicate detection reads one as a forgotten source and refuses a re-import with
+    `source_previously_redacted` — a statement about an erasure that never happened, about a
+    source the user could then never restage.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["source_sessions"][0]["status"] = "withdrawn"
+    imports["source_sessions"][0]["batch_id"] = None
+    imports["staging"].clear()
+    imports["candidate_mappings"].clear()
+    payload["trait_evidence"] = []
+
+    with pytest.raises(InvalidBundleError) as excinfo:
+        validate_bundle_document(parse_bundle_payload(payload))
+
+    assert any("names no batch" in detail for detail in excinfo.value.details)
+
+
 def test_a_withdrawn_receipt_is_not_the_dead_end_an_empty_live_receipt_is() -> None:
     """A live receipt owning neither a mapping nor a reviewable row is refused; this is not one.
 
