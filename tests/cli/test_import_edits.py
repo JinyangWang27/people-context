@@ -16,7 +16,15 @@ import pytest
 
 from people_context import cli
 from people_context.adapters.sqlite import open_db
-from people_context.app.imports import IMPORT_REVIEW_FORMAT, IMPORT_REVIEW_VERSION
+from people_context.app.imports import (
+    CANDIDATE_INPUT_TOO_LARGE,
+    IMPORT_REVIEW_FORMAT,
+    IMPORT_REVIEW_VERSION,
+    INVALID_CANDIDATE_JSON,
+    MAX_CLI_CANDIDATE_JSON_BYTES,
+    ImportBatchResult,
+)
+from people_context.cli import imports as cli_imports
 
 _CANDIDATES = [
     {"type": "person", "ref": "p1", "name": "Nadia Okonkwo", "aliases": []},
@@ -306,3 +314,86 @@ def test_reimporting_a_committed_source_still_says_so(
     assert cli.main(stage) == 0
 
     assert "committed candidates" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("reviewable", "status", "expected_held"),
+    [
+        (True, "staged", "candidates"),
+        (False, "committed", "committed candidates"),
+        (False, "withdrawn", "withdrawn candidates"),
+        (False, None, "candidates"),
+    ],
+)
+def test_the_duplicate_report_describes_each_terminal_state_truthfully(
+    reviewable: bool, status: str | None, expected_held: str
+) -> None:
+    """A batch from a bundle may carry no receipt status at all, and must not be guessed at."""
+    batch = ImportBatchResult(
+        batch_id="01J0000000000000000BATCH01",
+        candidate_count=1,
+        duplicate=True,
+        reviewable=reviewable,
+        source_status=status,
+    )
+
+    held, outcome = cli_imports._duplicate_wording(batch)
+
+    assert held == expected_held
+    assert (outcome is None) is reviewable
+    if outcome is not None and status != "committed":
+        assert "committed" not in outcome
+
+
+def test_an_oversized_patch_on_stdin_is_refused_before_it_is_decoded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The ceiling is spent on the read: a pipe has no size to stat, so nothing is buffered whole."""
+    db_file = tmp_path / "people.db"
+    batch_id, ids = _stage(db_file, tmp_path, capsys)
+    monkeypatch.setattr("sys.stdin", _stdin(b"x" * (MAX_CLI_CANDIDATE_JSON_BYTES + 10)))
+
+    code = cli.main(["--db", str(db_file), "import", "amend", batch_id, ids[1], "--patch", "-"])
+
+    assert code == 1
+    assert CANDIDATE_INPUT_TOO_LARGE in capsys.readouterr().err
+
+
+def test_a_patch_on_stdin_that_is_not_utf8_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_file = tmp_path / "people.db"
+    batch_id, ids = _stage(db_file, tmp_path, capsys)
+    monkeypatch.setattr("sys.stdin", _stdin(b'{"role": "\xff\xfe"}'))
+
+    code = cli.main(["--db", str(db_file), "import", "amend", batch_id, ids[1], "--patch", "-"])
+
+    assert code == 1
+    assert "not valid UTF-8" in capsys.readouterr().err
+
+
+def test_an_oversized_inline_patch_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    batch_id, ids = _stage(db_file, tmp_path, capsys)
+    oversized = json.dumps({"role": "x" * (MAX_CLI_CANDIDATE_JSON_BYTES + 10)})
+
+    code = cli.main(["--db", str(db_file), "import", "amend", batch_id, ids[1], "--patch", oversized])
+
+    assert code == 1
+    assert CANDIDATE_INPUT_TOO_LARGE in capsys.readouterr().err
+
+
+def test_a_patch_nested_too_deeply_is_refused_as_unparseable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The decoder recurses per level, so depth exhausts the stack far below the byte ceiling."""
+    db_file = tmp_path / "people.db"
+    batch_id, ids = _stage(db_file, tmp_path, capsys)
+    deep = "[" * 40_000 + "]" * 40_000
+
+    code = cli.main(["--db", str(db_file), "import", "amend", batch_id, ids[1], "--patch", deep])
+
+    assert code == 1
+    assert INVALID_CANDIDATE_JSON in capsys.readouterr().err

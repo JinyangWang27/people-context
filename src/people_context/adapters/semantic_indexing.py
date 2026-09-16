@@ -20,7 +20,12 @@ from people_context.ports.forget import ForgetPreviewStore, ForgetStore
 from people_context.ports.lifecycle import ForgetStoreResult, MergeStoreResult
 from people_context.ports.merge import MergeStore
 from people_context.ports.records import Record, RecordStore
-from people_context.ports.repository import PeopleRepository, PersonNameMatch, SearchHit
+from people_context.ports.repository import (
+    PeopleRepository,
+    PersonNameMatch,
+    PersonNameMatches,
+    SearchHit,
+)
 from people_context.ports.unit_of_work import UnitOfWork
 
 _WARNING_SUFFIX = "Primary data was saved; run `uv run pctx reindex --semantic` to repair vectors."
@@ -55,8 +60,8 @@ class IndexingPeopleRepository:
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         return self._delegate.find_by_normalized_name(normalized)
 
-    def count_distinct_by_normalized_names(self, normalized: list[str]) -> int:
-        return self._delegate.count_distinct_by_normalized_names(normalized)
+    def match_normalized_names(self, normalized: list[str]) -> PersonNameMatches:
+        return self._delegate.match_normalized_names(normalized)
 
     def page_by_normalized_names(self, normalized: list[str], limit: int) -> list[PersonNameMatch]:
         return self._delegate.page_by_normalized_names(normalized, limit)

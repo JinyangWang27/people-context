@@ -9,7 +9,7 @@ from datetime import datetime
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import normalize_name
-from people_context.ports.repository import PersonNameMatch, SearchHit
+from people_context.ports.repository import PersonNameMatch, PersonNameMatches, SearchHit
 
 # Modest fixed scores for the non-FTS substring fallback path.
 _LIKE_SCORE_CANONICAL = 0.5
@@ -29,7 +29,7 @@ _LIKE_SCORE_ALIAS = 0.4
 #: staged person candidate and again per ambiguous row at review, so a scan here costs the size
 #: of the whole store times the size of the batch.
 _MATCHING_PEOPLE_SQL = """
-    SELECT id, canonical_name FROM (
+    SELECT id, canonical_name{total} FROM (
         SELECT p.id AS id, p.canonical_name AS canonical_name
         FROM persons p
         WHERE p.deleted_at IS NULL AND p.canonical_name_normalized IN ({placeholders})
@@ -157,20 +157,31 @@ class SqlitePeopleRepository:
         people = [self.get(row["id"]) for row in rows]
         return [person for person in people if person is not None]
 
-    def count_distinct_by_normalized_names(self, normalized: list[str]) -> int:
-        """Return how many active people these identity tokens resolve to, without reading one.
+    def match_normalized_names(self, normalized: list[str]) -> PersonNameMatches:
+        """Return how many active people these tokens resolve to, and the first of them.
 
-        A count is all the matcher needs to tell "nobody", "exactly one", and "a decision is owed"
-        apart, and it stays one number however many people share a name.
+        One statement, deliberately. The matcher needs the count to tell "nobody", "exactly one",
+        and "a decision is owed" apart, and the id only in the second case — but asking in two
+        statements makes the answer a race against any concurrent writer, and staging matches
+        before it takes the write lock. A person created between a count of 1 and the selection
+        would be reported as a confident unique match, committing a candidate and its dependents
+        against one of several identities: the exact outcome the ambiguity-preserving matcher
+        exists to prevent. `COUNT(*) OVER ()` carries the total beside the row it selects, so both
+        come from one snapshot and cannot disagree.
         """
         tokens = _distinct_tokens(normalized)
         if not tokens:
-            return 0
+            return PersonNameMatches(total=0, first=None)
         row = self._conn.execute(
-            f"SELECT COUNT(*) AS total FROM ({_matching_people_sql(len(tokens))})",  # noqa: S608 - bound placeholders only
+            f"{_matching_people_sql(len(tokens), total=True)} ORDER BY canonical_name, id LIMIT 1",  # noqa: S608 - bound placeholders only
             (*tokens, *tokens),
         ).fetchone()
-        return int(row["total"])
+        if row is None:
+            return PersonNameMatches(total=0, first=None)
+        return PersonNameMatches(
+            total=int(row["total"]),
+            first=PersonNameMatch(id=row["id"], canonical_name=row["canonical_name"]),
+        )
 
     def page_by_normalized_names(self, normalized: list[str], limit: int) -> list[PersonNameMatch]:
         """Return the first `limit` matching people, ordered by canonical name then id.
@@ -314,7 +325,14 @@ def _distinct_tokens(normalized: list[str]) -> list[str]:
     return list(dict.fromkeys(token for token in normalized if token))
 
 
-def _matching_people_sql(token_count: int) -> str:
-    """Return the matching-people query bound to a fixed number of token placeholders."""
+def _matching_people_sql(token_count: int, *, total: bool = False) -> str:
+    """Return the matching-people query bound to a fixed number of token placeholders.
+
+    `total` adds the size of the whole match set beside each row, so a caller that needs both the
+    count and one row reads them from a single snapshot instead of two statements.
+    """
     placeholders = ", ".join("?" * token_count)
-    return _MATCHING_PEOPLE_SQL.format(placeholders=placeholders)
+    return _MATCHING_PEOPLE_SQL.format(
+        placeholders=placeholders,
+        total=", COUNT(*) OVER () AS total" if total else "",
+    )

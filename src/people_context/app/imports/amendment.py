@@ -329,10 +329,8 @@ def _apply_person_match(
     See `_identity_locked_candidates`.
     """
     if merged.get("type") != "person":
-        if "matched_person_id" in patch:
-            raise _amendment_refusal(
-                row, "matched_person_id", "only a person candidate carries a matched person"
-            )
+        # `matched_person_id` on any other type was already refused by the shape check above, which
+        # no longer declares it — so there is nothing left to say here.
         return
     if not _touches_identity(patch):
         return
@@ -504,9 +502,7 @@ def _as_request_candidate(merged: dict[str, Any], kind: str) -> dict[str, Any]:
     """Return the amended candidate in the shape the staging request declared it in."""
     placeholders: dict[str, str] = {}
 
-    def placeholder(reference: Any) -> Any:
-        if not isinstance(reference, str):
-            return reference
+    def placeholder(reference: str) -> str:
         return placeholders.setdefault(reference, f"r{len(placeholders)}")
 
     request: dict[str, Any] = {}

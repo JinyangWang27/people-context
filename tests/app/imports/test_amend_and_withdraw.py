@@ -25,6 +25,7 @@ from people_context.app.imports import (
     MAX_MATCH_CANDIDATE_NAME_CHARS,
     MAX_MATCH_CANDIDATES,
     REDACTED_FIELD,
+    AmendStagedCandidate,
     ImportBudget,
     ImportPipelineError,
 )
@@ -1038,3 +1039,109 @@ def test_re_dumping_an_amended_person_keeps_its_present_and_null_match_fields(
     assert "matched_person_id" in amended
     assert amended["matched_person_id"] is None
     assert amended["match_disposition"] == "unmatched"
+
+
+def test_a_patch_that_is_not_an_object_is_refused(runtime: ApplicationRuntime) -> None:
+    """An in-process caller is a trust boundary too; the CLI and MCP shapes stop short of here."""
+    batch_id, ids = _simple_batch(runtime)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[1], ["role", "Staff"])  # type: ignore[arg-type]
+
+    assert raised.value.code == "invalid_candidates"
+
+
+def test_a_patch_over_the_payload_ceiling_is_refused_before_anything_is_written(
+    runtime: ApplicationRuntime,
+) -> None:
+    """The ceiling is on the whole patch, not only on any single string inside it."""
+    batch_id, ids = _simple_batch(runtime)
+    # Many small values rather than one large one, so the per-string bound is not what refuses it.
+    patch = {f"field_{index}": "x" * 512 for index in range(4096)}
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[1], patch)
+
+    assert raised.value.code == "candidate_payload_too_large"
+
+
+def test_an_amendment_that_would_outgrow_the_review_ceiling_is_refused(
+    runtime: ApplicationRuntime,
+) -> None:
+    """An amendment must not grow a batch past what review and commit can read.
+
+    Nothing else could repair it afterwards: every bounded command would refuse the batch it
+    produced.
+    """
+    batch_id, ids = _simple_batch(runtime)
+    editor = AmendStagedCandidate(
+        runtime.import_staging,
+        runtime.use_cases.review_import,
+        runtime.repo,
+        budget=ImportBudget(max_staged_payload_bytes=256),
+    )
+
+    with pytest.raises(ImportPipelineError) as raised:
+        editor.execute(batch_id, ids[1], {"role": "Staff Engineer of " + "x" * 512})
+
+    assert raised.value.code == "staged_payload_too_large"
+    assert _candidate(runtime, batch_id, ids[1])["role"] == "Engineer"
+
+
+def test_amending_a_legacy_row_onto_a_name_nobody_has_clears_its_match(
+    runtime: ApplicationRuntime,
+) -> None:
+    batch = runtime.use_cases.stage_candidates.execute(
+        "review",
+        [_person("p1", "Nadia Okonkwo"), {"type": "fact", "person_ref": "p1", "predicate": "c", "value": "v"}],
+        strict_identity=False,
+    )
+    person_id = _ids(runtime, batch.batch_id)[0]
+
+    runtime.use_cases.amend_staged_candidate.execute(batch.batch_id, person_id, {"name": "Nobody At All"})
+
+    assert _candidate(runtime, batch.batch_id, person_id)["matched_person_id"] is None
+
+
+def test_withdrawing_nothing_is_refused_rather_than_silently_doing_nothing(
+    runtime: ApplicationRuntime,
+) -> None:
+    batch_id, _ids_here = _simple_batch(runtime)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.withdraw_staged_candidates.execute(batch_id, [])
+
+    assert raised.value.code == "invalid_candidates"
+
+
+@pytest.mark.parametrize(
+    "use_case", ["amend_staged_candidate", "withdraw_staged_candidates", "review_import"]
+)
+def test_every_edit_surface_reports_an_unknown_batch_the_same_way(
+    runtime: ApplicationRuntime, use_case: str
+) -> None:
+    arguments: dict[str, list[object]] = {
+        "amend_staged_candidate": ["01JUNKNOTABATCH0000000000", "c1", {}],
+        "withdraw_staged_candidates": ["01JUNKNOTABATCH0000000000", ["c1"]],
+        "review_import": ["01JUNKNOTABATCH0000000000"],
+    }
+
+    with pytest.raises(ImportPipelineError) as raised:
+        getattr(runtime.use_cases, use_case).execute(*arguments[use_case])
+
+    assert raised.value.code == "batch_not_found"
+
+
+def test_a_refusal_inside_a_patched_alias_names_the_field_it_reached(
+    runtime: ApplicationRuntime,
+) -> None:
+    """A validation location mixes field names with list indexes; only the names may print."""
+    batch_id = _stage(runtime, [_person("p1", "Nadia Okonkwo")])
+    candidate_id = _ids(runtime, batch_id)[0]
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(
+            batch_id, candidate_id, {"aliases": [{"value": "ok"}, {"value": ""}]}
+        )
+
+    assert raised.value.details["details"][0]["loc"] == [candidate_id, "aliases"]

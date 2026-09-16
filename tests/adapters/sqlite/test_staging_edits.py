@@ -15,10 +15,12 @@ from pathlib import Path
 
 import pytest
 
+from people_context.adapters.semantic_indexing import IndexingPeopleRepository
 from people_context.adapters.sqlite import SqliteImportStagingStore, SqlitePeopleRepository, open_db
 from people_context.adapters.sqlite.repository import _matching_people_sql
 from people_context.app.imports.identity import (
     MatchDisposition,
+    collision_page,
     match_person_candidate,
     person_candidate_matches,
 )
@@ -124,7 +126,7 @@ def test_the_count_and_page_answer_over_every_token_at_once(conn: sqlite3.Connec
     conn.commit()
 
     tokens = ["priya@acme.test", "priya sharma"]
-    assert repo.count_distinct_by_normalized_names(tokens) == 2
+    assert repo.match_normalized_names(tokens).total == 2
     assert {match.id for match in repo.page_by_normalized_names(tokens, 10)} == {by_name, handle_owner.id}
 
 
@@ -148,7 +150,7 @@ def test_a_deleted_person_is_not_a_match(conn: sqlite3.Connection) -> None:
     repo.save_person(person)
     conn.commit()
 
-    assert repo.count_distinct_by_normalized_names(["priya sharma"]) == 0
+    assert repo.match_normalized_names(["priya sharma"]).total == 0
     assert repo.matches_normalized_names(person_id, ["priya sharma"]) is False
 
 
@@ -156,7 +158,7 @@ def test_a_blank_token_set_resolves_to_nobody(conn: sqlite3.Connection) -> None:
     repo = SqlitePeopleRepository(conn)
     _people(conn, 2)
 
-    assert repo.count_distinct_by_normalized_names([]) == 0
+    assert repo.match_normalized_names([]).total == 0
     assert repo.page_by_normalized_names(["priya sharma"], 0) == []
     assert repo.matches_normalized_names("01M29COLLIDE00000000000000", []) is False
 
@@ -216,7 +218,7 @@ def test_a_token_matching_only_an_alias_still_resolves(conn: sqlite3.Connection)
     )
     conn.commit()
 
-    assert repo.count_distinct_by_normalized_names(["priya@acme.test"]) == 1
+    assert repo.match_normalized_names(["priya@acme.test"]).total == 1
     assert repo.matches_normalized_names("01M29ALIASONLY00000000000001", ["priya@acme.test"]) is True
 
 
@@ -234,5 +236,82 @@ def test_one_person_matched_by_both_a_name_and_an_alias_counts_once(conn: sqlite
     )
     conn.commit()
 
-    assert repo.count_distinct_by_normalized_names(["priya sharma", "priya@acme.test"]) == 1
+    assert repo.match_normalized_names(["priya sharma", "priya@acme.test"]).total == 1
     assert len(repo.page_by_normalized_names(["priya sharma", "priya@acme.test"], 10)) == 1
+
+
+@pytest.mark.parametrize("tokens", [[], ["   "], ["", "\t"]])
+def test_a_token_set_that_normalizes_to_nothing_matches_nobody(
+    conn: sqlite3.Connection, tokens: list[str]
+) -> None:
+    """An empty token set is not a wildcard, and must never be sent to the reader as one.
+
+    These helpers take arbitrary tokens, so the guard is the contract rather than a formality:
+    without it, an empty `IN ()` would answer "nobody" only by accident of SQL.
+    """
+    repo = SqlitePeopleRepository(conn)
+    _people(conn, 2)
+
+    assert match_person_candidate(repo, tokens).disposition is MatchDisposition.UNMATCHED
+    assert person_candidate_matches(repo, tokens, "01M29COLLIDE00000000000000") is False
+    assert collision_page(repo, tokens, 10) == []
+
+
+def test_punctuation_is_kept_by_normalization_and_still_matched(conn: sqlite3.Connection) -> None:
+    """`normalize_name` folds case and whitespace, not characters: `---` is a real token."""
+    repo = SqlitePeopleRepository(conn)
+    repo.save_person(
+        Person(id="01M29PUNCT000000000000000001", canonical_name="---", aliases=[], created_at=_NOW, updated_at=_NOW)
+    )
+    conn.commit()
+
+    assert match_person_candidate(repo, ["---"]).disposition is MatchDisposition.MATCHED
+
+
+def test_the_count_and_the_chosen_person_come_from_one_snapshot(conn: sqlite3.Connection) -> None:
+    """Regression: a count then a lookup could straddle a concurrent insert.
+
+    Staging matches before it takes the write lock, so a person created between the two reads
+    turned a fresh ambiguity into a confident unique match — and the candidate and its dependents
+    would commit against one of several identities, which is what this matcher exists to prevent.
+    One statement cannot disagree with itself.
+    """
+    _people(conn, 2)
+    repo = SqlitePeopleRepository(conn)
+
+    matches = repo.match_normalized_names(["priya sharma"])
+
+    assert matches.total == 2
+    assert matches.first is not None
+    assert match_person_candidate(repo, ["Priya Sharma"]).disposition is MatchDisposition.AMBIGUOUS
+
+
+def test_a_unique_match_names_the_person_it_counted(conn: sqlite3.Connection) -> None:
+    person_id = _people(conn, 1)[0]
+    repo = SqlitePeopleRepository(conn)
+
+    matches = repo.match_normalized_names(["priya sharma"])
+
+    assert matches.total == 1
+    assert matches.first is not None and matches.first.id == person_id
+
+
+def test_the_semantic_wrapper_forwards_every_matching_query(conn: sqlite3.Connection) -> None:
+    """A wrapper that dropped one of these would silently change who a candidate resolves to."""
+    repo = SqlitePeopleRepository(conn)
+    person_id = _people(conn, 1)[0]
+    wrapped = IndexingPeopleRepository(repo, _NullUpdater(), lambda _message: None)
+
+    assert wrapped.match_normalized_names(["priya sharma"]).total == 1
+    assert [match.id for match in wrapped.page_by_normalized_names(["priya sharma"], 10)] == [person_id]
+    assert wrapped.matches_normalized_names(person_id, ["priya sharma"]) is True
+
+
+class _NullUpdater:
+    """Stands in for the semantic index, which these reads never touch."""
+
+    def refresh_person(self, person: Person) -> None:  # pragma: no cover - never reached by reads
+        raise AssertionError("a read must not refresh the index")
+
+    def remove_person(self, person_id: str) -> None:  # pragma: no cover - never reached by reads
+        raise AssertionError("a read must not refresh the index")

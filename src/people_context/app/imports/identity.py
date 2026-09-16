@@ -65,18 +65,15 @@ def match_person_candidate(people: PersonReader, tokens: list[str]) -> IdentityM
     normalized = normalized_identity_tokens(tokens)
     if not normalized:
         return IdentityMatch(MatchDisposition.UNMATCHED)
-    count = people.count_distinct_by_normalized_names(normalized)
-    if count == 0:
+    # One read, not a count followed by a lookup: staging matches before it takes the write lock,
+    # so two reads could straddle a concurrent insert and report a fresh ambiguity as a confident
+    # unique match — committing the candidate and its dependents against one of several people.
+    matches = people.match_normalized_names(normalized)
+    if matches.total == 0 or matches.first is None:
         return IdentityMatch(MatchDisposition.UNMATCHED)
-    if count == 1:
-        # The count already says the answer is unique, so the page that names it reads one row.
-        page = people.page_by_normalized_names(normalized, 1)
-        if not page:
-            # The set emptied between the two reads. "Nobody" is the honest answer, and it is the
-            # answer a caller can act on; claiming a match without an id would not be.
-            return IdentityMatch(MatchDisposition.UNMATCHED)
-        return IdentityMatch(MatchDisposition.MATCHED, person_id=page[0].id, match_count=1)
-    return IdentityMatch(MatchDisposition.AMBIGUOUS, match_count=count)
+    if matches.total == 1:
+        return IdentityMatch(MatchDisposition.MATCHED, person_id=matches.first.id, match_count=1)
+    return IdentityMatch(MatchDisposition.AMBIGUOUS, match_count=matches.total)
 
 
 def person_candidate_matches(people: PersonReader, tokens: list[str], person_id: str) -> bool:
