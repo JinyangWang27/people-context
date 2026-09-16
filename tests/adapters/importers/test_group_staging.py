@@ -296,3 +296,46 @@ def test_no_raw_source_field_survives_onto_a_staged_row() -> None:
         stage.execute("notes", [_group(transcript="Alice said they were all in 6B together")])
 
     assert raised.value.code == "invalid_candidates"
+
+
+def test_a_durable_id_is_preserved_exactly_as_the_caller_gave_it() -> None:
+    """A restored id may carry whitespace the bundle's `Identifier` contract allows.
+
+    `find_groups` hands that id back verbatim, so trimming it here would make the group the user
+    confirmed unfindable at commit — or resolve it to a different row whose id is the trimmed
+    form. The evidence-id path already reasons this way; durable group and organization ids are
+    the same kind of value.
+    """
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+
+    batch = stage.execute("notes", [_group(group_id=" grp-1 ", organization_id=" org-1 ")])
+
+    staged = _candidates(review, batch.batch_id)["group"]
+    assert staged["group_id"] == " grp-1 "
+    assert staged["organization_id"] == " org-1 "
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_a_blank_durable_id_is_still_refused(blank: str) -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute("notes", [_group(group_id=blank)])
+
+
+def test_an_unknown_person_reference_is_reported_without_its_value() -> None:
+    """A `person_ref` is agent-authored text, and the MCP adapter returns `details` verbatim."""
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+    sentinel = "SOURCE-WORDING-MUST-NOT-LEAK-9f2a"
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_group(), _membership(person_ref=sentinel)])
+
+    reported = json.dumps({"message": str(raised.value), "details": raised.value.details})
+    assert sentinel not in reported
+    # Still located and named: which rule broke, how many refs, and which candidate broke it.
+    assert "unknown person reference" in reported
+    assert raised.value.details["details"][0]["loc"] == [1]

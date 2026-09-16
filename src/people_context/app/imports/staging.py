@@ -325,13 +325,17 @@ class CandidateStager:
             refs = _candidate_refs(candidate)
             unknown = sorted(set(refs) - references.keys())
             if unknown:
+                # The count and the candidate's position, never the values. A `person_ref` is
+                # free-form text the agent chose and can carry source wording like any other
+                # extracted string; the CLI already redacts this message, and the MCP adapter
+                # returns `details` verbatim, so the value must not be in it to begin with.
                 raise _invalid_candidates(
                     "unknown person reference",
                     details=[
                         {
                             "type": "value_error",
                             "loc": [index],
-                            "msg": f"unknown person refs: {', '.join(unknown)}",
+                            "msg": f"unknown person refs: {len(unknown)} not declared in this batch",
                         }
                     ],
                 )

@@ -688,7 +688,10 @@ group its batch committed in an earlier invocation, and re-deriving that by name
 alone needs no receipt, because it names nothing.
 
 Staging performs no name lookup for a group: `group_id` is the only way a candidate records into a group that
-already exists, so a caller resolves it through `find_groups` first. Commit writes groups before the memberships
+already exists, so a caller resolves it through `find_groups` first and passes the id back exactly as returned.
+`group_id` and `organization_id` are opaque identifiers preserved character for character, like an `evidence_id`,
+because they are matched against a stored row rather than read as text. A `group_id` or `organization_id` that no
+longer resolves leaves the candidate `unresolved` rather than failing the call. Commit writes groups before the memberships
 naming them and reports a membership whose group has not committed as `unresolved` rather than raising, so it
 stays committable on a later pass. `temporal_basis` is resolved at staging from the dates supplied — none is
 `unknown`, any is `period`, and `ongoing` is never inferred — and a declared basis its own dates contradict is

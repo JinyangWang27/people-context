@@ -42,23 +42,33 @@ The agent resolves both people, then checks whether the class already exists rat
 
 > Before I record it — do you already have that class stored? Let me look.
 
-`find_groups` for "Ridgemont" returns nothing. The agent says so and stages a new group rather than reusing a
-near-match it did not find:
+`find_groups` for "Ridgemont" returns nothing. The agent says so, and asks for the two things it would otherwise
+have to choose for itself:
 
-> Nothing stored yet, so I'll create the class as a new group and place both of them in it for that term.
+> Nothing stored yet, so this would be a new group. Two things before I write it. Does the class have a name or
+> number you'd recognise it by later — there could be several sixth-year classes at one school? And "September
+> through June" isn't a date I can store: `valid_from` and `valid_to` are days. Do you know the term dates, or
+> should I leave them off?
+
+> It was 6B. Term ran 1 September 2015 to 30 June 2016.
 
 **Staged.** One `group` — `name: "Class 6B, Ridgemont"`, `kind: class` — and two `group_membership` candidates,
-`role: student`, `valid_from: 2015-09-01`, `valid_to: 2016-06-30`. The user reviews the batch and commits it.
+`role: student`, `valid_from: 2015-09-01`, `valid_to: 2016-06-30`. Every one of those values came from the user.
+The user reviews the batch and commits it.
 
 Asked afterwards how the two are connected, `explain_shared_connections` returns a `derived_relation` labelled
 `classmates` with `temporal: overlap`, because the recorded terms prove a common day and both people held the
 student role.
 
 **Not done.** No relationship edge between Amara and Priya. The class is the evidence; a `relationship` would be a
-separate assertion nobody made.
+separate assertion nobody made. And nothing was chosen on the user's behalf: had they not known the section, the
+group would have been "Ridgemont sixth-year class" rather than a guessed number, and had they not known the term
+dates, the memberships would carry none and read as `unknown` — which is scenario 3, and a weaker result.
 
 **Lesson.** This is the only shape that earns the narrower label: one identified group, compatible roles, and
-dates that prove a shared day. Everything else in this document falls short of one of the three.
+dates that prove a shared day. Everything else in this document falls short of one of the three — and the asking
+is what earned it here. "September through June" is not a date range; turning it into 1 September and 30 June
+without checking would have manufactured the very precision the label then rests on.
 
 ## 2. The same school, different classes (English)
 
@@ -142,18 +152,24 @@ into something that sounds like a connection.
 
 > Mr Adeyemi taught 6B that year. Add him to the class.
 
-The agent records him in the class and says what changes and what does not:
+The agent looks the class up with `find_groups`, confirms it is the one from scenario 1, and says what changes
+and what does not:
 
-> Recorded — same class, same year, `role: teacher`. That won't make him and Amara classmates, though. The label
-> needs both people in the same role, and a teacher and a pupil sharing a room aren't peers.
+> That's the 6B I already have. I'll record him in that one, `role: teacher`. It won't make him and Amara
+> classmates, though. The label needs both people in the same role, and a teacher and a pupil sharing a room
+> aren't peers.
 
-**Staged.** One `group_membership`, `role: teacher`, with the same term dates as the students.
+**Staged.** Two candidates, not one. A `group` candidate carrying the confirmed `group_id` of the existing 6B —
+every `group_membership` names a `group` candidate in its own request, so reusing a stored group still takes one,
+and the `group_id` is what stops it creating a second 6B — and one `group_membership`, `role: teacher`, with the
+same term dates as the students.
 
 The lookup between him and Amara returns `shared_context` with `temporal: overlap` — the dates do prove a common
 day — and no label, because the roles differ.
 
 **Not done.** No `classmates`, and no relationship edge asserting he taught her. That would be a claim about the
-two of them, which the membership does not make.
+two of them, which the membership does not make. No second group either: the `group_id` is the whole difference
+between recording him in 6B and creating another class with the same name beside it.
 
 **Lesson.** Overlap alone is not the label. Role compatibility and established time are both required, and this is
 the case where one holds and the other does not.

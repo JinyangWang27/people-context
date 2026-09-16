@@ -118,6 +118,14 @@ GROUP_CAPABLE_STAGED_TYPES: Final[frozenset[str]] = frozenset({"group"})
 #: Canonical fields naming durable records rather than batch-local candidates.
 STAGED_DURABLE_REFERENCE_FIELDS: Final[tuple[str, ...]] = ("evidence_ids",)
 
+#: Canonical fields naming one durable *group* rather than a batch-local candidate (M28.3).
+#:
+#: Declared apart from the evidence ids above because it resolves against a different table: one
+#: set checked against both would let a group id satisfy itself through an observation. A group
+#: is erasable — `pctx forget record group:<id>` removes it and cascades its memberships — so a
+#: staged candidate naming one is exactly as danglable as a trait citing an erased observation.
+STAGED_DURABLE_GROUP_FIELDS: Final[tuple[str, ...]] = ("group_id",)
+
 #: What each staged type must carry for commit to resolve it. Commit indexes these directly, so a
 #: row missing one is not a candidate commit can decline — it is a row that would raise.
 REQUIRED_STAGED_REFERENCES: Final[dict[str, tuple[str, ...]]] = {
@@ -253,6 +261,15 @@ def staged_durable_references(candidate: dict[str, Any]) -> set[str]:
     for field_name in STAGED_DURABLE_REFERENCE_FIELDS:
         references |= identifier_list(candidate.get(field_name))
     return references
+
+
+def staged_durable_group_references(candidate: dict[str, Any]) -> set[str]:
+    """Return the durable group ids one persisted candidate names directly."""
+    return {
+        value
+        for field_name in STAGED_DURABLE_GROUP_FIELDS
+        if isinstance(value := candidate.get(field_name), str)
+    }
 
 
 def identifier_list(value: Any) -> set[str]:

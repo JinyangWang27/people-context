@@ -259,3 +259,40 @@ def test_nothing_the_source_did_not_say_reaches_a_durable_row(runtime: Applicati
     assert group.sensitivity in _VISIBLE
     assert membership.temporal_basis is TemporalBasis.UNKNOWN
     assert membership.period.valid_from is None and membership.period.valid_to is None
+
+
+def test_an_organization_that_no_longer_resolves_leaves_the_group_unresolved(
+    runtime: ApplicationRuntime,
+) -> None:
+    """`CreateGroup` refuses it, and letting that refusal escape would abort the whole commit.
+
+    `commit_import` turns only `ImportPipelineError` into a result, so an uncaught
+    `OrganizationNotFoundError` reaches the MCP caller as a tool failure and leaves an immutable
+    batch that can never be committed. Unresolved is the answer every other dependency gives.
+    """
+    batch = _stage(
+        runtime,
+        [_person("alice", "Alice Ahmed"), _group(organization_id="org-gone"), _membership("alice")],
+    )
+
+    result = runtime.use_cases.commit_import.execute(batch, [row.id for row in _rows(runtime, batch)])
+
+    assert result.unresolved_ids == _ids(runtime, batch, "group", "group_membership")
+    assert _count(runtime.conn, "identified_groups") == 0
+    # The people still committed: one unresolvable organization is not a failed batch.
+    assert result.committed_ids == _ids(runtime, batch, "person")
+
+
+def test_a_group_id_carrying_whitespace_still_finds_its_group(runtime: ApplicationRuntime) -> None:
+    """Whatever `find_groups` returned is what commit must match against, character for character."""
+    existing = runtime.use_cases.create_group.execute(
+        CreateGroupInput(name="Class 1, Grade 6", kind=GroupKind.CLASS)
+    )
+    padded = f" {existing.id} "
+    batch = _stage(runtime, [_person("alice", "Alice Ahmed"), _group(group_id=padded), _membership("alice")])
+
+    result = runtime.use_cases.commit_import.execute(batch, [row.id for row in _rows(runtime, batch)])
+
+    # The padded id names no row, so the candidate declines rather than creating a second group.
+    assert result.unresolved_ids == _ids(runtime, batch, "group", "group_membership")
+    assert _count(runtime.conn, "identified_groups") == 1

@@ -32,6 +32,7 @@ from people_context.domain.import_provenance import (
     check_staged_candidate,
     compose_claim_key,
     staged_candidate_references,
+    staged_durable_group_references,
     staged_durable_references,
     staged_evidence_references,
     staged_group_references,
@@ -1155,6 +1156,15 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         details.extend(
             f"staging row {row.id} cites an unbundled durable evidence record: {reference}"
             for reference in sorted(dangling)
+        )
+        # And the same for a group candidate that would record into an existing group. Forgetting
+        # a group deletes the staging rows naming it, so a row this installation exported never
+        # points at one the bundle omits; restoring one would leave a candidate that can only
+        # commit unresolved while its claim keeps suppressing a restage.
+        dangling_groups = staged_durable_group_references(row.candidate) - known["groups"]
+        details.extend(
+            f"staging row {row.id} names an unbundled durable group: {reference}"
+            for reference in sorted(dangling_groups)
         )
     details.extend(_emptied_session_details(imports))
     return details

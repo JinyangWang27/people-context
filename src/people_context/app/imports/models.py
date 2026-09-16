@@ -177,6 +177,19 @@ EvidenceReference = Annotated[
     AfterValidator(_non_blank_token),
 ]
 
+#: A durable record id a candidate names directly, preserved exactly as the caller gave it.
+#:
+#: Not `NonBlank`: that strips, and an id is an identity rather than text a person typed. The
+#: bundle's own `Identifier` contract accepts any non-blank string, whitespace included, so a
+#: restored id can legitimately carry it — and `find_groups` hands that exact id back. Trimming
+#: one here would make the group the user confirmed unfindable at commit, or resolve it to a
+#: different record whose id happens to be the trimmed form.
+DurableIdentifier = Annotated[
+    str,
+    StringConstraints(max_length=MAX_EVIDENCE_REF_CHARS),
+    AfterValidator(_non_blank_token),
+]
+
 
 def check_candidate_period(valid_from: date | None, valid_to: date | None) -> None:
     """Hold a candidate's date range to the rule its durable record already enforces.
@@ -385,9 +398,9 @@ class GroupCandidateInput(BaseModel):
     name: GroupName
     kind: GroupKind
     #: An existing organization this group sits under. Placement is context, never employment.
-    organization_id: NonBlank | None = None
+    organization_id: DurableIdentifier | None = None
     #: An existing group to record memberships against instead of creating another one.
-    group_id: NonBlank | None = None
+    group_id: DurableIdentifier | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
     #: Who said this group exists. See `FactCandidateInput.stated_by`; absent when unknown.
     stated_by: StatedBy | None = None

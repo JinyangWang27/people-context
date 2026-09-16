@@ -50,6 +50,9 @@ _CANDIDATE_REFERENCE_LISTS: tuple[str, ...] = (
 #: Staging fields that name a durable record rather than a batch-local candidate.
 _DURABLE_REFERENCE_LISTS: tuple[str, ...] = ("evidence_ids",)
 
+#: The same, for fields holding one durable id rather than a list of them.
+_DURABLE_REFERENCE_FIELDS: tuple[str, ...] = ("group_id",)
+
 
 @dataclass(frozen=True)
 class ImportCleanupPlan:
@@ -182,7 +185,13 @@ class ImportProvenanceCleaner:
         }
 
     def _durable_evidence_staging_ids(self, entity_targets: Sequence[tuple[str, str]]) -> set[str]:
-        """Return staged candidates citing an erased record as durable evidence."""
+        """Return staged candidates naming an erased record directly.
+
+        A trait cites evidence as a list of ids; a group candidate names one group it would
+        record into. Both are durable references, and a row left holding either after the record
+        is gone is a batch that stays reviewable and can only ever commit unresolved — while its
+        receipt's claim keeps suppressing the restage that would fix it.
+        """
         erased = {entity_id for _entity_type, entity_id in entity_targets}
         matched: set[str] = set()
         for entity_id in erased:
@@ -191,7 +200,7 @@ class ImportProvenanceCleaner:
                 if any(
                     entity_id in _as_ids(candidate.get(field_name))
                     for field_name in _DURABLE_REFERENCE_LISTS
-                ):
+                ) or any(candidate.get(field_name) == entity_id for field_name in _DURABLE_REFERENCE_FIELDS):
                     matched.add(row["id"])
         return matched
 

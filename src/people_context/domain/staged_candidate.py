@@ -244,13 +244,17 @@ class StagedGroup(StrictStagedModel):
     It is kept here rather than resolved at staging time because resolving it would mean a read
     whose answer could change before commit, and because a group deleted between the two is a
     candidate commit must decline — not one it silently redirects.
+
+    Both ids use the opaque identifier type rather than a stripped string, for the reason spelled
+    out on `EvidenceIdentifier`: an id is matched exactly against a durable row, and a restored
+    one may carry whatever the bundle's `Identifier` contract allowed.
     """
 
     type: Literal["group"]
     name: GroupName
     kind: GroupKind
-    organization_id: NonBlank | None = None
-    group_id: NonBlank | None = None
+    organization_id: EvidenceIdentifier | None = None
+    group_id: EvidenceIdentifier | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
     stated_by: StatedByText | None = None
 

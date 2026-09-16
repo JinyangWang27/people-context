@@ -970,7 +970,10 @@ Three rules shape the contract, and each is enforced rather than merely document
 - **Group identity is explicit.** Staging performs no name lookup, because M28.1 offers no get-or-create by name
   and no group merge exists to undo a wrong reuse. Absent `group_id`, commit creates a new group; present, it
   records into exactly that group, or leaves the candidate unresolved if the group is gone. Resolve an existing
-  group with `find_groups` and pass the id.
+  group with `find_groups` and pass back the id exactly as it was returned: `group_id` and `organization_id` are
+  opaque identifiers, preserved character for character rather than trimmed, because they are matched against a
+  stored row. An `organization_id` that no longer resolves leaves the group unresolved too, rather than aborting
+  the commit — the whole batch stays committable once the reference is corrected.
 - **Dates mean what they say.** `temporal_basis` is resolved at staging from the dates the source gave — none is
   `unknown`, any is `period`, and `ongoing` is never inferred — so review shows what the row asserts, and an
   absent bound reads as unknown rather than as open-ended. A membership whose declared basis contradicts its own
@@ -985,7 +988,14 @@ Three rules shape the contract, and each is enforced rather than merely document
 
 Both types opt into the M17 extraction bounds, participate in export and bootstrap restore as sync bundle
 **version 6**, and are erased with their person by hard forget — a member's erasure removes their placements and
-leaves the group candidate and everybody else's placements intact. Every version through 5 refuses the two types
+leaves the group candidate and everybody else's placements intact. Forgetting a *group* works the other way: it
+removes the commit mappings of the memberships that cascade with it, and any still-pending candidate naming it
+through `group_id`, because a candidate whose only possible target is gone could never commit and a bundle
+carrying one is refused.
+
+A refused batch names the rule that broke and the candidate that broke it, never the value: a `ref`, a
+`person_ref`, and a `group_ref` are all free-form text the agent chose, and the MCP adapter returns those
+diagnostics verbatim. Every version through 5 refuses the two types
 by name, because a discriminator picks the model before any field is inspected and a reader that could not resolve
 a group reference would restore a batch commit could never finish.
 

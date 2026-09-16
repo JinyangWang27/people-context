@@ -203,7 +203,9 @@ uses, and looks nothing up by name — a candidate records into an existing grou
 `group_id`, because no merge exists to undo a wrong reuse. Commit writes each group before the memberships that
 name it, through `create_group` and `add_group_membership` in one transaction, so an imported membership carries
 the same audit and changelog entries a recorded one does. A person's hard forget removes their staged membership
-candidates and leaves the group candidate standing, the same asymmetry the durable rows follow.
+candidates and leaves the group candidate standing, the same asymmetry the durable rows follow. Forgetting a group
+removes the commit mappings of its cascaded memberships and every pending candidate that named it, so no staged
+row outlives the only group it could have committed into.
 
 ### Trait evidence
 

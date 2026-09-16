@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from people_context.app._mutation import audit_mutation, transactional, unit_of_work_for
+from people_context.app._mutation import (
+    OrganizationNotFoundError,
+    audit_mutation,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.app.groups.commands import (
     AddGroupMembership,
     AddGroupMembershipInput,
@@ -494,6 +499,12 @@ class CommitImport:
         rather than trusted: a group deleted between staging and commit leaves the candidate
         unresolved, which a corrected batch can still fix, instead of silently creating a second
         group under the same name — the merge M28 deliberately does not offer.
+
+        An organization that no longer resolves is the same kind of answer. `CreateGroup` refuses
+        it before writing anything, and letting that refusal escape would abort the whole commit:
+        `commit_import` turns only `ImportPipelineError` into a result, so a caller would get a
+        tool failure and a batch whose rows are immutable and now uncommittable. Unresolved keeps
+        the promise every other dependency here makes — not yet, never wrong.
         """
         if self._create_group is None:
             return None
@@ -502,17 +513,22 @@ class CommitImport:
             if self._records is None or self._records.get_record("group", existing) is None:
                 return None
             return existing
-        group = self._create_group.execute(
-            CreateGroupInput(
-                name=row.candidate["name"],
-                kind=row.candidate["kind"],
-                organization_id=row.candidate.get("organization_id"),
-                sensitivity=row.candidate.get("sensitivity", "personal"),
-                source=row.source,
-                stated_by=row.candidate.get("stated_by"),
-            ),
-            transaction_id=transaction_id,
-        )
+        try:
+            group = self._create_group.execute(
+                CreateGroupInput(
+                    name=row.candidate["name"],
+                    kind=row.candidate["kind"],
+                    organization_id=row.candidate.get("organization_id"),
+                    sensitivity=row.candidate.get("sensitivity", "personal"),
+                    source=row.source,
+                    stated_by=row.candidate.get("stated_by"),
+                ),
+                transaction_id=transaction_id,
+            )
+        except OrganizationNotFoundError:
+            # Raised before any write, and the inner unit of work joins this transaction rather
+            # than owning it, so nothing already committed in this pass is disturbed.
+            return None
         return group.id
 
     def _trait_evidence_ids(

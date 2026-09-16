@@ -259,3 +259,30 @@ def test_the_guidance_keeps_context_label_and_assertion_distinct() -> None:
     assert "It is not evidence they know each other, are friends, or ever met." in text
     assert "A teacher and a pupil of one class are not classmates." in text
     assert "Report `unknown` as unknown rather than as \"probably\"" in text
+
+
+def test_the_worked_captures_stage_only_what_the_user_supplied() -> None:
+    """The examples are what an agent is judged against, so they must obey their own rules.
+
+    A scenario that quietly invents a class number or a term boundary teaches exactly the
+    behaviour the guidance forbids, and does it with more authority than the rule does.
+    """
+    text = _flowed(EXAMPLES_PATH)
+
+    # The section and the term dates are asked for and answered, not chosen by the agent.
+    assert "Does the class have a name or number you'd recognise it by later" in text
+    assert '"September through June" isn\'t a date I can store' in text
+    assert "It was 6B. Term ran 1 September 2015 to 30 June 2016." in text
+    assert "Every one of those values came from the user." in text
+
+
+def test_reusing_an_existing_group_still_stages_a_group_candidate() -> None:
+    """Every membership names a group candidate in its own request, existing group or not.
+
+    An example staging a lone membership would be refused with `unknown group reference` before
+    anything reached the store, so following it could not work.
+    """
+    text = _flowed(EXAMPLES_PATH)
+
+    assert "Two candidates, not one." in text
+    assert "A `group` candidate carrying the confirmed `group_id` of the existing 6B" in text

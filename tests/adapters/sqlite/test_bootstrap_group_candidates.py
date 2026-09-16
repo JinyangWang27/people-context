@@ -20,7 +20,12 @@ from pydantic import ValidationError
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.exports.sync_bundle import render_bundle_json
-from people_context.domain.sync_bundle import SYNC_BUNDLE_VERSION, parse_bundle_payload
+from people_context.domain.sync_bundle import (
+    SYNC_BUNDLE_VERSION,
+    InvalidBundleError,
+    parse_bundle_payload,
+    validate_bundle_document,
+)
 
 _NOW = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
 
@@ -227,3 +232,58 @@ def test_forgetting_an_imported_group_takes_its_memberships_mappings_with_it(
         destination.use_cases.restore_sync_bundle.execute(parsed)
     finally:
         destination.close()
+
+
+def test_forgetting_a_group_erases_pending_candidates_that_would_record_into_it(
+    runtime: ApplicationRuntime, tmp_path: Path
+) -> None:
+    """A pending candidate names the durable group through `group_id`, not a batch-local ref.
+
+    Left behind, it stays reviewable while the only thing it could commit into is gone, and the
+    bundle carrying it is refused because the group it names is not in the snapshot.
+    """
+    committed = _stage(runtime)
+    rows = runtime.use_cases.review_import.execute(committed).candidates
+    runtime.use_cases.commit_import.execute(committed, [row.id for row in rows])
+    group_id = next(
+        row["entity_id"]
+        for row in runtime.conn.execute("SELECT entity_type, entity_id FROM import_candidate_mappings").fetchall()
+        if row["entity_type"] == "group"
+    )
+    pending = runtime.use_cases.stage_candidates.execute(
+        "second-chat",
+        [
+            {"type": "person", "ref": "cara", "name": "Cara Diaz", "aliases": []},
+            {"type": "group", "ref": "class-1", "name": "Class 1, Grade 6", "kind": "class", "group_id": group_id},
+            {"type": "group_membership", "person_ref": "cara", "group_ref": "class-1", "role": "student"},
+        ],
+        source_kind="conversation",
+    ).batch_id
+
+    runtime.use_cases.forget.execute(f"group:{group_id}", "record")
+
+    remaining = [row.candidate["type"] for row in runtime.use_cases.review_import.execute(pending).candidates]
+    # The group candidate and the membership depending on it are gone; the unrelated person stays.
+    assert remaining == ["person"]
+
+    document = runtime.use_cases.export_sync_bundle.execute()
+    destination = build_runtime(tmp_path / "destination.db", clock=_Clock())
+    try:
+        parsed = destination.use_cases.restore_sync_bundle.parse(render_bundle_json(document))
+        destination.use_cases.restore_sync_bundle.execute(parsed)
+    finally:
+        destination.close()
+
+
+def test_a_bundle_naming_a_group_it_does_not_carry_is_refused(runtime: ApplicationRuntime) -> None:
+    """The document-level rule behind the cleanup above, checked directly."""
+    _stage(runtime)
+    payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
+    for row in payload["imports"]["staging"]:
+        if row["candidate"]["type"] == "group":
+            row["candidate"]["group_id"] = "grp-not-in-this-bundle"
+
+    with pytest.raises(InvalidBundleError) as raised:
+        validate_bundle_document(parse_bundle_payload(payload))
+
+    assert any("names an unbundled durable group" in detail for detail in raised.value.details)
