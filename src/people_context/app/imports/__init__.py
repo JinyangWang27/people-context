@@ -1,5 +1,11 @@
 """Import candidate, staging, review, and commit use cases."""
 
+from people_context.app.imports.amendment import (
+    REDACTED_FIELD,
+    BatchEdit,
+    ValidatedEdit,
+    batch_digest,
+)
 from people_context.app.imports.documents import (
     IMPORT_BATCH_FORMAT,
     IMPORT_BATCH_VERSION,
@@ -76,6 +82,8 @@ from people_context.app.imports.models import (
     CANDIDATE_MODELS,
     EXTRACTION_CANDIDATE_TYPES,
     MAX_CANDIDATE_REF_CHARS,
+    MAX_MATCH_CANDIDATE_NAME_CHARS,
+    MAX_MATCH_CANDIDATES,
     MAX_OBSERVATION_TEXT_BYTES,
     MAX_RELATIONSHIP_TYPE_CHARS,
     MAX_TRAIT_EVIDENCE_NOTE_BYTES,
@@ -89,6 +97,7 @@ from people_context.app.imports.models import (
     ImportReviewResult,
     ImportReviewRow,
     InteractionCandidateInput,
+    MatchCandidate,
     ObservationCandidateInput,
     PersonCandidateInput,
     RelationshipCandidateInput,
@@ -103,7 +112,13 @@ from people_context.app.imports.sources import (
     source_previously_redacted_error,
 )
 from people_context.app.imports.staging import CandidateStager, StageCandidates
-from people_context.app.imports.workflow import CommitImport, ImportContent, ReviewImport
+from people_context.app.imports.workflow import (
+    AmendStagedCandidate,
+    CommitImport,
+    ImportContent,
+    ReviewImport,
+    WithdrawStagedCandidates,
+)
 from people_context.domain.import_provenance import (
     MAX_CONTRACT_REVISION_CHARS,
     MAX_SOURCE_KIND_CHARS,
@@ -146,6 +161,8 @@ __all__ = [
     "MAX_EXTRACTION_PAYLOAD_BYTES",
     "MAX_EXTRACTION_SOURCE_CHARS",
     "MAX_EXTRACTION_STRING_BYTES",
+    "MAX_MATCH_CANDIDATES",
+    "MAX_MATCH_CANDIDATE_NAME_CHARS",
     "MAX_OBSERVATION_TEXT_BYTES",
     "MAX_RELATIONSHIP_TYPE_CHARS",
     "MAX_SOURCE_KIND_CHARS",
@@ -161,7 +178,10 @@ __all__ = [
     "TOO_MANY_CANDIDATES",
     "UNBOUNDED_IMPORT_BUDGET",
     "UNKNOWN_SOURCE_SESSION",
+    "REDACTED_FIELD",
     "AffiliationCandidateInput",
+    "AmendStagedCandidate",
+    "BatchEdit",
     "CandidateAlias",
     "CandidateStager",
     "CommitImport",
@@ -182,6 +202,7 @@ __all__ = [
     "ImportSourcesDocument",
     "InteractionCandidateInput",
     "ListImportSources",
+    "MatchCandidate",
     "MatchDisposition",
     "ObservationCandidateInput",
     "PersonCandidateInput",
@@ -197,6 +218,9 @@ __all__ = [
     "SourceSummary",
     "StageCandidates",
     "TraitCandidateInput",
+    "ValidatedEdit",
+    "WithdrawStagedCandidates",
+    "batch_digest",
     "build_source_claim",
     "candidate_identity_tokens",
     "contains_extraction_candidate",

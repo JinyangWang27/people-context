@@ -150,6 +150,24 @@ def enforce_extraction_request_limits(source: str, candidates: list[Any]) -> Non
         )
 
 
+def enforce_patch_limits(patch: Any) -> None:
+    """Bound one amendment patch exactly as a staging request bounds its candidates.
+
+    An amendment is the reviewer finishing an extraction, so what a patch may carry is what a
+    staged candidate may carry: the same 8 KiB per string and the same 1 MiB of JSON. The checks
+    run on the raw patch, before it is merged or parsed, for the same reason the request limits do
+    — the point is to refuse an oversized payload rather than to parse one first.
+    """
+    _reject_oversized_strings(patch)
+    payload_bytes = len(_canonical_payload([patch]).encode("utf-8"))
+    if payload_bytes > MAX_EXTRACTION_PAYLOAD_BYTES:
+        raise resource_limit_error(
+            CANDIDATE_PAYLOAD_TOO_LARGE,
+            f"an amendment carries at most {MAX_EXTRACTION_PAYLOAD_BYTES} bytes of patch JSON",
+            limit=MAX_EXTRACTION_PAYLOAD_BYTES,
+        )
+
+
 def _canonical_payload(candidates: list[Any]) -> str:
     """Serialize the complete candidate array deterministically for measurement only.
 

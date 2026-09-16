@@ -284,15 +284,16 @@ class SqliteImportSourceStore:
     def _pending_count(self, batch_id: str | None) -> int:
         """Count what is actually left to review.
 
-        Committing a batch does not delete its rows, it marks them `committed`, so counting rows
-        would call a fully committed batch reviewable and point the caller at a review that has
-        nothing to decide. What the batch *holds* is still every row — that is the count worth
-        reporting — but what remains reviewable is only the pending ones.
+        Neither committing a batch nor withdrawing from it deletes rows: both move a row to a
+        terminal status. Counting rows would therefore call a finished batch reviewable and point
+        the caller at a review that has nothing to decide. What the batch *holds* is still every
+        row — that is the count worth reporting — but what remains reviewable is only the pending
+        ones.
         """
         if batch_id is None:
             return 0
         row = self._conn.execute(
-            "SELECT COUNT(*) AS total FROM import_staging WHERE batch_id = ? AND status <> 'committed'",
+            "SELECT COUNT(*) AS total FROM import_staging WHERE batch_id = ? AND status = 'pending'",
             (batch_id,),
         ).fetchone()
         return int(row["total"])

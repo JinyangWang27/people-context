@@ -378,12 +378,18 @@ class ImportProvenanceCleaner:
         )
 
     def _surviving_reviewable_staging(self, batch_id: str | None, removed_staging_ids: set[str]) -> bool:
+        """Whether this batch still owes a review decision after the planned erasure.
+
+        Only a `pending` row does. A withdrawn row is listed and erasable like a pending one, but
+        it is a decision already taken, so it no longer keeps a source from being emptied — the
+        same rule the receipt status and the bundle's reviewability check follow.
+        """
         if batch_id is None:
             return False
         return any(
             row["id"] not in removed_staging_ids
             for row in self._conn.execute(
-                "SELECT id FROM import_staging WHERE batch_id = ? AND status <> 'committed'",
+                "SELECT id FROM import_staging WHERE batch_id = ? AND status = 'pending'",
                 (batch_id,),
             ).fetchall()
         )

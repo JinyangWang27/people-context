@@ -28,7 +28,13 @@ from people_context.adapters.sqlite import (
 )
 from people_context.app.exports import ExportSyncBundle
 from people_context.app.exports.sync_bundle import render_bundle_json
-from people_context.app.imports import CandidateStager, CommitImport, ReviewImport, StageCandidates
+from people_context.app.imports import (
+    CandidateStager,
+    CommitImport,
+    ReviewImport,
+    StageCandidates,
+    WithdrawStagedCandidates,
+)
 from people_context.app.people import MergePeople, RememberPerson
 from people_context.app.records import (
     RecordFact,
@@ -67,7 +73,7 @@ class _Origin:
         self.staging = SqliteImportStagingStore(self.conn)
         self.sources = SqliteImportSourceStore(self.conn)
         self.stage = StageCandidates(CandidateStager(self.people, self.staging, clock, self.sources, self.audit))
-        self.review = ReviewImport(self.staging)
+        self.review = ReviewImport(self.staging, self.people)
         self.commit = CommitImport(
             self.people,
             self.staging,
@@ -87,6 +93,9 @@ class _Origin:
             self.sources,
             self.audit,
             clock,
+        )
+        self.withdraw = WithdrawStagedCandidates(
+            self.staging, self.review, self.people, self.sources, self.audit, clock
         )
         self.merge = MergePeople(self.people, SqliteMergeStore(self.conn), clock, self.audit)
         self.forget = SqliteForgetStore(self.conn)
@@ -164,7 +173,7 @@ def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> N
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 6
+    assert document.version == SYNC_BUNDLE_VERSION == 7
     assert [session.id for session in document.imports.source_sessions] == [batch.source_session_id]
     assert len(document.imports.candidate_mappings) == 1
     # The batch is only partially committed, so its reviewable rows travel.
@@ -428,7 +437,7 @@ def test_a_version_one_bundle_carrying_version_two_state_is_refused(tmp_path: Pa
     assert any("imports" in detail for detail in excinfo.value.details)
 
 
-@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5, 6])
 def test_a_non_empty_import_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
     origin = _Origin(tmp_path / "origin.db")
     origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
@@ -509,7 +518,7 @@ def test_attribution_on_a_reviewable_staging_row_survives_a_real_round_trip(tmp_
     origin.commit.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "person")])
 
     document = _round_trip(origin.export())
-    assert document.version == SYNC_BUNDLE_VERSION == 6
+    assert document.version == SYNC_BUNDLE_VERSION == 7
 
     conn, outcome = _restore(document, tmp_path / "destination.db")
     try:
@@ -522,6 +531,91 @@ def test_attribution_on_a_reviewable_staging_row_survives_a_real_round_trip(tmp_
         assert fact["stated_by"] == "her CV"
     finally:
         conn.close()
+
+
+def test_a_withdrawn_candidate_and_its_pending_dependents_survive_a_real_round_trip(
+    tmp_path: Path,
+) -> None:
+    """M29.1's `rejected` status is why the bundle is version 7, so it has to reach the restore.
+
+    Leaving a withdrawn row out was the obvious alternative and is wrong: its pending dependents
+    keep referencing it, so omitting it would trip the bundle's own batch-local reference check,
+    and rewriting them on export would change what the reviewer left pending.
+    """
+    origin = _Origin(tmp_path / "origin.db")
+    batch = origin.stage.execute(
+        "nadia-cv",
+        [
+            _person("n", "Nadia Okonkwo", "nadia@example.com"),
+            {"type": "fact", "person_ref": "n", "predicate": "city", "value": "Lisbon"},
+            {"type": "affiliation", "person_ref": "n", "org": "Globex", "role": "Engineer"},
+        ],
+        source_kind="cv",
+        content_digest=_DIGEST,
+    )
+    rows = origin.review.execute(batch.batch_id).candidates
+    withdrawn = next(row.id for row in rows if row.candidate["type"] == "affiliation")
+    origin.withdraw.execute(batch.batch_id, [withdrawn])
+
+    document = _round_trip(origin.export())
+    assert document.version == SYNC_BUNDLE_VERSION == 7
+
+    conn, outcome = _restore(document, tmp_path / "destination.db")
+    try:
+        assert outcome.staged_candidates == len(rows)
+        restored = conn.execute(
+            "SELECT id, status FROM import_staging ORDER BY created_at, id"
+        ).fetchall()
+        assert [(row["id"], row["status"]) for row in restored] == [
+            (row.id, "rejected" if row.id == withdrawn else "pending") for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+def test_a_withdrawn_receipt_survives_a_real_round_trip_carrying_no_staging(tmp_path: Path) -> None:
+    """A batch withdrawn whole leaves a terminal receipt that owns nothing, and that restores."""
+    origin = _Origin(tmp_path / "origin.db")
+    batch = origin.stage.execute(
+        "nadia-cv",
+        [_person("n", "Nadia Okonkwo", "nadia@example.com")],
+        source_kind="cv",
+        content_digest=_DIGEST,
+    )
+    origin.withdraw.execute(batch.batch_id, [row.id for row in origin.review.execute(batch.batch_id).candidates])
+
+    document = _round_trip(origin.export())
+    assert [session.status for session in document.imports.source_sessions] == ["withdrawn"]
+    assert document.imports.staging == []
+
+    conn, _outcome = _restore(document, tmp_path / "destination.db")
+    try:
+        assert conn.execute("SELECT status FROM import_source_sessions").fetchone()["status"] == "withdrawn"
+        assert conn.execute("SELECT COUNT(*) AS total FROM import_staging").fetchone()["total"] == 0
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("version", [2, 3, 4, 5, 6])
+def test_every_version_predating_m29_1_refuses_a_withdrawn_staging_row(
+    tmp_path: Path, version: int
+) -> None:
+    origin = _Origin(tmp_path / "origin.db")
+    batch = origin.stage.execute(
+        "nadia-cv",
+        [
+            _person("n", "Nadia Okonkwo", "nadia@example.com"),
+            {"type": "fact", "person_ref": "n", "predicate": "city", "value": "Lisbon"},
+        ],
+        source_kind="cv",
+        content_digest=_DIGEST,
+    )
+    rows = origin.review.execute(batch.batch_id).candidates
+    origin.withdraw.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "fact")])
+    payload = _downgraded(origin.export(), version)
+
+    with pytest.raises(InvalidBundleError):
+        _parse(json.dumps(payload))
 
 
 def test_a_version_three_document_refuses_a_staging_row_naming_who_asserted_it(tmp_path: Path) -> None:
