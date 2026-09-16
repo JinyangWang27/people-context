@@ -8,6 +8,7 @@ than thousands of materialized records.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -17,7 +18,7 @@ import pytest
 
 from people_context.adapters.semantic_indexing import IndexingPeopleRepository
 from people_context.adapters.sqlite import SqliteImportStagingStore, SqlitePeopleRepository, open_db
-from people_context.adapters.sqlite.repository import _matching_people_sql
+from people_context.adapters.sqlite.repository import matching_people_sql
 from people_context.app.imports.identity import (
     MatchDisposition,
     collision_page,
@@ -194,9 +195,10 @@ def test_the_matching_queries_use_both_normalized_name_indexes(conn: sqlite3.Con
     candidate and again per ambiguous row at review, so the cost was the whole store times the
     batch. Asserting the plan is the only way to keep that from coming back unnoticed.
     """
+    tokens = json.dumps(["a", "b"])
     plan = [
         row["detail"]
-        for row in conn.execute("EXPLAIN QUERY PLAN " + _matching_people_sql(2), ("a", "b", "a", "b"))
+        for row in conn.execute("EXPLAIN QUERY PLAN " + matching_people_sql(), (tokens, tokens))
     ]
 
     assert any("idx_persons_canonical_norm" in step for step in plan), plan
@@ -315,3 +317,69 @@ class _NullUpdater:
 
     def remove_person(self, person_id: str) -> None:  # pragma: no cover - never reached by reads
         raise AssertionError("a read must not refresh the index")
+
+
+def test_a_candidate_with_more_handles_than_sqlite_takes_parameters_still_matches(
+    conn: sqlite3.Connection,
+) -> None:
+    """Regression: one bound parameter per token crossed SQLite's variable ceiling.
+
+    A person candidate may carry thousands of handle aliases well inside the staging request
+    limits, and each token was bound twice — once per branch of the union. Past roughly 16,000
+    aliases that raised `OperationalError: too many SQL variables`, which reaches the CLI as a
+    traceback and MCP as a tool failure, where both owe a structured refusal.
+    """
+    repo = SqlitePeopleRepository(conn)
+    wanted = "01M29MANYTOKENS00000000000001"
+    repo.save_person(
+        Person(
+            id=wanted,
+            canonical_name="Ada Lovelace",
+            aliases=[Alias(value="ada@x.test", kind=AliasKind.HANDLE)],
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    conn.commit()
+    limit = conn.getlimit(sqlite3.SQLITE_LIMIT_VARIABLE_NUMBER)
+    tokens = [f"handle-{index}@x.test" for index in range(limit)] + ["ada@x.test"]
+
+    matches = repo.match_normalized_names(tokens)
+
+    assert matches.total == 1
+    assert matches.first is not None and matches.first.id == wanted
+    assert repo.matches_normalized_names(wanted, tokens) is True
+    assert [match.id for match in repo.page_by_normalized_names(tokens, 10)] == [wanted]
+
+
+def test_the_staging_store_reserves_the_write_lock_before_it_reads(tmp_path: Path) -> None:
+    """Amend, withdraw, and commit all read the batch and then decide from what they read.
+
+    A deferred `BEGIN` takes the lock at the first write, which is after the decision, so a
+    concurrent writer could land in between and the promised `batch_changed` refusal would surface
+    as a SQLite busy error instead. The staging store supplies the reserving boundary itself, so
+    the guarantee does not depend on a source store being wired to provide one.
+
+    Asserted by behaviour rather than by the statement issued: while this boundary is open, a
+    second connection cannot write. Under a deferred `BEGIN` it could.
+    """
+    path = tmp_path / "reserving.db"
+    holder = open_db(path)
+    contender = open_db(path)
+    contender.execute("PRAGMA busy_timeout = 0")
+    store = SqliteImportStagingStore(holder)
+    try:
+        with store.unit_of_work, pytest.raises(sqlite3.OperationalError, match="locked"):
+            contender.execute(
+                "INSERT INTO import_staging (id, batch_id, source, candidate_json, status, created_at)"
+                " VALUES ('x', 'b', 's', '{}', 'pending', '2026-09-16T09:00:00+00:00')"
+            )
+        # And once it closes, the same write goes through.
+        contender.execute(
+            "INSERT INTO import_staging (id, batch_id, source, candidate_json, status, created_at)"
+            " VALUES ('x', 'b', 's', '{}', 'pending', '2026-09-16T09:00:00+00:00')"
+        )
+        contender.commit()
+    finally:
+        contender.close()
+        holder.close()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import sqlite3
 from datetime import datetime
@@ -25,19 +26,27 @@ _LIKE_SCORE_ALIAS = 0.4
 #: naturally and plans terribly: SQLite cannot satisfy a disjunction spanning two tables from
 #: either index, so it scans `persons` end to end and probes aliases once per row. This form lets
 #: `idx_persons_canonical_norm` and `idx_aliases_value_norm` each serve their own branch, and
-#: `UNION` does the deduplication the `DISTINCT` used to. It matters because this runs once per
+#: `UNION` does the deduplication a `DISTINCT` used to. It matters because this runs once per
 #: staged person candidate and again per ambiguous row at review, so a scan here costs the size
 #: of the whole store times the size of the batch.
+#:
+#: The tokens arrive as one JSON array rather than one bound parameter each. A person candidate
+#: may legitimately carry thousands of handle aliases inside the staging request limits, and
+#: binding each token twice — once per branch — would cross SQLite's variable ceiling and raise
+#: `OperationalError` where this boundary owes a structured refusal. `json_each` is two parameters
+#: whatever the token count, and the planner still drives both indexes from it.
 _MATCHING_PEOPLE_SQL = """
     SELECT id, canonical_name{total} FROM (
         SELECT p.id AS id, p.canonical_name AS canonical_name
         FROM persons p
-        WHERE p.deleted_at IS NULL AND p.canonical_name_normalized IN ({placeholders})
+        WHERE p.deleted_at IS NULL
+          AND p.canonical_name_normalized IN (SELECT value FROM json_each(?))
         UNION
         SELECT p.id AS id, p.canonical_name AS canonical_name
         FROM aliases a
         JOIN persons p ON p.id = a.person_id
-        WHERE p.deleted_at IS NULL AND a.value_normalized IN ({placeholders})
+        WHERE p.deleted_at IS NULL
+          AND a.value_normalized IN (SELECT value FROM json_each(?))
     )
 """
 
@@ -169,12 +178,12 @@ class SqlitePeopleRepository:
         exists to prevent. `COUNT(*) OVER ()` carries the total beside the row it selects, so both
         come from one snapshot and cannot disagree.
         """
-        tokens = _distinct_tokens(normalized)
-        if not tokens:
+        tokens = _token_array(normalized)
+        if tokens is None:
             return PersonNameMatches(total=0, first=None)
         row = self._conn.execute(
-            f"{_matching_people_sql(len(tokens), total=True)} ORDER BY canonical_name, id LIMIT 1",  # noqa: S608 - bound placeholders only
-            (*tokens, *tokens),
+            f"{matching_people_sql(total=True)} ORDER BY canonical_name, id LIMIT 1",
+            (tokens, tokens),
         ).fetchone()
         if row is None:
             return PersonNameMatches(total=0, first=None)
@@ -189,12 +198,12 @@ class SqlitePeopleRepository:
         The order is stated rather than incidental so that the same collision projects the same
         page on every read, and a truncated list truncates the same way twice.
         """
-        tokens = _distinct_tokens(normalized)
-        if not tokens or limit <= 0:
+        tokens = _token_array(normalized)
+        if tokens is None or limit <= 0:
             return []
         rows = self._conn.execute(
-            f"{_matching_people_sql(len(tokens))} ORDER BY canonical_name, id LIMIT ?",  # noqa: S608 - bound placeholders only
-            (*tokens, *tokens, limit),
+            f"{matching_people_sql()} ORDER BY canonical_name, id LIMIT ?",
+            (tokens, tokens, limit),
         ).fetchall()
         return [PersonNameMatch(id=row["id"], canonical_name=row["canonical_name"]) for row in rows]
 
@@ -205,12 +214,12 @@ class SqlitePeopleRepository:
         checked against the matcher's *whole* set, not against the page that was displayed, so a
         person beyond the display cap is still a legal choice.
         """
-        tokens = _distinct_tokens(normalized)
-        if not tokens:
+        tokens = _token_array(normalized)
+        if tokens is None:
             return False
         row = self._conn.execute(
-            f"SELECT 1 FROM ({_matching_people_sql(len(tokens))}) WHERE id = ? LIMIT 1",  # noqa: S608 - bound placeholders only
-            (*tokens, *tokens, person_id),
+            f"SELECT 1 FROM ({matching_people_sql()}) WHERE id = ? LIMIT 1",  # noqa: S608 - a fixed constant
+            (tokens, tokens, person_id),
         ).fetchone()
         return row is not None
 
@@ -320,19 +329,23 @@ def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _distinct_tokens(normalized: list[str]) -> list[str]:
-    """Return the non-blank normalized tokens, deduplicated, order preserved."""
-    return list(dict.fromkeys(token for token in normalized if token))
+def _token_array(normalized: list[str]) -> str | None:
+    """Return the non-blank normalized tokens as one JSON array, or None when there are none.
+
+    None rather than an empty array, because an empty token set is not a query to run: every
+    caller treats it as "nobody", and sending it would ask the database a question with one
+    answer.
+    """
+    tokens = list(dict.fromkeys(token for token in normalized if token))
+    if not tokens:
+        return None
+    return json.dumps(tokens)
 
 
-def _matching_people_sql(token_count: int, *, total: bool = False) -> str:
-    """Return the matching-people query bound to a fixed number of token placeholders.
+def matching_people_sql(*, total: bool = False) -> str:
+    """Return the matching-people query.
 
     `total` adds the size of the whole match set beside each row, so a caller that needs both the
     count and one row reads them from a single snapshot instead of two statements.
     """
-    placeholders = ", ".join("?" * token_count)
-    return _MATCHING_PEOPLE_SQL.format(
-        placeholders=placeholders,
-        total=", COUNT(*) OVER () AS total" if total else "",
-    )
+    return _MATCHING_PEOPLE_SQL.format(total=", COUNT(*) OVER () AS total" if total else "")

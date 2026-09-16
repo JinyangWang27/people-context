@@ -47,8 +47,17 @@ class SqliteImportStagingStore:
 
     @property
     def unit_of_work(self) -> SqliteUnitOfWork:
-        """Return a join-safe transaction boundary so batch commits are atomic."""
-        return SqliteUnitOfWork(self._conn)
+        """Return a join-safe, write-reserving transaction boundary.
+
+        Every boundary that takes this one reads the batch and then decides what to write from
+        what it read: commit resolves dependants through the rows it just listed, and amend and
+        withdraw check the caller's `expected_batch_digest` against them. A deferred `BEGIN` takes
+        the write lock at the first write instead, which is after the decision — so a concurrent
+        writer could slip in between, and the promised `batch_changed` refusal would surface as a
+        SQLite busy or snapshot error instead. Reserving up front is what makes that promise true
+        even when no source store is wired to supply its own reserving boundary.
+        """
+        return SqliteUnitOfWork(self._conn, immediate=True)
 
     def stage_batch(self, rows: list[StagedImportRow]) -> None:
         with SqliteUnitOfWork(self._conn):
