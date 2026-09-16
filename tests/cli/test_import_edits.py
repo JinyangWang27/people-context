@@ -214,6 +214,23 @@ def test_naming_a_withdrawn_candidate_in_accept_refuses_the_whole_commit(
     assert _statuses(db_file) == [(ids[0], "pending"), (ids[1], "rejected")]
 
 
+def test_a_refused_rejection_leaves_stdout_empty_and_every_row_pending(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    batch_id, ids = _stage(db_file, tmp_path, capsys)
+
+    code = cli.main(
+        ["--db", str(db_file), "import", "reject", batch_id, ids[0], "01JUNKNOTINTHISBATCH000000", "--json"]
+    )
+
+    assert code == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("Error: import reject failed:")
+    assert _statuses(db_file) == [(ids[0], "pending"), (ids[1], "pending")]
+
+
 def test_rejecting_every_candidate_leaves_the_receipt_terminally_withdrawn(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -196,6 +196,58 @@ def test_a_refusal_redacts_an_undeclared_key_because_it_is_untrusted_text(
     assert private not in str(raised.value.details)
 
 
+def test_a_patch_restating_the_same_type_is_accepted(runtime: ApplicationRuntime) -> None:
+    """`type` is immutable, not unmentionable.
+
+    A round-tripped candidate carries its own discriminator, so refusing a patch that merely
+    repeats it would make the obvious "edit this object and send it back" flow fail on every row.
+    """
+    batch_id, ids = _simple_batch(runtime)
+
+    runtime.use_cases.amend_staged_candidate.execute(
+        batch_id, ids[1], {"type": "affiliation", "role": "Staff Engineer"}
+    )
+
+    assert _candidate(runtime, batch_id, ids[1])["role"] == "Staff Engineer"
+
+
+def test_choosing_a_matched_person_on_a_candidate_that_has_no_identity_is_refused(
+    runtime: ApplicationRuntime,
+) -> None:
+    batch_id, ids = _simple_batch(runtime)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(
+            batch_id, ids[1], {"matched_person_id": "01M29PERSONANY0000000000001"}
+        )
+
+    assert raised.value.details["details"][0]["loc"] == [ids[1], "matched_person_id"]
+
+
+def test_amending_a_legacy_row_keeps_the_matcher_it_was_staged_under(
+    runtime: ApplicationRuntime,
+) -> None:
+    """A row staged before the ambiguity-preserving matcher is re-derived the way it was made.
+
+    Re-deriving it with today's matcher would let an amendment silently change an answer nobody
+    amended — the same reason commit's own re-match branches on the stored disposition.
+    """
+    existing = _save_person(runtime, "01M29PERSONLEGACY00000000001", "Tomasz Wozniak")
+    batch = runtime.use_cases.stage_candidates.execute(
+        "review",
+        [_person("p1", "Nadia Okonkwo"), {"type": "fact", "person_ref": "p1", "predicate": "c", "value": "v"}],
+        strict_identity=False,
+    )
+    person_id = _ids(runtime, batch.batch_id)[0]
+    assert "match_disposition" not in _candidate(runtime, batch.batch_id, person_id)
+
+    runtime.use_cases.amend_staged_candidate.execute(batch.batch_id, person_id, {"name": "Tomasz Wozniak"})
+
+    amended = _candidate(runtime, batch.batch_id, person_id)
+    assert amended["matched_person_id"] == existing
+    assert "match_disposition" not in amended
+
+
 def test_amending_a_committed_row_is_refused_as_not_pending(runtime: ApplicationRuntime) -> None:
     batch_id, ids = _simple_batch(runtime)
     runtime.use_cases.commit_import.execute(batch_id, ids)

@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from people_context.app.imports.identity import (
     MatchDisposition,
     candidate_identity_tokens,
+    collision_page,
     match_person_candidate,
     person_candidate_matches,
 )
@@ -182,10 +183,8 @@ def project_match_candidates(
     of the person table rather than a second place identity lives.
     """
     tokens = candidate_identity_tokens(str(candidate["name"]), list(candidate.get("aliases", [])))
-    normalized = [value for token in tokens if (value := normalize_name(token))]
-    if not normalized:
-        return [], False
-    page = people.page_by_normalized_names(normalized, MAX_MATCH_CANDIDATES + 1)
+    # One entry past the cap is all the evidence the truncation flag needs.
+    page = collision_page(people, tokens, MAX_MATCH_CANDIDATES + 1)
     truncated = len(page) > MAX_MATCH_CANDIDATES
     projected: list[dict[str, Any]] = []
     for match in page[:MAX_MATCH_CANDIDATES]:
