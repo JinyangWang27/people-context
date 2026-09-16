@@ -130,21 +130,37 @@ even when the user's own sentence ran them together.
 
 > Dana Okafor was at Globex from 2018 to 2020, and Marcus Hale started there in 2022.
 
-The agent records both and then reads the result back without softening it:
+The agent does not reach for a group at all, because none was named:
 
-> They were both at Globex, but not at the same time — Dana left in 2020 and Marcus arrived in 2022. If you want
-> an introduction, the shared ground is the place, not the people.
+> That's two employments, which are affiliations rather than a shared group — "worked at the same company" isn't
+> a room they were both in. If there was a particular team, department, or club they both belonged to, tell me
+> and I'll record that; otherwise I'll record the two roles and leave it there.
 
-**Staged.** A `group` for the Globex engineering team, `kind: team`, and two `group_membership` candidates with the
-dates as given.
+> They were both in the Globex climbing club. Dana the whole time she was there, Marcus since he joined — I can
+> get you the exact dates if you need them.
 
-The lookup returns one connection with `temporal: disjoint` and no label.
+> Please, since with dates I can say whether they ever overlapped.
 
-**Not done.** The agent does not suggest they might know each other through people who stayed, and stages no edge
-to anyone who did. A common person is not shared group evidence.
+> Dana 3 September 2018 to 28 August 2020. Marcus from 11 April 2022.
+
+**Staged.** A `group` — `name: "Globex climbing club"`, `kind: club` — and two `group_membership` candidates with
+the days the user gave: Dana `period` and closed, Marcus `ongoing` from his start, because he said he is still in
+it. The two employments stay affiliations and are recorded separately.
+
+The lookup returns one connection with `temporal: disjoint` and no label: Dana's last day precedes Marcus's
+first, so the recorded bounds exclude a common day.
+
+> They were both in the Globex climbing club, but never at the same time — Dana left in August 2020 and Marcus
+> joined in April 2022. If you want an introduction, the shared ground is the club, not the people.
+
+**Not done.** No group for Globex itself. The agent does not suggest they might know each other through people
+who stayed, and stages no edge to anyone who did — a common person is not shared group evidence. And had the user
+said no club, nothing here would have been staged at all: two affiliations to one employer support no shared
+group, and inventing "the Globex engineering team" to hold them would manufacture a room neither of them named.
 
 **Lesson.** `disjoint` is a real answer and a useful one. Reporting it plainly is more helpful than hedging it
-into something that sounds like a connection.
+into something that sounds like a connection — and getting there needed a group the user actually named and
+bounds precise enough to exclude an overlap.
 
 ## 5. A teacher and a pupil (English)
 
@@ -187,13 +203,24 @@ The agent records the team and then refuses the inference the placement invites:
 > those separately if you want them stored.
 
 **Staged.** A `group`, `kind: team`, `organization_id` naming the existing Northwind organization, and one
-`group_membership` per participant with `role: participant`.
+`group_membership` per participant with `role: participant`. Nobody gave dates and the agent asked for none, so
+every membership carries `temporal_basis: unknown`.
 
-The lookup between Dana and a contractor returns a `derived_relation` labelled `teammates` where the recorded
-dates overlap — participants in one team is exactly the supported case — and `shared_context` where they do not.
+The lookup between Dana and a contractor therefore returns `shared_context` with `temporal: unknown` — not
+`teammates`. Participants in one team is the right *role* pairing for that label, but the label also needs dates
+that prove a common day, and this conversation established none:
+
+> They were both on the Northwind migration team. Nothing recorded says when either of them joined or left, so I
+> can't tell you from what's stored whether they were on it at the same time.
+
+Asked for something stronger, the agent says what it would take rather than supplying it:
+
+> If you know roughly when each of them was on it, I can record that and the answer gets sharper. I'm not going
+> to guess the dates to make the answer sound better.
 
 **Not done.** No affiliation to Northwind for anyone. Organizational placement is context and creates no
-employment, no department membership, and no person-to-person tie.
+employment, no department membership, and no person-to-person tie. No `teammates` label either: the roles were
+right and the timing was unknown, and both have to hold.
 
 **Lesson.** Placement under an organization and membership in it are different records, and conflating them would
 put a contractor on a payroll they were never on.
@@ -204,14 +231,25 @@ put a contractor on a payroll they were never on.
 
 > 我、林书宁和高维安从初一一直同班到初三毕业，2015到2018年。
 
-> That's the three of you, and 2015 through 2018. I'll record it as one continuing cohort with that span — not as
-> three separate class placements, because you've told me you stayed together, not which class number each year
-> was.
+> That's the three of you, as one continuing cohort — not three separate class placements, because you've told me
+> you stayed together, not which class number each year was. On the dates: I can only store whole days, and
+> "2015 to 2018" is years. Do you know the term start and the graduation date, or shall I leave the dates off?
+
+> 具体日子记不得了。
+
+> Then I'll leave them off. The cohort and the three of you are recorded; the timing stays unknown rather than
+> becoming a September date I picked.
 
 > 对，就是这样。
 
-**Staged.** One `group`, `kind: cohort`, and three `group_membership` candidates with `role: student`,
-`valid_from: 2015`-dated and `valid_to: 2018`-dated as the user gave them.
+**Staged.** One `group`, `kind: cohort`, and three `group_membership` candidates with `role: student` and no
+dates, so `temporal_basis` is `unknown`. The years the user mentioned are in the conversation and nowhere else.
+
+That has a cost, and the agent says so rather than hiding it:
+
+> One consequence: asked later whether the three of you were classmates, what's stored supports the shared cohort
+> but not the timing, so the answer will say the dates aren't recorded. If you ever find the exact term dates,
+> adding them makes that answer sharper.
 
 Then the agent asks rather than extends:
 
@@ -222,10 +260,13 @@ Then the agent asks rather than extends:
 > Then it stops there. I won't record anything past 2018.
 
 **Not done.** No class number for any year, no membership for anyone the user did not name, no per-grade
-placement, and no year added after 2018. Three people confirmed is three people recorded.
+placement, and no year added after 2018. Three people confirmed is three people recorded. And no date invented
+from a year: `valid_from` and `valid_to` are days, so "2015" can only reach them by someone choosing a month and
+a day, and 1 September 2015 is a guess wearing the clothes of a record.
 
 **Lesson.** Confirmed continuity is one assertion with a known extent, not a generator for a row per academic
-year. The question about senior school is fine to ask; persisting the answer before it arrives is not.
+year. The question about senior school is fine to ask; persisting the answer before it arrives is not. A year is
+not a date, and the honest outcome of a year-only memory is a membership whose timing reads as unknown.
 
 ## 8. Two friends of one person (English)
 

@@ -60,7 +60,7 @@ from people_context.domain.group import (
     check_temporal_basis,
 )
 from people_context.domain.person import AliasKind
-from people_context.domain.shared import Confidence, Sensitivity, StatedByText
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -272,6 +272,12 @@ class StagedMembership(StrictStagedModel):
     what it asserts to anyone running `import review` — and so a restore cannot put back a
     membership whose basis and dates disagree, which would fail at its durable write after
     earlier candidates in the same commit had already written.
+
+    The bounds are held to the same order the durable `ValidityPeriod` requires, and for the same
+    reason rather than a different one: the staging boundary refuses a reversed range, so nothing
+    this installation stored can carry one, and holding a restored row to it turns away only a
+    document that was hand-edited or corrupted — one whose batch would otherwise restore, list
+    for review, and then raise from inside the commit transaction.
     """
 
     type: Literal["group_membership"]
@@ -287,6 +293,8 @@ class StagedMembership(StrictStagedModel):
 
     @model_validator(mode="after")
     def _check_basis(self) -> StagedMembership:
+        # Constructing the durable type is the check: one rule, in the place that owns it.
+        ValidityPeriod(valid_from=self.valid_from, valid_to=self.valid_to)
         check_temporal_basis(self.temporal_basis, self.valid_from, self.valid_to)
         return self
 

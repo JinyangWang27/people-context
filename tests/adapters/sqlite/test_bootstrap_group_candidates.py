@@ -327,3 +327,22 @@ def test_an_erased_record_only_matches_the_reference_field_its_type_can_name(
 
     after = [row.candidate["type"] for row in runtime.use_cases.review_import.execute(batch).candidates]
     assert after == before == ["person", "group", "group_membership"]
+
+
+def test_a_bundle_carrying_a_reversed_membership_period_is_refused(runtime: ApplicationRuntime) -> None:
+    """Staging refuses a reversed range, so no row this installation stored can carry one.
+
+    Holding a restored row to the same order therefore turns away only a hand-edited or corrupted
+    document — one that would otherwise restore, list for review, and then raise from inside the
+    commit transaction after earlier candidates in the batch had already written.
+    """
+    _stage(runtime)
+    payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
+    for row in payload["imports"]["staging"]:
+        if row["candidate"]["type"] == "group_membership":
+            row["candidate"].update(
+                {"valid_from": "2016-06-30", "valid_to": "2015-09-01", "temporal_basis": "period"}
+            )
+
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)

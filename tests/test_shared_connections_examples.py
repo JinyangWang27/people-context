@@ -38,10 +38,13 @@ REQUIRED_SCENARIOS: tuple[tuple[str, str], ...] = (
     ("same class with proven overlap", "prove a common day and both people held the student role"),
     ("same school, different classes", "the class is a different group"),
     ("same group, dates unknown", "a guessed year would make later answers look more certain"),
-    ("known disjoint periods", "Dana left in 2020 and Marcus arrived in 2022"),
+    ("known disjoint periods", "Dana left in August 2020 and Marcus joined in April 2022"),
     ("teacher and pupil roles", "a teacher and a pupil sharing a room aren't peers"),
     ("cross-company team", "creates no employment, no department membership"),
+    ("an employer is not a group", "inventing \"the Globex engineering team\" to hold them"),
+    ("a role pairing without dates", "the roles were right and the timing was unknown"),
     ("confirmed cohort continuity", "not a generator for a row per academic year"),
+    ("a year is not a date", "a guess wearing the clothes of a record"),
     ("two relationships through a common person", "two separate relationships, not a shared group"),
 )
 
