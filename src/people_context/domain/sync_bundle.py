@@ -23,6 +23,7 @@ from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Fie
 from people_context.domain.group import MAX_GROUP_NAME_CHARS, GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
+    GROUP_CAPABLE_STAGED_TYPES,
     REVIEWABLE_SESSION_STATUSES,
     check_contract_revision,
     check_hex64,
@@ -33,6 +34,7 @@ from people_context.domain.import_provenance import (
     staged_candidate_references,
     staged_durable_references,
     staged_evidence_references,
+    staged_group_references,
 )
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
@@ -50,11 +52,14 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: fact and affiliation candidates. Version 4 adds no collection — the new field sits inside a
 #: staging row's candidate — but the rule is about fields, not collections: a version-3 reader
 #: forbids unknown keys there and would fail closed on a document carrying one. Version 5 adds
-#: M28.1's identified groups and membership assertions.
-SYNC_BUNDLE_VERSION = 5
+#: M28.1's identified groups and membership assertions, and version 6 M28.3's staged group and
+#: membership candidates. A new candidate *type* takes a version for a stronger reason than a
+#: new field does: forbidding unknown keys cannot fail a reader closed on one, because the
+#: discriminator picks the model before any field is seen.
+SYNC_BUNDLE_VERSION = 6
 
 #: Versions restore accepts. A released version stays readable; only emission moves forward.
-SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4, 5)
+SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6)
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -472,6 +477,21 @@ class BundleStagingRow(StrictBundleModel):
         return self
 
 
+class BundleStagingRowV5(BundleStagingRow):
+    """The version-5 staging row: the same shape, minus the candidate types M28.3 added.
+
+    Version 5 predates group and membership candidates, so it refuses them. A version-5 reader
+    has no group reference namespace to resolve `group_candidate_id` through and no group commit
+    pass to run, so accepting one here would restore a batch that review lists as pending and
+    commit can never resolve — with the receipt's claim still suppressing a corrected restage.
+    """
+
+    @model_validator(mode="after")
+    def _check_candidate(self) -> BundleStagingRowV5:
+        check_staged_candidate(self.candidate, group_types_allowed=False)
+        return self
+
+
 class BundleStagingRowV3(BundleStagingRow):
     """The version-3 staging row: the same shape, minus the attribution field M22.1 added.
 
@@ -484,7 +504,7 @@ class BundleStagingRowV3(BundleStagingRow):
 
     @model_validator(mode="after")
     def _check_candidate(self) -> BundleStagingRowV3:
-        check_staged_candidate(self.candidate, attribution_allowed=False)
+        check_staged_candidate(self.candidate, attribution_allowed=False, group_types_allowed=False)
         return self
 
 
@@ -498,7 +518,12 @@ class BundleStagingRowV2(BundleStagingRow):
 
     @model_validator(mode="after")
     def _check_candidate(self) -> BundleStagingRowV2:
-        check_staged_candidate(self.candidate, evidence_allowed=False, attribution_allowed=False)
+        check_staged_candidate(
+            self.candidate,
+            evidence_allowed=False,
+            attribution_allowed=False,
+            group_types_allowed=False,
+        )
         return self
 
 
@@ -514,6 +539,30 @@ class BundleImportState(StrictBundleModel):
     source_sessions: list[BundleSourceSession]
     candidate_mappings: list[BundleCandidateMapping]
     staging: list[BundleStagingRow]
+
+
+class BundleImportStateV5(StrictBundleModel):
+    """The import state of versions 4 and 5, whose staging rows predate group candidates.
+
+    Both versions share it because nothing between them touched a staging row: version 5 added
+    two top-level collections and left the candidate shape alone. Naming it for the later of the
+    two keeps one class per distinct shape rather than one per version number.
+
+    A sibling rather than a subclass for the same reason `BundleImportStateV2` is: a list field
+    is invariant, so narrowing `staging` in a subclass would be an unsound override.
+    """
+
+    source_sessions: list[BundleSourceSession]
+    candidate_mappings: list[BundleCandidateMapping]
+    staging: list[BundleStagingRowV5]
+
+    def current(self) -> BundleImportState:
+        """Return this state in the current shape; every row already validated as a v5 row."""
+        return BundleImportState(
+            source_sessions=self.source_sessions,
+            candidate_mappings=self.candidate_mappings,
+            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
+        )
 
 
 class BundleImportStateV2(StrictBundleModel):
@@ -753,7 +802,7 @@ class SyncBundleDocumentV4(StrictBundleModel):
     snapshot: BundleSnapshot
     relationship_vocabulary: BundleRelationshipVocabulary
     changelog: list[BundleChangelogEntry]
-    imports: BundleImportState
+    imports: BundleImportStateV5
     trait_evidence: list[BundleTraitEvidence]
 
     def upgraded(self) -> SyncBundleDocument:
@@ -768,10 +817,50 @@ class SyncBundleDocumentV4(StrictBundleModel):
             snapshot=self.snapshot,
             relationship_vocabulary=self.relationship_vocabulary,
             changelog=self.changelog,
-            imports=self.imports,
+            imports=self.imports.current(),
             trait_evidence=self.trait_evidence,
             groups=[],
             group_memberships=[],
+        )
+
+
+class SyncBundleDocumentV5(StrictBundleModel):
+    """The M28.1 version-5 bundle, still accepted by restore and no longer emitted.
+
+    It carries groups and memberships as durable rows but no staged group or membership
+    candidate, because M28.3 is what gave those a commit path.
+    """
+
+    format: Literal["people-context-sync-bundle"]
+    version: Literal[5]
+    created_at: UtcDatetime
+    origin_device_id: Identifier
+    watermark: BundleWatermark
+    devices: list[BundleDevice]
+    snapshot: BundleSnapshot
+    relationship_vocabulary: BundleRelationshipVocabulary
+    changelog: list[BundleChangelogEntry]
+    imports: BundleImportStateV5
+    trait_evidence: list[BundleTraitEvidence]
+    groups: list[BundleGroup]
+    group_memberships: list[BundleGroupMembership]
+
+    def upgraded(self) -> SyncBundleDocument:
+        """Return this document in the current in-memory shape; its rows are already validated."""
+        return SyncBundleDocument(
+            format=self.format,
+            version=SYNC_BUNDLE_VERSION,
+            created_at=self.created_at,
+            origin_device_id=self.origin_device_id,
+            watermark=self.watermark,
+            devices=self.devices,
+            snapshot=self.snapshot,
+            relationship_vocabulary=self.relationship_vocabulary,
+            changelog=self.changelog,
+            imports=self.imports.current(),
+            trait_evidence=self.trait_evidence,
+            groups=self.groups,
+            group_memberships=self.group_memberships,
         )
 
 
@@ -784,7 +873,7 @@ class SyncBundleDocument(StrictBundleModel):
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[5]
+    version: Literal[6]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark
@@ -815,6 +904,8 @@ def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
         return SyncBundleDocumentV3.model_validate(payload).upgraded()
     if declared == 4:
         return SyncBundleDocumentV4.model_validate(payload).upgraded()
+    if declared == 5:
+        return SyncBundleDocumentV5.model_validate(payload).upgraded()
     return SyncBundleDocument.model_validate(payload)
 
 
@@ -884,6 +975,8 @@ _MAPPED_ENTITY_COLLECTIONS: dict[str, str] = {
     "trait": "traits",
     "interaction": "interactions",
     "relationship": "relationships",
+    "group": "groups",
+    "group_membership": "group_memberships",
 }
 
 
@@ -910,6 +1003,8 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         "traits": {row.id for row in snapshot.traits},
         "interactions": {row.id for row in snapshot.interactions},
         "relationships": {row.id for row in snapshot.relationships},
+        "groups": {row.id for row in document.groups},
+        "group_memberships": {row.id for row in document.group_memberships},
     }
 
     # One batch belongs to one receipt. Sharing a batch would leave the store's own
@@ -928,6 +1023,9 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
     # And the same for evidence: a trait's `evidence_candidate_ids` resolve only against the
     # observation and interaction candidates of its own batch.
     evidence_by_batch: dict[str, set[str]] = {}
+    # And for groups: a membership's `group_candidate_id` resolves only against the group
+    # candidates of its own batch, through the map commit's group pass builds.
+    groups_by_batch: dict[str, set[str]] = {}
     staged_batch_of: dict[str, str] = {}
     staged_type_of: dict[str, str] = {}
     for row in imports.staging:
@@ -940,6 +1038,8 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
             people_by_batch.setdefault(row.batch_id, set()).add(row.id)
         elif candidate_type in EVIDENCE_CAPABLE_STAGED_TYPES:
             evidence_by_batch.setdefault(row.batch_id, set()).add(row.id)
+        elif candidate_type in GROUP_CAPABLE_STAGED_TYPES:
+            groups_by_batch.setdefault(row.batch_id, set()).add(row.id)
 
     for mapping in imports.candidate_mappings:
         session = sessions.get(mapping.source_session_id)
@@ -1020,16 +1120,19 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         # would restore a batch whose commit can never resolve it.
         references = staged_candidate_references(row.candidate)
         evidence_references = staged_evidence_references(row.candidate)
+        group_references = staged_group_references(row.candidate)
         unknown = references - staged_by_batch.get(row.batch_id, set())
         details.extend(
             f"staging row {row.id} references a candidate outside its batch: {reference}"
             for reference in sorted(unknown)
         )
         # And one carried by the batch but of the wrong type is just as unresolvable. Commit
-        # resolves the two reference kinds through two different maps — people, and the evidence
-        # candidates whose commit mappings the trait then reads — so each is checked against the
-        # rows it can actually resolve to.
-        mistyped = (references - unknown - evidence_references) - people_by_batch.get(row.batch_id, set())
+        # resolves the three reference kinds through three different maps — people, the evidence
+        # candidates whose commit mappings a trait then reads, and the group candidates a
+        # membership is placed in — so each is checked against the rows it can actually resolve to.
+        mistyped = (references - unknown - evidence_references - group_references) - people_by_batch.get(
+            row.batch_id, set()
+        )
         details.extend(
             f"staging row {row.id} references a candidate that is not a person: {reference}"
             for reference in sorted(mistyped)
@@ -1038,6 +1141,11 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         details.extend(
             f"staging row {row.id} cites a candidate that is not evidence: {reference}"
             for reference in sorted(misfiled_evidence)
+        )
+        misfiled_group = (group_references - unknown) - groups_by_batch.get(row.batch_id, set())
+        details.extend(
+            f"staging row {row.id} places a member in a candidate that is not a group: {reference}"
+            for reference in sorted(misfiled_group)
         )
         # A durable evidence id names a record rather than a candidate. Hard forget deletes any
         # staging row citing a record it erased, so a row this installation exported never points

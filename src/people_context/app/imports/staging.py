@@ -23,9 +23,11 @@ from people_context.app.imports.models import (
     AffiliationCandidateInput,
     CandidateInput,
     FactCandidateInput,
+    GroupCandidateInput,
     ImportBatchResult,
     ImportPipelineError,
     InteractionCandidateInput,
+    MembershipCandidateInput,
     ObservationCandidateInput,
     PersonCandidateInput,
     RelationshipCandidateInput,
@@ -38,6 +40,7 @@ from people_context.app.imports.sources import (
     source_previously_redacted_error,
     source_session_snapshot,
 )
+from people_context.domain.group import resolve_temporal_basis
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.shared import new_id, normalize_name
 from people_context.ports.audit_log import AuditLog
@@ -318,6 +321,7 @@ class CandidateStager:
                     ],
                 )
         _check_evidence_references(validated)
+        _check_group_references(validated)
         return validated
 
     def _row(
@@ -352,6 +356,22 @@ class CandidateStager:
             staged.pop("to_ref")
             staged["from_candidate_id"] = references.people[candidate.from_ref]
             staged["to_candidate_id"] = references.people[candidate.to_ref]
+        elif isinstance(candidate, GroupCandidateInput):
+            # No name lookup: a group candidate identifies an existing group only through the
+            # `group_id` the caller resolved and passed, never through a name this happened to
+            # match. Two groups called "Class 1" are different rooms until somebody says so.
+            staged.pop("ref")
+        elif isinstance(candidate, MembershipCandidateInput):
+            staged.pop("person_ref")
+            staged.pop("group_ref")
+            staged["person_candidate_id"] = references.people[candidate.person_ref]
+            staged["group_candidate_id"] = references.groups[candidate.group_ref]
+            # Resolved here rather than left absent so review shows what the row asserts. The
+            # rule is the domain's, shared with the direct write, so a staged membership and a
+            # recorded one read the same dates the same way.
+            staged["temporal_basis"] = resolve_temporal_basis(
+                candidate.temporal_basis, candidate.valid_from, candidate.valid_to
+            ).value
         else:
             staged.pop("person_ref")
             staged.pop("evidence_ref", None)
@@ -502,14 +522,55 @@ def _check_evidence_references(candidates: list[CandidateInput]) -> None:
             )
 
 
+def _check_group_references(candidates: list[CandidateInput]) -> None:
+    """Refuse a batch whose group references cannot be rewritten deterministically.
+
+    The same two failures `_check_evidence_references` refuses, for the same reasons. A repeated
+    group `ref` has no single meaning, and a membership naming a `group_ref` nothing declares
+    would stage a placement into a group that exists neither in this batch nor anywhere else.
+
+    A group `ref` and a person `ref` are separate namespaces, so one value may legitimately be
+    both. Neither refusal names the offending label: a `ref` is free-form text the agent chose
+    and can carry source wording as readily as any other extracted string.
+    """
+    declared: dict[str, int] = {}
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, GroupCandidateInput):
+            continue
+        if candidate.ref in declared:
+            raise _invalid_candidates(
+                "duplicate group reference",
+                details=[
+                    {
+                        "type": "value_error",
+                        "loc": [index, "ref"],
+                        "msg": "ref must be unique among the group candidates in this batch",
+                    }
+                ],
+            )
+        declared[candidate.ref] = index
+    for index, candidate in enumerate(candidates):
+        if isinstance(candidate, MembershipCandidateInput) and candidate.group_ref not in declared:
+            raise _invalid_candidates(
+                "unknown group reference",
+                details=[
+                    {
+                        "type": "value_error",
+                        "loc": [index, "group_ref"],
+                        "msg": "group_ref must name a group candidate in this batch",
+                    }
+                ],
+            )
+
+
 @dataclass(frozen=True)
 class _BatchReferences:
-    """The two caller-facing namespaces of one batch, resolved to canonical candidate ids.
+    """The three caller-facing namespaces of one batch, resolved to canonical candidate ids.
 
-    They are separate namespaces on purpose. A person `ref` and an `evidence_ref` answer
-    different questions — who is this about, and what is this drawn from — and commit resolves
-    them through different maps. Merging them would let a trait cite a person, which is not a
-    thing a trait can rest on.
+    They are separate namespaces on purpose. A person `ref`, an `evidence_ref`, and a group
+    `ref` answer different questions — who is this about, what is this drawn from, where did it
+    happen — and commit resolves each through a different map. Merging them would let a trait
+    cite a person, or a membership place someone inside an observation.
 
     ``row_ids`` is every candidate's id, allocated up front and indexed by position, because an
     evidence reference has to be rewritten to a row id that does not exist until it is minted.
@@ -517,11 +578,12 @@ class _BatchReferences:
 
     people: dict[str, str]
     evidence: dict[str, str]
+    groups: dict[str, str]
     row_ids: list[str]
 
 
 def _batch_references(candidates: list[CandidateInput]) -> _BatchReferences:
-    """Allocate one canonical id per candidate and index both reference namespaces onto them."""
+    """Allocate one canonical id per candidate and index every reference namespace onto them."""
     row_ids = [new_id() for _ in candidates]
     people = {
         candidate.ref: row_ids[index]
@@ -534,7 +596,12 @@ def _batch_references(candidates: list[CandidateInput]) -> _BatchReferences:
         if isinstance(candidate, (ObservationCandidateInput, InteractionCandidateInput))
         and candidate.evidence_ref is not None
     }
-    return _BatchReferences(people=people, evidence=evidence, row_ids=row_ids)
+    groups = {
+        candidate.ref: row_ids[index]
+        for index, candidate in enumerate(candidates)
+        if isinstance(candidate, GroupCandidateInput)
+    }
+    return _BatchReferences(people=people, evidence=evidence, groups=groups, row_ids=row_ids)
 
 
 def _rewrite_trait_evidence(
@@ -564,7 +631,13 @@ def _candidate_refs(candidate: CandidateInput) -> list[str]:
         return [candidate.from_ref, candidate.to_ref]
     if isinstance(
         candidate,
-        (AffiliationCandidateInput, FactCandidateInput, ObservationCandidateInput, TraitCandidateInput),
+        (
+            AffiliationCandidateInput,
+            FactCandidateInput,
+            ObservationCandidateInput,
+            TraitCandidateInput,
+            MembershipCandidateInput,
+        ),
     ):
         return [candidate.person_ref]
     return []

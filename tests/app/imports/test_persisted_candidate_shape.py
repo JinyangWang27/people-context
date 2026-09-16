@@ -32,9 +32,11 @@ from people_context.app.imports.identity import MatchDisposition
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
+    GROUP_CAPABLE_STAGED_TYPES,
     STAGED_CANDIDATE_TYPES,
     staged_candidate_references,
     staged_evidence_references,
+    staged_group_references,
 )
 from people_context.domain.staged_candidate import (
     STAGED_CANDIDATE_MODELS,
@@ -152,6 +154,28 @@ def _every_type() -> list[dict[str, Any]]:
             "relationship_type": "colleague of",
             "confidence": 0.7,
         },
+        {
+            "type": "group",
+            "ref": "class-1",
+            "name": "Class 1, Grade 6",
+            "kind": "class",
+            "organization_id": "org-1",
+            "group_id": "grp-1",
+            "sensitivity": "personal",
+            "stated_by": "Alice Ahmed",
+        },
+        {
+            "type": "membership",
+            "person_ref": "alice",
+            "group_ref": "class-1",
+            "role": "student",
+            "valid_from": "2015-09-01",
+            "valid_to": "2016-06-30",
+            "temporal_basis": "period",
+            "confidence": 0.9,
+            "sensitivity": "personal",
+            "stated_by": "Alice Ahmed",
+        },
     ]
 
 
@@ -220,11 +244,12 @@ def test_the_declared_match_dispositions_are_the_ones_matching_produces() -> Non
 def test_every_reference_the_stager_writes_names_a_row_of_the_kind_its_field_promises() -> None:
     """Restore refuses a reference to any other row, so this pins what each field may name.
 
-    There are two reference namespaces and restore checks them separately. A person reference
+    There are three reference namespaces and restore checks them separately. A person reference
     must name a person candidate, because that is the one map commit builds its resolution from.
     An evidence reference must name an observation or interaction candidate, because a trait
-    resolves it through that candidate's commit mapping. A rule requiring person targets for both
-    would refuse exactly the evidence rows the stager now writes.
+    resolves it through that candidate's commit mapping. A group reference must name a group
+    candidate, because a membership is placed through the map commit's group pass builds. A rule
+    requiring person targets for all three would refuse exactly the rows the stager now writes.
     """
     conn = open_db(":memory:")
     RememberPerson(SqlitePeopleRepository(conn), SqlitePeopleRepository(conn), SqliteAuditLog(conn), _Clock()).execute(
@@ -241,13 +266,18 @@ def test_every_reference_the_stager_writes_names_a_row_of_the_kind_its_field_pro
     evidence = {
         row_id for row_id, candidate in candidates.items() if candidate["type"] in EVIDENCE_CAPABLE_STAGED_TYPES
     }
+    groups = {row_id for row_id, candidate in candidates.items() if candidate["type"] in GROUP_CAPABLE_STAGED_TYPES}
     referenced: set[str] = set()
     evidence_referenced: set[str] = set()
+    group_referenced: set[str] = set()
     for candidate in candidates.values():
         referenced |= staged_candidate_references(candidate)
         evidence_referenced |= staged_evidence_references(candidate)
+        group_referenced |= staged_group_references(candidate)
 
     assert referenced, "the fixture must contain candidates that reference people"
     assert evidence_referenced, "the fixture must contain a trait citing same-batch evidence"
+    assert group_referenced, "the fixture must contain a membership naming a same-batch group"
     assert evidence_referenced <= evidence
-    assert (referenced - evidence_referenced) <= persons
+    assert group_referenced <= groups
+    assert (referenced - evidence_referenced - group_referenced) <= persons

@@ -30,6 +30,7 @@ from people_context.app.imports import (
     ImportPipelineError,
     StageCandidates,
 )
+from people_context.domain.group import MAX_GROUP_NAME_CHARS
 
 _NOW = datetime(2026, 8, 20, 9, 0, tzinfo=UTC)
 
@@ -254,6 +255,42 @@ def test_new_reference_and_relationship_type_strings_are_bounded_at_256_characte
         "relationship_type": "t" * (MAX_RELATIONSHIP_TYPE_CHARS + 1),
     }
     assert _refusal(_stage(conn), "notes", [_person(), _person("bob", "Bob"), over_typed]).code == "invalid_candidates"
+
+
+@pytest.mark.parametrize("candidate_type", ["group", "membership"])
+def test_a_group_or_membership_request_opts_into_the_extraction_bounds(candidate_type: str) -> None:
+    """Both types are distilled from unstructured material exactly as an observation is.
+
+    Left out of the opt-in set they would be the one extraction path the budgets never reach: a
+    batch of nothing but memberships would carry an unbounded count and unbounded strings.
+    """
+    conn = open_db(":memory:")
+    stage = _stage(conn)
+    group: dict[str, Any] = {"type": "group", "ref": "class-1", "name": "Class 1", "kind": "class"}
+    candidate = (
+        group
+        if candidate_type == "group"
+        else {"type": "membership", "person_ref": "alice", "group_ref": "class-1", "role": "student"}
+    )
+    people = [_person(f"p{index}", f"Person {index}") for index in range(MAX_EXTRACTION_CANDIDATES)]
+
+    refusal = _refusal(stage, "notes", [*people, _person(), group, candidate])
+
+    assert refusal.code == TOO_MANY_CANDIDATES
+
+
+def test_a_group_name_is_bounded_by_the_domain_that_owns_it() -> None:
+    """The name identifies a context to a reader; a longer value is a pasted passage."""
+    conn = open_db(":memory:")
+    stage = _stage(conn)
+    oversized = {
+        "type": "group",
+        "ref": "class-1",
+        "name": "x" * (MAX_GROUP_NAME_CHARS + 1),
+        "kind": "class",
+    }
+
+    assert _refusal(stage, "notes", [oversized]).code == "invalid_candidates"
 
 
 def test_a_legacy_only_request_keeps_its_released_unbounded_shape() -> None:

@@ -299,6 +299,8 @@ def build_runtime(
     record_observation = RecordObservation(repo, records, audit, runtime_clock)
     record_trait = RecordTrait(repo, records, audit, runtime_clock, trait_evidence)
     set_relationship = SetRelationship(repo, relationship_store, audit, runtime_clock, relationship_vocabulary)
+    create_group = CreateGroup(groups, organizations, audit, runtime_clock)
+    add_group_membership = AddGroupMembership(repo, records, groups, audit, runtime_clock)
     candidate_stager = CandidateStager(repo, import_staging, runtime_clock, import_sources, audit)
     list_reminders = ListReminders(records)
     get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
@@ -364,8 +366,8 @@ def build_runtime(
         record_interaction=record_interaction,
         correct_record=CorrectRecord(records, records, audit, runtime_clock, people=repo),
         supersede_fact=SupersedeFact(records, records, audit, runtime_clock, people=repo),
-        create_group=CreateGroup(groups, organizations, audit, runtime_clock),
-        add_group_membership=AddGroupMembership(repo, records, groups, audit, runtime_clock),
+        create_group=create_group,
+        add_group_membership=add_group_membership,
         close_group_membership=CloseGroupMembership(records, records, audit, runtime_clock),
         find_groups=FindGroups(groups, organizations),
         get_group=GetGroup(records, groups, organizations),
@@ -418,6 +420,9 @@ def build_runtime(
             audit,
             runtime_clock,
             trait_evidence,
+            create_group,
+            add_group_membership,
+            records,
         ),
         stage_candidates=StageCandidates(candidate_stager),
         list_import_sources=ListImportSources(import_sources),

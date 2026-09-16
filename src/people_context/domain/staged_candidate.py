@@ -52,6 +52,13 @@ from pydantic import (
     model_validator,
 )
 
+from people_context.domain.group import (
+    GroupKind,
+    GroupName,
+    MembershipRole,
+    TemporalBasis,
+    check_temporal_basis,
+)
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText
 from people_context.domain.trait import TraitCategory
@@ -230,6 +237,50 @@ class StagedRelationship(StrictStagedModel):
     confidence: Confidence | None = None
 
 
+class StagedGroup(StrictStagedModel):
+    """A persisted group candidate: the input fields minus the batch-local `ref`.
+
+    `group_id` is the caller's explicit decision to record against a group that already exists.
+    It is kept here rather than resolved at staging time because resolving it would mean a read
+    whose answer could change before commit, and because a group deleted between the two is a
+    candidate commit must decline — not one it silently redirects.
+    """
+
+    type: Literal["group"]
+    name: GroupName
+    kind: GroupKind
+    organization_id: NonBlank | None = None
+    group_id: NonBlank | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    stated_by: StatedByText | None = None
+
+
+class StagedMembership(StrictStagedModel):
+    """A persisted membership candidate, its person and group already rewritten to candidate ids.
+
+    `temporal_basis` is resolved at staging rather than left absent, so the row states plainly
+    what it asserts to anyone running `import review` — and so a restore cannot put back a
+    membership whose basis and dates disagree, which would fail at its durable write after
+    earlier candidates in the same commit had already written.
+    """
+
+    type: Literal["membership"]
+    person_candidate_id: NonBlank
+    group_candidate_id: NonBlank
+    role: MembershipRole = MembershipRole.MEMBER
+    valid_from: date | None = None
+    valid_to: date | None = None
+    temporal_basis: TemporalBasis
+    confidence: Confidence | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    stated_by: StatedByText | None = None
+
+    @model_validator(mode="after")
+    def _check_basis(self) -> StagedMembership:
+        check_temporal_basis(self.temporal_basis, self.valid_from, self.valid_to)
+        return self
+
+
 StagedCandidate = Annotated[
     StagedPerson
     | StagedInteraction
@@ -237,7 +288,9 @@ StagedCandidate = Annotated[
     | StagedFact
     | StagedObservation
     | StagedTrait
-    | StagedRelationship,
+    | StagedRelationship
+    | StagedGroup
+    | StagedMembership,
     Field(discriminator="type"),
 ]
 
@@ -249,6 +302,8 @@ STAGED_CANDIDATE_MODELS: dict[str, type[StrictStagedModel]] = {
     "observation": StagedObservation,
     "trait": StagedTrait,
     "relationship": StagedRelationship,
+    "group": StagedGroup,
+    "membership": StagedMembership,
 }
 
 _STAGED_ADAPTER: TypeAdapter[Any] = TypeAdapter(StagedCandidate)
@@ -274,12 +329,22 @@ EVIDENCE_STAGED_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids", "evi
 #: attribution that keeps a source's claim from being read as verified fact.
 ATTRIBUTION_STAGED_FIELDS: Final[tuple[str, ...]] = ("stated_by",)
 
+#: The candidate types M28.3 added.
+#:
+#: Gated like the fields above, and for a stronger reason: a whole type is not something a
+#: reader fails closed on by forbidding extras, because the discriminator picks the model before
+#: any field is seen. A bundle version that predates these types must refuse them outright, or a
+#: reader written against that version would restore a membership whose group reference it has
+#: no way to resolve and then report the batch as committable.
+GROUP_STAGED_TYPES: Final[tuple[str, ...]] = ("group", "membership")
+
 
 def staged_candidate_error(
     candidate: dict[str, Any],
     *,
     evidence_allowed: bool = True,
     attribution_allowed: bool = True,
+    group_types_allowed: bool = True,
 ) -> str | None:
     """Return why a persisted candidate is unacceptable, naming no value it carries.
 
@@ -293,7 +358,13 @@ def staged_candidate_error(
     predates it, and a version-3 document an M22.1 one, which is exactly the silent upgrade the
     per-version contract exists to prevent. The flags are independent because the versions are:
     version 2 predates both fields, version 3 only the attribution.
+
+    ``group_types_allowed`` is the same idea one level up, for the candidate types M28.3 added.
+    It is checked before the models are consulted at all, because the discriminated union would
+    otherwise accept a type no version through 5 had any way to commit.
     """
+    if not group_types_allowed and candidate.get("type") in GROUP_STAGED_TYPES:
+        return "type (literal_error)"
     forbidden: tuple[str, ...] = ()
     if not evidence_allowed:
         forbidden += EVIDENCE_STAGED_FIELDS

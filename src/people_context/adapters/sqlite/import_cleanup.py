@@ -9,7 +9,7 @@ Two rules shape everything here.
 
 **Structure, never text.** Dependent staging rows are found through the canonical typed reference
 fields the stager wrote — `person_candidate_id`, `participant_candidate_ids`, the relationship end
-points, evidence references — and never by scanning candidate text for a name. Guessing by name
+points, group and evidence references — and never by scanning candidate text for a name. Guessing by name
 would erase unrelated people who happen to share one and miss the ones spelled differently.
 
 **Opaque metadata cannot be attributed.** A receipt label like `Interview with Alice` is the
@@ -35,6 +35,10 @@ _CANDIDATE_REFERENCE_FIELDS: tuple[str, ...] = (
     "person_candidate_id",
     "from_candidate_id",
     "to_candidate_id",
+    # A membership's group. Erasure never targets a group candidate — forget erases people —
+    # so this never starts a closure; it is declared so the closure stays structurally complete
+    # if a later erasure ever does remove one, rather than quietly missing its dependants.
+    "group_candidate_id",
 )
 
 #: The same idea for fields holding a list of candidate ids.

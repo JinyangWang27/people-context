@@ -15,7 +15,7 @@ same place at the same time. A missing bound on a membership is unknown, never o
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Annotated, Final
 
@@ -75,6 +75,39 @@ class TemporalBasis(StrEnum):
     ONGOING = "ongoing"
 
 
+def resolve_temporal_basis(
+    declared: TemporalBasis | None,
+    valid_from: date | None,
+    valid_to: date | None,
+) -> TemporalBasis:
+    """Return the basis a membership asserts when the caller did not state one.
+
+    No date is `unknown`; any date is `period`. `ongoing` is never inferred, because an absent
+    end date is not a claim that the membership continues — it is the absence of a claim. Both
+    the direct write and agent staging read this one rule, so a staged membership carries the
+    same basis the record it becomes would have carried.
+    """
+    if declared is not None:
+        return declared
+    return TemporalBasis.UNKNOWN if valid_from is None and valid_to is None else TemporalBasis.PERIOD
+
+
+def check_temporal_basis(basis: TemporalBasis, valid_from: date | None, valid_to: date | None) -> None:
+    """Raise ``ValueError`` when dates and basis contradict each other.
+
+    Shared by the durable membership and the persisted staged candidate: a restored candidate
+    that claimed `unknown` while carrying dates would commit into a record this refuses, and the
+    refusal would land mid-transaction rather than when the bundle could still be declined.
+    """
+    has_dates = valid_from is not None or valid_to is not None
+    if basis is TemporalBasis.UNKNOWN and has_dates:
+        raise ValueError("temporal_basis 'unknown' cannot carry dates")
+    if basis is TemporalBasis.PERIOD and not has_dates:
+        raise ValueError("temporal_basis 'period' needs valid_from or valid_to")
+    if basis is TemporalBasis.ONGOING and valid_to is not None:
+        raise ValueError("temporal_basis 'ongoing' cannot carry valid_to")
+
+
 class Group(BaseModel):
     """One identified group, optionally placed under an existing organization.
 
@@ -107,11 +140,5 @@ class GroupMembership(BaseModel):
 
     @model_validator(mode="after")
     def _check_basis(self) -> GroupMembership:
-        has_dates = self.period.valid_from is not None or self.period.valid_to is not None
-        if self.temporal_basis is TemporalBasis.UNKNOWN and has_dates:
-            raise ValueError("temporal_basis 'unknown' cannot carry dates")
-        if self.temporal_basis is TemporalBasis.PERIOD and not has_dates:
-            raise ValueError("temporal_basis 'period' needs valid_from or valid_to")
-        if self.temporal_basis is TemporalBasis.ONGOING and self.period.valid_to is not None:
-            raise ValueError("temporal_basis 'ongoing' cannot carry valid_to")
+        check_temporal_basis(self.temporal_basis, self.period.valid_from, self.period.valid_to)
         return self

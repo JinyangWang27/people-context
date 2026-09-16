@@ -692,3 +692,90 @@ def test_an_oversized_attribution_is_refused_without_echoing_it(
     assert "stated_by" in message
     assert "256" in message
     assert _staging_rows(db_file) == []
+
+
+#: A group batch shaped like the one a classroom conversation would produce.
+_GROUP_CANDIDATES: list[dict[str, Any]] = [
+    {"type": "person", "ref": "alice", "name": "Alice Ahmed", "aliases": []},
+    {"type": "person", "ref": "bob", "name": "Bob Ali", "aliases": []},
+    {
+        "type": "group",
+        "ref": "class-1",
+        "name": "Class 1, Grade 6",
+        "kind": "class",
+        "stated_by": "Alice Ahmed",
+    },
+    {
+        "type": "membership",
+        "person_ref": "alice",
+        "group_ref": "class-1",
+        "role": "student",
+        "valid_from": "2015-09-01",
+        "valid_to": "2016-06-30",
+    },
+    {"type": "membership", "person_ref": "bob", "group_ref": "class-1", "role": "student"},
+]
+
+
+def test_group_and_membership_candidates_stage_review_and_commit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+
+    document = _stage(db_file, _input_file(tmp_path, _GROUP_CANDIDATES), capsys)
+    batch_id = str(document["batch_id"])
+
+    assert cli.main(["--db", str(db_file), "import", "review", batch_id, "--json"]) == 0
+    review = json.loads(capsys.readouterr().out)
+    assert [entry["candidate"]["type"] for entry in review["candidates"]] == [
+        "person",
+        "person",
+        "group",
+        "membership",
+        "membership",
+    ]
+
+    assert cli.main(["--db", str(db_file), "import", "commit", batch_id, "--all", "--json"]) == 0
+    commit = json.loads(capsys.readouterr().out)
+    assert len(commit["committed_ids"]) == 5
+    assert commit["unresolved_ids"] == []
+
+    # Bob's dates were never stated, so the lookup reports the context and stops there. A
+    # classmate label would need an established common time, and nothing here establishes one.
+    assert cli.main(["--db", str(db_file), "group", "shared", "Alice Ahmed", "Bob Ali"]) == 0
+    shared = capsys.readouterr().out
+    assert "Class 1, Grade 6" in shared
+    assert "shared_context" in shared
+    assert "classmates" not in shared
+
+
+def test_the_human_review_says_what_each_group_row_would_actually_do(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two decisions have to be legible before commit: a new group, and unknown dates."""
+    db_file = tmp_path / "people.db"
+    document = _stage(db_file, _input_file(tmp_path, _GROUP_CANDIDATES), capsys)
+
+    assert cli.main(["--db", str(db_file), "import", "review", str(document["batch_id"])]) == 0
+    printed = capsys.readouterr().out
+
+    assert "group  Class 1, Grade 6 (class) — new group, stated by Alice Ahmed" in printed
+    assert "period: 2015-09-01–2016-06-30" in printed
+    # An absent bound is unknown, never "still going": the line must not read as a live date range.
+    assert "unknown: dates unknown" in printed
+
+
+def test_a_group_row_names_the_existing_group_it_would_record_into(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_file = tmp_path / "people.db"
+    candidates = [dict(candidate) for candidate in _GROUP_CANDIDATES]
+    candidates[2] = {**candidates[2], "group_id": "grp-existing"}
+    document = _stage(db_file, _input_file(tmp_path, candidates), capsys)
+
+    assert cli.main(["--db", str(db_file), "import", "review", str(document["batch_id"])]) == 0
+
+    assert "records into existing group grp-existing" in capsys.readouterr().out

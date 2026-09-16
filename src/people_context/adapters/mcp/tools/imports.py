@@ -73,7 +73,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         label: str | None = None,
         external_source_id: str | None = None,
     ) -> dict[str, Any]:
-        """Stage agent-extracted people, interactions, affiliations, facts, observations, traits, and relationships.
+        """Stage agent-extracted people, interactions, records, relationships, groups, and memberships.
+
+        Candidate types are `person`, `interaction`, `affiliation`, `fact`, `observation`, `trait`,
+        `relationship`, `group`, and `membership`.
 
         Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
         agent-visible text. Distinguish what was stated (`fact`), what happened in this source (`observation`),
@@ -96,6 +99,17 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         short `evidence_ref` label of your own and list those labels in the trait's `evidence_refs`; use
         `evidence_ids` for records already stored. Evidence must be about the trait's own person, and one trait
         cites at most 32 references and ids combined, each at most 256 characters.
+
+        A shared context is two candidates, never one. A `group` names an identified class, cohort, team,
+        department, club, household, or community and carries a batch-local `ref`; a `membership` places one
+        `person_ref` in one `group_ref` with a `role`. Group names never merge: staging looks nothing up by
+        name, so committing a group candidate creates a new group unless you pass `group_id` — resolve an
+        existing group with `find_groups` first and pass the id it returns. Record dates only where the source
+        gave them. Absent dates stay absent and mean unknown, never "still going": `temporal_basis` is `unknown`
+        without dates, `period` with them, and `ongoing` only when you set it because the source said so. Do not
+        invent a year, a class number, or a yearly placement per grade; a confirmation that people stayed
+        together records the people and the extent that were confirmed, and nothing more. "My classmate" with no
+        identified group is a `relationship`, not an invented group.
 
         `source_kind` optionally records an import receipt for this batch. It is a machine category such as
         `meeting_transcript`, at most 128 characters of letters, digits, `.`, `_`, `-`, or `/` — never a person,

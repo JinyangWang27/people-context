@@ -8,6 +8,14 @@ from typing import Annotated, Any, Final, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from people_context.domain.group import (
+    GroupKind,
+    GroupName,
+    MembershipRole,
+    TemporalBasis,
+    check_temporal_basis,
+    resolve_temporal_basis,
+)
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText
@@ -335,6 +343,75 @@ class RelationshipCandidateInput(BaseModel):
     confidence: Confidence | None = None
 
 
+class GroupCandidateInput(BaseModel):
+    """Strict group candidate: one identified context the source named, addressed by `ref`.
+
+    A group candidate never resolves by name. M28.1 offers no get-or-create by name because
+    two groups called "Class 1" are different rooms until somebody says otherwise, and staging
+    is not the place that judgement gets made silently. `group_id` is therefore the only way to
+    reuse a stored group: the agent resolves it in conversation through `find_groups` and passes
+    the id it was given. Without one, commit creates a new group, which is the honest outcome
+    when nobody has confirmed which existing group this is.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["group"]
+    #: The batch-local label memberships in this same request cite through `group_ref`.
+    ref: CandidateRef
+    name: GroupName
+    kind: GroupKind
+    #: An existing organization this group sits under. Placement is context, never employment.
+    organization_id: NonBlank | None = None
+    #: An existing group to record memberships against instead of creating another one.
+    group_id: NonBlank | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: Who said this group exists. See `FactCandidateInput.stated_by`; absent when unknown.
+    stated_by: StatedBy | None = None
+
+
+class MembershipCandidateInput(BaseModel):
+    """Strict membership candidate placing one batch-local person in one batch-local group.
+
+    Dates stay exactly as reported. `temporal_basis` defaults the way `AddGroupMembershipInput`
+    already defaults it — no dates is `unknown`, any date is `period`, and `ongoing` is never
+    inferred — so a source that did not say when produces a membership that does not claim to
+    know. Filling an unknown bound to make a later lookup return `classmates` is the one thing
+    this candidate exists to prevent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["membership"]
+    person_ref: CandidateRef
+    #: The `ref` of a group candidate in this same request.
+    group_ref: CandidateRef
+    role: MembershipRole = MembershipRole.MEMBER
+    valid_from: date | None = None
+    valid_to: date | None = None
+    temporal_basis: TemporalBasis | None = None
+    confidence: Confidence | None = None
+    sensitivity: Sensitivity = Sensitivity.PERSONAL
+    #: Who asserted this membership. See `FactCandidateInput.stated_by`.
+    stated_by: StatedBy | None = None
+
+    @model_validator(mode="after")
+    def _check_basis(self) -> MembershipCandidateInput:
+        """Refuse a declared basis its own dates contradict, here rather than at the durable write.
+
+        Only an explicit basis can contradict anything — a defaulted one is derived from these
+        same dates. Left to commit, the contradiction would raise mid-transaction after earlier
+        candidates in the batch had already written, and until then review would show a
+        membership whose dates say one thing and whose basis says another.
+        """
+        check_temporal_basis(
+            resolve_temporal_basis(self.temporal_basis, self.valid_from, self.valid_to),
+            self.valid_from,
+            self.valid_to,
+        )
+        return self
+
+
 CandidateInput = Annotated[
     PersonCandidateInput
     | InteractionCandidateInput
@@ -342,7 +419,9 @@ CandidateInput = Annotated[
     | FactCandidateInput
     | ObservationCandidateInput
     | TraitCandidateInput
-    | RelationshipCandidateInput,
+    | RelationshipCandidateInput
+    | GroupCandidateInput
+    | MembershipCandidateInput,
     Field(discriminator="type"),
 ]
 
@@ -354,11 +433,18 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
     "observation": ObservationCandidateInput,
     "trait": TraitCandidateInput,
     "relationship": RelationshipCandidateInput,
+    "group": GroupCandidateInput,
+    "membership": MembershipCandidateInput,
 }
 
-#: The candidate types M17 introduced. A staging request that uses one of them opts into the
-#: bounded extraction contract; a request built only from the four released types does not.
-EXTRACTION_CANDIDATE_TYPES: Final = frozenset({"observation", "trait", "relationship"})
+#: The candidate types M17 introduced, plus M28.3's. A staging request that uses one of them
+#: opts into the bounded extraction contract; a request built only from the four released types
+#: does not. Groups and memberships belong here because they are distilled from unstructured
+#: material exactly as an observation is, and an unbounded batch of them would be the one
+#: extraction path the budgets do not reach.
+EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
+    {"observation", "trait", "relationship", "group", "membership"}
+)
 
 
 def contains_extraction_candidate(candidates: list[Any]) -> bool:
