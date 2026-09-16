@@ -47,11 +47,22 @@ _CANDIDATE_REFERENCE_LISTS: tuple[str, ...] = (
     "evidence_candidate_ids",
 )
 
-#: Staging fields that name a durable record rather than a batch-local candidate.
-_DURABLE_REFERENCE_LISTS: tuple[str, ...] = ("evidence_ids",)
+#: Staging fields that name a durable record rather than a batch-local candidate, and the entity
+#: types each may name.
+#:
+#: The type is kept rather than flattened away with the id. An id is opaque here — the bundle
+#: contract accepts any non-blank string and a restore puts back whatever the document carried —
+#: so one string can legitimately name a row in two tables. Comparing every erased id against
+#: every durable field would then let forgetting an observation delete a group candidate that
+#: merely shares its id, and the dependent closure would take that candidate's memberships too.
+_DURABLE_REFERENCE_LISTS: dict[str, frozenset[str]] = {
+    "evidence_ids": frozenset({"observation", "interaction"}),
+}
 
 #: The same, for fields holding one durable id rather than a list of them.
-_DURABLE_REFERENCE_FIELDS: tuple[str, ...] = ("group_id",)
+_DURABLE_REFERENCE_FIELDS: dict[str, frozenset[str]] = {
+    "group_id": frozenset({"group"}),
+}
 
 
 @dataclass(frozen=True)
@@ -191,16 +202,21 @@ class ImportProvenanceCleaner:
         record into. Both are durable references, and a row left holding either after the record
         is gone is a batch that stays reviewable and can only ever commit unresolved — while its
         receipt's claim keeps suppressing the restage that would fix it.
+
+        Each field is compared only against targets of the type it can name, so an erased
+        observation never matches a `group_id` that happens to carry the same opaque string.
         """
-        erased = {entity_id for _entity_type, entity_id in entity_targets}
         matched: set[str] = set()
-        for entity_id in erased:
+        for entity_type, entity_id in {(kind, value) for kind, value in entity_targets}:
+            lists = [name for name, kinds in _DURABLE_REFERENCE_LISTS.items() if entity_type in kinds]
+            fields = [name for name, kinds in _DURABLE_REFERENCE_FIELDS.items() if entity_type in kinds]
+            if not lists and not fields:
+                continue
             for row in self._staging_rows_mentioning(entity_id):
                 candidate = json.loads(row["candidate_json"])
-                if any(
-                    entity_id in _as_ids(candidate.get(field_name))
-                    for field_name in _DURABLE_REFERENCE_LISTS
-                ) or any(candidate.get(field_name) == entity_id for field_name in _DURABLE_REFERENCE_FIELDS):
+                if any(entity_id in _as_ids(candidate.get(name)) for name in lists) or any(
+                    candidate.get(name) == entity_id for name in fields
+                ):
                     matched.add(row["id"])
         return matched
 

@@ -20,6 +20,8 @@ from pydantic import ValidationError
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.exports.sync_bundle import render_bundle_json
+from people_context.app.people import RememberPersonInput
+from people_context.app.records import RecordObservationInput
 from people_context.domain.sync_bundle import (
     SYNC_BUNDLE_VERSION,
     InvalidBundleError,
@@ -287,3 +289,41 @@ def test_a_bundle_naming_a_group_it_does_not_carry_is_refused(runtime: Applicati
         validate_bundle_document(parse_bundle_payload(payload))
 
     assert any("names an unbundled durable group" in detail for detail in raised.value.details)
+
+
+def test_an_erased_record_only_matches_the_reference_field_its_type_can_name(
+    runtime: ApplicationRuntime,
+) -> None:
+    """An id is opaque, so one string can name rows in two tables and must not match both.
+
+    The bundle contract accepts any non-blank identifier and restore puts back whatever the
+    document carried, so a staged `group_id` can legitimately equal an observation's id. Matching
+    on the value alone would delete that group candidate when the observation was forgotten, and
+    the dependent closure would take its memberships with it.
+    """
+    alice = runtime.use_cases.remember_person.execute(RememberPersonInput(name="Alice Ahmed")).person.id
+    observation = runtime.use_cases.record_observation.execute(
+        RecordObservationInput(person_id=alice, text="Asked for metrics before agreeing")
+    )
+    batch = runtime.use_cases.stage_candidates.execute(
+        "classroom-chat",
+        [
+            {"type": "person", "ref": "cara", "name": "Cara Diaz", "aliases": []},
+            {
+                "type": "group",
+                "ref": "class-1",
+                "name": "Class 1, Grade 6",
+                "kind": "class",
+                # The collision: a group reference carrying the observation's id.
+                "group_id": observation.id,
+            },
+            {"type": "group_membership", "person_ref": "cara", "group_ref": "class-1", "role": "student"},
+        ],
+        source_kind="conversation",
+    ).batch_id
+    before = [row.candidate["type"] for row in runtime.use_cases.review_import.execute(batch).candidates]
+
+    runtime.use_cases.forget.execute(f"observation:{observation.id}", "record")
+
+    after = [row.candidate["type"] for row in runtime.use_cases.review_import.execute(batch).candidates]
+    assert after == before == ["person", "group", "group_membership"]
