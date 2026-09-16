@@ -25,6 +25,7 @@ from people_context.app.imports import (
     MAX_MATCH_CANDIDATE_NAME_CHARS,
     MAX_MATCH_CANDIDATES,
     REDACTED_FIELD,
+    ImportBudget,
     ImportPipelineError,
 )
 from people_context.domain.person import Person
@@ -846,3 +847,148 @@ def test_a_current_digest_is_accepted(runtime: ApplicationRuntime) -> None:
     result = runtime.use_cases.commit_import.execute(batch_id, ids, expected_batch_digest=digest)
 
     assert result.committed_ids == ids
+
+
+# --- regressions from review -------------------------------------------------
+
+
+def test_an_unrelated_patch_does_not_discard_an_explicit_identity_choice(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Regression: correcting a summary re-ran the matcher and reverted the row to ambiguous.
+
+    "Choose Priya, then fix her summary" is the supported sequence, and re-deriving the match on
+    a name that still collides silently threw away the one decision the field exists to record.
+    """
+    batch_id, ids, people = _ambiguous_batch(runtime, collisions=3)
+    chosen = sorted(people)[1]
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": chosen})
+
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"summary": "met at the conference"})
+
+    amended = _candidate(runtime, batch_id, ids[0])
+    assert amended["match_disposition"] == "matched"
+    assert amended["matched_person_id"] == chosen
+
+
+def test_amending_the_name_still_re_runs_the_matcher(runtime: ApplicationRuntime) -> None:
+    """The other half of the same rule: an identity-bearing field does reopen the question."""
+    batch_id, ids, people = _ambiguous_batch(runtime, collisions=3)
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": sorted(people)[0]})
+    _save_person(runtime, "01M29PERSONUNIQUENAME0000001", "Tomasz Wozniak")
+
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"name": "Tomasz Wozniak"})
+
+    assert _candidate(runtime, batch_id, ids[0])["matched_person_id"] == "01M29PERSONUNIQUENAME0000001"
+
+
+def test_identity_cannot_move_once_a_dependent_has_committed_against_it(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Regression: a committed record was left on one person while the batch named another.
+
+    Commit resolves a dependent through its person candidate's *stored* match whether or not the
+    person row has itself committed, so one accepted fact pins the identity. Letting it move
+    afterwards split a single batch's records across two people with nothing saying so.
+    """
+    batch_id = _stage(
+        runtime,
+        [
+            _person("p1", "Priya Sharma"),
+            {"type": "fact", "person_ref": "p1", "predicate": "city", "value": "Berlin"},
+            {"type": "fact", "person_ref": "p1", "predicate": "role", "value": "Designer"},
+        ],
+    )
+    people = [_save_person(runtime, f"01M29LOCKPERSON{index:012d}", "Priya Sharma") for index in range(2)]
+    ids = _ids(runtime, batch_id)
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": people[0]})
+    runtime.use_cases.commit_import.execute(batch_id, [ids[1]])
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": people[1]})
+
+    assert raised.value.code == "identity_already_committed"
+    runtime.use_cases.commit_import.execute(batch_id, [ids[2]])
+    stored = runtime.conn.execute("SELECT DISTINCT person_id FROM facts").fetchall()
+    assert [row["person_id"] for row in stored] == [people[0]]
+
+
+def test_a_locked_identity_still_accepts_an_amendment_that_does_not_move_it(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Only a retarget is refused; re-affirming the same person, or editing anything else, is not."""
+    batch_id = _stage(
+        runtime,
+        [
+            _person("p1", "Priya Sharma"),
+            {"type": "fact", "person_ref": "p1", "predicate": "city", "value": "Berlin"},
+        ],
+    )
+    people = [_save_person(runtime, f"01M29KEEPPERSON{index:012d}", "Priya Sharma") for index in range(2)]
+    ids = _ids(runtime, batch_id)
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": people[0]})
+    runtime.use_cases.commit_import.execute(batch_id, [ids[1]])
+
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": people[0]})
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"summary": "unchanged identity"})
+
+    assert _candidate(runtime, batch_id, ids[0])["matched_person_id"] == people[0]
+
+
+@pytest.mark.parametrize("aliases", [None, ["not-an-alias"], [{"kind": "handle"}]])
+def test_a_malformed_alias_patch_refuses_instead_of_raising(
+    runtime: ApplicationRuntime, aliases: object
+) -> None:
+    """Regression: matching consumed `aliases` before the shape was checked, so these crashed.
+
+    A `TypeError` or `AttributeError` escaping here reaches the CLI as a traceback and MCP as a
+    tool failure, where both promise an atomic structured refusal.
+    """
+    batch_id, ids = _simple_batch(runtime)
+    before = _candidate(runtime, batch_id, ids[0])
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"aliases": aliases})
+
+    assert raised.value.code == "invalid_candidates"
+    assert _candidate(runtime, batch_id, ids[0]) == before
+
+
+def test_review_is_unbounded_by_default_and_bounded_only_when_a_caller_asks(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Regression: the shared use case defaulted to the CLI ceiling, narrowing the MCP contract.
+
+    `review_import` shipped with an unbounded read contract that `docs/import.md` states
+    explicitly, and one instance serves both boundaries.
+    """
+    batch_id, _ids_here = _simple_batch(runtime)
+    tiny = ImportBudget(max_staged_payload_bytes=1)
+
+    assert runtime.use_cases.review_import.execute(batch_id).candidates
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.review_import.execute(batch_id, budget=tiny)
+    assert raised.value.code == "staged_payload_too_large"
+
+
+def test_the_review_ceiling_counts_the_bytes_a_projected_person_id_really_costs(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Regression: the charge assumed a bounded person id, and nothing bounds one.
+
+    A restored `Identifier` is any non-blank string, and the projection renders it whole because
+    a truncated id would select nobody, so a worst-case allowance alone let the rendered review
+    exceed the very ceiling it was supposed to enforce.
+    """
+    long_id = "X" * 200_000
+    _save_person(runtime, long_id, "Priya Sharma")
+    _save_person(runtime, "01M29SHORTIDPERSON0000000001", "Priya Sharma")
+    batch_id = _stage(runtime, [_person("p1", "Priya Sharma")])
+    # A ceiling the worst-case allowance clears comfortably, and the real projection does not.
+    budget = ImportBudget(max_staged_payload_bytes=64 * 1024)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.review_import.execute(batch_id, budget=budget)
+
+    assert raised.value.code == "staged_payload_too_large"

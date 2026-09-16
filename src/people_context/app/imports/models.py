@@ -46,6 +46,11 @@ class ImportBatchResult(BaseModel):
     batch may have had them cleaned up, or may have arrived from a bundle that carries only its
     durable outcomes, and pointing someone at review for one of those would name a batch review
     can no longer find. It is ``True`` for every freshly staged batch.
+
+    ``source_status`` is that receipt's own status, and it exists because ``reviewable`` cannot
+    tell the two terminal states apart. A batch with nothing left to review may have committed
+    everything or had everything withdrawn, and reporting the second as the first would tell
+    someone re-importing a source that it produced durable records when it produced none.
     """
 
     batch_id: str
@@ -56,6 +61,7 @@ class ImportBatchResult(BaseModel):
     source_session_id: str | None = None
     duplicate: bool = False
     reviewable: bool = True
+    source_status: str | None = None
 
 
 #: Colliding people one ambiguous person row may list, and the characters each name may carry.

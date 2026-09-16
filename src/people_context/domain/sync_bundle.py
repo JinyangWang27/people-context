@@ -1376,14 +1376,22 @@ def _emptied_session_details(imports: BundleImportState) -> list[str]:
     mapped_sessions = {mapping.source_session_id for mapping in imports.candidate_mappings}
     details: list[str] = []
     for session in imports.source_sessions:
-        # Two terminal states own nothing and are meant to. `redacted` is what erasure leaves
-        # behind; `withdrawn` is a review that finished and recorded nothing, whose staging rows
-        # stay local and are deliberately not exported. Neither is the dead end above.
-        if session.status in ("redacted", "withdrawn"):
+        # `redacted` is what erasure leaves behind: it owns nothing by construction, and the
+        # checks below would read that as the dead end above.
+        if session.status == "redacted":
             continue
         has_pending = session.batch_id is not None and session.batch_id in pending_batches
         if has_pending and session.status not in REVIEWABLE_SESSION_STATUSES:
             details.append(f"source session {session.id} owns a reviewable staging row but is {session.status}")
+        elif session.status == "withdrawn":
+            # A withdrawn receipt is a review that finished and recorded nothing, so owning
+            # nothing is its *legitimate* shape rather than the contradiction the branches below
+            # refuse. It is still held to what it claims: a mapping would mean something did
+            # commit, and the pending check above already caught a row still owing a decision —
+            # which matters because export carries staging only for a reviewable receipt, so a
+            # restored contradiction would drop those candidates from the very next bundle.
+            if session.id in mapped_sessions:
+                details.append(f"source session {session.id} is withdrawn but owns a commit mapping")
         elif session.status == "staged" and not has_pending:
             # `staged` means nothing has committed, so mappings cannot stand in for the rows.
             details.append(f"source session {session.id} is staged but owns no reviewable staging row")

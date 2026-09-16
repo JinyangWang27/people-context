@@ -45,6 +45,7 @@ from people_context.app.imports import (
 )
 from people_context.cli.rendering import print_import_review
 from people_context.domain.import_provenance import STAGING_STATUS_REJECTED
+from people_context.ports.sources import STATUS_COMMITTED, STATUS_WITHDRAWN
 
 #: Validation failures reported for one refused candidate batch before the listing is truncated.
 _MAX_REPORTED_VALIDATION_ERRORS = 10
@@ -335,7 +336,9 @@ def _bounded_review(runtime: ApplicationRuntime, batch_id: str) -> ImportReviewR
     if refusal is not None:
         return refusal
     try:
-        return runtime.use_cases.review_import.execute(batch_id)
+        # The ceiling is this command's, passed per call: `review_import` keeps the unbounded read
+        # contract it shipped with, and one instance of the use case serves both boundaries.
+        return runtime.use_cases.review_import.execute(batch_id, budget=CLI_IMPORT_BUDGET)
     except ImportPipelineError as exc:
         return _refuse(f"import review failed: {exc}")
 
@@ -510,20 +513,18 @@ def _readable_source(raw_path: str) -> Path | None:
 
 def _print_batch(batch: ImportBatchResult, *, duplicate_hint: str) -> None:
     if batch.duplicate:
-        # A committed batch may have had its reviewable rows cleaned up, or may have arrived from
-        # a bundle carrying only its durable outcomes. Pointing at review for one of those would
-        # name a batch review can no longer find, so the count and the next step follow what the
-        # batch still holds.
-        held = "candidates" if batch.reviewable else "committed candidates"
+        # A batch with nothing left to review may have had its rows cleaned up, may have arrived
+        # from a bundle carrying only its durable outcomes, or may have been withdrawn entirely.
+        # Pointing at review for any of those would name a batch review can no longer find, and
+        # calling a withdrawn one committed would claim durable records it never produced — so
+        # the count and the next step follow the receipt's own status.
+        held, outcome = _duplicate_wording(batch)
         print(
             f"This source was already imported as batch {batch.batch_id} "
             f"with {batch.candidate_count} {held}; nothing new was staged."
         )
         _print_source_session(batch)
-        if batch.reviewable:
-            print(f"Review it with: pctx import review {batch.batch_id}")
-        else:
-            print("Its candidates are already committed; there is nothing left to review.")
+        print(outcome if outcome is not None else f"Review it with: pctx import review {batch.batch_id}")
         print(duplicate_hint)
         return
     print(f"Staged batch {batch.batch_id} with {batch.candidate_count} candidates; nothing is committed yet.")
@@ -537,6 +538,20 @@ def _print_batch(batch: ImportBatchResult, *, duplicate_hint: str) -> None:
         # the reason is a fixed vocabulary, never a fragment of the card itself.
         print(f"Skipped card {card.get('index', '?')}: {card.get('reason', 'unknown')}")
     print(f"Review with: pctx import review {batch.batch_id}")
+
+
+def _duplicate_wording(batch: ImportBatchResult) -> tuple[str, str | None]:
+    """Return what the already-imported batch holds, and what is left to do with it.
+
+    A `None` outcome means the batch is still reviewable and the caller should point at review.
+    """
+    if batch.reviewable:
+        return "candidates", None
+    if batch.source_status == STATUS_WITHDRAWN:
+        return "withdrawn candidates", "Its candidates were all withdrawn; there is nothing left to review."
+    if batch.source_status == STATUS_COMMITTED:
+        return "committed candidates", "Its candidates are already committed; there is nothing left to review."
+    return "candidates", "There is nothing left to review."
 
 
 def _print_source_session(batch: ImportBatchResult) -> None:

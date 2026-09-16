@@ -62,6 +62,13 @@ from people_context.ports.repository import PersonReader
 #: a choice is only accepted when the matcher itself produced it. See `_apply_person_match`.
 IMMUTABLE_PATCH_FIELDS: frozenset[str] = frozenset({"type", "match_disposition", "match_count"})
 
+#: Patch fields that can change who a person candidate resolves to.
+#:
+#: Matching re-runs only for these. Every other field is a correction to what the candidate
+#: *says*, not to who it is about, and re-deriving the match for one of those would let an
+#: unrelated edit discard a resolution the reviewer explicitly made.
+IDENTITY_PATCH_FIELDS: frozenset[str] = frozenset({"name", "aliases", "matched_person_id"})
+
 #: What a refusal says instead of a field name the candidate models do not declare.
 #:
 #: A patch key is untrusted input. An agent or a hand-edited document may put source wording in
@@ -152,9 +159,15 @@ def validate_batch_edit(
     targets = [*edit.amendments, *edit.withdrawals]
     _require_pending_targets(by_id, targets, batch_id=rows[0].batch_id if rows else None)
 
+    locked = _identity_locked_candidates(rows)
     amended: dict[str, dict[str, Any]] = {}
     for candidate_id, patch in edit.amendments.items():
-        amended[candidate_id] = _amended_candidate(by_id[candidate_id], patch, people=people)
+        amended[candidate_id] = _amended_candidate(
+            by_id[candidate_id],
+            patch,
+            people=people,
+            identity_locked=candidate_id in locked,
+        )
 
     resulting = [
         StagedImportRow(
@@ -194,6 +207,28 @@ def project_match_candidates(
     return projected, truncated
 
 
+def _identity_locked_candidates(rows: list[StagedImportRow]) -> set[str]:
+    """Return the person candidates a committed row in this batch already resolved through.
+
+    Commit resolves a dependent through its person candidate's stored match whether or not that
+    person row has itself been committed, so accepting one dependent is enough to pin the
+    identity for every other. The person rows those committed dependents name are therefore no
+    longer free to move; see `_require_unlocked_identity`.
+    """
+    people = {row.id for row in rows if row.candidate.get("type") == "person"}
+    locked: set[str] = set()
+    for row in rows:
+        if row.status != "committed":
+            continue
+        references = (
+            staged_candidate_references(row.candidate)
+            - staged_evidence_references(row.candidate)
+            - staged_group_references(row.candidate)
+        )
+        locked |= references & people
+    return locked
+
+
 def _require_pending_targets(
     by_id: dict[str, StagedImportRow],
     targets: list[str],
@@ -228,6 +263,7 @@ def _amended_candidate(
     patch: dict[str, Any],
     *,
     people: PersonReader,
+    identity_locked: bool = False,
 ) -> dict[str, Any]:
     """Return one row's candidate with the patch shallow-merged in and re-validated.
 
@@ -244,8 +280,11 @@ def _amended_candidate(
             continue
         raise _amendment_refusal(row, field_name, _immutable_reason(field_name))
     merged = {**row.candidate, **patch}
-    _apply_person_match(row, merged, patch, people=people)
+    # The shape is checked before the match, not after: matching reads `name` and walks `aliases`,
+    # so a patch carrying `{"aliases": null}` or a bare string in that list would raise out of the
+    # matcher — a traceback where this boundary promises an atomic refusal.
     _check_persisted_shape(row, merged, kind)
+    _apply_person_match(row, merged, patch, people=people, identity_locked=identity_locked)
     _check_input_rules(row, merged, kind)
     return merged
 
@@ -262,6 +301,7 @@ def _apply_person_match(
     patch: dict[str, Any],
     *,
     people: PersonReader,
+    identity_locked: bool,
 ) -> None:
     """Re-derive a person candidate's match outcome from the amended values.
 
@@ -271,15 +311,25 @@ def _apply_person_match(
     found that person, which makes it a reviewer's decision recorded on the row rather than a
     guess written over an ambiguity.
 
-    Without an explicit choice the matcher simply runs again on the amended tokens, and a
-    candidate that stays ambiguous stays ambiguous: its dependents remain unresolved at commit,
-    exactly as they are today. Nothing here resolves anything by deciding to.
+    Without an explicit choice the matcher runs again on the amended tokens, and a candidate that
+    stays ambiguous stays ambiguous: its dependents remain unresolved at commit, exactly as they
+    are today. Nothing here resolves anything by deciding to.
+
+    It runs again only when the patch actually touches identity. A reviewer who picks one of two
+    people named Priya Sharma and then corrects her summary has not reopened the question, and
+    re-deriving the match on a name that still collides would quietly put the row back to
+    `ambiguous` — discarding the one decision this field exists to record.
+
+    `identity_locked` says a committed row in this batch already resolved through this candidate.
+    See `_identity_locked_candidates`.
     """
     if merged.get("type") != "person":
         if "matched_person_id" in patch:
             raise _amendment_refusal(
                 row, "matched_person_id", "only a person candidate carries a matched person"
             )
+        return
+    if not _touches_identity(patch):
         return
     tokens = candidate_identity_tokens(str(merged.get("name", "")), list(merged.get("aliases", [])))
     chosen = patch.get("matched_person_id") if "matched_person_id" in patch else None
@@ -290,6 +340,7 @@ def _apply_person_match(
                 "the chosen person is not one this candidate's name and handles resolve to",
                 candidate_id=row.id,
             )
+        _require_unlocked_identity(row, chosen, identity_locked=identity_locked)
         merged["matched_person_id"] = chosen
         merged["match_disposition"] = MatchDisposition.MATCHED.value
         merged["match_count"] = 1
@@ -298,12 +349,49 @@ def _apply_person_match(
         # A row staged before the ambiguity-preserving matcher keeps the first-unique-token
         # behaviour it was staged under, exactly as commit's own re-match does. Re-deriving it
         # with a different matcher would let an amendment change an answer nobody amended.
-        merged["matched_person_id"] = _legacy_match(people, tokens)
+        legacy = _legacy_match(people, tokens)
+        _require_unlocked_identity(row, legacy, identity_locked=identity_locked)
+        merged["matched_person_id"] = legacy
         return
     match = match_person_candidate(people, tokens)
+    _require_unlocked_identity(row, match.person_id, identity_locked=identity_locked)
     merged["matched_person_id"] = match.person_id
     merged["match_disposition"] = match.disposition.value
     merged["match_count"] = match.match_count
+
+
+def _touches_identity(patch: dict[str, Any]) -> bool:
+    """Whether this patch can change who a person candidate resolves to."""
+    return bool(IDENTITY_PATCH_FIELDS & set(patch))
+
+
+def _require_unlocked_identity(
+    row: StagedImportRow,
+    resolved: str | None,
+    *,
+    identity_locked: bool,
+) -> None:
+    """Refuse an identity change a durable record in this batch has already been written against.
+
+    A pending person row resolves its dependents through its stored match, so a dependent can
+    commit while the person row itself is still pending. Letting the identity move afterwards
+    would leave that durable record on the old person while the batch says it names the new one,
+    and the next dependent would commit to the new one — one batch's records split silently
+    across two identities, with nothing in review saying so.
+
+    Only an actual change is refused. Re-affirming the same choice, or a corrected spelling that
+    lands on the same person, is not a retarget and stays allowed. The comparison is against the
+    *stored* row rather than the merged one, because the merged one already carries the patch.
+    """
+    if not identity_locked or resolved == row.candidate.get("matched_person_id"):
+        return
+    raise ImportPipelineError(
+        "identity_already_committed",
+        "this candidate's identity cannot change: a candidate committed in this batch was "
+        "already recorded against the person it resolves to",
+        batch_id=row.batch_id,
+        candidate_id=row.id,
+    )
 
 
 def _legacy_match(people: PersonReader, tokens: list[str]) -> str | None:
@@ -325,7 +413,7 @@ def _check_persisted_shape(row: StagedImportRow, merged: dict[str, Any], kind: s
     except ValidationError as exc:
         raise _amendment_refusal(
             row,
-            _safe_field(kind, exc.errors()[0].get("loc", ())),
+            _safe_field(exc.errors()[0].get("loc", ())),
             "the amended candidate is not a valid staged candidate",
         ) from exc
 
@@ -357,7 +445,7 @@ def _check_input_rules(row: StagedImportRow, merged: dict[str, Any], kind: str) 
     except ValidationError as exc:
         raise _amendment_refusal(
             row,
-            _safe_field(kind, exc.errors()[0].get("loc", ())),
+            _safe_field(exc.errors()[0].get("loc", ())),
             "the amended candidate is not accepted by the staging boundary",
         ) from exc
     if kind == "relationship" and merged.get("from_candidate_id") == merged.get("to_candidate_id"):
@@ -524,13 +612,23 @@ def _remeasure_batch(rows: list[StagedImportRow], budget: ImportBudget) -> None:
         )
 
 
-def _safe_field(kind: str, location: tuple[Any, ...]) -> str:
+#: Every field name the persisted candidate models declare, across all of them.
+#:
+#: The union rather than one type's own fields, matching how the CLI already decides what a
+#: validation location may print. A name in this set is this project's own vocabulary and is
+#: always safe: `matched_person_id` patched onto an affiliation is a mistake worth naming, not
+#: a secret. Anything outside it came from the payload.
+_DECLARED_STAGED_FIELDS: frozenset[str] = frozenset(
+    field for model in STAGED_CANDIDATE_MODELS.values() for field in model.model_fields
+)
+
+
+def _safe_field(location: tuple[Any, ...]) -> str:
     """Return the field a refusal may name, or `(redacted)` for one the models do not declare.
 
     A key an editor or an agent invented is untrusted text that may carry source wording. The
     declared field names are this project's own vocabulary and are always safe to print.
     """
-    model = STAGED_CANDIDATE_MODELS.get(kind)
     named = False
     for part in location:
         if not isinstance(part, str):
@@ -541,7 +639,7 @@ def _safe_field(kind: str, location: tuple[Any, ...]) -> str:
         # puts its own tag first, so the search continues past a part that names no field rather
         # than reporting the tag as an unprintable key.
         field_name = _PERSISTED_FIELD_ALIASES.get(part, part)
-        if model is not None and field_name in model.model_fields:
+        if field_name in _DECLARED_STAGED_FIELDS:
             return field_name
     if named:
         return REDACTED_FIELD

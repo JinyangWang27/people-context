@@ -83,10 +83,11 @@ integer `version`, and follows the same additive rule as MCP responses: existing
 repurposed, and new fields are additive.
 
 M29.1 added `match_candidates` (with a per-entry `name_truncated`), `match_candidates_truncated`, and
-`batch_digest` to the import review document and the `review_import` response, and the `rejected` status value
-to a staged candidate — all additive, with no format string or version change. It also added the `withdrawn`
-import receipt status that `pctx sources` and `pctx source show` may report, and advanced the sync bundle to
-version 7 so a staging row may be `rejected` and a receipt `withdrawn`.
+`batch_digest` to the import review document and the `review_import` response, `source_status` to the import
+staging batch document, and the `rejected` status value to a staged candidate — all additive, with no format
+string or version change. It also added the `withdrawn` import receipt status that `pctx sources` and
+`pctx source show` may report, and advanced the sync bundle to version 7 so a staging row may be `rejected` and
+a receipt `withdrawn`.
 
 **Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds an additive `ordinal` to the
 import review document and the `review_import` response. [M30](specs/m30-local-web-review.md) adds an additive

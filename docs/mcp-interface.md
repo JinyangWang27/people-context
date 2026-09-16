@@ -644,9 +644,17 @@ decision. Passing it back as `expected_batch_digest` to `amend_candidate`, `with
 `commit_import` refuses with `batch_changed`, writing nothing, when another client changed the batch after the
 read. Omitting it keeps the released behaviour exactly.
 
+Matching re-runs only when a patch touches `name`, `aliases`, or `matched_person_id`. A patch that corrects
+anything else keeps the row's recorded resolution, because re-deriving it on a name that still collides would
+discard the decision the reviewer just made. And once a candidate committed in this batch has been recorded
+against the person a row resolves to, that row's identity is fixed: an amendment that would move it refuses with
+`identity_already_committed`, because commit resolves a dependent through its person candidate's stored match
+whether or not the person row has itself committed, so one accepted dependent pins the identity for the rest.
+
 New refusal codes, all additive: `candidate_not_pending`, `candidate_withdrawn`, `candidate_reference_invalid`,
-`person_not_a_match`, and `batch_changed`. Refusals name the candidate and, when the candidate models declare it,
-the field; a key the models do not declare is reported as `(redacted)`, and the patch payload is never echoed.
+`person_not_a_match`, `identity_already_committed`, and `batch_changed`. Refusals name the candidate and, when
+the candidate models declare the field, the field; a key the models do not declare is reported as `(redacted)`,
+and the patch payload is never echoed.
 
 ## Person context compatibility
 

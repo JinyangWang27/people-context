@@ -52,8 +52,10 @@ class ImportBatchDocument(BaseModel):
 
     `source_session_id`, `duplicate`, and `reviewable` are additive M18 fields: they carry the
     durable receipt this batch belongs to, whether the canonical claim for the source was already
-    owned, and whether the batch still has staged rows to review. A reader that predates them sees
-    the same batch fields it always did, so the document stays at version 1 under the additive rule.
+    owned, and whether the batch still has staged rows to review. `source_status` is M29.1's, and
+    reports that receipt's own status, which is the only thing that tells a batch that committed
+    everything apart from one that was withdrawn entirely. A reader that predates them sees the
+    same batch fields it always did, so the document stays at version 1 under the additive rule.
     """
 
     format: str = IMPORT_BATCH_FORMAT
@@ -66,6 +68,7 @@ class ImportBatchDocument(BaseModel):
     source_session_id: str | None = None
     duplicate: bool = False
     reviewable: bool = True
+    source_status: str | None = None
 
 
 class ImportReviewCandidateEntry(BaseModel):
@@ -155,6 +158,7 @@ def import_batch_document(result: ImportBatchResult) -> ImportBatchDocument:
         source_session_id=result.source_session_id,
         duplicate=result.duplicate,
         reviewable=result.reviewable,
+        source_status=result.source_status,
     )
 
 

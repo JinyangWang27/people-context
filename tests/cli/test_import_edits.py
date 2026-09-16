@@ -257,3 +257,52 @@ def test_amending_an_unknown_batch_refuses_rather_than_creating_one(
 
     assert code == 1
     assert capsys.readouterr().out == ""
+
+
+def test_reimporting_a_withdrawn_source_does_not_call_its_candidates_committed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: a fully withdrawn source reported durable records it never produced.
+
+    `reviewable` alone cannot tell the two terminal states apart, so the duplicate report read
+    every finished batch as a committed one.
+    """
+    db_file = tmp_path / "people.db"
+    digest = "a" * 64
+    stage = [
+        "--db", str(db_file), "import", "stage-candidates",
+        "--source", "review", "--input", str(_input(tmp_path)),
+        "--source-kind", "notes", "--content-digest", digest,
+    ]
+    assert cli.main([*stage, "--json"]) == 0
+    batch_id = str(json.loads(capsys.readouterr().out)["batch_id"])
+    assert cli.main(["--db", str(db_file), "import", "review", batch_id, "--json"]) == 0
+    ids = [row["id"] for row in json.loads(capsys.readouterr().out)["candidates"]]
+    assert cli.main(["--db", str(db_file), "import", "reject", batch_id, *ids]) == 0
+    capsys.readouterr()
+
+    assert cli.main(stage) == 0
+
+    out = capsys.readouterr().out
+    assert "withdrawn candidates" in out
+    assert "committed" not in out
+
+
+def test_reimporting_a_committed_source_still_says_so(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    digest = "b" * 64
+    stage = [
+        "--db", str(db_file), "import", "stage-candidates",
+        "--source", "review", "--input", str(_input(tmp_path)),
+        "--source-kind", "notes", "--content-digest", digest,
+    ]
+    assert cli.main([*stage, "--json"]) == 0
+    batch_id = str(json.loads(capsys.readouterr().out)["batch_id"])
+    assert cli.main(["--db", str(db_file), "import", "commit", batch_id, "--all"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(stage) == 0
+
+    assert "committed candidates" in capsys.readouterr().out

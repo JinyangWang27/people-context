@@ -1191,6 +1191,28 @@ def test_a_version_six_document_without_either_new_status_still_parses() -> None
     assert len(document.groups) == 1
 
 
+@pytest.mark.parametrize("carries", ["a pending row", "a commit mapping"])
+def test_a_withdrawn_receipt_carrying_what_it_denies_is_refused(carries: str) -> None:
+    """Regression: `withdrawn` was exempted from every consistency check, not just the right one.
+
+    Export carries staging only for a reviewable receipt, so a restored `withdrawn` receipt that
+    still owned a pending row would drop that candidate from the very next bundle — and the
+    reduced bundle would validate, so nothing downstream would notice. A mapping is the same
+    contradiction from the other side: `withdrawn` says nothing committed.
+    """
+    payload = _document()
+    imports = _imports(payload)
+    imports["source_sessions"][0]["status"] = "withdrawn"
+    payload["trait_evidence"] = []
+    if carries == "a pending row":
+        imports["candidate_mappings"].clear()
+    else:
+        imports["staging"].clear()
+
+    with pytest.raises(InvalidBundleError):
+        validate_bundle_document(parse_bundle_payload(payload))
+
+
 def test_a_withdrawn_receipt_is_not_the_dead_end_an_empty_live_receipt_is() -> None:
     """A live receipt owning neither a mapping nor a reviewable row is refused; this is not one.
 

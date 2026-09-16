@@ -314,59 +314,102 @@ class ReviewImport:
     without one, this returns exactly what it returned before the projection existed. A caller
     that cannot read people cannot be handed a list of them, and inventing an empty one would say
     "no existing person matches" about a row that is ambiguous precisely because several do.
+
+    The budget is the caller's, and it defaults to unbounded. `review_import` shipped with an
+    unbounded read contract, and one instance of this use case serves both the MCP tools and the
+    `pctx import` group, so a ceiling wired in here would silently narrow the released one. The
+    CLI passes its own budget per call instead, beside the preflight it already runs.
     """
 
     def __init__(
         self,
         staging: ImportStagingStore,
         people: PersonReader | None = None,
-        budget: ImportBudget = CLI_IMPORT_BUDGET,
+        budget: ImportBudget = UNBOUNDED_IMPORT_BUDGET,
     ) -> None:
         self._staging = staging
         self._people = people
         self._budget = budget
 
-    def execute(self, batch_id: str) -> ImportReviewResult:
+    def execute(self, batch_id: str, *, budget: ImportBudget | None = None) -> ImportReviewResult:
+        limits = budget or self._budget
         rows = self._staging.list_batch(batch_id)
         if not rows:
             raise ImportPipelineError("batch_not_found", f"import batch not found: {batch_id}", batch_id=batch_id)
         ambiguous = [row for row in rows if _is_ambiguous_person(row.candidate)]
-        self._charge_projection(batch_id, rows, len(ambiguous))
+        stored = _payload_bytes(rows)
+        self._charge_worst_case(batch_id, stored, len(ambiguous), limits)
         people = self._people
         projections = (
             {row.id: project_match_candidates(people, row.candidate) for row in ambiguous}
             if people is not None
             else {}
         )
+        self._charge_projected(batch_id, stored, projections, limits)
         return ImportReviewResult(
             batch_id=batch_id,
             batch_digest=batch_digest(rows),
             candidates=[_review_row(row, projections.get(row.id)) for row in rows],
         )
 
-    def _charge_projection(self, batch_id: str, rows: list[StagedImportRow], ambiguous: int) -> None:
-        """Refuse a batch whose rendered review would exceed the ceiling, before rendering it.
+    def _charge_worst_case(
+        self, batch_id: str, stored: int, ambiguous: int, limits: ImportBudget
+    ) -> None:
+        """Refuse an ambiguous batch too large to render, before reading a single name.
 
-        The stored payload is measured the way the store measures it, and the projection's worst
-        case is added on top, so an ambiguous batch that could not be rendered inside the ceiling
-        is refused like any other oversized batch instead of being read row by row first.
+        This is the cheap guard: it bounds the reads the projection is about to do, so a batch
+        with a great many ambiguous rows is refused rather than paged through first. It cannot be
+        the only guard, because what it charges per entry is an allowance rather than a
+        measurement — see `_charge_projected`.
         """
-        limit = self._budget.max_staged_payload_bytes
+        limit = limits.max_staged_payload_bytes
         if limit is None or self._people is None:
             return
-        stored = sum(
-            len(row.source.encode("utf-8"))
-            + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
-            for row in rows
-        )
         projected = ambiguous * MAX_MATCH_CANDIDATES * _MATCH_CANDIDATE_WORST_CASE_BYTES
         if stored + projected > limit:
-            raise resource_limit_error(
-                STAGED_PAYLOAD_TOO_LARGE,
-                f"import batch exceeds the {limit} byte reviewable payload this command can read",
-                batch_id=batch_id,
-                limit=limit,
-            )
+            raise _oversized_review(batch_id, limit)
+
+    def _charge_projected(
+        self,
+        batch_id: str,
+        stored: int,
+        projections: dict[str, tuple[list[dict[str, Any]], bool]],
+        limits: ImportBudget,
+    ) -> None:
+        """Refuse the batch again once the projection's real size is known.
+
+        A person id has no length bound anywhere: the bundle's `Identifier` accepts any non-blank
+        string, so a restored person can carry one far larger than the allowance charged above,
+        and the projection renders it whole because a truncated id would select nobody. Measuring
+        what was actually read is what keeps the ceiling a ceiling. The read itself was already
+        bounded — ten entries per ambiguous row — so this is a second check, not a second read.
+        """
+        limit = limits.max_staged_payload_bytes
+        if limit is None or not projections:
+            return
+        projected = sum(
+            len(json.dumps(entries, ensure_ascii=False).encode("utf-8"))
+            for entries, _truncated in projections.values()
+        )
+        if stored + projected > limit:
+            raise _oversized_review(batch_id, limit)
+
+
+def _payload_bytes(rows: list[StagedImportRow]) -> int:
+    """Measure a batch the way the store measures it: staged source plus candidate JSON."""
+    return sum(
+        len(row.source.encode("utf-8")) + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
+        for row in rows
+    )
+
+
+def _oversized_review(batch_id: str, limit: int) -> ImportPipelineError:
+    return resource_limit_error(
+        STAGED_PAYLOAD_TOO_LARGE,
+        f"import batch exceeds the {limit} byte reviewable payload this command can read",
+        batch_id=batch_id,
+        limit=limit,
+    )
 
 
 def _is_ambiguous_person(candidate: dict[str, Any]) -> bool:
@@ -478,7 +521,7 @@ class AmendStagedCandidate(_BatchEditor):
         )
         for amended_id, candidate in validated.amended.items():
             self._staging.update_candidate(amended_id, candidate)
-        return self._review.execute(batch_id)
+        return self._review.execute(batch_id, budget=self._budget)
 
 
 class WithdrawStagedCandidates(_BatchEditor):
@@ -515,7 +558,7 @@ class WithdrawStagedCandidates(_BatchEditor):
         self._staging.mark_status(withdrawn, STAGING_STATUS_REJECTED)
         if session is not None:
             self._settle_receipt(session, rows, withdrawn)
-        return self._review.execute(batch_id)
+        return self._review.execute(batch_id, budget=self._budget)
 
     def _settle_receipt(
         self,
