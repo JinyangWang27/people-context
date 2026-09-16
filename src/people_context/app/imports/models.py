@@ -184,11 +184,14 @@ EvidenceReference = Annotated[
 #: restored id can legitimately carry it — and `find_groups` hands that exact id back. Trimming
 #: one here would make the group the user confirmed unfindable at commit, or resolve it to a
 #: different record whose id happens to be the trimmed form.
-DurableIdentifier = Annotated[
-    str,
-    StringConstraints(max_length=MAX_EVIDENCE_REF_CHARS),
-    AfterValidator(_non_blank_token),
-]
+#:
+#: Unbounded in length for the same reason, and unlike `EvidenceReference`. That ceiling is the
+#: caller-supplied *label* half of the evidence contract, which a durable group reference has no
+#: equivalent of: there is nothing free-form to bound here, only an id that either matches a
+#: stored row or does not. Capping it would refuse an id this installation can legitimately hold
+#: after a restore, while protecting nothing — a group or membership candidate always opts the
+#: request into the extraction budget, where every string is already held to 8 KiB.
+DurableIdentifier = Annotated[str, AfterValidator(_non_blank_token)]
 
 
 def check_candidate_period(valid_from: date | None, valid_to: date | None) -> None:

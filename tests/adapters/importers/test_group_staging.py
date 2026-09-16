@@ -27,7 +27,15 @@ from people_context.adapters.sqlite import (
 )
 from people_context.adapters.sqlite.group_store import SqliteGroupStore
 from people_context.app.groups.commands import CreateGroup, CreateGroupInput
-from people_context.app.imports import CandidateStager, ImportPipelineError, ReviewImport, StageCandidates
+from people_context.app.imports import (
+    CANDIDATE_STRING_TOO_LONG,
+    MAX_EXTRACTION_STRING_BYTES,
+    CandidateStager,
+    ImportPipelineError,
+    ReviewImport,
+    StageCandidates,
+)
+from people_context.app.imports.models import MAX_EVIDENCE_REF_CHARS
 from people_context.domain.group import TemporalBasis
 
 _NOW = datetime(2026, 7, 17, 12, 0, tzinfo=UTC)
@@ -339,3 +347,30 @@ def test_an_unknown_person_reference_is_reported_without_its_value() -> None:
     # Still located and named: which rule broke, how many refs, and which candidate broke it.
     assert "unknown person reference" in reported
     assert raised.value.details["details"][0]["loc"] == [1]
+
+
+def test_a_durable_id_longer_than_a_staging_label_is_still_accepted() -> None:
+    """The bundle's `Identifier` has no ceiling, so a restored group may carry a long id.
+
+    `find_groups` hands that id back, and refusing it here would make the restored group unusable
+    through the one workflow that points a caller at it. Nothing is unbounded as a result: a group
+    candidate always opts the request into the extraction budget, where every string is held to
+    8 KiB.
+    """
+    conn = open_db(":memory:")
+    stage, review = _use_cases(conn)
+    long_id = "g" * (MAX_EVIDENCE_REF_CHARS + 44)
+
+    batch = stage.execute("notes", [_group(group_id=long_id)])
+
+    assert _candidates(review, batch.batch_id)["group"]["group_id"] == long_id
+
+
+def test_a_durable_id_past_the_extraction_string_budget_is_still_refused() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_group(group_id="g" * (MAX_EXTRACTION_STRING_BYTES + 1))])
+
+    assert raised.value.code == CANDIDATE_STRING_TOO_LONG

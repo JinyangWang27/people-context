@@ -89,6 +89,15 @@ EvidenceIdentifier = Annotated[
     AfterValidator(_non_blank_token),
 ]
 
+#: A durable id a persisted candidate names, with no ceiling of its own.
+#:
+#: The evidence ceiling above is the caller-supplied label's, shared by the durable id beside it.
+#: A group reference has no label half, so there is nothing free-form to bound — only an id that
+#: matches a stored row or does not. The bundle's `Identifier` accepts any non-blank string, and
+#: a restored group may carry one longer than any staging label would be; refusing it here would
+#: make that group unusable through the very workflow `find_groups` points a caller at.
+DurableIdentifier = Annotated[str, AfterValidator(_non_blank_token)]
+
 #: What identity matching concluded about a staged person candidate.
 #:
 #: The producing enum lives in the application layer, which the domain does not import; the values
@@ -247,14 +256,15 @@ class StagedGroup(StrictStagedModel):
 
     Both ids use the opaque identifier type rather than a stripped string, for the reason spelled
     out on `EvidenceIdentifier`: an id is matched exactly against a durable row, and a restored
-    one may carry whatever the bundle's `Identifier` contract allowed.
+    one may carry whatever the bundle's `Identifier` contract allowed — including its length,
+    which is why `DurableIdentifier` imposes no ceiling where the evidence type does.
     """
 
     type: Literal["group"]
     name: GroupName
     kind: GroupKind
-    organization_id: EvidenceIdentifier | None = None
-    group_id: EvidenceIdentifier | None = None
+    organization_id: DurableIdentifier | None = None
+    group_id: DurableIdentifier | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
     stated_by: StatedByText | None = None
 
