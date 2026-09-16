@@ -17,10 +17,10 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) `import amend`, `import reject`,
-`import review --interactive`, and `import edit`; and [M30](specs/m30-local-web-review.md) `browse`. Commands
-below describe delivered behavior, including M28.1 `group`, M28.2 `group shared`, and M28.3's `group` and
-`group_membership` candidate types accepted by `import stage-candidates`.
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) `import review --interactive` and
+`import edit`; and [M30](specs/m30-local-web-review.md) `browse`. Commands below describe delivered behavior,
+including M28.1 `group`, M28.2 `group shared`, M28.3's `group` and `group_membership` candidate types accepted by
+`import stage-candidates`, and M29.1 `import amend` and `import reject`.
 
 | Command | Purpose |
 |---|---|
@@ -58,6 +58,8 @@ below describe delivered behavior, including M28.1 `group`, M28.2 `group shared`
 | `import stage SOURCE PATH [--self-sender TEXT] [--label TEXT] [--external-source-id TEXT] [--force] [--json]` | Extract one local export into a reviewable staging batch; nothing is committed. |
 | `import stage-candidates --source LABEL --input PATH\|- [--source-kind KIND] [--content-digest SHA256] [--extraction-fingerprint SHA256] [--label TEXT] [--external-source-id TEXT] [--json]` | Stage strict agent-extracted candidate JSON — not source text — into a reviewable staging batch. |
 | `import review BATCH_ID [--json]` | Show every staged candidate in one batch with its canonical id and status. |
+| `import amend BATCH_ID CANDIDATE_ID --patch JSON\|- [--json]` | Correct one staged candidate in place; nothing is committed. |
+| `import reject BATCH_ID CANDIDATE_ID... [--json]` | Withdraw staged candidates so they are listed but never committed. |
 | `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
 | `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
 | `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
@@ -121,6 +123,8 @@ call the server.
 ```bash
 uv run pctx import stage linkedin ~/exports/Connections.csv
 uv run pctx import review 01J...BATCH
+uv run pctx import amend 01J...BATCH 01J...CANDIDATE --patch '{"role": "Staff Engineer"}'
+uv run pctx import reject 01J...BATCH 01J...CANDIDATE 01J...OTHER
 uv run pctx import commit 01J...BATCH --accept 01J...CANDIDATE --accept 01J...OTHER
 uv run pctx import commit 01J...BATCH --all
 ```
@@ -138,11 +142,21 @@ leaves it unresolved rather than guessing, and it can be committed later.
 `import review` and `import commit` also read a batch an agent staged over MCP, so they render the full
 candidate vocabulary — including the `observation`, `trait`, and `relationship` types M17 added. A person
 candidate in such a batch reports its match state in words: an ambiguous identity says how many existing people
-it could be, rather than looking like a new one because no id was attached.
+it could be, rather than looking like a new one because no id was attached, and `--json` lists those people in
+`match_candidates` so one can be chosen.
 
-All four commands support `--json`, which writes exactly one versioned document to stdout and keeps every
+`amend` and `reject` are review's other two verbs, and neither commits anything. `--patch` takes a JSON object of
+candidate fields, or `-` to read it from stdin; the fields it names are replaced and the rest are left alone. A
+rejected candidate stays in the listing so you can see what you dropped; `--all` then skips it, and naming it in
+`--accept` refuses the whole commit. Choosing between people who share a name is an amendment too:
+`--patch '{"matched_person_id": "01J..."}'`, accepted only when that person is one the candidate's name and
+handles actually resolve to.
+
+All six commands support `--json`, which writes exactly one versioned document to stdout and keeps every
 diagnostic on stderr — `people-context-import-batch`, `people-context-import-review`, and
 `people-context-import-commit`, all documented in [compatibility.md](compatibility.md#machine-readable-json).
+`amend` and `reject` print the review document for the whole batch, exactly what `import review --json` would
+print next.
 Review output and those documents carry distilled personal data from your export; inspect them before
 redirecting or sharing them.
 

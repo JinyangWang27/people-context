@@ -109,3 +109,29 @@ def test_the_who_prompt_no_longer_asks_about_a_removed_field(tmp_path: Path) -> 
 
     assert "withheld" not in body
     assert "complete ordinary view" in body
+
+
+def test_both_capture_prompts_teach_the_chat_review_loop(tmp_path: Path) -> None:
+    """A client with no skill loader gets the review loop from the prompts or not at all.
+
+    Both must carry the sentence an agent is most likely to get wrong: a user confirming one
+    correction has not approved the batch, and reading it that way turns the gate into a rubber
+    stamp.
+    """
+    server = build_server(db_path=tmp_path / "review-loop.db")
+
+    async def flow(client: Client) -> dict[str, str]:
+        remember = await client.get_prompt("remember", {"statement": "Nadia moved to Lisbon"})
+        capture = await client.get_prompt("end_of_session_capture", {})
+        return {
+            "remember": remember.messages[0].content.text,  # type: ignore[union-attr]
+            "end_of_session_capture": capture.messages[0].content.text,  # type: ignore[union-attr]
+        }
+
+    prompts = _run(server, flow)
+
+    for name, body in prompts.items():
+        assert "numbered list" in body, name
+        assert "`amend_candidate`" in body, name
+        assert "`withdraw_candidates`" in body, name
+        assert "Confirming an amendment is not acceptance of the batch" in body, name

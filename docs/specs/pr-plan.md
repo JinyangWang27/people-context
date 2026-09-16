@@ -817,7 +817,7 @@ These three planned PRs are additional to all historical and supplemental totals
 including M28's, remain unchanged. M29 is independent of M28.3; internal dependencies are
 M29.1 → M29.2 → M29.3.
 
-- [ ] **M29.1 — Amend and withdraw staged candidates**
+- [x] **M29.1 — Amend and withdraw staged candidates**
   - **Scope:** Add `AmendStagedCandidate` and `WithdrawStagedCandidates` beside `ReviewImport`/`CommitImport` in
     `app/imports/workflow.py`, with shallow-merge patching, re-validation through `STAGED_CANDIDATE_MODELS`, an
     immutable `type`, batch-wide reference re-validation, re-measurement against the staging ceilings, re-run person

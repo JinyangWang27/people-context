@@ -151,6 +151,25 @@ The staged flow has three distinct steps. Keep them distinct:
    reviewed a batch and explicitly accepted specific candidates. Never call
    `commit_import` automatically, speculatively, or in the same breath as staging.
 
+### The chat review loop: number it, correct it, then ask
+
+A batch of ULIDs is not a review. Present the staged batch as a **numbered list**, one
+short line per candidate, and keep the canonical id at the end of the line so the user
+can still copy one. Then translate what the user says back into the two review verbs:
+
+- "change the third one to Staff Engineer", "that date is a year out", "it is the Priya
+  Sharma at Acme" → `amend_candidate` with just the fields that change.
+- "drop the last two", "that one is wrong" → `withdraw_candidates`. A withdrawn
+  candidate stays visible as `rejected`, so the user can see what was dropped.
+
+Both return the revised batch. **Re-present it**, renumbered, and ask again.
+
+**Confirming an amendment is not acceptance of the batch.** "Yes, Staff Engineer is
+right" approves one correction; it does not approve committing anything. Call
+`commit_import` only when the user accepts the revised batch itself, and pass the
+`batch_digest` from the review you showed them so a commit is refused if the batch
+changed after they saw it.
+
 ### Use only the strict candidate vocabulary
 
 `stage_candidates` accepts exactly nine candidate `type`s. Nothing else validates:

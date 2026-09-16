@@ -108,7 +108,12 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
             "candidates or the message, ask, and call again.\n\n"
             "If the material was extracted or inferred from earlier conversation, a transcript, or notes, "
             "do not write it directly: call `stage_candidates` with concise structured candidates and tell "
-            "the user the batch is pending review. Never call `commit_import` yourself.\n"
+            "the user the batch is pending review. Never call `commit_import` yourself.\n\n"
+            "Present a staged batch as a numbered list, one short line each, with the candidate id at the "
+            "end of the line. Turn \"change the third one\" into `amend_candidate` and \"drop that one\" into "
+            "`withdraw_candidates`, then re-present the revised batch and ask again. Confirming an "
+            "amendment is not acceptance of the batch: call `commit_import` only when the user accepts the "
+            "revised batch itself.\n"
         )
 
     @mcp.prompt(
@@ -141,7 +146,10 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
             "a durable fact, a role change, a meaningful interaction. If there is anything, propose it with "
             "`stage_candidates` as concise structured candidates (never raw conversation text) and tell the "
             "user the batch is pending review. Never call `commit_import`. If nothing durable was learned, "
-            "say nothing.\n"
+            "say nothing.\n\n"
+            "If the user reviews it now, show the batch as a numbered list and turn their corrections into "
+            "`amend_candidate` and `withdraw_candidates`, re-presenting the revised batch each time. "
+            "Confirming an amendment is not acceptance of the batch.\n"
         )
 
     @mcp.prompt(

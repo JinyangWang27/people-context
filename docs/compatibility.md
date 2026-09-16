@@ -53,7 +53,9 @@ publication, and there is no down-migration path.
 
 Within a major version, no migration drops or narrows a column, table, or index that shipped application code
 reads. Adding tables, adding nullable or defaulted columns, adding indexes, and seeding reference vocabulary are
-all in scope for a minor or patch release.
+all in scope for a minor or patch release. So is widening a `CHECK` constraint to admit a new value of a column
+that already exists — migration 010 rebuilds `import_source_sessions` for M29.1's `withdrawn` receipt status,
+copying every row and every referencing mapping unchanged, because SQLite cannot alter a `CHECK` in place.
 
 A newer release opens an older database and migrates it in place. The reverse is not promised: after a newer
 release has migrated a database, an older release may refuse it or read it incompletely. Take a copy or a
@@ -80,12 +82,15 @@ A JSON document that this repository documents as a stable interface carries an 
 integer `version`, and follows the same additive rule as MCP responses: existing fields are not removed or
 repurposed, and new fields are additive.
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds additive `ordinal`,
-`match_candidates` (with a per-entry `name_truncated`), `match_candidates_truncated`, and `batch_digest` fields and an
-additive `rejected` status value to the import review document and the `review_import` response, with no format string
-or version change; adds an additive `withdrawn` import receipt status; and advances the sync bundle one version so
-staging rows admit `rejected`. [M30](specs/m30-local-web-review.md) adds an additive top-level `truncated` to the
-version-1 person brief and an additive `next_cursor` to the version-1 person index.
+M29.1 added `match_candidates` (with a per-entry `name_truncated`), `match_candidates_truncated`, and
+`batch_digest` to the import review document and the `review_import` response, and the `rejected` status value
+to a staged candidate — all additive, with no format string or version change. It also added the `withdrawn`
+import receipt status that `pctx sources` and `pctx source show` may report, and advanced the sync bundle to
+version 7 so a staging row may be `rejected` and a receipt `withdrawn`.
+
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds an additive `ordinal` to the
+import review document and the `review_import` response. [M30](specs/m30-local-web-review.md) adds an additive
+top-level `truncated` to the version-1 person brief and an additive `next_cursor` to the version-1 person index.
 
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|
@@ -104,7 +109,7 @@ version-1 person brief and an additive `next_cursor` to the version-1 person ind
 | Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
 | Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
 | Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `6` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `7` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -171,13 +176,14 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 6**, which added M28.3's staged `group` and `group_membership` candidate types to the
-  staging rows an incomplete import batch carries. Version 5 before it added M28.1's `groups` and
+  `pctx sync push` emits **version 7**, which added M29.1's editable staging: a staging row may be `rejected` and a
+  source receipt `withdrawn`. Version 6 before it added M28.3's staged `group` and `group_membership` candidate types to
+  the staging rows an incomplete import batch carries. Version 5 before it added M28.1's `groups` and
   `group_memberships` collections, version 4 added optional assertion attribution (`stated_by`) to the staged
   fact and affiliation candidates, version 3 added the durable trait-evidence relations linking an inferred trait
   to the observations and interactions it rests on, and version 2 added durable import source receipts, candidate
   commit mappings, and the staging rows an incomplete import batch still needs. `pctx sync pull` accepts
-  **versions 1 through 6**, validating each against its own strict shape: a version-1 document carrying a
+  **versions 1 through 7**, validating each against its own strict shape: a version-1 document carrying a
   version-2 collection is refused as an unknown field rather than quietly upgraded, and so is any older document
   carrying a later version's field — a version-4 document carrying groups included. A released version stays readable; only which version is emitted
   moves forward.
@@ -192,6 +198,13 @@ project:
   version through 5 refuses `group` and `group_membership` candidates by name. A version-5 reader has no group
   reference namespace and no group commit pass, so a membership it accepted would restore as a pending row that
   review lists and commit can never resolve, while the receipt's claim kept suppressing a corrected restage.
+
+  Version 7 adds neither a field nor a collection: it adds a value to a `Literal` every released version shares,
+  and the rule treats that the same way. Every version through 6 refuses a `rejected` staging row and a
+  `withdrawn` receipt by name, because a reader without withdrawal in its vocabulary would have to restore a
+  rejected row as one of the two statuses it does know, and both answers are wrong — read as pending, a candidate
+  the reviewer explicitly dropped becomes committable again; read as committed, it claims a durable record that
+  was never written.
 
 That strictness is the point: a bundle a release does not fully understand fails closed before preview or writes
 rather than restoring partial state. A bundle is restorable by releases that implement its declared version.

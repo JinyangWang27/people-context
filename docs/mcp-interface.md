@@ -8,10 +8,12 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 [M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; M28.2
 added the explicit pairwise `explain_shared_connections` lookup; see the
 [group contract](#m28-group-and-membership-contract). M28.3 added the `group` and `group_membership` staged candidate
-types to `stage_candidates`. **Planned, not implemented:**
-[M29](specs/m29-editable-staging-and-review.md)'s `amend_candidate` and `withdraw_candidates` tools
-and its additive `ordinal` field and `rejected` status on `review_import`. Existing tools and graph results keep
-their meanings.
+types to `stage_candidates`. M29.1 added the `amend_candidate` and `withdraw_candidates` write tools, the additive
+`rejected` status, `match_candidates`, `match_candidates_truncated`, and `batch_digest` on `review_import`, and the
+optional `expected_batch_digest` argument on `amend_candidate`, `withdraw_candidates`, and `commit_import`; see the
+[editable staging contract](#m29-editable-staging-contract). **Planned, not implemented:**
+[M29](specs/m29-editable-staging-and-review.md)'s additive `ordinal` field on `review_import`. Existing tools and
+graph results keep their meanings.
 
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
 - default write annotation: clients should apply normal write approval.
@@ -607,6 +609,45 @@ unknown or removed person returns `found: false`.
   `limit`. The lookup writes nothing and leaves `get_person_context`, `get_relationship_graph`, and
   `find_connection` unchanged.
 
+## M29 editable staging contract
+
+Review gained two verbs beside accept and ignore. Both act only on a `pending` staged candidate, both return the
+**whole refreshed review document** for the batch, and neither commits anything.
+
+`amend_candidate(batch_id, candidate_id, patch, expected_batch_digest?)` shallow-merges `patch` into the stored
+candidate: a named field is replaced, an unnamed one is left alone, and a patched list replaces the stored list
+outright. The result is re-validated through the persisted candidate shape *and* every input rule staging applied,
+so a `relationship_type` with no word character, a relationship whose two ends become the same candidate, a
+reversed validity period, and a same-batch `evidence_candidate_ids` citation added to a receiptless batch are all
+refused. `type` cannot change, and neither `match_disposition` nor `match_count` may be patched.
+
+`matched_person_id` is the exception and the reason the field exists: an ambiguous person candidate cannot be
+resolved through its own name and handles, because adding a unique handle while keeping the colliding name still
+unions both people. A patch may name one person directly, and the choice is accepted only when that person is in
+the set the matcher computes for the candidate's current tokens — any other id refuses with `person_not_a_match`.
+To make the choice possible, `review_import` lists, for an ambiguous person row only, an additive
+`match_candidates` array of `{id, canonical_name, name_truncated}`, capped at 10 entries ordered by canonical name
+then id, with `match_candidates_truncated` when more exist. The cap limits display, not choice: a person past it
+is still a legal `matched_person_id`, found through `resolve_person` or `search_people`.
+
+`withdraw_candidates(batch_id, candidate_ids, expected_batch_digest?)` moves rows to the additive `rejected`
+status. A withdrawn candidate stays listed by `review_import` so the user can see what was dropped, is skipped
+silently by a "commit everything" selection, and refuses the whole commit with `candidate_withdrawn` when named
+explicitly in `accepted_ids`. Its still-pending dependents go `unresolved` at commit rather than resolving
+through the withdrawn row's stored match. When a withdrawal takes the last pending row off a source-tracked
+batch, the receipt becomes `committed` if anything was committed and the additive terminal `withdrawn` if
+nothing was.
+
+`review_import` returns an additive `batch_digest` over every row's id, status, and stored candidate — read-time
+`match_candidates` are deliberately excluded, so an unrelated merge elsewhere does not invalidate a current
+decision. Passing it back as `expected_batch_digest` to `amend_candidate`, `withdraw_candidates`, or
+`commit_import` refuses with `batch_changed`, writing nothing, when another client changed the batch after the
+read. Omitting it keeps the released behaviour exactly.
+
+New refusal codes, all additive: `candidate_not_pending`, `candidate_withdrawn`, `candidate_reference_invalid`,
+`person_not_a_match`, and `batch_changed`. Refusals name the candidate and, when the candidate models declare it,
+the field; a key the models do not declare is reported as `(redacted)`, and the patch payload is never echoed.
+
 ## Person context compatibility
 
 M7 does not change existing relationship fields. Each hydrated relationship object adds one field:
@@ -651,7 +692,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `create_group` / `add_group_membership` / `close_group_membership` | Create an identified group, record a membership, and record the end of one that was true. |
 | `set_reminder` / `complete_reminder` | Create and transition reminders. |
 | `set_communication_philosophy` | Store user-authored guidance; audit stores lengths, not text. |
-| `import_content` / `stage_candidates` / `review_import` / `commit_import` | Reviewable distilled imports without raw source retention. |
+| `import_content` / `stage_candidates` / `review_import` / `amend_candidate` / `withdraw_candidates` / `commit_import` | Reviewable distilled imports without raw source retention. |
 
 `import_content(source_type, content, path, self_sender, forced)` accepts `email`, `mbox`, `vcard`, `ics`, `linkedin`,
 `outlook`, and `whatsapp`. M14 added the last two source values plus the optional `self_sender` chat-export
