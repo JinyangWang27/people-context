@@ -84,6 +84,88 @@ def test_a_legacy_database_upgrades_without_losing_its_staging(tmp_path: Path) -
     assert upgraded.execute("SELECT COUNT(*) FROM import_source_sessions").fetchone()[0] == 0
 
 
+#: The migration that widened the receipt status for M29.1's withdrawal.
+_WITHDRAWN_MIGRATION = 10
+
+
+def _seed_receipt_and_mapping(conn: Any) -> None:
+    conn.execute(
+        """INSERT INTO import_source_sessions
+           (id, source_kind, label, external_source_id, content_digest, extraction_fingerprint,
+            extraction_contract_revision, claim_key, batch_id, status, created_at)
+           VALUES ('s1', 'cv', 'Nadia CV', 'ext-1', ?, ?, 'cv.1', ?, 'b1', 'partially_committed',
+                   '2026-07-20T12:00:00+00:00')""",
+        ("a" * 64, "b" * 64, f"cv\x1f{'a' * 64}\x1f{'b' * 64}"),
+    )
+    conn.execute(
+        """INSERT INTO import_candidate_mappings
+           (candidate_id, batch_id, source_session_id, disposition, entity_type, entity_id, created_at)
+           VALUES ('c1', 'b1', 's1', 'entity', 'person', 'p1', '2026-07-20T12:00:00+00:00')"""
+    )
+    conn.commit()
+
+
+def test_widening_the_receipt_status_keeps_every_receipt_and_every_mapping(tmp_path: Path) -> None:
+    """Migration 010 rebuilds a parent table whose children cascade on delete.
+
+    `import_candidate_mappings` references `import_source_sessions` `ON DELETE CASCADE`, and the
+    migration runner holds `PRAGMA foreign_keys=ON` inside one transaction, where turning it off
+    has no effect. Dropping the parent before the child would therefore fire an implicit cascading
+    DELETE and erase every commit mapping in the database — silently, because the bundle a reduced
+    database exports still validates. This is the test that would catch that.
+    """
+    path = tmp_path / "people.db"
+    _legacy_database(path, through=_WITHDRAWN_MIGRATION - 1)
+    legacy = sqlite3.connect(path)
+    legacy.row_factory = sqlite3.Row
+    try:
+        _seed_receipt_and_mapping(legacy)
+    finally:
+        legacy.close()
+
+    upgraded = open_db(path)
+
+    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == latest_schema_version()
+    receipt = upgraded.execute("SELECT * FROM import_source_sessions").fetchone()
+    assert (receipt["id"], receipt["status"], receipt["label"]) == ("s1", "partially_committed", "Nadia CV")
+    mapping = upgraded.execute("SELECT * FROM import_candidate_mappings").fetchone()
+    assert (mapping["candidate_id"], mapping["source_session_id"]) == ("c1", "s1")
+    assert upgraded.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+def test_the_rebuilt_receipt_accepts_withdrawn_and_still_refuses_an_unknown_status(
+    tmp_path: Path,
+) -> None:
+    conn = open_db(tmp_path / "people.db")
+    _seed_receipt_and_mapping(conn)
+
+    conn.execute("UPDATE import_source_sessions SET status = 'withdrawn' WHERE id = 's1'")
+    assert conn.execute("SELECT status FROM import_source_sessions").fetchone()["status"] == "withdrawn"
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE import_source_sessions SET status = 'abandoned' WHERE id = 's1'")
+
+
+def test_the_rebuilt_receipt_keeps_the_minimal_claim_invariant_for_a_redacted_row(
+    tmp_path: Path,
+) -> None:
+    """A withdrawal removed nothing, so it is deliberately not held to erasure's stripped shape."""
+    conn = open_db(tmp_path / "people.db")
+    _seed_receipt_and_mapping(conn)
+
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE import_source_sessions SET status = 'redacted' WHERE id = 's1'")
+
+
+def test_the_rebuilt_relations_still_cascade_a_deleted_receipt(tmp_path: Path) -> None:
+    conn = open_db(tmp_path / "people.db")
+    _seed_receipt_and_mapping(conn)
+
+    conn.execute("DELETE FROM import_source_sessions WHERE id = 's1'")
+
+    assert conn.execute("SELECT COUNT(*) AS total FROM import_candidate_mappings").fetchone()["total"] == 0
+
+
 def test_the_relations_carry_the_indexes_their_reads_depend_on(tmp_path: Path) -> None:
     conn = open_db(tmp_path / "people.db")
 
