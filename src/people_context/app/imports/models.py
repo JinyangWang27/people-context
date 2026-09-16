@@ -18,7 +18,7 @@ from people_context.domain.group import (
 )
 from people_context.domain.person import AliasKind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
-from people_context.domain.shared import Confidence, Sensitivity, StatedByText
+from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -178,6 +178,19 @@ EvidenceReference = Annotated[
 ]
 
 
+def check_candidate_period(valid_from: date | None, valid_to: date | None) -> None:
+    """Hold a candidate's date range to the rule its durable record already enforces.
+
+    Every dated record here stores a `ValidityPeriod`, which refuses a start after its end. That
+    check is constructed at commit, inside the transaction, after earlier candidates in the same
+    batch have already written — so a reversed range staged today is a Pydantic error raised out
+    of `commit_import` tomorrow, with an immutable batch that can never be completed. Reusing the
+    domain type here refuses it at the door instead, and refuses it identically, without a second
+    copy of the rule drifting from the first.
+    """
+    ValidityPeriod(valid_from=valid_from, valid_to=valid_to)
+
+
 class CandidateAlias(BaseModel):
     """Strict alias accepted in a staged person candidate."""
 
@@ -237,6 +250,11 @@ class AffiliationCandidateInput(BaseModel):
     #: See `FactCandidateInput.stated_by`; absent when the attribution is unknown.
     stated_by: StatedBy | None = None
 
+    @model_validator(mode="after")
+    def _check_period(self) -> AffiliationCandidateInput:
+        check_candidate_period(self.valid_from, self.valid_to)
+        return self
+
 
 class FactCandidateInput(BaseModel):
     """Strict fact candidate referencing one batch-local person."""
@@ -259,6 +277,11 @@ class FactCandidateInput(BaseModel):
     #: person's own claim about themselves, not a verified characteristic, and recording who said
     #: it is what keeps the two apart. Unknown attribution stays absent: never invent a speaker.
     stated_by: StatedBy | None = None
+
+    @model_validator(mode="after")
+    def _check_period(self) -> FactCandidateInput:
+        check_candidate_period(self.valid_from, self.valid_to)
+        return self
 
 
 class ObservationCandidateInput(BaseModel):
@@ -382,7 +405,7 @@ class MembershipCandidateInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    type: Literal["membership"]
+    type: Literal["group_membership"]
     person_ref: CandidateRef
     #: The `ref` of a group candidate in this same request.
     group_ref: CandidateRef
@@ -397,13 +420,14 @@ class MembershipCandidateInput(BaseModel):
 
     @model_validator(mode="after")
     def _check_basis(self) -> MembershipCandidateInput:
-        """Refuse a declared basis its own dates contradict, here rather than at the durable write.
+        """Refuse dates, or a declared basis, that the durable write would reject.
 
         Only an explicit basis can contradict anything — a defaulted one is derived from these
-        same dates. Left to commit, the contradiction would raise mid-transaction after earlier
+        same dates. Left to commit, either failure would raise mid-transaction after earlier
         candidates in the batch had already written, and until then review would show a
         membership whose dates say one thing and whose basis says another.
         """
+        check_candidate_period(self.valid_from, self.valid_to)
         check_temporal_basis(
             resolve_temporal_basis(self.temporal_basis, self.valid_from, self.valid_to),
             self.valid_from,
@@ -434,7 +458,7 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
     "trait": TraitCandidateInput,
     "relationship": RelationshipCandidateInput,
     "group": GroupCandidateInput,
-    "membership": MembershipCandidateInput,
+    "group_membership": MembershipCandidateInput,
 }
 
 #: The candidate types M17 introduced, plus M28.3's. A staging request that uses one of them
@@ -443,7 +467,7 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
 #: material exactly as an observation is, and an unbounded batch of them would be the one
 #: extraction path the budgets do not reach.
 EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
-    {"observation", "trait", "relationship", "group", "membership"}
+    {"observation", "trait", "relationship", "group", "group_membership"}
 )
 
 

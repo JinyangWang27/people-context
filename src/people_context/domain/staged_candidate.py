@@ -258,13 +258,19 @@ class StagedGroup(StrictStagedModel):
 class StagedMembership(StrictStagedModel):
     """A persisted membership candidate, its person and group already rewritten to candidate ids.
 
+    The discriminator is `group_membership` rather than `membership` because a candidate's type
+    and the entity type of the commit mapping it produces are checked against each other: a
+    restore refuses a mapping that "claims a group_membership for a membership candidate". Every
+    other type already spells the two the same way, and naming this one for the record it becomes
+    keeps that one-to-one rule instead of adding a correspondence table beside it.
+
     `temporal_basis` is resolved at staging rather than left absent, so the row states plainly
     what it asserts to anyone running `import review` — and so a restore cannot put back a
     membership whose basis and dates disagree, which would fail at its durable write after
     earlier candidates in the same commit had already written.
     """
 
-    type: Literal["membership"]
+    type: Literal["group_membership"]
     person_candidate_id: NonBlank
     group_candidate_id: NonBlank
     role: MembershipRole = MembershipRole.MEMBER
@@ -303,7 +309,7 @@ STAGED_CANDIDATE_MODELS: dict[str, type[StrictStagedModel]] = {
     "trait": StagedTrait,
     "relationship": StagedRelationship,
     "group": StagedGroup,
-    "membership": StagedMembership,
+    "group_membership": StagedMembership,
 }
 
 _STAGED_ADAPTER: TypeAdapter[Any] = TypeAdapter(StagedCandidate)
@@ -336,7 +342,7 @@ ATTRIBUTION_STAGED_FIELDS: Final[tuple[str, ...]] = ("stated_by",)
 #: any field is seen. A bundle version that predates these types must refuse them outright, or a
 #: reader written against that version would restore a membership whose group reference it has
 #: no way to resolve and then report the batch as committable.
-GROUP_STAGED_TYPES: Final[tuple[str, ...]] = ("group", "membership")
+GROUP_STAGED_TYPES: Final[tuple[str, ...]] = ("group", "group_membership")
 
 
 def staged_candidate_error(

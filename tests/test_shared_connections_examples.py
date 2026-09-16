@@ -150,8 +150,19 @@ def test_the_inference_boundary_is_stated_up_front() -> None:
 def test_a_negative_lookup_is_never_reported_as_proof_of_no_connection() -> None:
     text = _flowed(EXAMPLES_PATH)
 
-    assert "no supporting shared context was found in what the agent may see" in text
-    assert 'Reporting it as "they don\'t know each other" would state something the store never checked' in text
+    assert "The scoped negative is an empty `connections` list with `found: true`" in text
+    assert 'Reporting that as "they don\'t know each other" would state something the store never checked' in text
+    # `found: false` is an unreadable person, not an answer about the pair.
+    assert "one of the two could not be read at all" in text
+
+
+def test_the_guidance_separates_an_empty_result_from_an_unreadable_person() -> None:
+    """The two negatives have different remedies, so conflating them misroutes the agent."""
+    text = _flowed(SKILL_PATH)
+
+    assert "An **empty `connections` list with `found: true`** is the scoped negative" in text
+    assert "**`found: false`** is not a result about the pair at all" in text
+    assert "Resolve the people again rather than telling the user there is no connection." in text
 
 
 def test_client_retention_is_documented_separately_from_local_storage() -> None:

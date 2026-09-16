@@ -165,7 +165,7 @@ def _every_type() -> list[dict[str, Any]]:
             "stated_by": "Alice Ahmed",
         },
         {
-            "type": "membership",
+            "type": "group_membership",
             "person_ref": "alice",
             "group_ref": "class-1",
             "role": "student",

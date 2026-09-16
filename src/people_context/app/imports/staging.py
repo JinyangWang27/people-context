@@ -117,6 +117,7 @@ class CandidateStager:
         self._reject_excess_candidates(len(candidates), limits)
         validated = self._validate(candidates)
         self._require_tracking_for_evidence(validated, tracked)
+        self._require_tracking_for_memberships(validated, tracked)
         batch_id = new_id()
         references = _batch_references(validated)
         rows = self._rows(batch_id, source, validated, references, limits, strict_identity)
@@ -228,6 +229,31 @@ class CandidateStager:
             "evidence_requires_source_tracking",
             "citing evidence staged in the same batch requires a source-tracked batch; "
             "supply source_kind, or cite the durable records directly with evidence_ids",
+        )
+
+    @staticmethod
+    def _require_tracking_for_memberships(candidates: list[CandidateInput], tracked: bool) -> None:
+        """Refuse a membership this batch could not resolve across two commits.
+
+        The same dependency `_require_tracking_for_evidence` refuses, for the same mechanism. A
+        membership names its group through a batch-local reference, and a caller who commits the
+        group and the membership in separate invocations has only the M18.1 commit mapping left to
+        answer it: the group row is already committed so the group pass skips it, and nothing else
+        records which group it produced. Re-deriving that by name is exactly what M28 forbids —
+        two groups called "Class 1" are different rooms — so without a mapping the membership
+        would stay unresolved forever, and nothing would have said so.
+
+        Refusing here makes the dependency explicit while the batch can still be declined whole,
+        and the remedy is one field: name the material with `source_kind`.
+        """
+        if tracked:
+            return
+        if not any(isinstance(candidate, MembershipCandidateInput) for candidate in candidates):
+            return
+        raise ImportPipelineError(
+            "membership_requires_source_tracking",
+            "staging a group membership requires a source-tracked batch, so a group committed in "
+            "an earlier invocation can still be resolved; supply source_kind",
         )
 
     @staticmethod

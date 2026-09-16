@@ -19,6 +19,7 @@ import pytest
 
 from people_context.adapters.sqlite import (
     SqliteAuditLog,
+    SqliteImportSourceStore,
     SqliteImportStagingStore,
     SqliteOrganizationStore,
     SqlitePeopleRepository,
@@ -40,8 +41,19 @@ class _Clock:
 def _use_cases(conn):
     people = SqlitePeopleRepository(conn)
     staging_store = SqliteImportStagingStore(conn)
-    stage = StageCandidates(CandidateStager(people, staging_store, _Clock()))
-    return stage, ReviewImport(staging_store)
+    stager = CandidateStager(people, staging_store, _Clock(), SqliteImportSourceStore(conn), SqliteAuditLog(conn))
+    return _Staging(StageCandidates(stager)), ReviewImport(staging_store)
+
+
+class _Staging:
+    """Stages source-tracked by default, which is what a membership candidate requires."""
+
+    def __init__(self, stage: StageCandidates) -> None:
+        self.stage = stage
+
+    def execute(self, source: str, candidates: list[dict], **kwargs):
+        kwargs.setdefault("source_kind", "conversation")
+        return self.stage.execute(source, candidates, **kwargs)
 
 
 def _person(ref: str, name: str) -> dict:
@@ -53,7 +65,7 @@ def _group(ref: str = "class-1", **overrides) -> dict:
 
 
 def _membership(person_ref: str = "alice", group_ref: str = "class-1", **overrides) -> dict:
-    return {"type": "membership", "person_ref": person_ref, "group_ref": group_ref, **overrides}
+    return {"type": "group_membership", "person_ref": person_ref, "group_ref": group_ref, **overrides}
 
 
 def _candidates(review: ReviewImport, batch_id: str) -> dict[str, dict]:
@@ -69,7 +81,7 @@ def test_batch_local_refs_become_canonical_candidate_ids() -> None:
 
     person_row = next(row for row in rows if row.candidate["type"] == "person")
     group_row = next(row for row in rows if row.candidate["type"] == "group")
-    membership = next(row for row in rows if row.candidate["type"] == "membership").candidate
+    membership = next(row for row in rows if row.candidate["type"] == "group_membership").candidate
 
     # The caller's own labels never reach storage: review and commit read canonical ids only.
     assert "ref" not in group_row.candidate
@@ -86,7 +98,7 @@ def test_a_group_ref_and_a_person_ref_are_separate_namespaces() -> None:
     batch = stage.execute("notes", [_person("six-b", "Alice"), _group("six-b"), _membership("six-b", "six-b")])
     rows = review.execute(batch.batch_id).candidates
 
-    membership = next(row for row in rows if row.candidate["type"] == "membership").candidate
+    membership = next(row for row in rows if row.candidate["type"] == "group_membership").candidate
     person_row = next(row for row in rows if row.candidate["type"] == "person")
     group_row = next(row for row in rows if row.candidate["type"] == "group")
     assert membership["person_candidate_id"] == person_row.id
@@ -134,7 +146,7 @@ def test_the_staged_basis_is_the_one_the_durable_write_would_have_chosen(dates: 
 
     batch = stage.execute("notes", [_person("alice", "Alice"), _group(), _membership(**dates)])
 
-    staged = _candidates(review, batch.batch_id)["membership"]
+    staged = _candidates(review, batch.batch_id)["group_membership"]
     assert staged["temporal_basis"] == expected.value
     if not dates.get("valid_from"):
         assert "valid_from" not in staged
@@ -182,6 +194,87 @@ def test_a_refused_reference_is_never_echoed_back(candidates: list[dict]) -> Non
 
     reported = json.dumps({"message": str(raised.value), "details": raised.value.details})
     assert "secret-label-alice-was-bullied" not in reported
+
+
+def test_a_membership_needs_a_source_tracked_batch() -> None:
+    """Without a receipt there is no mapping, so a group committed earlier can never be named.
+
+    Re-deriving it by name is what M28 forbids, so the dependency is refused at the door rather
+    than stranding the membership unresolved through every later commit.
+    """
+    conn = open_db(":memory:")
+    stage = StageCandidates(
+        CandidateStager(
+            SqlitePeopleRepository(conn),
+            SqliteImportStagingStore(conn),
+            _Clock(),
+            SqliteImportSourceStore(conn),
+            SqliteAuditLog(conn),
+        )
+    )
+
+    with pytest.raises(ImportPipelineError) as raised:
+        stage.execute("notes", [_person("alice", "Alice"), _group(), _membership()])
+
+    assert raised.value.code == "membership_requires_source_tracking"
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_group_alone_still_stages_without_a_receipt() -> None:
+    """Only the batch-local reference needs the mapping; a group names nothing."""
+    conn = open_db(":memory:")
+    stage = StageCandidates(
+        CandidateStager(
+            SqlitePeopleRepository(conn),
+            SqliteImportStagingStore(conn),
+            _Clock(),
+            SqliteImportSourceStore(conn),
+            SqliteAuditLog(conn),
+        )
+    )
+
+    assert stage.execute("notes", [_group()]).candidate_count == 1
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        {"type": "affiliation", "person_ref": "alice", "org": "Globex", "role": "Designer"},
+        {"type": "fact", "person_ref": "alice", "predicate": "city", "value": "Berlin"},
+    ],
+)
+def test_a_reversed_date_range_is_refused_at_staging(candidate: dict) -> None:
+    """`ValidityPeriod` refuses it at the durable write, which is mid-transaction and too late.
+
+    Affiliation and fact carried this hole before memberships existed: a reversed range staged
+    cleanly and then raised an uncaught Pydantic error out of commit, leaving an immutable batch
+    that could never be completed. One guard at the boundary covers all three dated types.
+    """
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+    reversed_dates = {"valid_from": "2016-06-30", "valid_to": "2015-09-01"}
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute("notes", [_person("alice", "Alice"), {**candidate, **reversed_dates}])
+
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
+
+
+def test_a_membership_with_a_reversed_range_is_refused_at_staging() -> None:
+    conn = open_db(":memory:")
+    stage, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError):
+        stage.execute(
+            "notes",
+            [
+                _person("alice", "Alice"),
+                _group(),
+                _membership(valid_from="2016-06-30", valid_to="2015-09-01"),
+            ],
+        )
+
+    assert conn.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 0
 
 
 def test_a_membership_contradicting_its_own_dates_is_refused() -> None:

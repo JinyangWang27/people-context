@@ -269,7 +269,7 @@ in one PR.
 
 ## M28 — Groups, memberships, and shared connections
 
-**Status:** Delivered. M28.3 added the `group` and `membership` staged candidate types, explicit group resolution
+**Status:** Delivered. M28.3 added the `group` and `group_membership` staged candidate types, explicit group resolution
 through `group_id`, group-before-membership commit with honest partial results, shared/packaged capture and lookup
 guidance, fictional worked examples, and sync bundle version 6. M28.2 added the explicit
 `explain_shared_connections` / `pctx group shared` lookup. M28.1 added identified groups and

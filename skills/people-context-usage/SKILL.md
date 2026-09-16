@@ -178,9 +178,10 @@ The staged flow has three distinct steps. Keep them distinct:
 - `group` — `ref`, `name`, `kind` (`class`, `cohort`, `team`, `department`, `club`,
   `household`, `community`, `other`); optional `organization_id`, `group_id`,
   `sensitivity`, `stated_by`.
-- `membership` — `person_ref`, `group_ref`; optional `role` (`member`, `student`,
+- `group_membership` — `person_ref`, `group_ref`; optional `role` (`member`, `student`,
   `teacher`, `participant`, `leader`, `staff`, `other`), `valid_from`, `valid_to`,
-  `temporal_basis`, `confidence`, `sensitivity`, `stated_by`.
+  `temporal_basis`, `confidence`, `sensitivity`, `stated_by`. Requires `source_kind` on
+  the request; see below.
 
 `stated_by` on a `fact` or `affiliation` records **who asserted the claim**, in at most 256
 characters — a person, a document, or a role. It is not `source`, which names the process that
@@ -189,8 +190,8 @@ fact whose value says so and whose `stated_by` names them, never an inferred `tr
 when the attribution is unknown rather than guessing at a speaker.
 
 References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
-`trait`, `relationship`, or `membership` points at a `person` candidate's `ref` within the
-same `stage_candidates` call, and a `membership`'s `group_ref` points at a `group`
+`trait`, `relationship`, or `group_membership` points at a `person` candidate's `ref` within the
+same `stage_candidates` call, and a `group_membership`'s `group_ref` points at a `group`
 candidate's `ref` in that same call. Extract concise, structured field values only. Never copy raw
 conversation, transcript, note, or email body text into any candidate field; summarise
 it into the strict fields above.
@@ -398,19 +399,24 @@ means the same thing as one already stored.
 
 "We were in the same class", "she was on my team at Globex", "they are in my running
 club" describes a **group**, and a group is what later answers how two people know each
-other. Two candidates record it: a `group` for the context, and one `membership` per
+other. Two candidates record it: a `group` for the context, and one `group_membership` per
 person placed in it. Both go through the same stage → review → commit flow as everything
 else; nothing here is a direct write.
 
 Four rules, and they are the whole difficulty:
 
+- **Name the material with `source_kind`.** A batch containing a `group_membership` is
+  refused without it. The receipt is what lets a group committed in one call be named by a
+  membership committed in the next; without it the membership could only be reattached by
+  matching the group's name, which is exactly what the next rule forbids.
 - **Never guess a group.** Staging looks nothing up by name, so committing a `group`
   candidate creates a *new* group unless you pass `group_id` — and there is no merge to
   undo a wrong one. If the user may already have the group stored, call `find_groups`
   first, show what came back, and pass the id they confirm. Two groups called "Class 1"
   are different rooms until the user says otherwise.
 - **Never fill in a date.** Record `valid_from` and `valid_to` only where the source
-  gave them. Absent means unknown, not "still going": `temporal_basis` is then `unknown`,
+  gave them, and never a start later than the end — that is refused, as it is on a `fact`
+  and an `affiliation`. Absent means unknown, not "still going": `temporal_basis` is then `unknown`,
   and unknown timing supports a shared context and never a `classmates` or `teammates`
   label. Set `ongoing` only when the user actually said it is current.
 - **Never extrapolate a roster or a year.** "We stayed together through Grade 9" records
@@ -447,9 +453,13 @@ Read what it returns exactly as it is written, and say the difference out loud:
 - `direct_relationships` are assertions somebody recorded. Keep them distinct from
   anything derived — they are a different kind of claim.
 
-`found: false` means no supporting shared context was found in what you may see. It is
-not proof that two people are unrelated or have never met, and must never be reported as
-such.
+Two different negatives, and they must not be reported the same way. An **empty
+`connections` list with `found: true`** is the scoped negative: both people were read, and
+no shared group was found among the records you may see. It is not proof that they are
+unrelated or have never met, and must never be reported as such. **`found: false`** is not
+a result about the pair at all — one of the two could not be read, because the id is
+unknown or the person was forgotten or merged away. Resolve the people again rather than
+telling the user there is no connection.
 
 The lookup is explicit and stays explicit. Do not add derived classmates or colleagues to
 ordinary `get_person_context` results, to graph reads, or to a meeting brief: those tools

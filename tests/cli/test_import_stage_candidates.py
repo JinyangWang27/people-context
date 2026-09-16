@@ -89,9 +89,22 @@ def _stage(
     capsys: pytest.CaptureFixture[str],
     *,
     source: str = _SOURCE_LABEL,
+    source_kind: str | None = None,
 ) -> dict[str, Any]:
+    receipt = ["--source-kind", source_kind] if source_kind else []
     code = cli.main(
-        ["--db", str(db_file), "import", "stage-candidates", "--source", source, "--input", str(input_path), "--json"]
+        [
+            "--db",
+            str(db_file),
+            "import",
+            "stage-candidates",
+            "--source",
+            source,
+            "--input",
+            str(input_path),
+            *receipt,
+            "--json",
+        ]
     )
     assert code == 0
     document = json.loads(capsys.readouterr().out)
@@ -706,14 +719,14 @@ _GROUP_CANDIDATES: list[dict[str, Any]] = [
         "stated_by": "Alice Ahmed",
     },
     {
-        "type": "membership",
+        "type": "group_membership",
         "person_ref": "alice",
         "group_ref": "class-1",
         "role": "student",
         "valid_from": "2015-09-01",
         "valid_to": "2016-06-30",
     },
-    {"type": "membership", "person_ref": "bob", "group_ref": "class-1", "role": "student"},
+    {"type": "group_membership", "person_ref": "bob", "group_ref": "class-1", "role": "student"},
 ]
 
 
@@ -723,7 +736,7 @@ def test_group_and_membership_candidates_stage_review_and_commit(
 ) -> None:
     db_file = tmp_path / "people.db"
 
-    document = _stage(db_file, _input_file(tmp_path, _GROUP_CANDIDATES), capsys)
+    document = _stage(db_file, _input_file(tmp_path, _GROUP_CANDIDATES), capsys, source_kind="conversation")
     batch_id = str(document["batch_id"])
 
     assert cli.main(["--db", str(db_file), "import", "review", batch_id, "--json"]) == 0
@@ -732,8 +745,8 @@ def test_group_and_membership_candidates_stage_review_and_commit(
         "person",
         "person",
         "group",
-        "membership",
-        "membership",
+        "group_membership",
+        "group_membership",
     ]
 
     assert cli.main(["--db", str(db_file), "import", "commit", batch_id, "--all", "--json"]) == 0
@@ -756,7 +769,7 @@ def test_the_human_review_says_what_each_group_row_would_actually_do(
 ) -> None:
     """Two decisions have to be legible before commit: a new group, and unknown dates."""
     db_file = tmp_path / "people.db"
-    document = _stage(db_file, _input_file(tmp_path, _GROUP_CANDIDATES), capsys)
+    document = _stage(db_file, _input_file(tmp_path, _GROUP_CANDIDATES), capsys, source_kind="conversation")
 
     assert cli.main(["--db", str(db_file), "import", "review", str(document["batch_id"])]) == 0
     printed = capsys.readouterr().out
@@ -767,6 +780,20 @@ def test_the_human_review_says_what_each_group_row_would_actually_do(
     assert "unknown: dates unknown" in printed
 
 
+def test_a_membership_without_a_receipt_is_refused_before_anything_stages(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A group committed in an earlier invocation is named through its mapping or not at all."""
+    db_file = tmp_path / "people.db"
+    argv = ["--source", _SOURCE_LABEL, "--input", str(_input_file(tmp_path, _GROUP_CANDIDATES))]
+
+    printed = _refusal(db_file, argv, capsys)
+
+    assert "source_kind" in printed
+    assert _staging_rows(db_file) == []
+
+
 def test_a_group_row_names_the_existing_group_it_would_record_into(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -774,7 +801,7 @@ def test_a_group_row_names_the_existing_group_it_would_record_into(
     db_file = tmp_path / "people.db"
     candidates = [dict(candidate) for candidate in _GROUP_CANDIDATES]
     candidates[2] = {**candidates[2], "group_id": "grp-existing"}
-    document = _stage(db_file, _input_file(tmp_path, candidates), capsys)
+    document = _stage(db_file, _input_file(tmp_path, candidates), capsys, source_kind="conversation")
 
     assert cli.main(["--db", str(db_file), "import", "review", str(document["batch_id"])]) == 0
 

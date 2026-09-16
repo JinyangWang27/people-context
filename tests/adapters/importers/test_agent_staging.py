@@ -48,7 +48,7 @@ _ALLOWED_CANDIDATE_TYPES = [
     "trait",
     "relationship",
     "group",
-    "membership",
+    "group_membership",
 ]
 
 

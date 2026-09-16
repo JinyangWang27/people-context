@@ -257,7 +257,7 @@ def test_new_reference_and_relationship_type_strings_are_bounded_at_256_characte
     assert _refusal(_stage(conn), "notes", [_person(), _person("bob", "Bob"), over_typed]).code == "invalid_candidates"
 
 
-@pytest.mark.parametrize("candidate_type", ["group", "membership"])
+@pytest.mark.parametrize("candidate_type", ["group", "group_membership"])
 def test_a_group_or_membership_request_opts_into_the_extraction_bounds(candidate_type: str) -> None:
     """Both types are distilled from unstructured material exactly as an observation is.
 
@@ -270,7 +270,7 @@ def test_a_group_or_membership_request_opts_into_the_extraction_bounds(candidate
     candidate = (
         group
         if candidate_type == "group"
-        else {"type": "membership", "person_ref": "alice", "group_ref": "class-1", "role": "student"}
+        else {"type": "group_membership", "person_ref": "alice", "group_ref": "class-1", "role": "student"}
     )
     people = [_person(f"p{index}", f"Person {index}") for index in range(MAX_EXTRACTION_CANDIDATES)]
 

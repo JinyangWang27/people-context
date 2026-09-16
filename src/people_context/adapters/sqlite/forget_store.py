@@ -124,6 +124,11 @@ class SqliteForgetStore:
                     )
                     for participant in participant_rows
                 )
+            # Rows deleted by cascade rather than named directly. Import provenance is erased for
+            # these too: a mapping left pointing at a cascaded row would keep naming it through
+            # `source show` and would make the next sync bundle unrestorable, because restore
+            # refuses a mapping whose entity the bundle no longer carries.
+            cascaded: list[tuple[str, str]] = []
             if entity_type == "group":
                 # A group's memberships cascade with it, so they are named here: their history
                 # mentions the erased group and is redacted with it.
@@ -135,10 +140,11 @@ class SqliteForgetStore:
                 affected_entities.extend(
                     AffectedEntity(entity_type="group_membership", entity_id=row["id"]) for row in member_rows
                 )
+                cascaded.extend(("group_membership", row["id"]) for row in member_rows)
             evidence = self._evidence_cleaner.erase([(entity_type, entity_id)])
             affected_entities.extend(evidence.affected_entities)
             deleted.update(evidence.counts)
-            cleanup = self._cleaner.erase([(entity_type, entity_id)], None)
+            cleanup = self._cleaner.erase([(entity_type, entity_id), *cascaded], None)
             affected_entities.extend(_mapping_entities(cleanup))
             deleted.update(cleanup.counts)
             target_ids = {entity.entity_id for entity in affected_entities}

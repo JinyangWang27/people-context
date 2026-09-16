@@ -197,7 +197,7 @@ them. Hard forget of a person removes their memberships and keeps the group and 
 group removes its memberships with it, and both redact the affected history.
 
 Agents reach both through the reviewed staging lifecycle rather than a direct write, using the `group` and
-`membership` candidate types M28.3 added. Staging rewrites a membership's batch-local `group_ref` to the group
+`group_membership` candidate types M28.3 added. Staging rewrites a membership's batch-local `group_ref` to the group
 candidate's canonical id, resolves `temporal_basis` from the dates supplied by the same rule the direct write
 uses, and looks nothing up by name — a candidate records into an existing group only through an explicit
 `group_id`, because no merge exists to undo a wrong reuse. Commit writes each group before the memberships that

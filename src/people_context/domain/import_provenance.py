@@ -77,7 +77,7 @@ STAGED_CANDIDATE_TYPES: Final[frozenset[str]] = frozenset(
         "trait",
         "relationship",
         "group",
-        "membership",
+        "group_membership",
     }
 )
 
@@ -129,7 +129,7 @@ REQUIRED_STAGED_REFERENCES: Final[dict[str, tuple[str, ...]]] = {
     "trait": ("person_candidate_id",),
     "relationship": ("from_candidate_id", "to_candidate_id"),
     "group": (),
-    "membership": ("person_candidate_id", "group_candidate_id"),
+    "group_membership": ("person_candidate_id", "group_candidate_id"),
 }
 
 

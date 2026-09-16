@@ -7,7 +7,7 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 
 [M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; M28.2
 added the explicit pairwise `explain_shared_connections` lookup; see the
-[group contract](#m28-group-and-membership-contract). M28.3 added the `group` and `membership` staged candidate
+[group contract](#m28-group-and-membership-contract). M28.3 added the `group` and `group_membership` staged candidate
 types to `stage_candidates`. **Planned, not implemented:**
 [M29](specs/m29-editable-staging-and-review.md)'s `amend_candidate` and `withdraw_candidates` tools
 and its additive `ordinal` field and `rejected` status on `review_import`. Existing tools and graph results keep
@@ -674,19 +674,27 @@ the `session`, and the M18 `source_session_id` receipt, and attribution never im
 omitting it keep their existing behavior. See
 [docs/import.md](import.md#attributing-a-claim-to-who-made-it-m22).
 
-M28.3 adds the additive `group` and `membership` candidate types. A `group` carries a batch-local `ref`, a
+M28.3 adds the additive `group` and `group_membership` candidate types. A `group` carries a batch-local `ref`, a
 `name`, and a `kind` of `class`, `cohort`, `team`, `department`, `club`, `household`, `community`, or `other`,
-plus optional `organization_id`, `group_id`, `sensitivity`, and `stated_by`. A `membership` carries `person_ref`
+plus optional `organization_id`, `group_id`, `sensitivity`, and `stated_by`. A `group_membership` carries `person_ref`
 and `group_ref` — the latter naming a `group` candidate in the same request — plus optional `role`, `valid_from`,
 `valid_to`, `temporal_basis`, `confidence`, `sensitivity`, and `stated_by`. Both opt the request into the same
-bounded contract the M17 types do.
+bounded contract the M17 types do. The candidate type is spelled `group_membership`, matching the entity type of
+the commit mapping it produces, because restore checks the two against each other.
+
+A `group_membership` requires a source-tracked batch and is refused with `membership_requires_source_tracking`
+otherwise, for the reason `evidence_refs` requires one: the M18.1 commit mapping is what lets a membership name a
+group its batch committed in an earlier invocation, and re-deriving that by name is what M28 forbids. A `group`
+alone needs no receipt, because it names nothing.
 
 Staging performs no name lookup for a group: `group_id` is the only way a candidate records into a group that
 already exists, so a caller resolves it through `find_groups` first. Commit writes groups before the memberships
 naming them and reports a membership whose group has not committed as `unresolved` rather than raising, so it
 stays committable on a later pass. `temporal_basis` is resolved at staging from the dates supplied — none is
 `unknown`, any is `period`, and `ongoing` is never inferred — and a declared basis its own dates contradict is
-refused. The `review_import` and `commit_import` envelopes are unchanged; a batch using neither type behaves
+refused. A reversed date range is refused at staging too, on `group_membership`, `affiliation`, and `fact` alike:
+the durable `ValidityPeriod` rejects it, and reaching that rejection at commit would raise inside the transaction
+after earlier candidates had written. The `review_import` and `commit_import` envelopes are unchanged; a batch using neither type behaves
 exactly as before. See [docs/import.md](import.md#capturing-a-shared-context-m283).
 
 M18.1 adds optional receipt metadata to both staging tools' responses and, on `stage_candidates`, to its

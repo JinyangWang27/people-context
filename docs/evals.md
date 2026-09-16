@@ -235,9 +235,10 @@ Six, assessed separately and never totalled, against the cases in
 - **Explicit lookup.** Passes when a connection question reaches `explain_shared_connections` without the user
   naming a tool, and ordinary context reads keep their existing meaning. Catches derived classmates added to a
   person brief, a graph read, or a meeting preparation.
-- **Honest negatives.** Passes when `found: false` and `temporal: unknown` are reported as what was not
-  established. Catches a negative lookup reported as proof two people are unrelated, and an unknown overlap
-  softened into "probably".
+- **Honest negatives.** Passes when an empty `connections` list and `temporal: unknown` are reported as what was
+  not established, and when `found: false` is recognised as an unreadable person rather than an answer about the
+  pair. Catches a negative lookup reported as proof two people are unrelated, and an unknown overlap softened
+  into "probably".
 
 ### Recording a review
 

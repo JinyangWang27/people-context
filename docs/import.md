@@ -960,7 +960,7 @@ against [Human review of transcript attribution](evals.md#human-review-of-transc
 [M28 — Groups, memberships, and shared connections](specs/m28-groups-and-shared-connections.md) adds two staged
 candidate types to the lifecycle documented above, so an agent that hears "we were in the same class" has a
 reviewed path to record it. A `group` names the identified context — a class, cohort, team, department, club,
-household, or community — and carries a batch-local `ref`. A `membership` places one `person_ref` in one
+household, or community — and carries a batch-local `ref`. A `group_membership` places one `person_ref` in one
 `group_ref` with a `role`. Both go through stage → review → explicit acceptance → commit, and both commit through
 the `create_group` and `add_group_membership` use cases a direct write already uses, in the same transaction and
 through the same audit and changelog seam.
@@ -974,11 +974,14 @@ Three rules shape the contract, and each is enforced rather than merely document
 - **Dates mean what they say.** `temporal_basis` is resolved at staging from the dates the source gave — none is
   `unknown`, any is `period`, and `ongoing` is never inferred — so review shows what the row asserts, and an
   absent bound reads as unknown rather than as open-ended. A membership whose declared basis contradicts its own
-  dates is refused at the boundary rather than at its durable write.
-- **A group reference resolves within its batch.** A `membership` names a `group` candidate of the same batch, and
+  dates is refused at the boundary rather than at its durable write, as is a reversed date range — the latter on
+  `affiliation` and `fact` too, which carried the same hole before memberships existed.
+- **A group reference resolves within its batch.** A `group_membership` names a `group` candidate of the same batch, and
   commit writes groups before the memberships that name them. A membership whose group was not accepted, or whose
   group failed, is reported `unresolved` and stays committable on a later pass, where it resolves through the
-  stored commit mapping the earlier pass wrote. A batch whose group reference names nothing is refused whole.
+  stored commit mapping the earlier pass wrote. A batch whose group reference names nothing is refused whole, and
+  so is one that stages a membership without `source_kind` — the mapping is the only thing that can reattach a
+  membership to a group committed earlier, since matching the group by name is what this milestone forbids.
 
 Both types opt into the M17 extraction bounds, participate in export and bootstrap restore as sync bundle
 **version 6**, and are erased with their person by hard forget — a member's erasure removes their placements and

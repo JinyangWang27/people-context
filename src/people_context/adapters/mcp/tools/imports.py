@@ -76,7 +76,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         """Stage agent-extracted people, interactions, records, relationships, groups, and memberships.
 
         Candidate types are `person`, `interaction`, `affiliation`, `fact`, `observation`, `trait`,
-        `relationship`, `group`, and `membership`.
+        `relationship`, `group`, and `group_membership`.
 
         Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
         agent-visible text. Distinguish what was stated (`fact`), what happened in this source (`observation`),
@@ -101,9 +101,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         cites at most 32 references and ids combined, each at most 256 characters.
 
         A shared context is two candidates, never one. A `group` names an identified class, cohort, team,
-        department, club, household, or community and carries a batch-local `ref`; a `membership` places one
-        `person_ref` in one `group_ref` with a `role`. Group names never merge: staging looks nothing up by
-        name, so committing a group candidate creates a new group unless you pass `group_id` — resolve an
+        department, club, household, or community and carries a batch-local `ref`; a `group_membership` places
+        one `person_ref` in one `group_ref` with a `role`, and requires a batch that passes `source_kind`, so a
+        group committed in an earlier call can still be named. Group names never merge: staging looks nothing up
+        by name, so committing a group candidate creates a new group unless you pass `group_id` — resolve an
         existing group with `find_groups` first and pass the id it returns. Record dates only where the source
         gave them. Absent dates stay absent and mean unknown, never "still going": `temporal_basis` is `unknown`
         without dates, `period` with them, and `ongoing` only when you set it because the source said so. Do not

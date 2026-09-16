@@ -52,7 +52,7 @@ def _group(ref: str = "class-1", **overrides: Any) -> dict[str, Any]:
 
 def _membership(person_ref: str, group_ref: str = "class-1", **overrides: Any) -> dict[str, Any]:
     return {
-        "type": "membership",
+        "type": "group_membership",
         "person_ref": person_ref,
         "group_ref": group_ref,
         "role": "student",
@@ -103,7 +103,7 @@ def _people(runtime: ApplicationRuntime) -> dict[str, str]:
 def test_a_group_and_its_memberships_commit_into_ordinary_records(runtime: ApplicationRuntime) -> None:
     batch = _stage(runtime, _CLASSMATES)
 
-    result = runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "person", "group", "membership"))
+    result = runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "person", "group", "group_membership"))
 
     assert result.unresolved_ids == []
     group = _only_group(runtime)
@@ -158,10 +158,10 @@ def test_unknown_dates_support_shared_context_and_never_a_classmate_label(runtim
 def test_a_membership_whose_group_was_not_accepted_is_unresolved_not_failed(runtime: ApplicationRuntime) -> None:
     batch = _stage(runtime, _CLASSMATES)
 
-    result = runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "person", "membership"))
+    result = runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "person", "group_membership"))
 
     assert result.committed_ids == _ids(runtime, batch, "person")
-    assert result.unresolved_ids == _ids(runtime, batch, "membership")
+    assert result.unresolved_ids == _ids(runtime, batch, "group_membership")
     assert _count(runtime.conn, "group_memberships") == 0
 
 
@@ -170,7 +170,7 @@ def test_a_later_pass_resolves_its_group_through_the_stored_mapping(runtime: App
     batch = _stage(runtime, _CLASSMATES)
     runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "person", "group"))
 
-    second = runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "membership"))
+    second = runtime.use_cases.commit_import.execute(batch, _ids(runtime, batch, "group_membership"))
 
     assert second.unresolved_ids == []
     assert _count(runtime.conn, "group_memberships") == 2
@@ -195,7 +195,7 @@ def test_a_group_id_naming_nothing_leaves_the_batch_unresolved(runtime: Applicat
 
     result = runtime.use_cases.commit_import.execute(batch, [row.id for row in _rows(runtime, batch)])
 
-    assert result.unresolved_ids == _ids(runtime, batch, "group", "membership")
+    assert result.unresolved_ids == _ids(runtime, batch, "group", "group_membership")
     assert _count(runtime.conn, "identified_groups") == 0
 
 

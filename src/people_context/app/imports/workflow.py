@@ -408,7 +408,7 @@ class CommitImport:
             groups[row.id] = group_id
             produced[row.id] = ("group", group_id)
         for row in rows:
-            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "membership":
+            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "group_membership":
                 continue
             sequence.append(row.id)
             writer = self._add_group_membership

@@ -117,7 +117,7 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
             detail = _import_relationship(candidate, person_names)
         elif candidate_type == "group":
             detail = _import_group(candidate)
-        elif candidate_type == "membership":
+        elif candidate_type == "group_membership":
             detail = _import_membership(candidate, person_names, group_names)
         else:
             detail = _import_interaction(candidate, person_names)

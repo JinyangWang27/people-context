@@ -47,7 +47,7 @@ near-match it did not find:
 
 > Nothing stored yet, so I'll create the class as a new group and place both of them in it for that term.
 
-**Staged.** One `group` — `name: "Class 6B, Ridgemont"`, `kind: class` — and two `membership` candidates,
+**Staged.** One `group` — `name: "Class 6B, Ridgemont"`, `kind: class` — and two `group_membership` candidates,
 `role: student`, `valid_from: 2015-09-01`, `valid_to: 2016-06-30`. The user reviews the batch and commits it.
 
 Asked afterwards how the two are connected, `explain_shared_connections` returns a `derived_relation` labelled
@@ -74,7 +74,7 @@ The agent does not reach for the class it already has:
 
 > I'll leave the dates off, then.
 
-**Staged.** A second `group` — `name: "Ridgemont School"`, `kind: community` — and a `membership` for each of
+**Staged.** A second `group` — `name: "Ridgemont School"`, `kind: community` — and a `group_membership` for each of
 them with no dates, so `temporal_basis` is `unknown`.
 
 The lookup afterwards reports one `shared_context` in Ridgemont School with `temporal: unknown`, and the agent
@@ -100,7 +100,7 @@ stronger word because the situation feels like it would be right is the failure 
 
 > 那就别写年份。
 
-**Staged.** One `group`, `kind: class`, and two `membership` candidates with `role: student` and no dates.
+**Staged.** One `group`, `kind: class`, and two `group_membership` candidates with `role: student` and no dates.
 
 Asked later how they know each other, the lookup returns `shared_context` with `temporal: unknown` — not
 `classmates`, even though both hold the student role in one class, because nothing establishes a common day.
@@ -125,7 +125,7 @@ The agent records both and then reads the result back without softening it:
 > They were both at Globex, but not at the same time — Dana left in 2020 and Marcus arrived in 2022. If you want
 > an introduction, the shared ground is the place, not the people.
 
-**Staged.** A `group` for the Globex engineering team, `kind: team`, and two `membership` candidates with the
+**Staged.** A `group` for the Globex engineering team, `kind: team`, and two `group_membership` candidates with the
 dates as given.
 
 The lookup returns one connection with `temporal: disjoint` and no label.
@@ -147,7 +147,7 @@ The agent records him in the class and says what changes and what does not:
 > Recorded — same class, same year, `role: teacher`. That won't make him and Amara classmates, though. The label
 > needs both people in the same role, and a teacher and a pupil sharing a room aren't peers.
 
-**Staged.** One `membership`, `role: teacher`, with the same term dates as the students.
+**Staged.** One `group_membership`, `role: teacher`, with the same term dates as the students.
 
 The lookup between him and Amara returns `shared_context` with `temporal: overlap` — the dates do prove a common
 day — and no label, because the roles differ.
@@ -171,7 +171,7 @@ The agent records the team and then refuses the inference the placement invites:
 > those separately if you want them stored.
 
 **Staged.** A `group`, `kind: team`, `organization_id` naming the existing Northwind organization, and one
-`membership` per participant with `role: participant`.
+`group_membership` per participant with `role: participant`.
 
 The lookup between Dana and a contractor returns a `derived_relation` labelled `teammates` where the recorded
 dates overlap — participants in one team is exactly the supported case — and `shared_context` where they do not.
@@ -194,7 +194,7 @@ put a contractor on a payroll they were never on.
 
 > 对，就是这样。
 
-**Staged.** One `group`, `kind: cohort`, and three `membership` candidates with `role: student`,
+**Staged.** One `group`, `kind: cohort`, and three `group_membership` candidates with `role: student`,
 `valid_from: 2015`-dated and `valid_to: 2018`-dated as the user gave them.
 
 Then the agent asks rather than extends:
@@ -235,8 +235,10 @@ The agent calls the lookup and reports what comes back:
 relationships through the user. A negative lookup is recorded nowhere: it is the absence of evidence, not a stored
 finding that the two are strangers.
 
-**Lesson.** `found: false` means no supporting shared context was found in what the agent may see. Reporting it as
-"they don't know each other" would state something the store never checked.
+**Lesson.** The scoped negative is an empty `connections` list with `found: true` — both people were read, and no
+shared group was found among the records the agent may see. Reporting that as "they don't know each other" would
+state something the store never checked. `found: false` is a different thing entirely: one of the two could not be
+read at all, and it is answered by resolving the people again rather than by reporting a connection result.
 
 ## What the checks cover, and what they do not
 
