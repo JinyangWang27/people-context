@@ -10,6 +10,11 @@ Extraction batches keep the two apart. Matching takes the union of the active pe
 identity token resolves to, so a unique hit on one token cannot mask a conflict on another,
 and the resulting disposition — not the presence of an id — is what commit acts on.
 
+That union is computed by the reader, in one bounded query over all of a candidate's tokens,
+rather than by loading every colliding `Person` and unioning them here. The two answers are the
+same; only the cost differs, and it differs without bound: a name shared by thousands of people
+would otherwise materialize thousands of records for every staged row that mentions it.
+
 This is the M17-containing path's behavior. A staging request built only from the four
 released candidate types keeps the matcher it shipped with.
 """
@@ -21,7 +26,7 @@ from enum import StrEnum
 
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
-from people_context.ports.repository import PersonReader
+from people_context.ports.repository import PersonNameMatch, PersonReader
 
 
 class MatchDisposition(StrEnum):
@@ -41,6 +46,15 @@ class IdentityMatch:
     match_count: int = 0
 
 
+def normalized_identity_tokens(tokens: list[str]) -> list[str]:
+    """Return the normalized, non-blank form of one candidate's identity tokens.
+
+    Shared by matching, the review projection, and an amendment's match-choice validation, so all
+    three ask the reader the same question about the same candidate.
+    """
+    return [normalized for token in tokens if (normalized := normalize_name(token))]
+
+
 def match_person_candidate(people: PersonReader, tokens: list[str]) -> IdentityMatch:
     """Classify one candidate against the active people its identity tokens resolve to.
 
@@ -48,17 +62,42 @@ def match_person_candidate(people: PersonReader, tokens: list[str]) -> IdentityM
     reviewer to see that a decision is owed, it stays bounded however many people collide, and
     it keeps staged review state from becoming a second place identity lives.
     """
-    matched: set[str] = set()
-    for token in tokens:
-        normalized = normalize_name(token)
-        if not normalized:
-            continue
-        matched.update(person.id for person in people.find_by_normalized_name(normalized))
-    if not matched:
+    normalized = normalized_identity_tokens(tokens)
+    if not normalized:
         return IdentityMatch(MatchDisposition.UNMATCHED)
-    if len(matched) == 1:
-        return IdentityMatch(MatchDisposition.MATCHED, person_id=next(iter(matched)), match_count=1)
-    return IdentityMatch(MatchDisposition.AMBIGUOUS, match_count=len(matched))
+    count = people.count_distinct_by_normalized_names(normalized)
+    if count == 0:
+        return IdentityMatch(MatchDisposition.UNMATCHED)
+    if count == 1:
+        # The count already says the answer is unique, so the page that names it reads one row.
+        page = people.page_by_normalized_names(normalized, 1)
+        if not page:
+            # The set emptied between the two reads. "Nobody" is the honest answer, and it is the
+            # answer a caller can act on; claiming a match without an id would not be.
+            return IdentityMatch(MatchDisposition.UNMATCHED)
+        return IdentityMatch(MatchDisposition.MATCHED, person_id=page[0].id, match_count=1)
+    return IdentityMatch(MatchDisposition.AMBIGUOUS, match_count=count)
+
+
+def person_candidate_matches(people: PersonReader, tokens: list[str], person_id: str) -> bool:
+    """Whether one named person is in the set this candidate's tokens resolve to.
+
+    This validates a reviewer's explicit `matched_person_id` choice. It asks about the whole set
+    rather than the page review displayed, so a person beyond the display cap is still choosable,
+    and it never reads the set itself.
+    """
+    normalized = normalized_identity_tokens(tokens)
+    if not normalized:
+        return False
+    return people.matches_normalized_names(person_id, normalized)
+
+
+def collision_page(people: PersonReader, tokens: list[str], limit: int) -> list[PersonNameMatch]:
+    """Return the first `limit` active people these tokens resolve to, by canonical name then id."""
+    normalized = normalized_identity_tokens(tokens)
+    if not normalized:
+        return []
+    return people.page_by_normalized_names(normalized, limit)
 
 
 def candidate_identity_tokens(name: str, aliases: list[dict[str, object]]) -> list[str]:

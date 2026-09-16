@@ -174,13 +174,24 @@ class StableSourceExtractor(Protocol):
 
 @runtime_checkable
 class ImportStagingStore(Protocol):
-    """Atomically stage and status import candidates."""
+    """Atomically stage, amend, and status import candidates.
+
+    `update_candidate` and `mark_status` are review's two editing verbs, and both are deliberately
+    unconditional here: the *rules* about what may be amended or withdrawn belong to the use case
+    that knows the whole batch, not to a store that sees one row. The adapter still refuses to
+    touch a row that is no longer pending, because a store may not silently rewrite a durable
+    outcome even when a caller asks it to.
+    """
 
     def stage_batch(self, rows: list[StagedImportRow]) -> None: ...
 
     def list_batch(self, batch_id: str) -> list[StagedImportRow]: ...
 
     def mark_committed(self, candidate_ids: list[str]) -> None: ...
+
+    def update_candidate(self, candidate_id: str, candidate: dict[str, Any]) -> None: ...
+
+    def mark_status(self, candidate_ids: list[str], status: str) -> None: ...
 
 
 @runtime_checkable

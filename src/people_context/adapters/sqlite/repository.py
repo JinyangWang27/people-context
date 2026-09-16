@@ -9,11 +9,24 @@ from datetime import datetime
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import normalize_name
-from people_context.ports.repository import SearchHit
+from people_context.ports.repository import PersonNameMatch, SearchHit
 
 # Modest fixed scores for the non-FTS substring fallback path.
 _LIKE_SCORE_CANONICAL = 0.5
 _LIKE_SCORE_ALIAS = 0.4
+
+#: Active people whose canonical name or any alias normalizes to one of the given tokens.
+#:
+#: One statement over every token of a candidate, rather than one statement per token unioned in
+#: Python: the union is what the matcher means, and doing it in SQL is what keeps a name shared by
+#: thousands of people from materializing thousands of rows.
+_MATCHING_PEOPLE_SQL = """
+    SELECT DISTINCT p.id AS id, p.canonical_name AS canonical_name
+    FROM persons p
+    LEFT JOIN aliases a ON a.person_id = p.id
+    WHERE p.deleted_at IS NULL
+      AND (p.canonical_name_normalized IN ({placeholders}) OR a.value_normalized IN ({placeholders}))
+"""
 
 
 class SqlitePeopleRepository:
@@ -131,6 +144,52 @@ class SqlitePeopleRepository:
         people = [self.get(row["id"]) for row in rows]
         return [person for person in people if person is not None]
 
+    def count_distinct_by_normalized_names(self, normalized: list[str]) -> int:
+        """Return how many active people these identity tokens resolve to, without reading one.
+
+        A count is all the matcher needs to tell "nobody", "exactly one", and "a decision is owed"
+        apart, and it stays one number however many people share a name.
+        """
+        tokens = _distinct_tokens(normalized)
+        if not tokens:
+            return 0
+        row = self._conn.execute(
+            f"SELECT COUNT(*) AS total FROM ({_matching_people_sql(len(tokens))})",  # noqa: S608 - bound placeholders only
+            (*tokens, *tokens),
+        ).fetchone()
+        return int(row["total"])
+
+    def page_by_normalized_names(self, normalized: list[str], limit: int) -> list[PersonNameMatch]:
+        """Return the first `limit` matching people, ordered by canonical name then id.
+
+        The order is stated rather than incidental so that the same collision projects the same
+        page on every read, and a truncated list truncates the same way twice.
+        """
+        tokens = _distinct_tokens(normalized)
+        if not tokens or limit <= 0:
+            return []
+        rows = self._conn.execute(
+            f"{_matching_people_sql(len(tokens))} ORDER BY canonical_name, id LIMIT ?",  # noqa: S608 - bound placeholders only
+            (*tokens, *tokens, limit),
+        ).fetchall()
+        return [PersonNameMatch(id=row["id"], canonical_name=row["canonical_name"]) for row in rows]
+
+    def matches_normalized_names(self, person_id: str, normalized: list[str]) -> bool:
+        """Whether one named person is among the people these tokens resolve to.
+
+        This is how an explicit `matched_person_id` choice is validated: the reviewer's answer is
+        checked against the matcher's *whole* set, not against the page that was displayed, so a
+        person beyond the display cap is still a legal choice.
+        """
+        tokens = _distinct_tokens(normalized)
+        if not tokens:
+            return False
+        row = self._conn.execute(
+            f"SELECT 1 FROM ({_matching_people_sql(len(tokens))}) WHERE id = ? LIMIT 1",  # noqa: S608 - bound placeholders only
+            (*tokens, *tokens, person_id),
+        ).fetchone()
+        return row is not None
+
     def search_names(self, query: str, limit: int = 10) -> list[SearchHit]:
         normalized = normalize_name(query)
         if not normalized:
@@ -235,3 +294,14 @@ def _bm25_to_score(rank: float) -> float:
 
 def _escape_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _distinct_tokens(normalized: list[str]) -> list[str]:
+    """Return the non-blank normalized tokens, deduplicated, order preserved."""
+    return list(dict.fromkeys(token for token in normalized if token))
+
+
+def _matching_people_sql(token_count: int) -> str:
+    """Return the matching-people query bound to a fixed number of token placeholders."""
+    placeholders = ", ".join("?" * token_count)
+    return _MATCHING_PEOPLE_SQL.format(placeholders=placeholders)

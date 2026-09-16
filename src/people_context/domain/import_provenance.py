@@ -56,7 +56,18 @@ CLAIM_KEY_SEPARATOR: Final = "\x1f"
 EXTRACTION_FINGERPRINT_ABSENT: Final = "fingerprint-absent"
 
 #: Statuses a persisted staging row may carry.
-STAGING_STATUSES: Final[tuple[str, ...]] = ("pending", "committed")
+#:
+#: `rejected` is M29's withdrawal: the row stays in its batch and stays listed by review, so a
+#: reviewer can still see what they dropped, and commit never touches it again. Only `pending` is
+#: reviewable — that one rule decides duplicate detection, receipt status, and what a bundle
+#: reports as still owing review.
+STAGING_STATUSES: Final[tuple[str, ...]] = ("pending", "committed", "rejected")
+
+#: The one staging status that still owes a decision. Everything else is terminal.
+STAGING_STATUS_PENDING: Final = "pending"
+
+#: A staging row a reviewer withdrew. It is never committed and never deleted by review.
+STAGING_STATUS_REJECTED: Final = "rejected"
 
 #: Receipt statuses that still own reviewable rows.
 #:
