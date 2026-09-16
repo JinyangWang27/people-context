@@ -136,7 +136,12 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     @mcp.tool(annotations=_READ_ONLY)
     @flag_refusals
     async def review_import(batch_id: str) -> dict[str, Any]:
-        """Return staged candidates and statuses for one batch."""
+        """Return staged candidates and statuses for one batch.
+
+        The response carries a `batch_digest`. Pass it back to `amend_candidate`,
+        `withdraw_candidates`, or `commit_import` to have the action refused if somebody else
+        changed the batch after this read.
+        """
         try:
             return deps.review_import.execute(batch_id).model_dump(mode="json")
         except ImportPipelineError as exc:
@@ -144,9 +149,66 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_WRITE)
     @flag_refusals
-    async def commit_import(batch_id: str, accepted_ids: list[str]) -> dict[str, Any]:
-        """Commit accepted people and resolvable interactions idempotently."""
+    async def amend_candidate(
+        batch_id: str,
+        candidate_id: str,
+        patch: dict[str, Any],
+        expected_batch_digest: str | None = None,
+    ) -> dict[str, Any]:
+        """Correct one staged candidate before it is committed, returning the revised batch.
+
+        The patch replaces the named fields and leaves the rest alone. Nothing is committed:
+        confirming an amendment is not acceptance of the batch.
+        """
         try:
-            return deps.commit_import.execute(batch_id, accepted_ids).model_dump(mode="json")
+            return deps.amend_staged_candidate.execute(
+                batch_id,
+                candidate_id,
+                patch,
+                expected_batch_digest=expected_batch_digest,
+            ).model_dump(mode="json")
+        except ImportPipelineError as exc:
+            return _error(exc)
+
+    @mcp.tool(annotations=_WRITE)
+    @flag_refusals
+    async def withdraw_candidates(
+        batch_id: str,
+        candidate_ids: list[str],
+        expected_batch_digest: str | None = None,
+    ) -> dict[str, Any]:
+        """Drop staged candidates from consideration, returning the revised batch.
+
+        A withdrawn candidate stays listed as `rejected` so the user can see what was dropped, and
+        is never committed. Nothing else about the batch changes.
+        """
+        try:
+            return deps.withdraw_staged_candidates.execute(
+                batch_id,
+                candidate_ids,
+                expected_batch_digest=expected_batch_digest,
+            ).model_dump(mode="json")
+        except ImportPipelineError as exc:
+            return _error(exc)
+
+    @mcp.tool(annotations=_WRITE)
+    @flag_refusals
+    async def commit_import(
+        batch_id: str,
+        accepted_ids: list[str],
+        expected_batch_digest: str | None = None,
+    ) -> dict[str, Any]:
+        """Commit accepted people and resolvable interactions idempotently.
+
+        Accepting a withdrawn candidate refuses the whole commit. Supplying the
+        `expected_batch_digest` from the review the user approved refuses it if the batch moved
+        after they saw it.
+        """
+        try:
+            return deps.commit_import.execute(
+                batch_id,
+                accepted_ids,
+                expected_batch_digest=expected_batch_digest,
+            ).model_dump(mode="json")
         except ImportPipelineError as exc:
             return _error(exc)
