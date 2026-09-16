@@ -104,7 +104,7 @@ version-1 person brief and an additive `next_cursor` to the version-1 person ind
 | Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
 | Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
 | Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `5` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `6` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -171,12 +171,13 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 5**, which added M28.1's `groups` and `group_memberships` collections. Version
-  4 before it added optional assertion attribution (`stated_by`) to the staged fact and affiliation candidates an
-  incomplete import batch carries, version 3 added the durable trait-evidence relations linking an inferred trait
+  `pctx sync push` emits **version 6**, which added M28.3's staged `group` and `membership` candidate types to the
+  staging rows an incomplete import batch carries. Version 5 before it added M28.1's `groups` and
+  `group_memberships` collections, version 4 added optional assertion attribution (`stated_by`) to the staged
+  fact and affiliation candidates, version 3 added the durable trait-evidence relations linking an inferred trait
   to the observations and interactions it rests on, and version 2 added durable import source receipts, candidate
   commit mappings, and the staging rows an incomplete import batch still needs. `pctx sync pull` accepts
-  **versions 1 through 5**, validating each against its own strict shape: a version-1 document carrying a
+  **versions 1 through 6**, validating each against its own strict shape: a version-1 document carrying a
   version-2 collection is refused as an unknown field rather than quietly upgraded, and so is any older document
   carrying a later version's field — a version-4 document carrying groups included. A released version stays readable; only which version is emitted
   moves forward.
@@ -185,6 +186,12 @@ project:
   new field sits inside a staging row's already-present `candidate` object. A version-3 reader still refuses it,
   because accepting an attribution it does not understand would mean restoring the candidate and then committing
   it with the attribution silently dropped — recording a source's own claim as though nobody had made it.
+
+  Version 6 is the stronger case. A new candidate `type` is not something a reader can fail closed on by
+  forbidding unknown keys, because the discriminator picks the model before any field is inspected, so every
+  version through 5 refuses `group` and `membership` candidates by name. A version-5 reader has no group
+  reference namespace and no group commit pass, so a membership it accepted would restore as a pending row that
+  review lists and commit can never resolve, while the receipt's claim kept suppressing a corrected restage.
 
 That strictness is the point: a bundle a release does not fully understand fails closed before preview or writes
 rather than restoring partial state. A bundle is restorable by releases that implement its declared version.

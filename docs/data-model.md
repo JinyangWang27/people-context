@@ -196,6 +196,15 @@ recorded; `correct_record` is for erroneous data. Merge moves memberships to the
 them. Hard forget of a person removes their memberships and keeps the group and everyone else's; forgetting a
 group removes its memberships with it, and both redact the affected history.
 
+Agents reach both through the reviewed staging lifecycle rather than a direct write, using the `group` and
+`membership` candidate types M28.3 added. Staging rewrites a membership's batch-local `group_ref` to the group
+candidate's canonical id, resolves `temporal_basis` from the dates supplied by the same rule the direct write
+uses, and looks nothing up by name — a candidate records into an existing group only through an explicit
+`group_id`, because no merge exists to undo a wrong reuse. Commit writes each group before the memberships that
+name it, through `create_group` and `add_group_membership` in one transaction, so an imported membership carries
+the same audit and changelog entries a recorded one does. A person's hard forget removes their staged membership
+candidates and leaves the group candidate standing, the same asymmetry the durable rows follow.
+
 ### Trait evidence
 
 A trait is the one record type here that nobody asserted directly, so it may name what it was drawn from.

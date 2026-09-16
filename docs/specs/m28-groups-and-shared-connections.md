@@ -1,7 +1,7 @@
 # M28 — Groups, memberships, and shared connections
 
-Status: M28.1 delivered (protected groups and memberships); M28.2 delivered (explained shared connections); M28.3
-planned — not implemented.
+Status: Delivered. M28.1 (protected groups and memberships), M28.2 (explained shared connections), and M28.3
+(reviewed agent capture and usage guidance).
 See [roadmap](../roadmap.md#m28--groups-memberships-and-shared-connections) and
 [PR checklist](pr-plan.md#m28--groups-memberships-and-shared-connections).
 

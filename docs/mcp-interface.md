@@ -7,8 +7,9 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 
 [M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; M28.2
 added the explicit pairwise `explain_shared_connections` lookup; see the
-[group contract](#m28-group-and-membership-contract). **Planned, not implemented:** M28.3's reviewed capture
-support, and [M29](specs/m29-editable-staging-and-review.md)'s `amend_candidate` and `withdraw_candidates` tools
+[group contract](#m28-group-and-membership-contract). M28.3 added the `group` and `membership` staged candidate
+types to `stage_candidates`. **Planned, not implemented:**
+[M29](specs/m29-editable-staging-and-review.md)'s `amend_candidate` and `withdraw_candidates` tools
 and its additive `ordinal` field and `rejected` status on `review_import`. Existing tools and graph results keep
 their meanings.
 
@@ -673,6 +674,21 @@ the `session`, and the M18 `source_session_id` receipt, and attribution never im
 omitting it keep their existing behavior. See
 [docs/import.md](import.md#attributing-a-claim-to-who-made-it-m22).
 
+M28.3 adds the additive `group` and `membership` candidate types. A `group` carries a batch-local `ref`, a
+`name`, and a `kind` of `class`, `cohort`, `team`, `department`, `club`, `household`, `community`, or `other`,
+plus optional `organization_id`, `group_id`, `sensitivity`, and `stated_by`. A `membership` carries `person_ref`
+and `group_ref` — the latter naming a `group` candidate in the same request — plus optional `role`, `valid_from`,
+`valid_to`, `temporal_basis`, `confidence`, `sensitivity`, and `stated_by`. Both opt the request into the same
+bounded contract the M17 types do.
+
+Staging performs no name lookup for a group: `group_id` is the only way a candidate records into a group that
+already exists, so a caller resolves it through `find_groups` first. Commit writes groups before the memberships
+naming them and reports a membership whose group has not committed as `unresolved` rather than raising, so it
+stays committable on a later pass. `temporal_basis` is resolved at staging from the dates supplied — none is
+`unknown`, any is `period`, and `ongoing` is never inferred — and a declared basis its own dates contradict is
+refused. The `review_import` and `commit_import` envelopes are unchanged; a batch using neither type behaves
+exactly as before. See [docs/import.md](import.md#capturing-a-shared-context-m283).
+
 M18.1 adds optional receipt metadata to both staging tools' responses and, on `stage_candidates`, to its
 arguments: `source_kind`, `content_digest`, `extraction_fingerprint`, `label`, and `external_source_id`. All are
 optional and omitting every one keeps the released behaviour exactly. `source_kind` is a bounded machine category
@@ -791,7 +807,7 @@ The server also exposes the packaged usage guidance through the protocol, for cl
 
 | Kind | Name / URI | Purpose |
 |---|---|---|
-| resource | `people-context://guide` | The usage skill body: resolution first, context vs. guidance, meeting prep, propose-then-commit capture. |
+| resource | `people-context://guide` | The usage skill body: resolution first, context vs. guidance, meeting prep, propose-then-commit capture, shared-context capture and lookup. |
 | resource | `people-context://self` | Narrow identity of the user's own record, or `{"found": false}`. |
 | prompt | `who(name)` | Resolve, then read context only on a confident match. |
 | prompt | `remember(statement)` | `remember` for a direct statement; `stage_candidates` for extracted material. |
