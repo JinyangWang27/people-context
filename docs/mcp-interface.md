@@ -644,9 +644,10 @@ decision. Passing it back as `expected_batch_digest` to `amend_candidate`, `with
 `commit_import` refuses with `batch_changed`, writing nothing, when another client changed the batch after the
 read. Omitting it keeps the released behaviour exactly.
 
-Matching re-runs only when a patch touches `name`, `aliases`, or `matched_person_id`. A patch that corrects
-anything else keeps the row's recorded resolution, because re-deriving it on a name that still collides would
-discard the decision the reviewer just made. And once a candidate committed in this batch has been recorded
+Matching re-runs only when a patch names `matched_person_id` or changes what the candidate is matched on — its
+normalized name and handle aliases. A patch that corrects anything else, including a nickname or other non-handle
+alias, keeps the row's recorded resolution, because re-deriving it on a name that still collides would discard the
+decision the reviewer just made. And once a candidate committed in this batch has been recorded
 against the person a row resolves to, that row's identity is fixed: an amendment that would move it refuses with
 `identity_already_committed`, because commit resolves a dependent through its person candidate's stored match
 whether or not the person row has itself committed, so one accepted dependent pins the identity for the rest.

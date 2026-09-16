@@ -62,13 +62,6 @@ from people_context.ports.repository import PersonReader
 #: a choice is only accepted when the matcher itself produced it. See `_apply_person_match`.
 IMMUTABLE_PATCH_FIELDS: frozenset[str] = frozenset({"type", "match_disposition", "match_count"})
 
-#: Patch fields that can change who a person candidate resolves to.
-#:
-#: Matching re-runs only for these. Every other field is a correction to what the candidate
-#: *says*, not to who it is about, and re-deriving the match for one of those would let an
-#: unrelated edit discard a resolution the reviewer explicitly made.
-IDENTITY_PATCH_FIELDS: frozenset[str] = frozenset({"name", "aliases", "matched_person_id"})
-
 #: The computed match fields a person row carries, which survive a re-dump unchanged.
 _MATCH_OUTCOME_FIELDS: tuple[str, ...] = ("matched_person_id", "match_disposition", "match_count")
 
@@ -332,7 +325,7 @@ def _apply_person_match(
         # `matched_person_id` on any other type was already refused by the shape check above, which
         # no longer declares it — so there is nothing left to say here.
         return
-    if not _touches_identity(patch):
+    if not _touches_identity(row.candidate, merged, patch):
         return
     tokens = candidate_identity_tokens(str(merged.get("name", "")), list(merged.get("aliases", [])))
     chosen = patch.get("matched_person_id") if "matched_person_id" in patch else None
@@ -363,9 +356,24 @@ def _apply_person_match(
     merged["match_count"] = match.match_count
 
 
-def _touches_identity(patch: dict[str, Any]) -> bool:
-    """Whether this patch can change who a person candidate resolves to."""
-    return bool(IDENTITY_PATCH_FIELDS & set(patch))
+def _touches_identity(stored: dict[str, Any], merged: dict[str, Any], patch: dict[str, Any]) -> bool:
+    """Whether this amendment changes what a person candidate is matched on.
+
+    An explicit `matched_person_id` always does. Otherwise the question is whether the *effective*
+    identity tokens moved — the name and the handle aliases — not whether `name` or `aliases`
+    appears in the patch. Matching reads only handles and the name, so a patch that rewrites the
+    alias list merely to add a nickname leaves the match question exactly where it was; re-running
+    it on a name that still collides would put a reviewer's explicit choice back to `ambiguous`.
+    Tokens are compared normalized and as a set, because that is how the matcher unions them.
+    """
+    if "matched_person_id" in patch:
+        return True
+    return _identity_token_set(stored) != _identity_token_set(merged)
+
+
+def _identity_token_set(candidate: dict[str, Any]) -> frozenset[str]:
+    tokens = candidate_identity_tokens(str(candidate.get("name", "")), list(candidate.get("aliases", [])))
+    return frozenset(value for token in tokens if (value := normalize_name(token)))
 
 
 def _require_unlocked_identity(
@@ -466,6 +474,13 @@ def _check_input_rules(row: StagedImportRow, merged: dict[str, Any], kind: str) 
             _safe_field(exc.errors()[0].get("loc", ())),
             "the amended candidate is not accepted by the staging boundary",
         ) from exc
+    if kind == "interaction" and not merged.get("participant_candidate_ids"):
+        # `RecordInteractionInput` requires at least one participant, and the staging model does
+        # not, so an interaction amended down to nobody would persist and then raise from inside
+        # the commit transaction — a validation traceback where commit owes a resolution.
+        raise _amendment_refusal(
+            row, "participant_candidate_ids", "an interaction needs at least one participant"
+        )
     if kind == "relationship" and merged.get("from_candidate_id") == merged.get("to_candidate_id"):
         # The stager owns this one rather than the model, because at request time it is a rule
         # about two batch-local labels. Here it is a rule about two candidate ids, and it matters

@@ -1145,3 +1145,68 @@ def test_a_refusal_inside_a_patched_alias_names_the_field_it_reached(
         )
 
     assert raised.value.details["details"][0]["loc"] == [candidate_id, "aliases"]
+
+
+def test_a_nickname_only_alias_patch_keeps_an_explicit_identity_choice(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Regression: any `aliases` patch re-ran matching, though only handles are matched on.
+
+    Adding a nickname to a person the reviewer had already resolved put the row back to
+    `ambiguous` and left its dependents unresolved.
+    """
+    batch_id, ids, people = _ambiguous_batch(runtime, collisions=3)
+    chosen = sorted(people)[2]
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": chosen})
+
+    runtime.use_cases.amend_staged_candidate.execute(
+        batch_id, ids[0], {"aliases": [{"value": "Pri", "kind": "nickname"}]}
+    )
+
+    amended = _candidate(runtime, batch_id, ids[0])
+    assert amended["match_disposition"] == "matched"
+    assert amended["matched_person_id"] == chosen
+
+
+def test_a_handle_alias_patch_still_re_runs_matching(runtime: ApplicationRuntime) -> None:
+    """The other half of the rule: a handle is an identity token, so adding one reopens the match."""
+    batch_id, ids, people = _ambiguous_batch(runtime, collisions=3)
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": sorted(people)[0]})
+
+    runtime.use_cases.amend_staged_candidate.execute(
+        batch_id, ids[0], {"aliases": [{"value": "priya@acme.test", "kind": "handle"}]}
+    )
+
+    assert _candidate(runtime, batch_id, ids[0])["match_disposition"] == "ambiguous"
+
+
+def test_a_spelling_change_that_normalizes_to_the_same_name_keeps_the_choice(
+    runtime: ApplicationRuntime,
+) -> None:
+    """Tokens are compared normalized, as the matcher compares them: case is not a new identity."""
+    batch_id, ids, people = _ambiguous_batch(runtime, collisions=3)
+    chosen = sorted(people)[1]
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"matched_person_id": chosen})
+
+    runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[0], {"name": "PRIYA SHARMA"})
+
+    assert _candidate(runtime, batch_id, ids[0])["matched_person_id"] == chosen
+
+
+def test_an_interaction_cannot_be_amended_down_to_nobody(runtime: ApplicationRuntime) -> None:
+    """Regression: the empty list persisted, then commit raised a validation traceback."""
+    batch_id = _stage(
+        runtime,
+        [
+            _person("p1", "Tom Vance"),
+            {"type": "interaction", "summary": "call", "participant_refs": ["p1"], "date": "2026-09-01T10:00:00Z"},
+        ],
+    )
+    ids = _ids(runtime, batch_id)
+    before = _candidate(runtime, batch_id, ids[1])
+
+    with pytest.raises(ImportPipelineError) as raised:
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[1], {"participant_candidate_ids": []})
+
+    assert raised.value.details["details"][0]["loc"] == [ids[1], "participant_candidate_ids"]
+    assert _candidate(runtime, batch_id, ids[1]) == before
