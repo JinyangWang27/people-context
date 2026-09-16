@@ -19,6 +19,11 @@ M6 implements local durable change capture only. It adds one installation device
 a plaintext replay changelog inside the same SQLite file. It adds no network path, account, pairing, relay, peer
 registration, remote access, batch encryption, replay engine, bootstrap restore, or background sync process.
 
+**Planned, not implemented:** [M30](specs/m30-local-web-review.md) plans `pctx browse`, a short-lived
+loopback-only browser page with a per-launch token and Host/Origin checks. It adds no network path, account,
+daemon, or remote mode, and applies the same ordinary-read disclosure and operator-elevation rules as the MCP
+server.
+
 ## Minimal disclosure
 
 Context-returning tools never dump full records. Responses are:
