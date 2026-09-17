@@ -470,7 +470,8 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
     except RecursionError:
         return _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is nested too deeply")
     try:
-        edits = review_document_edits(document.model_dump(mode="json"), edited)
+        rendered = document.model_dump(mode="json")
+        edits = review_document_edits(rendered, edited, projections_current=args.from_file is None)
         revised = runtime.use_cases.apply_review_edits.execute(
             batch_id,
             edits.amendments,
@@ -479,7 +480,7 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
         )
     except ImportPipelineError as exc:
         _refuse(f"import edit failed: {exc.code}: {exc}")
-        _print_edit_locator(exc, edited)
+        _print_edit_locator(exc, edited, review)
         _print_validation_details(exc)
         return 1
     print(f"Applied {len(edits.amendments)} amendments and {len(edits.withdrawals)} withdrawals.")
@@ -567,15 +568,22 @@ def _read_edited_document(raw_input: str, bound: int) -> str | None:
         return None
 
 
-def _print_edit_locator(exc: ImportPipelineError, edited: object) -> None:
-    """Name the document row a use-case refusal is about, by index and ordinal, never by content."""
-    candidate_ids = exc.details.get("candidate_ids") or [exc.details.get("candidate_id")]
+def _print_edit_locator(exc: ImportPipelineError, edited: object, review: ImportReviewResult) -> None:
+    """Name the document row a use-case refusal is about, by index and ordinal, never by content.
+
+    Only an id the refusal named *and* the batch holds is matched, and the ordinal printed is the
+    batch's own, so nothing an edited row carries is echoed.
+    """
+    named = exc.details.get("candidate_ids") or [exc.details.get("candidate_id")]
+    ordinals = {row.id: row.ordinal for row in review.candidates}
+    wanted = {candidate_id for candidate_id in named if isinstance(candidate_id, str) and candidate_id in ordinals}
     rows = edited.get("candidates") if isinstance(edited, dict) else None
-    if not isinstance(rows, list):
+    if not wanted or not isinstance(rows, list):
         return
     for index, row in enumerate(rows):
-        if isinstance(row, dict) and row.get("id") in candidate_ids:
-            print(f"  at candidates[{index}] (#{row.get('ordinal')})", file=sys.stderr)
+        candidate_id = row.get("id") if isinstance(row, dict) else None
+        if isinstance(candidate_id, str) and candidate_id in wanted:
+            print(f"  at candidates[{index}] (#{ordinals[candidate_id]})", file=sys.stderr)
 
 
 def _confirm_on_terminal(prompt: str) -> bool:

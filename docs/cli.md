@@ -167,7 +167,9 @@ editor that exits non-zero applies nothing, and with neither variable set the co
 is removed in every case. After a successful apply, the batch summary is printed and `Commit N pending candidates?
 [y/N]` is asked on the controlling terminal; `--no-commit` skips the question. `--from FILE` (or `-` for stdin)
 applies an already-edited document without an editor and never asks, leaving commit to `import commit`; it refuses
-together with `--no-commit`. The edited document is read under a bound derived from the batch — its current
+together with `--no-commit`. Because such a document was rendered by an earlier command, its read-time `match_candidates`
+may differ from the current ones after a person merge or rename without refusing; the rows themselves are still
+held to its `batch_digest`. The edited document is read under a bound derived from the batch — its current
 rendered size plus the remaining staged-payload headroom at the renderer's worst-case expansion — so an unchanged
 document always applies back, however large.
 

@@ -29,7 +29,7 @@ INVALID_REVIEW_DOCUMENT: Final = "invalid_review_document"
 
 #: The deepest nesting level a candidate value reaches in the rendered review document:
 #: document → `candidates` → row → `candidate` → `aliases` → alias → alias field. The strict
-#: candidate schema fixes this depth; `tests/app/imports/test_review_edits.py` pins it.
+#: candidate schema fixes this depth; `tests/app/imports/test_apply_review_edits.py` pins it.
 RENDERED_MAX_DEPTH: Final = 6
 
 #: Spaces the review renderer indents each nesting level by.
@@ -54,6 +54,10 @@ _ROW_FIELDS: Final = frozenset(ImportReviewCandidateEntry.model_fields)
 
 _EDITABLE_ROW_FIELD: Final = "candidate"
 
+#: Row fields computed at read time from the person table rather than from the batch. The digest
+#: excludes them so an unrelated merge does not invalidate a reviewer's decision.
+_PROJECTED_ROW_FIELDS: Final = frozenset({"match_candidates", "match_candidates_truncated"})
+
 
 @dataclass(frozen=True)
 class ReviewEdits:
@@ -74,12 +78,19 @@ def edited_document_read_bound(rendered_bytes: int, payload_bytes: int, payload_
     return rendered_bytes + max(0, payload_limit - payload_bytes) * RENDERED_EXPANSION
 
 
-def review_document_edits(rendered: dict[str, Any], edited: object) -> ReviewEdits:
+def review_document_edits(
+    rendered: dict[str, Any], edited: object, *, projections_current: bool = True
+) -> ReviewEdits:
     """Return the edits an edited review document expresses, or refuse the whole document.
 
     `rendered` is the document as this process rendered it for the same batch. Rows are addressed
     by `id`, falling back to `ordinal`; a row matching neither, or matching a row already claimed,
     is an added row and refuses.
+
+    `projections_current` says `rendered` is the very document the operator edited, so its
+    read-time `match_candidates` must match too. A document rendered by an earlier invocation
+    (`--from`) is compared against a fresh render instead, whose projections may legitimately
+    differ after a person merge or rename; the digest still guarantees the rows are unchanged.
     """
     if not isinstance(edited, dict):
         raise _invalid("the edited review document must be a JSON object")
@@ -112,7 +123,10 @@ def review_document_edits(rendered: dict[str, Any], edited: object) -> ReviewEdi
             )
         claimed.add(original["id"])
         _require_same_fields(row, original, _ROW_FIELDS, location=f"candidates[{index}]")
-        for name in sorted(original.keys() - {_EDITABLE_ROW_FIELD}):
+        compared = original.keys() - {_EDITABLE_ROW_FIELD}
+        if not projections_current:
+            compared -= _PROJECTED_ROW_FIELDS
+        for name in sorted(compared):
             if row[name] != original[name]:
                 raise _changed(f"candidates[{index}].{name}", index=index, field=name)
         candidate = row[_EDITABLE_ROW_FIELD]

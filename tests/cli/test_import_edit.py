@@ -432,3 +432,61 @@ def test_a_document_past_the_read_bound_is_refused_before_it_is_parsed(
     assert _edit(db_file, batch_id, "--from", str(path)) == 1
 
     assert "grew past what this batch can hold" in capsys.readouterr().err
+
+
+def test_from_a_file_whose_match_candidates_changed_since_rendering_still_applies(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Read-time projections follow the person table, which no batch edit owns."""
+    db_file = tmp_path / "people.db"
+    runtime = build_runtime(db_file)
+    try:
+        repository = SqlitePeopleRepository(runtime.conn)
+        for n in range(2):
+            repository.save_person(
+                Person(id=f"person-{n}", canonical_name="Nadia Okonkwo", aliases=[], created_at=_NOW, updated_at=_NOW)
+            )
+        runtime.conn.commit()
+    finally:
+        runtime.close()
+    batch_id = _stage(db_file, tmp_path, capsys)
+    doc = _review(db_file, batch_id, capsys)
+    assert doc["candidates"][0]["match_candidates"]
+    doc["candidates"][0]["match_candidates"] = [
+        dict(entry, canonical_name="Renamed since") for entry in doc["candidates"][0]["match_candidates"]
+    ]
+    del doc["candidates"][2]
+    path = tmp_path / "edited.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+    assert _edit(db_file, batch_id, "--from", str(path)) == 0
+
+    assert [row["status"] for row in _rows(db_file)] == ["pending", "pending", "rejected"]
+
+
+def test_an_editor_changing_match_candidates_still_refuses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_file = tmp_path / "people.db"
+    batch_id = _stage(db_file, tmp_path, capsys)
+    _editor(tmp_path, monkeypatch, "doc['candidates'][0]['match_candidates'] = []")
+
+    assert _edit(db_file, batch_id, "--no-commit") == 1
+
+    assert "review_field_changed" in capsys.readouterr().err
+
+
+def test_a_malformed_row_ordinal_is_never_echoed(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_file = tmp_path / "people.db"
+    batch_id = _stage(db_file, tmp_path, capsys)
+    doc = _review(db_file, batch_id, capsys)
+    doc["candidates"].append(dict(doc["candidates"][1], id=None, ordinal="private note"))
+    monkeypatch.setattr(sys, "stdin", _Stdin(json.dumps(doc).encode("utf-8")))
+
+    assert _edit(db_file, batch_id, "--from", "-") == 1
+
+    err = capsys.readouterr().err
+    assert "candidate_not_in_batch" in err
+    assert "private note" not in err
