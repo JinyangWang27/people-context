@@ -667,7 +667,8 @@ class CommitImport:
             raise ImportPipelineError("batch_not_found", f"import batch not found: {batch_id}", batch_id=batch_id)
         require_unchanged_batch(rows, expected_batch_digest)
         by_id = {row.id: row for row in rows}
-        invalid_ids = sorted(set(accepted_ids) - by_id.keys())
+        accepted = set(accepted_ids)
+        invalid_ids = sorted(accepted - by_id.keys())
         if invalid_ids:
             raise ImportPipelineError(
                 "candidate_not_in_batch",
@@ -679,7 +680,7 @@ class CommitImport:
         # Both mean the same thing — the caller is working from a list that has moved — and
         # committing the part that still resolves would act on a selection nobody made.
         withdrawn_ids = sorted(
-            {row.id for row in rows if row.id in set(accepted_ids) and row.status == STAGING_STATUS_REJECTED}
+            {row.id for row in rows if row.id in accepted and row.status == STAGING_STATUS_REJECTED}
         )
         if withdrawn_ids:
             raise ImportPipelineError(
@@ -695,7 +696,6 @@ class CommitImport:
             else {}
         )
         transaction_id = new_id()
-        accepted = set(accepted_ids)
         # Rows are placed in this list at the point their type is *considered*, and the write may
         # happen later. That separation is what lets a trait be written after the interactions it
         # cites while `committed_ids` and `unresolved_ids` keep the order they always reported.

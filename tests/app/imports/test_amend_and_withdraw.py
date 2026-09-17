@@ -1210,3 +1210,35 @@ def test_an_interaction_cannot_be_amended_down_to_nobody(runtime: ApplicationRun
 
     assert raised.value.details["details"][0]["loc"] == [ids[1], "participant_candidate_ids"]
     assert _candidate(runtime, batch_id, ids[1]) == before
+
+
+def test_the_withdrawn_check_does_not_rebuild_the_selection_per_row(
+    runtime: ApplicationRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: `set(accepted_ids)` was rebuilt inside the scan, O(rows x accepted ids).
+
+    At the 100,000-row CLI ceiling `commit --all` performed billions of hash insertions before
+    writing anything. The selection is a set built once; this pins that by counting how often
+    commit converts the accepted list.
+    """
+    import people_context.app.imports.workflow as workflow
+
+    batch_id = _stage(
+        runtime,
+        [_person(f"p{index}", f"Person {index}") for index in range(50)],
+    )
+    ids = _ids(runtime, batch_id)
+    conversions = 0
+    real_set = set
+
+    def counting_set(*args: object) -> set[object]:
+        nonlocal conversions
+        if args and args[0] is ids:
+            conversions += 1
+        return real_set(*args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(workflow, "set", counting_set, raising=False)
+
+    runtime.use_cases.commit_import.execute(batch_id, ids)
+
+    assert conversions == 1
