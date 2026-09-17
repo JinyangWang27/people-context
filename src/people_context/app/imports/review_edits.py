@@ -21,7 +21,6 @@ from typing import Any, Final
 from people_context.app.imports.amendment import REDACTED_FIELD
 from people_context.app.imports.documents import ImportReviewCandidateEntry, ImportReviewDocument
 from people_context.app.imports.models import MAX_MATCH_CANDIDATES, ImportPipelineError
-from people_context.app.imports.workflow import MATCH_CANDIDATE_WORST_CASE_BYTES
 
 #: Refusal for an edit to anything the review document renders other than a row's `candidate`.
 REVIEW_FIELD_CHANGED: Final = "review_field_changed"
@@ -60,8 +59,8 @@ _EDITABLE_ROW_FIELD: Final = "candidate"
 #: excludes them so an unrelated merge does not invalidate a reviewer's decision.
 _PROJECTED_ROW_FIELDS: Final = frozenset({"match_candidates", "match_candidates_truncated"})
 
-#: Rendered bytes one `match_candidates` entry adds beyond its id and name, and one row's list adds
-#: beyond its entries: newlines, indentation, keys, and punctuation at the entries' fixed depth.
+#: Rendered bytes one `match_candidates` entry adds beyond its compact JSON, and one row's list adds
+#: beyond its entries: the newlines and indentation at the entries' fixed depth.
 #: `tests/app/imports/test_apply_review_edits.py` pins both.
 RENDERED_MATCH_ENTRY_OVERHEAD: Final = 128
 RENDERED_MATCH_LIST_OVERHEAD: Final = 64
@@ -91,15 +90,21 @@ def edited_document_read_bound(
 
     `stale_projection_rows` counts ambiguous rows whose `match_candidates` may have been rendered by
     an earlier command (`--from`). Those projections follow the person table, so a saved document
-    can carry more of them than a fresh render; each such row is allowed the same worst case the
-    review read already charges against the ceiling. No candidate growth comes out of that allowance
-    that re-measurement would not refuse.
+    can carry more of them than a fresh render. The allowance is what the earlier review could have
+    admitted: `ReviewImport` refuses unless the stored payload plus the projection's compact JSON fits
+    the ceiling, and the digest guarantees the stored payload is unchanged, so the saved projections
+    held at most the current headroom in compact bytes — however long a restored person id is — plus
+    fixed indentation per rendered entry. No candidate growth comes out of that allowance that
+    re-measurement would not refuse.
     """
-    projection_allowance = stale_projection_rows * (
-        MAX_MATCH_CANDIDATES * (MATCH_CANDIDATE_WORST_CASE_BYTES + RENDERED_MATCH_ENTRY_OVERHEAD)
-        + RENDERED_MATCH_LIST_OVERHEAD
+    headroom = max(0, payload_limit - payload_bytes)
+    projection_allowance = (
+        stale_projection_rows * (MAX_MATCH_CANDIDATES * RENDERED_MATCH_ENTRY_OVERHEAD + RENDERED_MATCH_LIST_OVERHEAD)
+        + headroom
+        if stale_projection_rows
+        else 0
     )
-    return rendered_bytes + max(0, payload_limit - payload_bytes) * RENDERED_EXPANSION + projection_allowance
+    return rendered_bytes + headroom * RENDERED_EXPANSION + projection_allowance
 
 
 def review_document_edits(

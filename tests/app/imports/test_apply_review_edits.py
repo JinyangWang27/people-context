@@ -30,7 +30,12 @@ from people_context.app.imports import (
     review_document_edits,
 )
 from people_context.app.imports.documents import ImportReviewCandidateEntry, ImportReviewDocument
-from people_context.app.imports.review_edits import RENDERED_INDENT, RENDERED_MAX_DEPTH
+from people_context.app.imports.review_edits import (
+    RENDERED_INDENT,
+    RENDERED_MATCH_ENTRY_OVERHEAD,
+    RENDERED_MATCH_LIST_OVERHEAD,
+    RENDERED_MAX_DEPTH,
+)
 from people_context.app.imports.workflow import ApplyReviewEdits
 
 _NOW = datetime(2026, 9, 17, 9, 0, tzinfo=UTC)
@@ -356,24 +361,37 @@ def test_a_version_turned_into_a_boolean_refuses() -> None:
     assert raised.value.code == "review_field_changed"
 
 
-def test_a_saved_document_with_larger_stale_projections_fits_its_read_bound() -> None:
-    long_id = "i" * MAX_MATCH_CANDIDATE_NAME_CHARS
+@pytest.mark.parametrize("id_chars", [MAX_MATCH_CANDIDATE_NAME_CHARS, 20 * 1024])
+def test_a_saved_document_with_larger_stale_projections_fits_its_read_bound(id_chars: int) -> None:
+    """Whatever projection the earlier review admitted fits, including an unbounded restored id."""
     long_name = "\U0001f600" * MAX_MATCH_CANDIDATE_NAME_CHARS
     person = {**_PERSON, "match_disposition": "ambiguous", "match_count": 12}
+    entries = [
+        {"id": f"{n}" + "i" * id_chars, "canonical_name": long_name, "name_truncated": True}
+        for n in range(MAX_MATCH_CANDIDATES)
+    ]
 
-    def document(entries: list[MatchCandidate]) -> bytes:
+    def document(projection: list[dict[str, Any]]) -> bytes:
         entry = ImportReviewCandidateEntry(
             id="c", source="s", status="pending", candidate=person, ordinal=1,
-            match_candidates=entries, match_candidates_truncated=bool(entries),
+            match_candidates=[MatchCandidate.model_validate(item) for item in projection],
+            match_candidates_truncated=bool(projection),
         )
         return render_import_json(ImportReviewDocument(batch_id="b", candidates=[entry])).encode("utf-8")
 
-    saved = document(
-        [MatchCandidate(id=long_id, canonical_name=long_name, name_truncated=True)] * MAX_MATCH_CANDIDATES
-    )
-    fresh = document([])
+    saved, fresh = document(entries), document([])
+    # Exactly the headroom `ReviewImport._charge_projected` needed to admit the saved projection.
+    compact = len(json.dumps(entries, ensure_ascii=False).encode("utf-8"))
+    limit = 1000 + compact
 
-    bound = edited_document_read_bound(len(fresh), payload_bytes=100, payload_limit=100, stale_projection_rows=1)
+    bound = edited_document_read_bound(len(fresh), payload_bytes=1000, payload_limit=limit, stale_projection_rows=1)
 
     assert len(saved) <= bound
-    assert edited_document_read_bound(len(fresh), payload_bytes=100, payload_limit=100) < len(saved)
+    # The same document may also grow its candidates up to the ceiling: that growth has its own
+    # headroom at the renderer's worst case, so the projections must not be drawn from it.
+    headroom = limit - 1000
+    assert bound - len(fresh) >= RENDERED_EXPANSION * headroom + (len(saved) - len(fresh))
+    assert len(saved) - len(fresh) - compact <= (
+        MAX_MATCH_CANDIDATES * RENDERED_MATCH_ENTRY_OVERHEAD + RENDERED_MATCH_LIST_OVERHEAD
+    )
+    assert edited_document_read_bound(len(fresh), payload_bytes=limit, payload_limit=limit) < len(saved)
