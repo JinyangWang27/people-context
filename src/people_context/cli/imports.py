@@ -54,6 +54,7 @@ from people_context.app.imports import (
     import_review_document,
     render_import_json,
     review_document_edits,
+    review_payload_bytes,
 )
 from people_context.cli.rendering import import_review_lines, import_review_summary, print_import_review
 from people_context.domain.import_provenance import STAGING_STATUS_PENDING, STAGING_STATUS_REJECTED
@@ -436,10 +437,6 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
     prompts, because a stdin document leaves nothing to read a confirmation from.
     """
     batch_id = args.batch_id
-    try:
-        size = runtime.use_cases.preflight_import_batch.execute(batch_id)
-    except ImportPipelineError as exc:
-        return _refuse(f"import batch cannot be read by this command: {exc}")
     review = _bounded_review(runtime, batch_id)
     if isinstance(review, int):
         return review
@@ -448,7 +445,9 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
     limit = CLI_IMPORT_BUDGET.max_staged_payload_bytes
     bound = edited_document_read_bound(
         len(rendered_text.encode("utf-8")),
-        size.payload_bytes,
+        # Measured from the rows just rendered, not a separate earlier read, so a concurrent change
+        # cannot pair one snapshot's headroom with another snapshot's document.
+        review_payload_bytes(review.candidates),
         limit if limit is not None else 0,
         # Only a document rendered by an earlier command can carry projections this render lacks.
         stale_projection_rows=(
@@ -510,15 +509,24 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
 
 
 def _configured_editor() -> list[str] | None:
-    """Return the editor command from `$VISUAL`, then `$EDITOR`, split without a shell."""
+    """Return the editor command from `$VISUAL`, then `$EDITOR`, split without a shell.
+
+    POSIX splitting treats a backslash as an escape, which would turn `C:\\Windows\\notepad.exe` into
+    `C:Windowsnotepad.exe`. Windows splits in non-POSIX mode, which keeps backslashes literal and
+    keeps quotes on a token, so a quoted path such as `"C:\\Program Files\\Editor\\editor.exe"` has
+    them stripped here.
+    """
+    posix = os.name != "nt"
     for variable in _EDITOR_VARIABLES:
         value = os.environ.get(variable, "").strip()
         if not value:
             continue
         try:
-            argv = shlex.split(value)
+            argv = shlex.split(value, posix=posix)
         except ValueError:
             continue
+        if not posix:
+            argv = [token[1:-1] if len(token) >= 2 and token[0] == token[-1] == '"' else token for token in argv]
         if argv:
             return argv
     return None

@@ -14,13 +14,14 @@ names the row index and a field this document declares, and shows any other key 
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from math import ceil
 from typing import Any, Final
 
 from people_context.app.imports.amendment import REDACTED_FIELD
 from people_context.app.imports.documents import ImportReviewCandidateEntry, ImportReviewDocument
-from people_context.app.imports.models import MAX_MATCH_CANDIDATES, ImportPipelineError
+from people_context.app.imports.models import MAX_MATCH_CANDIDATES, ImportPipelineError, ImportReviewRow
 
 #: Refusal for an edit to anything the review document renders other than a row's `candidate`.
 REVIEW_FIELD_CHANGED: Final = "review_field_changed"
@@ -105,6 +106,14 @@ def edited_document_read_bound(
         else 0
     )
     return rendered_bytes + headroom * RENDERED_EXPANSION + projection_allowance
+
+
+def review_payload_bytes(rows: Sequence[ImportReviewRow]) -> int:
+    """Measure the rendered rows the way the store measures a batch: staged source plus candidate JSON."""
+    return sum(
+        len(row.source.encode("utf-8")) + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
+        for row in rows
+    )
 
 
 def review_document_edits(

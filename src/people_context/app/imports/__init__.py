@@ -112,6 +112,7 @@ from people_context.app.imports.review_edits import (
     ReviewEdits,
     edited_document_read_bound,
     review_document_edits,
+    review_payload_bytes,
 )
 from people_context.app.imports.sources import (
     INVALID_SOURCE_METADATA,
@@ -196,6 +197,7 @@ __all__ = [
     "ReviewEdits",
     "edited_document_read_bound",
     "review_document_edits",
+    "review_payload_bytes",
     "ApplyReviewEdits",
     "BatchEdit",
     "CandidateAlias",

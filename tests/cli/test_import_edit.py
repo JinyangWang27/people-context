@@ -499,3 +499,63 @@ def test_the_terminal_prompt_uses_the_console_devices_on_windows(monkeypatch: py
     assert cli_imports._terminal_paths() == ("CONIN$", "CONOUT$")
     monkeypatch.setattr(cli_imports.os, "name", "posix")
     assert cli_imports._terminal_paths() == ("/dev/tty", "/dev/tty")
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (r"C:\Windows\notepad.exe", [r"C:\Windows\notepad.exe"]),
+        (r'"C:\Program Files\Editor\editor.exe" --wait', [r"C:\Program Files\Editor\editor.exe", "--wait"]),
+    ],
+)
+def test_a_windows_editor_path_keeps_its_backslashes(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: list[str]
+) -> None:
+    monkeypatch.setattr(cli_imports.os, "name", "nt")
+    monkeypatch.setenv("EDITOR", value)
+    assert cli_imports._configured_editor() == expected
+
+
+def test_a_posix_editor_command_is_split_like_a_shell_word_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EDITOR", "'my editor' --wait")
+    assert cli_imports._configured_editor() == ["my editor", "--wait"]
+
+
+def test_the_read_bound_is_measured_from_the_rendered_rows(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The headroom and the document must describe one snapshot of the batch."""
+    db_file = tmp_path / "people.db"
+    batch_id = _stage(db_file, tmp_path, capsys)
+    conn = open_db(db_file)
+    try:
+        stored = conn.execute(
+            "SELECT COALESCE(SUM(LENGTH(CAST(candidate_json AS BLOB)) + LENGTH(CAST(source AS BLOB))), 0) "
+            "FROM import_staging WHERE batch_id = ?",
+            (batch_id,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    doc = _review(db_file, batch_id, capsys)
+    seen: list[int] = []
+    real_review = cli_imports._bounded_review
+
+    def review_and_measure(runtime: Any, batch: str) -> Any:
+        rendered = real_review(runtime, batch)
+        seen.append(cli_imports.review_payload_bytes(rendered.candidates))
+        return rendered
+
+    monkeypatch.setattr(cli_imports, "_bounded_review", review_and_measure)
+    captured: list[int] = []
+    real_bound = cli_imports.edited_document_read_bound
+
+    def spy(rendered_bytes: int, payload_bytes: int, *args: Any, **kwargs: Any) -> int:
+        captured.append(payload_bytes)
+        return real_bound(rendered_bytes, payload_bytes, *args, **kwargs)
+
+    monkeypatch.setattr(cli_imports, "edited_document_read_bound", spy)
+    monkeypatch.setattr(sys, "stdin", _Stdin(json.dumps(doc).encode("utf-8")))
+
+    assert _edit(db_file, batch_id, "--from", "-") == 0
+
+    assert captured == seen == [stored]
