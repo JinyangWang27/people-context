@@ -57,10 +57,10 @@ including M28.1 `group`, M28.2 `group shared`, M28.3's `group` and `group_member
 | `reminders-ics --output FILE` | Export active dated reminders as an owner-only iCalendar `VTODO` file. |
 | `import stage SOURCE PATH [--self-sender TEXT] [--label TEXT] [--external-source-id TEXT] [--force] [--json]` | Extract one local export into a reviewable staging batch; nothing is committed. |
 | `import stage-candidates --source LABEL --input PATH\|- [--source-kind KIND] [--content-digest SHA256] [--extraction-fingerprint SHA256] [--label TEXT] [--external-source-id TEXT] [--json]` | Stage strict agent-extracted candidate JSON — not source text — into a reviewable staging batch. |
-| `import review BATCH_ID [--json]` | Show every staged candidate in one batch with its canonical id and status. |
+| `import review BATCH_ID [--json\|--interactive]` | Show a batch summary and every staged candidate numbered `#n`, with its status and canonical id; `--interactive` steps through the pending ones. |
 | `import amend BATCH_ID CANDIDATE_ID --patch JSON\|- [--json]` | Correct one staged candidate in place; nothing is committed. |
 | `import reject BATCH_ID CANDIDATE_ID... [--json]` | Withdraw staged candidates so they are listed but never committed. |
-| `import commit BATCH_ID --all\|--accept ID... [--json]` | Commit the explicitly accepted candidates of one batch. |
+| `import commit BATCH_ID --all\|--accept SELECTION... [--json]` | Commit the explicitly accepted candidates of one batch. |
 | `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
 | `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
 | `group create NAME --kind K [--organization ORG_ID] [--sensitivity S] [--json]` | Create a new identified group; an equal name never reuses one. |
@@ -126,6 +126,8 @@ uv run pctx import review 01J...BATCH
 uv run pctx import amend 01J...BATCH 01J...CANDIDATE --patch '{"role": "Staff Engineer"}'
 uv run pctx import reject 01J...BATCH 01J...CANDIDATE 01J...OTHER
 uv run pctx import commit 01J...BATCH --accept 01J...CANDIDATE --accept 01J...OTHER
+uv run pctx import commit 01J...BATCH --accept 1,3-5 01J...CANDIDATE
+uv run pctx import review 01J...BATCH --interactive
 uv run pctx import commit 01J...BATCH --all
 ```
 
@@ -134,10 +136,22 @@ uv run pctx import commit 01J...BATCH --all
 `whatsapp`. `--self-sender` is passed through for sources that identify you by display label rather than by
 address; sources that do not use it ignore it.
 
-Staging never commits. `commit` requires exactly one of `--all` or a repeatable `--accept CANDIDATE_ID`, and
-supplying either *is* the approval — there is no second prompt and no `--yes`. Canonical candidate ids from
-`import review` are the only selection interface; accepting a dependent candidate whose person was not accepted
-leaves it unresolved rather than guessing, and it can be committed later.
+Staging never commits. `commit` requires exactly one of `--all` or `--accept`, and supplying either *is* the
+approval — there is no second prompt and no `--yes`. `import review` prints a batch summary (people new, matched,
+and ambiguous; counts per candidate type; the number withdrawn) and numbers every row `#n` in staging order, with
+the canonical id in the last column. `--accept` takes those ordinals, ranges such as `3-5`, and canonical ids,
+mixed, comma-separated or as separate arguments, and repeatable. An ordinal is stable: amending or withdrawing a
+candidate never renumbers the rest. A value that exactly equals a candidate id always means that id, and one
+unknown or out-of-range member refuses the whole selection. `pctx init` accepts the same selection for its vCard
+step. Accepting a dependent candidate whose person was not accepted leaves it unresolved rather than guessing, and
+it can be committed later.
+
+`import review BATCH_ID --interactive` steps through the pending candidates one at a time with
+`[a]ccept [s]kip [w]ithdraw [e]dit [q]uit`, where `e` asks for a patch JSON object exactly as `amend --patch`
+takes one. Withdrawals and edits are written as you make them; accepted candidates are committed together when the
+last pending row is decided, and `q` commits nothing. If another client changes the batch mid-loop, the next action
+refuses, every acceptance collected so far is discarded, and the loop starts over on the current batch, so nothing
+is committed that you did not see as it now stands. `--interactive` and `--json` refuse together.
 
 `import review` and `import commit` also read a batch an agent staged over MCP, so they render the full
 candidate vocabulary — including the `observation`, `trait`, and `relationship` types M17 added. A person

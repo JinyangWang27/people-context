@@ -862,7 +862,7 @@ M29.1 → M29.2 → M29.3.
   - **Out:** a separate proposals table for edits, amendment history or an audit trail over staging, a stored revision
     token, reinstating a withdrawn candidate, and appending candidates to an existing batch.
 
-- [ ] **M29.2 — Numbered review and commit by number**
+- [x] **M29.2 — Numbered review and commit by number**
   - **Scope:** Add an additive, read-time `ordinal` to `ImportReviewRow`, assigned over the batch's deterministic
     `created_at`-then-id order; withdrawn rows stay listed and keep their ordinal. Rewrite `print_import_review`
     to lead each line with `#n` and print a batch summary above the list. Extend `parse_candidate_selection` to

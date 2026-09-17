@@ -517,6 +517,15 @@ to review until `--force`. Amending and withdrawing write no audit entry and min
 been asserted about anybody until commit — but that receipt transition does, exactly as commit's own transitions
 do.
 
+`pctx import review` numbers every candidate `#n` over the batch's staging order — `created_at`, then id — and
+prints a batch summary above the list. The number is `ordinal` in the review document and the `review_import`
+response, derived at read time and never stored; withdrawn and committed rows keep theirs, so an amendment or
+withdrawal never renumbers the rest. `pctx import commit --accept` and the `pctx init` vCard step accept ordinals,
+ranges, and canonical ids mixed in one selection, and a value that exactly equals a candidate id is always that id.
+`pctx import review --interactive` walks the pending candidates with accept, skip, withdraw, edit, and quit, holds
+the `batch_digest` of what it showed, and discards its collected acceptances and restarts if the batch changes
+elsewhere.
+
 What the CLI does add is a process boundary that is bounded from its first release, because a path typed at a
 terminal is a much weaker promise than a file an MCP caller already chose:
 

@@ -89,8 +89,10 @@ string or version change. It also added the `withdrawn` import receipt status th
 `pctx source show` may report, and advanced the sync bundle to version 7 so a staging row may be `rejected` and
 a receipt `withdrawn`.
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds an additive `ordinal` to the
-import review document and the `review_import` response. [M30](specs/m30-local-web-review.md) adds an additive
+M29.2 added `ordinal`, a row's stable 1-based position in staging order, to the import review document and the
+`review_import` response — additive, with no format string or version change.
+
+**Planned, not implemented:** [M30](specs/m30-local-web-review.md) adds an additive
 top-level `truncated` to the version-1 person brief and an additive `next_cursor` to the version-1 person index.
 
 | Document | `format` | `version` | Produced by |

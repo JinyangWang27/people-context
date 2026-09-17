@@ -94,12 +94,18 @@ class ImportReviewRow(BaseModel):
     is owed a decision they cannot express through the candidate's own name and handles. It is
     absent, rather than empty, everywhere else, so "no decision is owed here" and "the decision has
     no options" stay distinguishable.
+
+    `ordinal` is the row's 1-based position in the batch's staging order — `created_at`, then id.
+    It is derived at read time and never stored. Withdrawn and committed rows keep theirs, so an
+    amendment or withdrawal never renumbers the rows after it and a number a reviewer read before
+    one still selects the same candidate after it.
     """
 
     id: str
     source: str
     status: str
     candidate: dict[str, Any]
+    ordinal: int = 0
     match_candidates: list[MatchCandidate] | None = None
     match_candidates_truncated: bool = False
 
