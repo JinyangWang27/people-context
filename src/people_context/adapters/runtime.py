@@ -76,6 +76,7 @@ from people_context.app.groups.commands import AddGroupMembership, CloseGroupMem
 from people_context.app.groups.connections import ExplainSharedConnections
 from people_context.app.groups.queries import FindGroups, GetGroup, ListPersonMemberships
 from people_context.app.imports import (
+    AmendStagedCandidate,
     CandidateStager,
     CommitImport,
     ImportContent,
@@ -84,6 +85,7 @@ from people_context.app.imports import (
     ReviewImport,
     ShowImportSource,
     StageCandidates,
+    WithdrawStagedCandidates,
 )
 from people_context.app.insights import (
     GetConsolidationContext,
@@ -188,6 +190,8 @@ class RuntimeUseCases:
     review_import: ReviewImport
     preflight_import_batch: PreflightImportBatch
     commit_import: CommitImport
+    amend_staged_candidate: AmendStagedCandidate
+    withdraw_staged_candidates: WithdrawStagedCandidates
     stage_candidates: StageCandidates
     list_import_sources: ListImportSources
     show_import_source: ShowImportSource
@@ -302,6 +306,9 @@ def build_runtime(
     create_group = CreateGroup(groups, organizations, audit, runtime_clock)
     add_group_membership = AddGroupMembership(repo, records, groups, audit, runtime_clock)
     candidate_stager = CandidateStager(repo, import_staging, runtime_clock, import_sources, audit)
+    # One review use case, shared: `amend` and `reject` answer with the refreshed batch, and
+    # refreshing it is exactly what `review` does.
+    review_import = ReviewImport(import_staging, repo)
     list_reminders = ListReminders(records)
     get_person_context = GetPersonContext(repo, context_reader, runtime_clock)
     get_communication_guidance = GetCommunicationGuidance(repo, context_reader, preferences, runtime_clock)
@@ -404,8 +411,14 @@ def build_runtime(
             candidate_stager,
             VerifiedSnapshotExtractor(),
         ),
-        review_import=ReviewImport(import_staging),
+        review_import=review_import,
         preflight_import_batch=PreflightImportBatch(import_staging),
+        amend_staged_candidate=AmendStagedCandidate(
+            import_staging, review_import, repo, import_sources, audit, runtime_clock
+        ),
+        withdraw_staged_candidates=WithdrawStagedCandidates(
+            import_staging, review_import, repo, import_sources, audit, runtime_clock
+        ),
         commit_import=CommitImport(
             repo,
             import_staging,

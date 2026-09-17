@@ -65,6 +65,8 @@ EXPECTED_TOOLS = {
     "import_content",
     "stage_candidates",
     "review_import",
+    "amend_candidate",
+    "withdraw_candidates",
     "commit_import",
     "create_group",
     "add_group_membership",

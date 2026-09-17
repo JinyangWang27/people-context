@@ -1,9 +1,10 @@
-"""Source import orchestration, review, and selective commit."""
+"""Source import orchestration, review, amendment, withdrawal, and selective commit."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
-from typing import Any
+from typing import Any, Final
 
 from people_context.app._mutation import (
     OrganizationNotFoundError,
@@ -17,18 +18,34 @@ from people_context.app.groups.commands import (
     CreateGroup,
     CreateGroupInput,
 )
+from people_context.app.imports.amendment import (
+    BatchEdit,
+    batch_digest,
+    project_match_candidates,
+    require_unchanged_batch,
+    validate_batch_edit,
+)
 from people_context.app.imports.identity import (
     MatchDisposition,
     candidate_identity_tokens,
     match_person_candidate,
 )
-from people_context.app.imports.limits import UNBOUNDED_IMPORT_BUDGET, ImportBudget
+from people_context.app.imports.limits import (
+    CLI_IMPORT_BUDGET,
+    STAGED_PAYLOAD_TOO_LARGE,
+    UNBOUNDED_IMPORT_BUDGET,
+    ImportBudget,
+    resource_limit_error,
+)
 from people_context.app.imports.models import (
+    MAX_MATCH_CANDIDATE_NAME_CHARS,
+    MAX_MATCH_CANDIDATES,
     CommitImportResult,
     ImportBatchResult,
     ImportPipelineError,
     ImportReviewResult,
     ImportReviewRow,
+    MatchCandidate,
 )
 from people_context.app.imports.sources import (
     build_source_claim,
@@ -45,6 +62,10 @@ from people_context.app.records.trait_evidence import TraitEvidenceError, resolv
 from people_context.app.records.traits import RecordTrait, RecordTraitInput
 from people_context.app.relationships.commands import SetRelationship, SetRelationshipInput
 from people_context.domain.group import TemporalBasis
+from people_context.domain.import_provenance import (
+    STAGING_STATUS_PENDING,
+    STAGING_STATUS_REJECTED,
+)
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import new_id, normalize_name
 from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
@@ -65,6 +86,7 @@ from people_context.ports.sources import (
     STATUS_COMMITTED,
     STATUS_PARTIALLY_COMMITTED,
     STATUS_STAGED,
+    STATUS_WITHDRAWN,
     CandidateMappingRow,
     ImportSourceStore,
     SourceSessionClaim,
@@ -259,22 +281,314 @@ class ImportContent:
         return addresses, names
 
 
+#: Bytes one projected `match_candidates` entry is charged before any name is read.
+#:
+#: Charging a worst case up front is the point: the refusal has to come before the reads it
+#: prevents, so an oversized ambiguous batch is refused like any other rather than rendered row by
+#: row first. The three parts are stated separately because they are three different arguments.
+_MATCH_CANDIDATE_WORST_CASE_BYTES: Final = (
+    # The cut canonical name, at UTF-8's worst case: a cap in characters says nothing about bytes.
+    (MAX_MATCH_CANDIDATE_NAME_CHARS * 4)
+    # The person id, held to the same character bound. Ids this installation mints are short, and
+    # a restored one is format-opaque, so the name's bound is the honest allowance for it too.
+    + MAX_MATCH_CANDIDATE_NAME_CHARS
+    # The JSON around the three fields.
+    + 64
+)
+
+
 class ReviewImport:
-    """Return review-safe rows for one known staging batch."""
+    """Return review-safe rows for one known staging batch, plus what acting on it needs.
 
-    def __init__(self, staging: ImportStagingStore) -> None:
+    Two things are computed here and never stored. `batch_digest` is a fingerprint of the rows as
+    shown, so a caller that acts on this view can be told if the batch moved underneath it.
+    `match_candidates` names the existing people an ambiguous person row could be, because "it is
+    the Priya Sharma at Acme, not the other one" is a decision a reviewer cannot express through
+    the candidate's own name and handles.
+
+    Both are projections of state other things own — the staging rows, and the person table — so
+    neither is written back, and the digest deliberately excludes the projection: an unrelated
+    merge elsewhere must not invalidate a decision the reviewer just made.
+
+    The person reader is optional for the same reason the source store is optional at commit:
+    without one, this returns exactly what it returned before the projection existed. A caller
+    that cannot read people cannot be handed a list of them, and inventing an empty one would say
+    "no existing person matches" about a row that is ambiguous precisely because several do.
+
+    The budget is the caller's, and it defaults to unbounded. `review_import` shipped with an
+    unbounded read contract, and one instance of this use case serves both the MCP tools and the
+    `pctx import` group, so a ceiling wired in here would silently narrow the released one. The
+    CLI passes its own budget per call instead, beside the preflight it already runs.
+    """
+
+    def __init__(
+        self,
+        staging: ImportStagingStore,
+        people: PersonReader | None = None,
+        budget: ImportBudget = UNBOUNDED_IMPORT_BUDGET,
+    ) -> None:
         self._staging = staging
+        self._people = people
+        self._budget = budget
 
-    def execute(self, batch_id: str) -> ImportReviewResult:
+    def execute(self, batch_id: str, *, budget: ImportBudget | None = None) -> ImportReviewResult:
+        limits = budget or self._budget
         rows = self._staging.list_batch(batch_id)
         if not rows:
             raise ImportPipelineError("batch_not_found", f"import batch not found: {batch_id}", batch_id=batch_id)
+        ambiguous = [row for row in rows if _is_ambiguous_person(row.candidate)]
+        stored = _payload_bytes(rows)
+        self._charge_worst_case(batch_id, stored, len(ambiguous), limits)
+        people = self._people
+        projections = (
+            {row.id: project_match_candidates(people, row.candidate) for row in ambiguous}
+            if people is not None
+            else {}
+        )
+        self._charge_projected(batch_id, stored, projections, limits)
         return ImportReviewResult(
             batch_id=batch_id,
-            candidates=[
-                ImportReviewRow(id=row.id, source=row.source, status=row.status, candidate=row.candidate)
-                for row in rows
-            ],
+            batch_digest=batch_digest(rows),
+            candidates=[_review_row(row, projections.get(row.id)) for row in rows],
+        )
+
+    def _charge_worst_case(
+        self, batch_id: str, stored: int, ambiguous: int, limits: ImportBudget
+    ) -> None:
+        """Refuse an ambiguous batch too large to render, before reading a single name.
+
+        This is the cheap guard: it bounds the reads the projection is about to do, so a batch
+        with a great many ambiguous rows is refused rather than paged through first. It cannot be
+        the only guard, because what it charges per entry is an allowance rather than a
+        measurement — see `_charge_projected`.
+        """
+        limit = limits.max_staged_payload_bytes
+        if limit is None or self._people is None:
+            return
+        projected = ambiguous * MAX_MATCH_CANDIDATES * _MATCH_CANDIDATE_WORST_CASE_BYTES
+        if stored + projected > limit:
+            raise _oversized_review(batch_id, limit)
+
+    def _charge_projected(
+        self,
+        batch_id: str,
+        stored: int,
+        projections: dict[str, tuple[list[dict[str, Any]], bool]],
+        limits: ImportBudget,
+    ) -> None:
+        """Refuse the batch again once the projection's real size is known.
+
+        A person id has no length bound anywhere: the bundle's `Identifier` accepts any non-blank
+        string, so a restored person can carry one far larger than the allowance charged above,
+        and the projection renders it whole because a truncated id would select nobody. Measuring
+        what was actually read is what keeps the ceiling a ceiling. The read itself was already
+        bounded — ten entries per ambiguous row — so this is a second check, not a second read.
+        """
+        limit = limits.max_staged_payload_bytes
+        if limit is None or not projections:
+            return
+        projected = sum(
+            len(json.dumps(entries, ensure_ascii=False).encode("utf-8"))
+            for entries, _truncated in projections.values()
+        )
+        if stored + projected > limit:
+            raise _oversized_review(batch_id, limit)
+
+
+def _payload_bytes(rows: list[StagedImportRow]) -> int:
+    """Measure a batch the way the store measures it: staged source plus candidate JSON."""
+    return sum(
+        len(row.source.encode("utf-8")) + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
+        for row in rows
+    )
+
+
+def _oversized_review(batch_id: str, limit: int) -> ImportPipelineError:
+    return resource_limit_error(
+        STAGED_PAYLOAD_TOO_LARGE,
+        f"import batch exceeds the {limit} byte reviewable payload this command can read",
+        batch_id=batch_id,
+        limit=limit,
+    )
+
+
+def _is_ambiguous_person(candidate: dict[str, Any]) -> bool:
+    """Whether this row is the one case a reviewer is owed an identity decision on."""
+    return (
+        candidate.get("type") == "person"
+        and candidate.get("match_disposition") == MatchDisposition.AMBIGUOUS.value
+    )
+
+
+def _review_row(
+    row: StagedImportRow,
+    projection: tuple[list[dict[str, Any]], bool] | None,
+) -> ImportReviewRow:
+    """Project one staging row for review, attaching its match options only where one is owed."""
+    if projection is None:
+        return ImportReviewRow(id=row.id, source=row.source, status=row.status, candidate=row.candidate)
+    entries, truncated = projection
+    return ImportReviewRow(
+        id=row.id,
+        source=row.source,
+        status=row.status,
+        candidate=row.candidate,
+        match_candidates=[MatchCandidate.model_validate(entry) for entry in entries],
+        match_candidates_truncated=truncated,
+    )
+
+
+class _BatchEditor:
+    """Shared plumbing for the two verbs that edit a staged batch in place.
+
+    Amendment and withdrawal differ in what they write and in whether they can move durable
+    state; everything before that is the same work in the same order. Both read the batch, check
+    it is the batch the caller was shown, validate the whole result rather than the changed row,
+    and write inside one transaction that took the write lock before it read — because a deferred
+    `BEGIN` would let another writer act between the read and the decision based on it.
+
+    Neither audits the staging rows it touches. Nothing has been asserted about anybody until
+    commit, which is the same reason staging a candidate never wrote an audit entry either.
+    """
+
+    def __init__(
+        self,
+        staging: ImportStagingStore,
+        review: ReviewImport,
+        people: PersonReader,
+        sources: ImportSourceStore | None = None,
+        audit: AuditLog | None = None,
+        clock: Clock | None = None,
+        budget: ImportBudget = CLI_IMPORT_BUDGET,
+    ) -> None:
+        self._staging = staging
+        self._review = review
+        self._people = people
+        self._sources = sources
+        self._audit = audit
+        self._clock = clock
+        self._budget = budget
+        # The source store's boundary reserves the write lock, for exactly the reason this needs
+        # one: it reads state and then acts on what it read.
+        self._uow = unit_of_work_for(sources, staging, audit)
+
+    def _load(self, batch_id: str) -> tuple[list[StagedImportRow], SourceSessionRow | None]:
+        rows = self._staging.list_batch(batch_id)
+        if not rows:
+            raise ImportPipelineError("batch_not_found", f"import batch not found: {batch_id}", batch_id=batch_id)
+        session = self._sources.session_for_batch(batch_id) if self._sources is not None else None
+        return rows, session
+
+    def _validate(
+        self,
+        rows: list[StagedImportRow],
+        edit: BatchEdit,
+        session: SourceSessionRow | None,
+        expected_batch_digest: str | None,
+    ) -> Any:
+        require_unchanged_batch(rows, expected_batch_digest)
+        return validate_batch_edit(
+            rows,
+            edit,
+            people=self._people,
+            tracked=session is not None,
+            budget=self._budget,
+        )
+
+
+class AmendStagedCandidate(_BatchEditor):
+    """Correct one staged candidate in place, under every rule staging applied to it.
+
+    Editing is amendment on the existing row, not a new revision: the row keeps its id, its batch,
+    its receipt, and its position in the batch's staging order, so an id printed before an
+    amendment still selects the same candidate after one. There is no amendment history, because
+    storing one would make review state durable state — and what survives review is the committed
+    record, whose history the changelog already owns.
+    """
+
+    @transactional
+    def execute(
+        self,
+        batch_id: str,
+        candidate_id: str,
+        patch: dict[str, Any],
+        *,
+        expected_batch_digest: str | None = None,
+    ) -> ImportReviewResult:
+        rows, session = self._load(batch_id)
+        validated = self._validate(
+            rows, BatchEdit(amendments={candidate_id: patch}), session, expected_batch_digest
+        )
+        for amended_id, candidate in validated.amended.items():
+            self._staging.update_candidate(amended_id, candidate)
+        return self._review.execute(batch_id, budget=self._budget)
+
+
+class WithdrawStagedCandidates(_BatchEditor):
+    """Drop staged candidates from consideration without deleting what was dropped.
+
+    A withdrawn row moves to `rejected`, stays in its batch, keeps being listed by review, and is
+    never committed. It is deliberately not deleted: a reviewer who cannot see what they dropped
+    cannot check that they dropped the right thing, and its still-pending dependents keep
+    referring to it.
+
+    A withdrawal is the one review verb that can change durable state. When it takes the last
+    pending row off a source-tracked batch, the receipt no longer means what it meant, so the
+    receipt is recomputed in the same transaction and journalled through the ordinary mutation
+    seam — exactly as commit journals the transitions it makes.
+    """
+
+    @transactional
+    def execute(
+        self,
+        batch_id: str,
+        candidate_ids: list[str],
+        *,
+        expected_batch_digest: str | None = None,
+    ) -> ImportReviewResult:
+        withdrawn = list(dict.fromkeys(candidate_ids))
+        if not withdrawn:
+            raise ImportPipelineError(
+                "invalid_candidates",
+                "name at least one candidate to withdraw",
+                batch_id=batch_id,
+            )
+        rows, session = self._load(batch_id)
+        self._validate(rows, BatchEdit(amendments={}, withdrawals=tuple(withdrawn)), session, expected_batch_digest)
+        self._staging.mark_status(withdrawn, STAGING_STATUS_REJECTED)
+        if session is not None:
+            self._settle_receipt(session, rows, withdrawn)
+        return self._review.execute(batch_id, budget=self._budget)
+
+    def _settle_receipt(
+        self,
+        session: SourceSessionRow,
+        rows: list[StagedImportRow],
+        withdrawn: list[str],
+    ) -> None:
+        """Advance the receipt to what this batch now means, journalling any change.
+
+        An unchanged status writes nothing, so withdrawing one row out of many is as silent as it
+        should be. A withdrawal that empties the batch is not: the receipt becomes `committed` if
+        anything was committed and terminal `withdrawn` if nothing was, and either is a durable
+        transition a peer replaying this database has to see.
+        """
+        if self._sources is None or self._audit is None or self._clock is None:
+            return
+        status = _session_status(rows, rejected=withdrawn)
+        if status == session.status:
+            return
+        self._sources.set_session_status(session.id, status)
+        audit_mutation(
+            self._audit,
+            self._clock,
+            op="update",
+            entity_type="import_source_session",
+            entity_id=session.id,
+            payload={"status": status},
+            replay_payload=source_session_snapshot(replace(session, status=status)),
+            changed_fields=["status"],
+            source="import",
         )
 
 
@@ -329,7 +643,11 @@ class CommitImport:
         self._create_group = create_group
         self._add_group_membership = add_group_membership
         self._records = records
-        self._uow = unit_of_work_for(staging, sources, audit)
+        # The source store's boundary reserves the write lock. Commit always writes, so taking it
+        # at `BEGIN` rather than at the first write changes nothing about what this does — but it
+        # is what makes an `expected_batch_digest` mean anything, because a deferred `BEGIN` lets
+        # another writer act between reading the rows and deciding on them.
+        self._uow = unit_of_work_for(sources, staging, audit)
 
     @property
     def _tracking(self) -> bool:
@@ -337,18 +655,39 @@ class CommitImport:
         return self._sources is not None and self._audit is not None and self._clock is not None
 
     @transactional
-    def execute(self, batch_id: str, accepted_ids: list[str]) -> CommitImportResult:
+    def execute(
+        self,
+        batch_id: str,
+        accepted_ids: list[str],
+        *,
+        expected_batch_digest: str | None = None,
+    ) -> CommitImportResult:
         rows = self._staging.list_batch(batch_id)
         if not rows:
             raise ImportPipelineError("batch_not_found", f"import batch not found: {batch_id}", batch_id=batch_id)
+        require_unchanged_batch(rows, expected_batch_digest)
         by_id = {row.id: row for row in rows}
-        invalid_ids = sorted(set(accepted_ids) - by_id.keys())
+        accepted = set(accepted_ids)
+        invalid_ids = sorted(accepted - by_id.keys())
         if invalid_ids:
             raise ImportPipelineError(
                 "candidate_not_in_batch",
                 "accepted candidate does not belong to batch",
                 batch_id=batch_id,
                 candidate_ids=invalid_ids,
+            )
+        # Naming a withdrawn candidate refuses the whole commit, as naming an unknown one does.
+        # Both mean the same thing — the caller is working from a list that has moved — and
+        # committing the part that still resolves would act on a selection nobody made.
+        withdrawn_ids = sorted(
+            {row.id for row in rows if row.id in accepted and row.status == STAGING_STATUS_REJECTED}
+        )
+        if withdrawn_ids:
+            raise ImportPipelineError(
+                "candidate_withdrawn",
+                "accepted candidate was withdrawn from this batch",
+                batch_id=batch_id,
+                candidate_ids=withdrawn_ids,
             )
         session = self._sources.session_for_batch(batch_id) if self._tracking and self._sources else None
         stored_mappings = (
@@ -357,7 +696,6 @@ class CommitImport:
             else {}
         )
         transaction_id = new_id()
-        accepted = set(accepted_ids)
         # Rows are placed in this list at the point their type is *considered*, and the write may
         # happen later. That separation is what lets a trait be written after the interactions it
         # cites while `committed_ids` and `unresolved_ids` keep the order they always reported.
@@ -367,7 +705,7 @@ class CommitImport:
         skipped = [row.id for row in rows if row.id in accepted and row.status == "committed"]
         resolution = self._existing_resolution(rows, stored_mappings)
         for row in rows:
-            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "person":
+            if not _committable(row, accepted, "person"):
                 continue
             sequence.append(row.id)
             person_id = self._commit_person(row, transaction_id)
@@ -382,7 +720,7 @@ class CommitImport:
         # record they could cite has its outcome.
         deferred_traits: list[tuple[StagedImportRow, str]] = []
         for row in rows:
-            if row.id not in accepted or row.status == "committed":
+            if row.id not in accepted or row.status != STAGING_STATUS_PENDING:
                 continue
             candidate_type = row.candidate.get("type")
             if candidate_type not in _PERSON_SCOPED_TYPES:
@@ -403,7 +741,7 @@ class CommitImport:
         # is committable on a later pass — the same "not yet, never wrong" rule traits follow.
         groups: dict[str, str] = {}
         for row in rows:
-            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "group":
+            if not _committable(row, accepted, "group"):
                 continue
             sequence.append(row.id)
             group_id = self._commit_group(row, transaction_id)
@@ -413,7 +751,7 @@ class CommitImport:
             groups[row.id] = group_id
             produced[row.id] = ("group", group_id)
         for row in rows:
-            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "group_membership":
+            if not _committable(row, accepted, "group_membership"):
                 continue
             sequence.append(row.id)
             writer = self._add_group_membership
@@ -427,7 +765,7 @@ class CommitImport:
             membership_id = _commit_membership(writer, row, person_id, group_id, transaction_id)
             produced[row.id] = ("group_membership", membership_id)
         for row in rows:
-            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "relationship":
+            if not _committable(row, accepted, "relationship"):
                 continue
             subject_id = resolution.get(row.candidate["from_candidate_id"])
             object_id = resolution.get(row.candidate["to_candidate_id"])
@@ -452,7 +790,7 @@ class CommitImport:
             )
             produced[row.id] = ("relationship", relationship.id)
         for row in rows:
-            if row.id not in accepted or row.status == "committed" or row.candidate.get("type") != "interaction":
+            if not _committable(row, accepted, "interaction"):
                 continue
             sequence.append(row.id)
             refs = row.candidate["participant_candidate_ids"]
@@ -752,6 +1090,11 @@ class CommitImport:
         for row in rows:
             if row.candidate.get("type") != "person":
                 continue
+            if row.status == STAGING_STATUS_REJECTED:
+                # Checked before the stored match, not after it. A withdrawn person row may still
+                # carry the `matched_person_id` staging gave it, and resolving dependants through
+                # that would commit them to a person the reviewer just declined to record.
+                continue
             matched_id = row.candidate.get("matched_person_id")
             if matched_id and self._is_active(matched_id):
                 resolution[row.id] = matched_id
@@ -830,6 +1173,10 @@ class CommitImport:
                 summary=candidate.get("summary"),
                 source=row.source,
                 session=candidate.get("message_id"),
+                # The matched identity is passed as an id rather than left to be re-derived from
+                # the name. Since M29.1 a reviewer may choose one of several people who share a
+                # name, and resolving by name would raise the ambiguity their choice settled.
+                person_id=matched.id if matched is not None else None,
             ),
             transaction_id=transaction_id,
         )
@@ -907,18 +1254,48 @@ def _mapped_person_id(mapping: CandidateMappingRow | None) -> str | None:
     return mapping.entity_id
 
 
-def _session_status(rows: list[StagedImportRow], committed: list[str]) -> str:
-    """Return the receipt status implied by this batch's staging rows after one commit.
+def _committable(row: StagedImportRow, accepted: set[str], candidate_type: str) -> bool:
+    """Whether one row of the wanted type is still open for this commit to write.
 
-    Status summarizes reviewability rather than duplicating candidate-row truth: a batch with
-    nothing left to review is complete, one with reviewable rows and at least one committed
-    candidate is partially committed, and one that committed nothing is still merely staged.
+    Accepted, still pending, and of this pass's type. `pending` is the condition rather than "not
+    committed", so a withdrawn row is skipped here exactly as an already-committed one is: both
+    are decisions already taken, and neither is this commit's to revisit.
     """
-    newly_committed = set(committed)
-    reviewable = [row for row in rows if row.status != "committed" and row.id not in newly_committed]
-    if not reviewable:
-        return STATUS_COMMITTED
-    already_committed = any(row.status == "committed" for row in rows)
-    if newly_committed or already_committed:
-        return STATUS_PARTIALLY_COMMITTED
-    return STATUS_STAGED
+    return (
+        row.id in accepted
+        and row.status == STAGING_STATUS_PENDING
+        and row.candidate.get("type") == candidate_type
+    )
+
+
+def _session_status(
+    rows: list[StagedImportRow],
+    committed: list[str] | None = None,
+    *,
+    rejected: list[str] | None = None,
+) -> str:
+    """Return the receipt status implied by this batch's staging rows after one commit or withdrawal.
+
+    Status summarizes reviewability rather than duplicating candidate-row truth, and reviewability
+    is one rule: **only a `pending` row is reviewable**. A withdrawn row is a decision taken, so it
+    no longer holds a receipt open any more than a committed one does.
+
+    That makes four outcomes rather than three. Rows still pending leave the receipt `staged` or
+    `partially_committed` as before. Nothing pending and something committed is `committed`,
+    exactly as a final commit has always reported. Nothing pending and nothing committed — every
+    candidate withdrawn — is the new terminal `withdrawn`: there is nothing left to review and
+    nothing was recorded, which neither of the other two says.
+    """
+    newly_committed = set(committed or ())
+    newly_rejected = set(rejected or ())
+    reviewable = [
+        row
+        for row in rows
+        if row.status == STAGING_STATUS_PENDING
+        and row.id not in newly_committed
+        and row.id not in newly_rejected
+    ]
+    anything_committed = bool(newly_committed) or any(row.status == "committed" for row in rows)
+    if reviewable:
+        return STATUS_PARTIALLY_COMMITTED if anything_committed else STATUS_STAGED
+    return STATUS_COMMITTED if anything_committed else STATUS_WITHDRAWN

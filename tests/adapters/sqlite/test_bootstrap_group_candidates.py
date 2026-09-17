@@ -82,7 +82,7 @@ def test_a_reviewable_batch_of_group_candidates_survives_export_and_restore(
 ) -> None:
     batch = _stage(runtime)
     document = runtime.use_cases.export_sync_bundle.execute()
-    assert document.version == SYNC_BUNDLE_VERSION == 6
+    assert document.version == SYNC_BUNDLE_VERSION == 7
     exported = {row.candidate["type"] for row in document.imports.staging}
     assert {"group", "group_membership"} <= exported
 

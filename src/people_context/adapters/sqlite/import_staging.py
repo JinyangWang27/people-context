@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime
+from typing import Any
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.imports import StagedBatchSize, StagedImportRow
@@ -46,8 +47,17 @@ class SqliteImportStagingStore:
 
     @property
     def unit_of_work(self) -> SqliteUnitOfWork:
-        """Return a join-safe transaction boundary so batch commits are atomic."""
-        return SqliteUnitOfWork(self._conn)
+        """Return a join-safe, write-reserving transaction boundary.
+
+        Every boundary that takes this one reads the batch and then decides what to write from
+        what it read: commit resolves dependants through the rows it just listed, and amend and
+        withdraw check the caller's `expected_batch_digest` against them. A deferred `BEGIN` takes
+        the write lock at the first write instead, which is after the decision — so a concurrent
+        writer could slip in between, and the promised `batch_changed` refusal would surface as a
+        SQLite busy or snapshot error instead. Reserving up front is what makes that promise true
+        even when no source store is wired to supply its own reserving boundary.
+        """
+        return SqliteUnitOfWork(self._conn, immediate=True)
 
     def stage_batch(self, rows: list[StagedImportRow]) -> None:
         with SqliteUnitOfWork(self._conn):
@@ -101,8 +111,31 @@ class SqliteImportStagingStore:
     def mark_committed(self, candidate_ids: list[str]) -> None:
         if not candidate_ids:
             return
+        self.mark_status(candidate_ids, "committed")
+
+    def mark_status(self, candidate_ids: list[str], status: str) -> None:
+        """Move pending rows to a terminal status, leaving every other row alone.
+
+        The `status = 'pending'` guard is the same one `mark_committed` always applied, and it is
+        here rather than in the caller for the same reason: a committed row is a durable outcome,
+        and no instruction arriving at a store may quietly rewrite one.
+        """
+        if not candidate_ids:
+            return
         with SqliteUnitOfWork(self._conn):
             self._conn.executemany(
-                "UPDATE import_staging SET status = 'committed' WHERE id = ? AND status = 'pending'",
-                [(candidate_id,) for candidate_id in candidate_ids],
+                "UPDATE import_staging SET status = ? WHERE id = ? AND status = 'pending'",
+                [(status, candidate_id) for candidate_id in candidate_ids],
+            )
+
+    def update_candidate(self, candidate_id: str, candidate: dict[str, Any]) -> None:
+        """Replace one pending row's candidate in place, keeping its id, batch, and position.
+
+        An amendment is an edit, not a revision: the row keeps everything that addresses it, so an
+        id printed before an amendment still selects the same candidate after one.
+        """
+        with SqliteUnitOfWork(self._conn):
+            self._conn.execute(
+                "UPDATE import_staging SET candidate_json = ? WHERE id = ? AND status = 'pending'",
+                (json.dumps(candidate, ensure_ascii=False), candidate_id),
             )

@@ -134,6 +134,26 @@ class TestUsageSkill:
         assert "never call" in lowered and "commit_import" in body
         assert "automatically" in lowered
 
+    def test_teaches_the_chat_review_loop_rather_than_reciting_ulids(self) -> None:
+        """M29.1's guidance: number the batch, correct it with the two verbs, re-present it."""
+        body = SKILL_PATH.read_text(encoding="utf-8")
+        lowered = " ".join(body.lower().split())
+
+        assert "amend_candidate" in body
+        assert "withdraw_candidates" in body
+        assert "numbered list" in lowered
+        assert "rejected" in lowered
+
+    def test_says_plainly_that_confirming_an_amendment_is_not_acceptance(self) -> None:
+        """The one sentence an agent is most likely to get wrong, so it is asserted verbatim.
+
+        A user who says "yes, Staff Engineer is right" has approved one correction. Reading that
+        as approval of the batch is how a review gate turns into a rubber stamp.
+        """
+        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+
+        assert "confirming an amendment is not acceptance of the batch" in lowered
+
     def test_maintenance_reads_before_it_proposes_and_waits_for_approval(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
         lowered = " ".join(body.lower().split())

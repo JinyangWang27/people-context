@@ -46,6 +46,11 @@ class ImportBatchResult(BaseModel):
     batch may have had them cleaned up, or may have arrived from a bundle that carries only its
     durable outcomes, and pointing someone at review for one of those would name a batch review
     can no longer find. It is ``True`` for every freshly staged batch.
+
+    ``source_status`` is that receipt's own status, and it exists because ``reviewable`` cannot
+    tell the two terminal states apart. A batch with nothing left to review may have committed
+    everything or had everything withdrawn, and reporting the second as the first would tell
+    someone re-importing a source that it produced durable records when it produced none.
     """
 
     batch_id: str
@@ -56,22 +61,62 @@ class ImportBatchResult(BaseModel):
     source_session_id: str | None = None
     duplicate: bool = False
     reviewable: bool = True
+    source_status: str | None = None
+
+
+#: Colliding people one ambiguous person row may list, and the characters each name may carry.
+#:
+#: The list is capped because a common name can collide with any number of people and a review
+#: read must stay bounded by the staged payload it already measures. Each name is cut because
+#: stored canonical names have no length bound of their own. Neither cap limits *choice*: a patch
+#: naming any person the matcher found is accepted, and a reviewer finds one past the cap through
+#: the bounded `resolve_person` and `search_people` reads.
+MAX_MATCH_CANDIDATES: Final = 10
+MAX_MATCH_CANDIDATE_NAME_CHARS: Final = 256
+
+
+class MatchCandidate(BaseModel):
+    """One existing person an ambiguous person candidate could be.
+
+    Computed at read time and never stored: the stored row keeps a count, because staged review
+    state must not become a second place identity lives.
+    """
+
+    id: str
+    canonical_name: str
+    name_truncated: bool = False
 
 
 class ImportReviewRow(BaseModel):
-    """Review-safe staging row."""
+    """Review-safe staging row.
+
+    `match_candidates` is present only for an ambiguous person row — the one case where a reviewer
+    is owed a decision they cannot express through the candidate's own name and handles. It is
+    absent, rather than empty, everywhere else, so "no decision is owed here" and "the decision has
+    no options" stay distinguishable.
+    """
 
     id: str
     source: str
     status: str
     candidate: dict[str, Any]
+    match_candidates: list[MatchCandidate] | None = None
+    match_candidates_truncated: bool = False
 
 
 class ImportReviewResult(BaseModel):
-    """All candidates and statuses for one batch."""
+    """All candidates and statuses for one batch.
+
+    `batch_digest` closes the gap between showing a batch and acting on it. Every review surface
+    has one, and another client may amend, withdraw, or commit inside it. A caller that passes the
+    digest back gets its action refused if the batch moved; a caller that does not keeps exactly
+    the behaviour it always had. It is computed at read time, never stored, and covers each row's
+    id, status, and stored candidate — not the read-time projections above, which no writer owns.
+    """
 
     batch_id: str
     candidates: list[ImportReviewRow]
+    batch_digest: str = ""
 
 
 class CommitImportResult(BaseModel):

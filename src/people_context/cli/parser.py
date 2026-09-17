@@ -575,6 +575,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the versioned review JSON document instead of the human listing.",
     )
 
+    import_amend = import_subcommands.add_parser(
+        "amend",
+        help="Correct one staged candidate before it is committed.",
+    )
+    import_amend.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
+    import_amend.add_argument("candidate_id", help="Canonical candidate id shown by `pctx import review`.")
+    import_amend.add_argument(
+        "--patch",
+        required=True,
+        metavar="JSON",
+        help="JSON object of candidate fields to replace, or `-` to read it from stdin.",
+    )
+    import_amend.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the refreshed review JSON document for the whole batch.",
+    )
+
+    import_reject = import_subcommands.add_parser(
+        "reject",
+        help="Withdraw staged candidates so they are never committed.",
+    )
+    import_reject.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
+    import_reject.add_argument(
+        "candidate_id",
+        nargs="+",
+        metavar="CANDIDATE_ID",
+        help="Canonical candidate id to withdraw; name several to withdraw them together.",
+    )
+    import_reject.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the refreshed review JSON document for the whole batch.",
+    )
+
     import_commit = import_subcommands.add_parser("commit", help="Commit accepted candidates from one batch.")
     import_commit.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
     selection = import_commit.add_mutually_exclusive_group(required=True)

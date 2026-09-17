@@ -18,9 +18,47 @@ class SearchHit:
     match_kind: str  # "canonical" | "alias"
 
 
+@dataclass(frozen=True)
+class PersonNameMatch:
+    """One active person an identity token resolved to, carrying only what naming it needs.
+
+    Deliberately not a `Person`: the three queries below exist so that a name shared by thousands
+    of people costs a bounded read, and returning whole records would put the unbounded load back
+    where it was removed from.
+    """
+
+    id: str
+    canonical_name: str
+
+
+@dataclass(frozen=True)
+class PersonNameMatches:
+    """How many active people a set of identity tokens resolves to, and the first of them.
+
+    The two travel together because deciding between "one person" and "a question nobody has
+    answered" needs both, and reading them separately makes the decision a race: a second person
+    created between the count and the selection turns an ambiguity into a confident wrong answer.
+    One value from one statement cannot disagree with itself.
+
+    ``first`` is the lowest by canonical name then id, and is ``None`` only when ``total`` is 0.
+    """
+
+    total: int
+    first: PersonNameMatch | None
+
+
 @runtime_checkable
 class PersonReader(Protocol):
-    """Read-side access to stored persons."""
+    """Read-side access to stored persons.
+
+    The three normalized-name queries are one bounded question asked three ways, over *all* of a
+    candidate's identity tokens at once: how many active people do these resolve to and which is
+    the first, which are the first few by name, and is this particular person one of them. They
+    exist because a common name can collide with any number of people, and
+    `find_by_normalized_name` answers by materializing every one of them — fine for the
+    single-token lookups that predate extraction batches, ruinous for a matcher that unions
+    several tokens per candidate and runs once per staged row.
+    """
 
     def get(self, person_id: str) -> Person | None: ...
 
@@ -29,6 +67,12 @@ class PersonReader(Protocol):
     def list_people(self, include_deleted: bool = False, limit: int | None = None) -> list[Person]: ...
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]: ...
+
+    def match_normalized_names(self, normalized: list[str]) -> PersonNameMatches: ...
+
+    def page_by_normalized_names(self, normalized: list[str], limit: int) -> list[PersonNameMatch]: ...
+
+    def matches_normalized_names(self, person_id: str, normalized: list[str]) -> bool: ...
 
     def search_names(self, query: str, limit: int = 10) -> list[SearchHit]: ...
 

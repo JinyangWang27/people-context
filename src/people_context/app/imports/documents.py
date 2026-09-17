@@ -24,7 +24,12 @@ from people_context.app.imports.inspection import (
     SourceMappingEntry,
     SourceSummary,
 )
-from people_context.app.imports.models import CommitImportResult, ImportBatchResult, ImportReviewResult
+from people_context.app.imports.models import (
+    CommitImportResult,
+    ImportBatchResult,
+    ImportReviewResult,
+    MatchCandidate,
+)
 
 IMPORT_BATCH_FORMAT: Final = "people-context-import-batch"
 IMPORT_BATCH_VERSION: Final = 1
@@ -47,8 +52,10 @@ class ImportBatchDocument(BaseModel):
 
     `source_session_id`, `duplicate`, and `reviewable` are additive M18 fields: they carry the
     durable receipt this batch belongs to, whether the canonical claim for the source was already
-    owned, and whether the batch still has staged rows to review. A reader that predates them sees
-    the same batch fields it always did, so the document stays at version 1 under the additive rule.
+    owned, and whether the batch still has staged rows to review. `source_status` is M29.1's, and
+    reports that receipt's own status, which is the only thing that tells a batch that committed
+    everything apart from one that was withdrawn entirely. A reader that predates them sees the
+    same batch fields it always did, so the document stays at version 1 under the additive rule.
     """
 
     format: str = IMPORT_BATCH_FORMAT
@@ -61,23 +68,39 @@ class ImportBatchDocument(BaseModel):
     source_session_id: str | None = None
     duplicate: bool = False
     reviewable: bool = True
+    source_status: str | None = None
 
 
 class ImportReviewCandidateEntry(BaseModel):
-    """One staged candidate, carrying the stored review-safe representation unchanged."""
+    """One staged candidate, carrying the stored review-safe representation unchanged.
+
+    `match_candidates` and `match_candidates_truncated` are additive M29 fields, present only on
+    an ambiguous person row: they name the existing people that row could be, so a reviewer can
+    choose one instead of committing a guess. They are computed at read time, so two reads of the
+    same batch may differ if people were merged or forgotten in between — which is the point.
+    """
 
     id: str
     source: str
     status: str
     candidate: dict[str, Any] = Field(default_factory=dict)
+    match_candidates: list[MatchCandidate] | None = None
+    match_candidates_truncated: bool = False
 
 
 class ImportReviewDocument(BaseModel):
-    """Every candidate in one batch, in deterministic staging order."""
+    """Every candidate in one batch, in deterministic staging order.
+
+    `batch_digest` is an additive M29 field: the fingerprint of the rows as rendered here. A
+    caller that passes it back to amend, withdraw, or commit has its action refused if another
+    client changed the batch in between; one that does not keeps today's behaviour. The document
+    stays at version 1, because a reader that ignores unknown fields is unaffected by either.
+    """
 
     format: str = IMPORT_REVIEW_FORMAT
     version: int = IMPORT_REVIEW_VERSION
     batch_id: str
+    batch_digest: str = ""
     candidates: list[ImportReviewCandidateEntry] = Field(default_factory=list)
 
 
@@ -135,6 +158,7 @@ def import_batch_document(result: ImportBatchResult) -> ImportBatchDocument:
         source_session_id=result.source_session_id,
         duplicate=result.duplicate,
         reviewable=result.reviewable,
+        source_status=result.source_status,
     )
 
 
@@ -142,12 +166,15 @@ def import_review_document(result: ImportReviewResult) -> ImportReviewDocument:
     """Project one review result into its versioned document."""
     return ImportReviewDocument(
         batch_id=result.batch_id,
+        batch_digest=result.batch_digest,
         candidates=[
             ImportReviewCandidateEntry(
                 id=row.id,
                 source=row.source,
                 status=row.status,
                 candidate=row.candidate,
+                match_candidates=row.match_candidates,
+                match_candidates_truncated=row.match_candidates_truncated,
             )
             for row in result.candidates
         ],

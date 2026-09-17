@@ -21,7 +21,13 @@ from people_context.adapters.sqlite import (
     SqliteRelationshipVocabularyStore,
     open_db,
 )
-from people_context.app.imports import CandidateStager, CommitImport, ReviewImport, StageCandidates
+from people_context.app.imports import (
+    CandidateStager,
+    CommitImport,
+    ReviewImport,
+    StageCandidates,
+    WithdrawStagedCandidates,
+)
 from people_context.app.people import AliasInput, Forget, PreviewForget, RememberPerson, RememberPersonInput
 from people_context.app.records import (
     RecordFact,
@@ -57,7 +63,10 @@ class _Harness:
         self.staging = SqliteImportStagingStore(conn)
         self.sources = SqliteImportSourceStore(conn)
         self.stage = StageCandidates(CandidateStager(self.people, self.staging, clock, self.sources, self.audit))
-        self.review = ReviewImport(self.staging)
+        self.review = ReviewImport(self.staging, self.people)
+        self.withdraw = WithdrawStagedCandidates(
+            self.staging, self.review, self.people, self.sources, self.audit, clock
+        )
         self.commit = CommitImport(
             self.people,
             self.staging,
@@ -189,6 +198,73 @@ def test_a_pending_candidate_matching_the_forgotten_person_is_removed(harness: _
     # left behind would reference a candidate that no longer exists.
     assert harness.staging_ids().isdisjoint({row.id for row in pending_rows})
     assert harness.staging_ids() == set()
+
+
+def test_hard_forget_removes_a_withdrawn_candidate_with_the_pending_ones(harness: _Harness) -> None:
+    """A withdrawn row is retained staging like any other, so erasure has to reach it.
+
+    Leaving it behind would keep the forgotten person's name reviewable through
+    `pctx import review` after every record about them was gone — which is exactly what import
+    cleanup exists to prevent.
+    """
+    committed = _stage(harness, [_person("a", "Alice Ahmed", "alice@example.com")])
+    ids = _commit_all(harness, committed.batch_id)
+    person_id = harness.mappings()[ids["Alice Ahmed"]]["entity_id"]
+    pending = _stage(
+        harness,
+        [
+            _person("a2", "Alice Ahmed", "alice@example.com"),
+            {"type": "fact", "person_ref": "a2", "predicate": "city", "value": "Berlin"},
+        ],
+        source_kind="call_note",
+        content_digest=_OTHER_DIGEST,
+    )
+    rows = harness.review.execute(pending.batch_id).candidates
+    withdrawn = next(row.id for row in rows if row.candidate["type"] == "fact")
+    harness.withdraw.execute(pending.batch_id, [withdrawn])
+    assert withdrawn in harness.staging_ids()
+
+    harness.forget.execute(person_id, "person")
+
+    assert harness.staging_ids() == set()
+
+
+def test_a_batch_whose_pending_rows_are_withdrawn_no_longer_keeps_its_receipt_live(
+    harness: _Harness,
+) -> None:
+    """Only a pending row is reviewable, and erasure's "is this source emptied?" test agrees.
+
+    A receipt whose rows were all withdrawn already owns nothing to review, so a forget that
+    removes its last mapping leaves nothing live behind and reduces it, rather than treating the
+    withdrawn rows as work still owing.
+    """
+    batch = _stage(
+        harness,
+        [
+            _person("a", "Alice Ahmed", "alice@example.com"),
+            {"type": "fact", "person_ref": "a", "predicate": "city", "value": "Berlin"},
+        ],
+    )
+    rows = harness.review.execute(batch.batch_id).candidates
+    person_row = next(row.id for row in rows if row.candidate["type"] == "person")
+    fact_row = next(row.id for row in rows if row.candidate["type"] == "fact")
+    harness.commit.execute(batch.batch_id, [person_row, fact_row])
+    person_id = harness.mappings()[person_row]["entity_id"]
+    withdrawn_batch = _stage(
+        harness,
+        [_person("a2", "Alice Ahmed", "alice@example.com")],
+        source_kind="call_note",
+        content_digest=_OTHER_DIGEST,
+    )
+    harness.withdraw.execute(
+        withdrawn_batch.batch_id,
+        [row.id for row in harness.review.execute(withdrawn_batch.batch_id).candidates],
+    )
+
+    harness.forget.execute(person_id, "person")
+
+    assert harness.staging_ids() == set()
+    assert [row["status"] for row in harness.sessions()] == ["redacted", "redacted"]
 
 
 def test_dependency_deletion_reaches_a_fixed_point(harness: _Harness) -> None:

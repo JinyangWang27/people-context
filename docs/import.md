@@ -477,14 +477,45 @@ retroactively narrow anybody's working import.
 ## The `pctx import` command group
 
 The same lifecycle is available to a person at the terminal through `pctx import stage`,
-`pctx import stage-candidates`, `pctx import review`, and `pctx import commit` (see
-[docs/cli.md](cli.md#import)). The CLI is a thin adapter over the use cases above: it adds no source type, no
-candidate type, and no matching or commit policy of its own, and it keeps the review gate as separate commands
-because a staged batch is durable review state that may be inspected in a later invocation.
+`pctx import stage-candidates`, `pctx import review`, `pctx import amend`, `pctx import reject`, and
+`pctx import commit` (see [docs/cli.md](cli.md#import)). The CLI is a thin adapter over the use cases above: it
+adds no source type, no candidate type, and no matching or commit policy of its own, and it keeps the review gate
+as separate commands because a staged batch is durable review state that may be inspected in a later invocation.
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds amend, reject, numbered and
-interactive review, and an `$EDITOR` round-trip over this same lifecycle; [M30](specs/m30-local-web-review.md)
-adds a loopback-only browser page over the same use cases.
+**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds numbered and interactive
+review and an `$EDITOR` round-trip over this same lifecycle; [M30](specs/m30-local-web-review.md) adds a
+loopback-only browser page over the same use cases.
+
+### Correcting a batch before committing it (M29.1)
+
+Review used to have two verbs, accept and ignore, and both were expensive to express. A candidate that was almost
+right — a stale role, a date a year out, a person reference that could be either of two people — could only be
+accepted as written or abandoned, and abandoning it meant asking for the same extraction again in the hope that
+the second attempt was closer. Review that says only yes or no pushes a reviewer toward yes.
+
+`pctx import amend BATCH CANDIDATE --patch JSON` corrects one staged candidate in place. The patch replaces the
+fields it names and leaves the rest alone, and the result is re-validated through every rule staging applied to
+it, so an amendment cannot store something commit would then refuse. The row keeps its id, its batch, and its
+position, so an id printed before an amendment still selects the same candidate after one. There is no amendment
+history: staging is review state, discarded at commit, and what survives is the committed record, whose history
+the changelog already owns.
+
+`pctx import reject BATCH CANDIDATE...` withdraws candidates. A withdrawn candidate moves to `rejected`, stays
+listed by `pctx import review`, and is never committed — it is not deleted, because a reviewer who cannot see
+what they dropped cannot check that they dropped the right thing. `--all` skips it silently, since withdrawing it
+was the instruction; naming it in `--accept` refuses the whole commit, because that means the operator is working
+from a list that has moved.
+
+Both print the whole refreshed batch, and `--json` prints the full `people-context-import-review` document —
+the same one `pctx import review --json` would print next. A subset under that format would silently repurpose an
+absent row from "not in this batch" to "not affected by this command".
+
+Withdrawing the last pending row of a source-tracked batch changes what its receipt means, so the receipt is
+recomputed in the same transaction: `committed` when something was committed, and the terminal `withdrawn` when
+nothing was. `pctx sources` then reports no unfinished work, and re-staging the source says there is nothing left
+to review until `--force`. Amending and withdrawing write no audit entry and mint no changelog row — nothing has
+been asserted about anybody until commit — but that receipt transition does, exactly as commit's own transitions
+do.
 
 What the CLI does add is a process boundary that is bounded from its first release, because a path typed at a
 terminal is a much weaker promise than a file an MCP caller already chose:

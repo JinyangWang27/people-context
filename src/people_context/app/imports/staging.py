@@ -144,7 +144,9 @@ class CandidateStager:
                 # existing batch or refuses a terminal one, the reservation closes empty.
                 return self._duplicate_result(result, outcome)
             self._audit_session(outcome.session)
-        return result.model_copy(update={"source_session_id": outcome.session.id})
+        return result.model_copy(
+            update={"source_session_id": outcome.session.id, "source_status": outcome.session.status}
+        )
 
     def _audit_session(self, session: SourceSessionRow) -> None:
         """Journal one new receipt through the ordinary mutation seam.
@@ -200,6 +202,7 @@ class CandidateStager:
                 "source_session_id": session.id,
                 "duplicate": True,
                 "reviewable": outcome.reviewable,
+                "source_status": session.status,
             }
         )
 

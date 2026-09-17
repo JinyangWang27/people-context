@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from people_context.app._mutation import audit_mutation, snapshot, transactional, unit_of_work_for
+from people_context.app._mutation import (
+    audit_mutation,
+    require_active_person,
+    snapshot,
+    transactional,
+    unit_of_work_for,
+)
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
@@ -40,7 +46,14 @@ class AliasInput(BaseModel):
 
 
 class RememberPersonInput(BaseModel):
-    """Input payload describing a person to create or update."""
+    """Input payload describing a person to create or update.
+
+    `person_id` says the identity is already resolved and names it. It exists for the one caller
+    that can know better than a name lookup: a reviewer who was shown the people a candidate
+    could be and chose one. Resolving by name there would re-raise the very ambiguity the choice
+    settled, and picking the first match would attach the record to a guess. It never creates:
+    an unknown or retired id is a refusal, not a new person.
+    """
 
     name: str
     aliases: list[AliasInput] = Field(default_factory=list)
@@ -48,6 +61,7 @@ class RememberPersonInput(BaseModel):
     is_self: bool = False
     source: str = "user"
     session: str | None = None
+    person_id: str | None = None
 
 
 class RememberPersonResult(BaseModel):
@@ -69,7 +83,12 @@ class RememberPerson:
 
     @transactional
     def execute(self, data: RememberPersonInput, *, transaction_id: str | None = None) -> RememberPersonResult:
-        """Upsert a person by normalized name, recording an audit entry."""
+        """Upsert a person by normalized name, or update the one the caller already resolved."""
+        if data.person_id is not None:
+            person = require_active_person(self._reader, data.person_id)
+            if data.is_self:
+                self._guard_single_self([person])
+            return self._update(person, data, transaction_id)
         normalized = normalize_name(data.name)
         matches = self._reader.find_by_normalized_name(normalized)
         if len(matches) > 1:

@@ -32,6 +32,7 @@ __all__ = [
     "STATUS_PARTIALLY_COMMITTED",
     "STATUS_REDACTED",
     "STATUS_STAGED",
+    "STATUS_WITHDRAWN",
     "CandidateMappingRow",
     "ImportSourceInspectionReader",
     "ImportSourceStore",
@@ -54,11 +55,20 @@ STATUS_COMMITTED: Final = "committed"
 #: Terminal: hard forget left no live mapping and no reviewable staging behind.
 STATUS_REDACTED: Final = "redacted"
 
+#: Terminal: every candidate was withdrawn and nothing was ever committed.
+#:
+#: Distinct from `STATUS_COMMITTED`, which also has nothing left to review but produced durable
+#: records, and from `STATUS_REDACTED`, which is what erasure leaves behind. A withdrawn receipt
+#: keeps its batch id, its label, and its staging rows locally, so a reviewer can still see what
+#: they dropped; it simply asserts that the review is over and recorded nothing.
+STATUS_WITHDRAWN: Final = "withdrawn"
+
 SOURCE_SESSION_STATUSES: Final[tuple[str, ...]] = (
     STATUS_STAGED,
     STATUS_PARTIALLY_COMMITTED,
     STATUS_COMMITTED,
     STATUS_REDACTED,
+    STATUS_WITHDRAWN,
 )
 
 #: A committed candidate that produced or reused a durable entity.

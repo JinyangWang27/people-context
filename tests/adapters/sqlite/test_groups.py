@@ -359,7 +359,7 @@ class TestPortability:
     ) -> None:
         _alice, group, membership = self._seed(runtime)
         document = runtime.use_cases.export_sync_bundle.execute()
-        assert document.version == SYNC_BUNDLE_VERSION == 6
+        assert document.version == SYNC_BUNDLE_VERSION == 7
         assert [row.id for row in document.groups] == [group]
         assert [row.id for row in document.group_memberships] == [membership]
 

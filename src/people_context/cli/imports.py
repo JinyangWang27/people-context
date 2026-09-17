@@ -44,6 +44,8 @@ from people_context.app.imports import (
     render_import_json,
 )
 from people_context.cli.rendering import print_import_review
+from people_context.domain.import_provenance import STAGING_STATUS_REJECTED
+from people_context.ports.sources import STATUS_COMMITTED, STATUS_WITHDRAWN
 
 #: Validation failures reported for one refused candidate batch before the listing is truncated.
 _MAX_REPORTED_VALIDATION_ERRORS = 10
@@ -212,6 +214,64 @@ def cmd_import_review(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
     return 0
 
 
+def cmd_import_amend(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Correct one staged candidate in place, then show the batch as it now stands.
+
+    The patch replaces the fields it names and leaves the rest alone. Nothing is committed here:
+    an amendment is the reviewer finishing the extraction, not accepting it.
+    """
+    patch = _read_patch_json(args.patch)
+    if patch is None:
+        return 1
+    refusal = _preflight(runtime, args.batch_id)
+    if refusal is not None:
+        return refusal
+    try:
+        review = runtime.use_cases.amend_staged_candidate.execute(args.batch_id, args.candidate_id, patch)
+    except ImportPipelineError as exc:
+        _refuse(f"import amend failed: {exc}")
+        _print_validation_details(exc)
+        return 1
+    return _print_revised_batch(review, args.json, f"Amended {args.candidate_id}.")
+
+
+def cmd_import_reject(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Withdraw staged candidates, then show the batch as it now stands.
+
+    A withdrawn candidate is not deleted. It stays listed as `rejected`, so the operator can still
+    check that they dropped the right thing, and commit never touches it again.
+    """
+    candidate_ids = list(dict.fromkeys(args.candidate_id))
+    refusal = _preflight(runtime, args.batch_id)
+    if refusal is not None:
+        return refusal
+    try:
+        review = runtime.use_cases.withdraw_staged_candidates.execute(args.batch_id, candidate_ids)
+    except ImportPipelineError as exc:
+        _refuse(f"import reject failed: {exc}")
+        _print_validation_details(exc)
+        return 1
+    return _print_revised_batch(review, args.json, f"Withdrew {len(candidate_ids)} candidates.")
+
+
+def _print_revised_batch(review: ImportReviewResult, as_json: bool, summary: str) -> int:
+    """Print the whole batch after an edit, in the shape `pctx import review` would print it.
+
+    The whole document, not the row that changed. `people-context-import-review` defines
+    `candidates` as every candidate in the batch, so emitting a subset under the same format would
+    silently repurpose an absent row from "not in this batch" to "not affected by this command".
+    """
+    if as_json:
+        print(render_import_json(import_review_document(review)), end="")
+        return 0
+    print(f"Warning: {REVIEW_DISCLOSURE_WARNING}", file=sys.stderr)
+    print(summary)
+    print(f"Batch {review.batch_id}: {len(review.candidates)} candidates.")
+    print_import_review(review.candidates)
+    print(f"Commit with: pctx import commit {review.batch_id} --all")
+    return 0
+
+
 def cmd_import_commit(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Commit the explicitly accepted candidates of one batch.
 
@@ -224,7 +284,9 @@ def cmd_import_commit(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
         review = _bounded_review(runtime, args.batch_id)
         if isinstance(review, int):
             return review
-        accepted_ids = [row.id for row in review.candidates]
+        # Withdrawing a candidate *was* the instruction, so `--all` leaves it out silently rather
+        # than refusing; naming one explicitly in `--accept` is the case that refuses.
+        accepted_ids = [row.id for row in review.candidates if row.status != STAGING_STATUS_REJECTED]
     else:
         preflight = _preflight(runtime, args.batch_id)
         if preflight is not None:
@@ -274,7 +336,9 @@ def _bounded_review(runtime: ApplicationRuntime, batch_id: str) -> ImportReviewR
     if refusal is not None:
         return refusal
     try:
-        return runtime.use_cases.review_import.execute(batch_id)
+        # The ceiling is this command's, passed per call: `review_import` keeps the unbounded read
+        # contract it shipped with, and one instance of the use case serves both boundaries.
+        return runtime.use_cases.review_import.execute(batch_id, budget=CLI_IMPORT_BUDGET)
     except ImportPipelineError as exc:
         return _refuse(f"import review failed: {exc}")
 
@@ -387,6 +451,42 @@ def _read_candidate_json(raw_input: str) -> list[Any] | None:
     return parsed
 
 
+def _read_patch_json(raw_input: str) -> dict[str, Any] | None:
+    """Return the amendment patch this invocation was given, or None once it has refused it.
+
+    Bounded on the read for the same reason candidate input is: a stdin pipe has no size to stat,
+    so the ceiling is spent before anything is held. Refusals name the limit or the shape and
+    never the document, because a patch is untrusted text exactly as a candidate is.
+    """
+    if raw_input == "-":
+        raw = sys.stdin.buffer.read(MAX_CLI_CANDIDATE_JSON_BYTES + 1)
+        if len(raw) > MAX_CLI_CANDIDATE_JSON_BYTES:
+            _refuse(_input_too_large())
+            return None
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            _refuse("patch input is not valid UTF-8")
+            return None
+    else:
+        text = raw_input
+        if len(text.encode("utf-8")) > MAX_CLI_CANDIDATE_JSON_BYTES:
+            _refuse(_input_too_large())
+            return None
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        _refuse(f"{INVALID_CANDIDATE_JSON}: patch is not valid JSON")
+        return None
+    except RecursionError:
+        _refuse(f"{INVALID_CANDIDATE_JSON}: patch is nested too deeply")
+        return None
+    if not isinstance(parsed, dict):
+        _refuse(f"{INVALID_CANDIDATE_JSON}: patch must be a JSON object of candidate fields")
+        return None
+    return parsed
+
+
 def _input_too_large() -> str:
     return f"{CANDIDATE_INPUT_TOO_LARGE}: candidate input is at most {MAX_CLI_CANDIDATE_JSON_BYTES} bytes"
 
@@ -413,20 +513,18 @@ def _readable_source(raw_path: str) -> Path | None:
 
 def _print_batch(batch: ImportBatchResult, *, duplicate_hint: str) -> None:
     if batch.duplicate:
-        # A committed batch may have had its reviewable rows cleaned up, or may have arrived from
-        # a bundle carrying only its durable outcomes. Pointing at review for one of those would
-        # name a batch review can no longer find, so the count and the next step follow what the
-        # batch still holds.
-        held = "candidates" if batch.reviewable else "committed candidates"
+        # A batch with nothing left to review may have had its rows cleaned up, may have arrived
+        # from a bundle carrying only its durable outcomes, or may have been withdrawn entirely.
+        # Pointing at review for any of those would name a batch review can no longer find, and
+        # calling a withdrawn one committed would claim durable records it never produced — so
+        # the count and the next step follow the receipt's own status.
+        held, outcome = _duplicate_wording(batch)
         print(
             f"This source was already imported as batch {batch.batch_id} "
             f"with {batch.candidate_count} {held}; nothing new was staged."
         )
         _print_source_session(batch)
-        if batch.reviewable:
-            print(f"Review it with: pctx import review {batch.batch_id}")
-        else:
-            print("Its candidates are already committed; there is nothing left to review.")
+        print(outcome if outcome is not None else f"Review it with: pctx import review {batch.batch_id}")
         print(duplicate_hint)
         return
     print(f"Staged batch {batch.batch_id} with {batch.candidate_count} candidates; nothing is committed yet.")
@@ -440,6 +538,20 @@ def _print_batch(batch: ImportBatchResult, *, duplicate_hint: str) -> None:
         # the reason is a fixed vocabulary, never a fragment of the card itself.
         print(f"Skipped card {card.get('index', '?')}: {card.get('reason', 'unknown')}")
     print(f"Review with: pctx import review {batch.batch_id}")
+
+
+def _duplicate_wording(batch: ImportBatchResult) -> tuple[str, str | None]:
+    """Return what the already-imported batch holds, and what is left to do with it.
+
+    A `None` outcome means the batch is still reviewable and the caller should point at review.
+    """
+    if batch.reviewable:
+        return "candidates", None
+    if batch.source_status == STATUS_WITHDRAWN:
+        return "withdrawn candidates", "Its candidates were all withdrawn; there is nothing left to review."
+    if batch.source_status == STATUS_COMMITTED:
+        return "committed candidates", "Its candidates are already committed; there is nothing left to review."
+    return "candidates", "There is nothing left to review."
 
 
 def _print_source_session(batch: ImportBatchResult) -> None:
@@ -465,5 +577,7 @@ _IMPORT_SUBCOMMANDS: dict[str, Callable[[ApplicationRuntime, argparse.Namespace]
     "stage": cmd_import_stage,
     "stage-candidates": cmd_import_stage_candidates,
     "review": cmd_import_review,
+    "amend": cmd_import_amend,
+    "reject": cmd_import_reject,
     "commit": cmd_import_commit,
 }

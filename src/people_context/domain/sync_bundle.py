@@ -57,10 +57,18 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: membership candidates. A new candidate *type* takes a version for a stronger reason than a
 #: new field does: forbidding unknown keys cannot fail a reader closed on one, because the
 #: discriminator picks the model before any field is seen.
-SYNC_BUNDLE_VERSION = 6
+#:
+#: Version 7 is M29.1's editable staging: a staging row may now be `rejected` and a source receipt
+#: `withdrawn`. Neither adds a field or a collection — both add a value to a `Literal` that every
+#: released version shares — and the rule is the same. A version-6 reader has no withdrawal in its
+#: vocabulary: it would restore a rejected row as one of the two statuses it does know, and either
+#: answer is wrong. Read as pending, a candidate the reviewer explicitly dropped becomes
+#: committable again; read as committed, it claims a durable record that does not exist. So the
+#: new values get their own version, and every older version's models refuse them by name.
+SYNC_BUNDLE_VERSION = 7
 
 #: Versions restore accepts. A released version stays readable; only emission moves forward.
-SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6)
+SUPPORTED_SYNC_BUNDLE_VERSIONS = (1, 2, 3, 4, 5, 6, 7)
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -394,7 +402,7 @@ class BundleSourceSession(StrictBundleModel):
     extraction_contract_revision: BundleContractRevision | None
     claim_key: str | None
     batch_id: str | None
-    status: Literal["staged", "partially_committed", "committed", "redacted"]
+    status: Literal["staged", "partially_committed", "committed", "redacted", "withdrawn"]
     created_at: UtcDatetime
 
     @model_validator(mode="after")
@@ -469,7 +477,7 @@ class BundleStagingRow(StrictBundleModel):
     batch_id: Identifier
     source: str
     candidate: dict[str, Any]
-    status: Literal["pending", "committed"]
+    status: Literal["pending", "committed", "rejected"]
     created_at: UtcDatetime
 
     @model_validator(mode="after")
@@ -478,7 +486,39 @@ class BundleStagingRow(StrictBundleModel):
         return self
 
 
-class BundleStagingRowV5(BundleStagingRow):
+class BundleSourceSessionV6(BundleSourceSession):
+    """The receipt of versions 2 through 6: the same shape, minus M29.1's withdrawal.
+
+    Narrowed by a validator rather than by redeclaring `status`, because an attribute is invariant
+    and a subclass that retyped it would be an unsound override. What is narrowed is the same
+    either way: a version that predates withdrawal has no terminal "reviewed and recorded nothing"
+    state, and would restore this receipt as one it does have.
+    """
+
+    @model_validator(mode="after")
+    def _check_status(self) -> BundleSourceSessionV6:
+        if self.status == "withdrawn":
+            raise ValueError("status (literal_error)")
+        return self
+
+
+class BundleStagingRowV6(BundleStagingRow):
+    """The staging row of versions 2 through 6: the same shape, minus M29.1's withdrawal.
+
+    Narrowed by a validator, for the reason given on `BundleSourceSessionV6`. A version-6 reader
+    knows only `pending` and `committed`, so a rejected row restored under either name is wrong in
+    a way the reviewer would have to notice by hand: committable again, or claiming a record that
+    was never written.
+    """
+
+    @model_validator(mode="after")
+    def _check_status(self) -> BundleStagingRowV6:
+        if self.status == "rejected":
+            raise ValueError("status (literal_error)")
+        return self
+
+
+class BundleStagingRowV5(BundleStagingRowV6):
     """The version-5 staging row: the same shape, minus the candidate types M28.3 added.
 
     Version 5 predates group and membership candidates, so it refuses them. A version-5 reader
@@ -493,7 +533,7 @@ class BundleStagingRowV5(BundleStagingRow):
         return self
 
 
-class BundleStagingRowV3(BundleStagingRow):
+class BundleStagingRowV3(BundleStagingRowV6):
     """The version-3 staging row: the same shape, minus the attribution field M22.1 added.
 
     A released version is a closed shape, and the persisted-candidate models describe what this
@@ -509,7 +549,7 @@ class BundleStagingRowV3(BundleStagingRow):
         return self
 
 
-class BundleStagingRowV2(BundleStagingRow):
+class BundleStagingRowV2(BundleStagingRowV6):
     """The version-2 staging row: minus the evidence fields M18.3 added and M22.1's attribution.
 
     Version 2 predates both, so it forbids both. Validating it through the current models would
@@ -542,6 +582,43 @@ class BundleImportState(StrictBundleModel):
     staging: list[BundleStagingRow]
 
 
+class BundleImportStateV6(StrictBundleModel):
+    """The import state of versions 2 through 6, whose rows predate M29.1's withdrawal.
+
+    A sibling rather than a subclass for the reason the others are: a list field is invariant, so
+    narrowing `staging` or `source_sessions` in a subclass would be an unsound override. Versions
+    4 through 6 all reach this shape for source sessions; they differ only in their staging rows,
+    which is why the narrower states below declare their own.
+    """
+
+    source_sessions: list[BundleSourceSessionV6]
+    candidate_mappings: list[BundleCandidateMapping]
+    staging: list[BundleStagingRowV6]
+
+    def current(self) -> BundleImportState:
+        """Return this state in the current shape; every row already validated as a v6 row."""
+        return _current_import_state(self.source_sessions, self.candidate_mappings, self.staging)
+
+
+def _current_import_state(
+    source_sessions: Sequence[BundleSourceSession],
+    candidate_mappings: list[BundleCandidateMapping],
+    staging: Sequence[BundleStagingRow],
+) -> BundleImportState:
+    """Re-shape one released version's import state as the current one, re-validating nothing.
+
+    Each row was already validated against the shape its own version promised, which is strictly
+    narrower than the current one. Reconstructing rather than passing the lists through is what
+    keeps the declared types honest: a narrowed row type is not the current row type, however
+    compatible their contents are.
+    """
+    return BundleImportState(
+        source_sessions=[BundleSourceSession.model_construct(**row.__dict__) for row in source_sessions],
+        candidate_mappings=candidate_mappings,
+        staging=[BundleStagingRow.model_construct(**row.__dict__) for row in staging],
+    )
+
+
 class BundleImportStateV5(StrictBundleModel):
     """The import state of versions 4 and 5, whose staging rows predate group candidates.
 
@@ -553,17 +630,13 @@ class BundleImportStateV5(StrictBundleModel):
     is invariant, so narrowing `staging` in a subclass would be an unsound override.
     """
 
-    source_sessions: list[BundleSourceSession]
+    source_sessions: list[BundleSourceSessionV6]
     candidate_mappings: list[BundleCandidateMapping]
     staging: list[BundleStagingRowV5]
 
     def current(self) -> BundleImportState:
         """Return this state in the current shape; every row already validated as a v5 row."""
-        return BundleImportState(
-            source_sessions=self.source_sessions,
-            candidate_mappings=self.candidate_mappings,
-            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
-        )
+        return _current_import_state(self.source_sessions, self.candidate_mappings, self.staging)
 
 
 class BundleImportStateV2(StrictBundleModel):
@@ -574,17 +647,13 @@ class BundleImportStateV2(StrictBundleModel):
     one field, and `upgraded()` is where a validated v2 becomes the current in-memory state.
     """
 
-    source_sessions: list[BundleSourceSession]
+    source_sessions: list[BundleSourceSessionV6]
     candidate_mappings: list[BundleCandidateMapping]
     staging: list[BundleStagingRowV2]
 
     def current(self) -> BundleImportState:
         """Return this state in the current shape; every row already validated as a v2 row."""
-        return BundleImportState(
-            source_sessions=self.source_sessions,
-            candidate_mappings=self.candidate_mappings,
-            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
-        )
+        return _current_import_state(self.source_sessions, self.candidate_mappings, self.staging)
 
 
 class BundleImportStateV3(StrictBundleModel):
@@ -594,17 +663,13 @@ class BundleImportStateV3(StrictBundleModel):
     list field is invariant, so narrowing `staging` in a subclass would be an unsound override.
     """
 
-    source_sessions: list[BundleSourceSession]
+    source_sessions: list[BundleSourceSessionV6]
     candidate_mappings: list[BundleCandidateMapping]
     staging: list[BundleStagingRowV3]
 
     def current(self) -> BundleImportState:
         """Return this state in the current shape; every row already validated as a v3 row."""
-        return BundleImportState(
-            source_sessions=self.source_sessions,
-            candidate_mappings=self.candidate_mappings,
-            staging=[BundleStagingRow.model_construct(**row.__dict__) for row in self.staging],
-        )
+        return _current_import_state(self.source_sessions, self.candidate_mappings, self.staging)
 
 
 class BundleTraitEvidence(StrictBundleModel):
@@ -865,6 +930,46 @@ class SyncBundleDocumentV5(StrictBundleModel):
         )
 
 
+class SyncBundleDocumentV6(StrictBundleModel):
+    """The M28.3 version-6 bundle, still accepted by restore and no longer emitted.
+
+    It carries every collection version 7 does. The two differ only in what a staging row's status
+    and a receipt's status may say: version 6 predates withdrawal, so it refuses both new values.
+    """
+
+    format: Literal["people-context-sync-bundle"]
+    version: Literal[6]
+    created_at: UtcDatetime
+    origin_device_id: Identifier
+    watermark: BundleWatermark
+    devices: list[BundleDevice]
+    snapshot: BundleSnapshot
+    relationship_vocabulary: BundleRelationshipVocabulary
+    changelog: list[BundleChangelogEntry]
+    imports: BundleImportStateV6
+    trait_evidence: list[BundleTraitEvidence]
+    groups: list[BundleGroup]
+    group_memberships: list[BundleGroupMembership]
+
+    def upgraded(self) -> SyncBundleDocument:
+        """Return this document in the current in-memory shape; its rows are already validated."""
+        return SyncBundleDocument(
+            format=self.format,
+            version=SYNC_BUNDLE_VERSION,
+            created_at=self.created_at,
+            origin_device_id=self.origin_device_id,
+            watermark=self.watermark,
+            devices=self.devices,
+            snapshot=self.snapshot,
+            relationship_vocabulary=self.relationship_vocabulary,
+            changelog=self.changelog,
+            imports=self.imports.current(),
+            trait_evidence=self.trait_evidence,
+            groups=self.groups,
+            group_memberships=self.group_memberships,
+        )
+
+
 class SyncBundleDocument(StrictBundleModel):
     """One complete, point-in-time bootstrap bundle.
 
@@ -874,7 +979,7 @@ class SyncBundleDocument(StrictBundleModel):
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[6]
+    version: Literal[7]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark
@@ -907,6 +1012,8 @@ def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
         return SyncBundleDocumentV4.model_validate(payload).upgraded()
     if declared == 5:
         return SyncBundleDocumentV5.model_validate(payload).upgraded()
+    if declared == 6:
+        return SyncBundleDocumentV6.model_validate(payload).upgraded()
     return SyncBundleDocument.model_validate(payload)
 
 
@@ -1265,15 +1372,33 @@ def _emptied_session_details(imports: BundleImportState) -> list[str]:
     pending row would therefore drop that candidate from the very next bundle — and the reduced
     bundle would validate, so nothing downstream would ever notice it had gone.
     """
-    pending_batches = {row.batch_id for row in imports.staging if row.status != "committed"}
+    pending_batches = {row.batch_id for row in imports.staging if row.status == "pending"}
     mapped_sessions = {mapping.source_session_id for mapping in imports.candidate_mappings}
     details: list[str] = []
     for session in imports.source_sessions:
+        # `redacted` is what erasure leaves behind: it owns nothing by construction, and the
+        # checks below would read that as the dead end above.
         if session.status == "redacted":
             continue
         has_pending = session.batch_id is not None and session.batch_id in pending_batches
         if has_pending and session.status not in REVIEWABLE_SESSION_STATUSES:
             details.append(f"source session {session.id} owns a reviewable staging row but is {session.status}")
+        elif session.status == "withdrawn":
+            # A withdrawn receipt is a review that finished and recorded nothing, so owning
+            # nothing is its *legitimate* shape rather than the contradiction the branches below
+            # refuse. It is still held to everything it claims. A mapping would mean something
+            # did commit, and the pending check above already caught a row still owing a decision
+            # — which matters because export carries staging only for a reviewable receipt, so a
+            # restored contradiction would drop those candidates from the very next bundle.
+            if session.id in mapped_sessions:
+                details.append(f"source session {session.id} is withdrawn but owns a commit mapping")
+            if session.batch_id is None:
+                # Withdrawal keeps the batch, so a null one here is not a shape this installation
+                # produces. Restoring it would make the source unrestageable in a way nothing
+                # explains: duplicate detection reads a claim-backed receipt with no batch as a
+                # forgotten one and refuses with `source_previously_redacted`, which is a claim
+                # about erasure that never happened.
+                details.append(f"source session {session.id} is withdrawn but names no batch")
         elif session.status == "staged" and not has_pending:
             # `staged` means nothing has committed, so mappings cannot stand in for the rows.
             details.append(f"source session {session.id} is staged but owns no reviewable staging row")
