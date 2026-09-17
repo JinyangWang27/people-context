@@ -200,7 +200,7 @@ def test_init_vcard_excludes_self_card_and_dependents_and_commits_explicit_subse
             return "maya@example.com"
         if prompt.startswith("vCard"):
             return str(vcard_path)
-        if prompt.startswith("Candidate IDs"):
+        if prompt.startswith("Candidates to accept"):
             conn = open_db(db_path)
             try:
                 rows = conn.execute(
@@ -262,7 +262,7 @@ def test_init_no_handle_same_name_vcard_targets_self_and_warns_before_import(
             return ""
         if prompt.startswith("vCard"):
             return str(vcard_path)
-        if prompt.startswith("Candidate IDs"):
+        if prompt.startswith("Candidates to accept"):
             conn = open_db(db_path)
             try:
                 return ",".join(row[0] for row in conn.execute("SELECT id FROM import_staging"))
@@ -301,7 +301,7 @@ def test_init_expands_home_in_preflighted_vcard_path(
             return ""
         if prompt.startswith("vCard"):
             return "~/contacts.vcf"
-        if prompt.startswith("Candidate IDs"):
+        if prompt.startswith("Candidates to accept"):
             conn = open_db(db_path)
             try:
                 return ",".join(row[0] for row in conn.execute("SELECT id FROM import_staging"))
@@ -364,8 +364,8 @@ def test_import_review_identifies_dependent_candidate_owners(
     print_import_review(rows)
 
     output = capsys.readouterr().out
-    assert "affiliation-alice  pending  affiliation  Engineer at Acme — Alice (person-alice)" in output
-    assert "fact-bob  pending  fact  birthday=1990-01-01 — Bob (person-bob)" in output
+    assert "#0  pending  affiliation  Engineer at Acme — Alice (person-alice)  affiliation-alice" in output
+    assert "#0  pending  fact  birthday=1990-01-01 — Bob (person-bob)  fact-bob" in output
 
 
 def test_init_rejects_unknown_candidate_ids_without_committing_contacts(
@@ -534,7 +534,7 @@ def test_init_reports_an_already_committed_vcard_instead_of_failing(
             return "maya@example.com"
         if prompt.startswith("vCard"):
             return str(vcard_path)
-        if prompt.startswith("Candidate IDs"):
+        if prompt.startswith("Candidates to accept"):
             conn = open_db(db_path)
             try:
                 return ",".join(row["id"] for row in conn.execute("SELECT id FROM import_staging"))
@@ -561,7 +561,7 @@ def test_init_reports_an_already_committed_vcard_instead_of_failing(
             return "maya@example.com"
         if prompt.startswith("vCard"):
             return str(vcard_path)
-        if prompt.startswith("Candidate IDs"):
+        if prompt.startswith("Candidates to accept"):
             raise AssertionError("a batch with nothing to review must not reach the review prompt")
         return ""
 

@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from people_context.adapters.importers.bounded_source import SOURCE_TOO_LARGE, read_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
@@ -37,14 +39,15 @@ from people_context.app.imports import (
     ImportBatchResult,
     ImportPipelineError,
     ImportReviewResult,
+    ImportReviewRow,
     enforce_extraction_request_limits,
     import_batch_document,
     import_commit_document,
     import_review_document,
     render_import_json,
 )
-from people_context.cli.rendering import print_import_review
-from people_context.domain.import_provenance import STAGING_STATUS_REJECTED
+from people_context.cli.rendering import import_review_lines, print_import_review
+from people_context.domain.import_provenance import STAGING_STATUS_PENDING, STAGING_STATUS_REJECTED
 from people_context.ports.sources import STATUS_COMMITTED, STATUS_WITHDRAWN
 
 #: Validation failures reported for one refused candidate batch before the listing is truncated.
@@ -210,8 +213,144 @@ def cmd_import_review(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
     print(f"Warning: {REVIEW_DISCLOSURE_WARNING}", file=sys.stderr)
     print(f"Batch {review.batch_id}: {len(review.candidates)} candidates.")
     print_import_review(review.candidates)
+    if args.interactive:
+        return _review_interactively(runtime, review)
     print(f"Commit with: pctx import commit {review.batch_id} --all")
     return 0
+
+
+_T = TypeVar("_T")
+
+#: The refusal an action gets when the batch moved since the review it was based on.
+_BATCH_CHANGED = "batch_changed"
+
+#: A selection token that is ordinal shorthand rather than, necessarily, a candidate id.
+_ORDINAL_SELECTION = re.compile(r"(\d+)(?:-(\d+))?")
+
+
+class _BatchChanged(Exception):
+    """Another client moved the batch the interactive loop is showing."""
+
+
+_INTERACTIVE_PROMPT = "[a]ccept [s]kip [w]ithdraw [e]dit [q]uit: "
+
+
+def _review_interactively(runtime: ApplicationRuntime, review: ImportReviewResult) -> int:
+    """Walk the pending candidates one at a time, then commit exactly what was accepted.
+
+    The loop holds the `batch_digest` of the review it is showing and checks every step against
+    it: withdraw, amend, and the final commit pass it to the use case, and accept and skip, which
+    write nothing, reread first. When another client changed the batch, every acceptance collected
+    so far is discarded and the loop starts over on the reread batch — keeping them would let the
+    final commit match the new digest while committing a row whose new content the reviewer never
+    saw. `q` commits nothing; a skipped row stays pending for a later pass.
+    """
+    batch_id = review.batch_id
+    accepted: list[str] = []
+    seen: set[str] = set()
+    while True:
+        try:
+            row = next((r for r in review.candidates if r.status == STAGING_STATUS_PENDING and r.id not in seen), None)
+            if row is None:
+                if not accepted:
+                    print("No candidates accepted; nothing committed.")
+                    return 0
+                result = _interactive_step(
+                    partial(
+                        runtime.use_cases.commit_import.execute,
+                        batch_id,
+                        accepted,
+                        expected_batch_digest=review.batch_digest,
+                    )
+                )
+                if result is None:
+                    return 1
+                print_import_commit(result)
+                return 0
+            action = _ask(f"{import_review_lines(review.candidates)[row.ordinal - 1]}\n{_INTERACTIVE_PROMPT}")
+            if action is None or action.casefold() == "q":
+                print("Quit; nothing committed.")
+                return 0
+            action = action.casefold()
+            if action not in {"a", "s", "w", "e"}:
+                continue
+            current = _bounded_review(runtime, batch_id)
+            if isinstance(current, int):
+                return current
+            if current.batch_digest != review.batch_digest:
+                raise _BatchChanged
+            revised = _interactive_action(runtime, review, row.id, action)
+            if action in {"a", "s"}:
+                seen.add(row.id)
+                if action == "a":
+                    accepted.append(row.id)
+            elif revised is not None:
+                review = revised
+                # An amended row stays unseen, so the loop shows it again for a decision.
+                if action == "w":
+                    seen.add(row.id)
+        except _BatchChanged:
+            print(
+                f"Batch changed elsewhere; discarded {len(accepted)} accepted candidates, starting over.",
+                file=sys.stderr,
+            )
+            current = _bounded_review(runtime, batch_id)
+            if isinstance(current, int):
+                return current
+            review = current
+            accepted.clear()
+            seen.clear()
+
+
+def _interactive_action(
+    runtime: ApplicationRuntime, review: ImportReviewResult, candidate_id: str, action: str
+) -> ImportReviewResult | None:
+    """Run a withdraw or edit against the digest shown; None means nothing was written."""
+    batch_id, digest = review.batch_id, review.batch_digest
+    if action == "w":
+        return _interactive_step(
+            partial(
+                runtime.use_cases.withdraw_staged_candidates.execute,
+                batch_id,
+                [candidate_id],
+                expected_batch_digest=digest,
+            )
+        )
+    if action != "e":
+        return None
+    raw_patch = _ask("Patch JSON: ")
+    patch = _read_patch_json(raw_patch) if raw_patch is not None else None
+    if patch is None:
+        return None
+    return _interactive_step(
+        partial(
+            runtime.use_cases.amend_staged_candidate.execute,
+            batch_id,
+            candidate_id,
+            patch,
+            expected_batch_digest=digest,
+        )
+    )
+
+
+def _ask(prompt: str) -> str | None:
+    """Read one answer, treating end of input as a request to stop."""
+    try:
+        return input(prompt).strip()
+    except EOFError:
+        return None
+
+
+def _interactive_step(call: Callable[[], _T]) -> _T | None:
+    """Run one write of the interactive loop; a refusal is reported and returns None."""
+    try:
+        return call()
+    except ImportPipelineError as exc:
+        if exc.code == _BATCH_CHANGED:
+            raise _BatchChanged from exc
+        _refuse(f"import review step failed: {exc}")
+        _print_validation_details(exc)
+        return None
 
 
 def cmd_import_amend(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
@@ -287,7 +426,16 @@ def cmd_import_commit(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
         # Withdrawing a candidate *was* the instruction, so `--all` leaves it out silently rather
         # than refusing; naming one explicitly in `--accept` is the case that refuses.
         accepted_ids = [row.id for row in review.candidates if row.status != STAGING_STATUS_REJECTED]
+    elif _needs_review_to_select(args.accept):
+        review = _bounded_review(runtime, args.batch_id)
+        if isinstance(review, int):
+            return review
+        selection = parse_candidate_selection(args.accept, review.candidates)
+        if selection is None:
+            return 1
+        accepted_ids = selection
     else:
+        # Plain ids resolve without reading the batch, exactly as they always have.
         preflight = _preflight(runtime, args.batch_id)
         if preflight is not None:
             return preflight
@@ -303,20 +451,49 @@ def cmd_import_commit(runtime: ApplicationRuntime, args: argparse.Namespace) -> 
     return 0
 
 
-def parse_candidate_selection(raw: str, known_ids: set[str]) -> list[str] | None:
-    """Return the deduplicated canonical ids an operator typed, or None when any is unknown.
+def parse_candidate_selection(tokens: list[str], rows: list[ImportReviewRow]) -> list[str] | None:
+    """Return the deduplicated canonical ids an operator selected, or None when any is unknown.
 
-    Onboarding and `pctx import` accept candidates the same way, so they reject them the same
-    way too: only ids the batch actually staged are selectable, and a typo refuses the whole
-    selection rather than silently committing the part that happened to parse.
+    A selection mixes `#n` ordinals, `a-b` ranges, and canonical ids, comma-separated or given as
+    separate tokens. A token or comma-separated part that exactly equals a candidate id is that id
+    before any shorthand parsing: staging ids are format-opaque, so a restored batch may hold an id
+    spelled `1`, and an invocation naming it keeps its meaning. Onboarding and `pctx import` share
+    this parser, so they reject the same way too — one unknown member refuses the whole selection
+    rather than silently committing the part that happened to parse.
     """
-    typed = [candidate_id.strip() for candidate_id in raw.split(",")]
-    accepted_ids = list(dict.fromkeys(candidate_id for candidate_id in typed if candidate_id))
-    unknown_ids = sorted(set(accepted_ids) - known_ids)
-    if unknown_ids:
-        print("Unknown candidate IDs: " + ", ".join(unknown_ids), file=sys.stderr)
+    known_ids = {row.id for row in rows}
+    by_ordinal = {row.ordinal: row.id for row in rows}
+    selected: list[str] = []
+    unknown: list[str] = []
+    for token in tokens:
+        parts = [token] if token.strip() in known_ids else token.split(",")
+        for raw_part in parts:
+            part = raw_part.strip()
+            if not part:
+                continue
+            if part in known_ids:
+                selected.append(part)
+                continue
+            shorthand = _ORDINAL_SELECTION.fullmatch(part)
+            if shorthand is None:
+                unknown.append(part)
+                continue
+            first = int(shorthand.group(1))
+            last = int(shorthand.group(2) or first)
+            ordinals = range(first, last + 1)
+            if first > last or any(ordinal not in by_ordinal for ordinal in ordinals):
+                unknown.append(part)
+                continue
+            selected.extend(by_ordinal[ordinal] for ordinal in ordinals)
+    if unknown:
+        print("Unknown candidate IDs: " + ", ".join(sorted(set(unknown))), file=sys.stderr)
         return None
-    return accepted_ids
+    return list(dict.fromkeys(selected))
+
+
+def _needs_review_to_select(tokens: list[str]) -> bool:
+    """Whether a selection holds anything a plain list of candidate ids would not."""
+    return any("," in token or _ORDINAL_SELECTION.fullmatch(token.strip()) for token in tokens)
 
 
 def print_import_commit(result: CommitImportResult) -> None:

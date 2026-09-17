@@ -569,10 +569,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     import_review = import_subcommands.add_parser("review", help="Show every staged candidate in one batch.")
     import_review.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
-    import_review.add_argument(
+    review_output = import_review.add_mutually_exclusive_group()
+    review_output.add_argument(
         "--json",
         action="store_true",
         help="Print the versioned review JSON document instead of the human listing.",
+    )
+    review_output.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Step through pending candidates: accept, skip, withdraw, or edit each, then commit the accepted set.",
     )
 
     import_amend = import_subcommands.add_parser(
@@ -616,10 +622,11 @@ def build_parser() -> argparse.ArgumentParser:
     selection.add_argument("--all", action="store_true", help="Accept every candidate in the batch.")
     selection.add_argument(
         "--accept",
-        action="append",
+        action="extend",
+        nargs="+",
         default=[],
-        metavar="CANDIDATE_ID",
-        help="Canonical candidate id to accept; repeat for multiple candidates.",
+        metavar="SELECTION",
+        help="Candidates to accept: `#n` ordinals, ranges such as 3-5, or canonical ids, comma- or space-separated.",
     )
     import_commit.add_argument(
         "--json",

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import shlex
+from collections import Counter
 from pathlib import Path
 
 from people_context.app.context import PersonContextResult
 from people_context.app.imports import ImportReviewRow, MatchDisposition
+from people_context.domain.import_provenance import STAGING_STATUS_REJECTED
 from people_context.domain.person import Person
 
 
@@ -72,15 +74,51 @@ def _print_section(title: str, items: list[str]) -> None:
 
 
 def print_import_review(rows: list[ImportReviewRow]) -> None:
-    """Render review-safe candidate summaries in deterministic staging order.
+    """Render a batch summary, then one numbered line per candidate in staging order.
 
-    Every line leads with the canonical candidate id, because that id is the durable selection
-    interface for `pctx import commit` and for onboarding alike — this renderer never mints a
-    numbered shorthand a later invocation could not resolve. The status is shown so an already
-    committed row is visibly not a pending decision, and a person candidate that the staging
-    step matched to somebody already known says so rather than looking like a new identity.
+    Every line leads with the row's `#n` ordinal, which `pctx import commit --accept` and onboarding
+    select by, and ends with the canonical id, which stays the durable interface and stays
+    copyable. The status is shown so an already committed or withdrawn row is visibly not a
+    pending decision.
     """
+    print(import_review_summary(rows))
     print("Import candidates:")
+    for line in import_review_lines(rows):
+        print(f"  {line}")
+
+
+def import_review_summary(rows: list[ImportReviewRow]) -> str:
+    """Say what a batch holds before a reviewer reads it line by line.
+
+    Withdrawn rows are counted once, as withdrawn, and nowhere else: they are no longer a proposal
+    about anybody.
+    """
+    live = [row for row in rows if row.status != STAGING_STATUS_REJECTED]
+    dispositions = Counter(
+        str(row.candidate.get("match_disposition") or _person_disposition(row.candidate))
+        for row in live
+        if row.candidate["type"] == "person"
+    )
+    types = Counter(str(row.candidate["type"]) for row in live)
+    people = sum(dispositions.values())
+    parts = [
+        f"{people} people ({dispositions[MatchDisposition.UNMATCHED.value]} new, "
+        f"{dispositions[MatchDisposition.MATCHED.value]} matched, "
+        f"{dispositions[MatchDisposition.AMBIGUOUS.value]} ambiguous)"
+    ]
+    parts.extend(f"{count} {candidate_type}" for candidate_type, count in sorted(types.items()))
+    withdrawn = len(rows) - len(live)
+    return f"Summary: {'; '.join(parts)}; {withdrawn} withdrawn."
+
+
+def _person_disposition(candidate: dict[str, object]) -> str:
+    """A person row staged before dispositions were recorded is matched exactly when it names someone."""
+    matched = MatchDisposition.MATCHED if candidate.get("matched_person_id") else MatchDisposition.UNMATCHED
+    return matched.value
+
+
+def import_review_lines(rows: list[ImportReviewRow]) -> list[str]:
+    """Return one `#n  status  type  detail  id` line per row, resolving names across the whole batch."""
     person_names = {
         row.id: str(row.candidate["name"])
         for row in rows
@@ -91,6 +129,7 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
         for row in rows
         if row.candidate["type"] == "group"
     }
+    lines = []
     for row in rows:
         candidate = row.candidate
         candidate_type = candidate["type"]
@@ -121,7 +160,8 @@ def print_import_review(rows: list[ImportReviewRow]) -> None:
             detail = _import_membership(candidate, person_names, group_names)
         else:
             detail = _import_interaction(candidate, person_names)
-        print(f"  {row.id}  {row.status}  {candidate_type}  {detail}")
+        lines.append(f"#{row.ordinal}  {row.status}  {candidate_type}  {detail}  {row.id}")
+    return lines
 
 
 #: Enough participants to tell two proposed interactions apart without wrapping the line.

@@ -416,7 +416,7 @@ def test_review_renders_an_interaction_that_names_no_participants(
         ]
     )
 
-    assert "interaction-1  pending  interaction  Team retrospective · 2026-07-22 · in-person" in capsys.readouterr().out
+    assert "pending  interaction  Team retrospective · 2026-07-22 · in-person  interaction-1" in capsys.readouterr().out
 
 
 def test_review_describes_extraction_candidates_well_enough_to_accept_them_by_id(
@@ -490,14 +490,14 @@ def test_review_describes_extraction_candidates_well_enough_to_accept_them_by_id
 
     out = capsys.readouterr().out
     # Ambiguity is stated, not implied by a missing id: it is the decision the reviewer owes.
-    assert "person-1  pending  person  Alice Rivera — matches 3 existing people; identity unresolved" in out
-    assert "person-2  pending  person  Bob Chen\n" in out
-    assert "observation-1  pending  observation  Asked for concrete metrics — Alice Rivera (person-1)" in out
+    assert "pending  person  Alice Rivera — matches 3 existing people; identity unresolved  person-1" in out
+    assert "pending  person  Bob Chen  person-2\n" in out
+    assert "pending  observation  Asked for concrete metrics — Alice Rivera (person-1)  observation-1" in out
     assert (
-        "trait-1  pending  trait  communication_style=Prefers quantitative proposals "
-        "(confidence 0.65) — Alice Rivera (person-1)"
+        "pending  trait  communication_style=Prefers quantitative proposals "
+        "(confidence 0.65) — Alice Rivera (person-1)  trait-1"
     ) in out
-    assert ("relationship-1  pending  relationship  Alice Rivera (person-1) —colleague→ Bob Chen (person-2)") in out
+    assert ("pending  relationship  Alice Rivera (person-1) —colleague→ Bob Chen (person-2)  relationship-1") in out
 
 
 def test_an_undecodable_source_is_a_concise_refusal_rather_than_a_traceback(

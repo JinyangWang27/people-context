@@ -336,6 +336,9 @@ class ReviewImport:
         rows = self._staging.list_batch(batch_id)
         if not rows:
             raise ImportPipelineError("batch_not_found", f"import batch not found: {batch_id}", batch_id=batch_id)
+        # Ordinals are only usable if the next read assigns the same ones, so the order is stated
+        # here rather than inherited from whatever order a store happens to return.
+        ordered = sorted(rows, key=lambda row: (row.created_at, row.id))
         ambiguous = [row for row in rows if _is_ambiguous_person(row.candidate)]
         stored = _payload_bytes(rows)
         self._charge_worst_case(batch_id, stored, len(ambiguous), limits)
@@ -349,7 +352,10 @@ class ReviewImport:
         return ImportReviewResult(
             batch_id=batch_id,
             batch_digest=batch_digest(rows),
-            candidates=[_review_row(row, projections.get(row.id)) for row in rows],
+            candidates=[
+                _review_row(row, ordinal, projections.get(row.id))
+                for ordinal, row in enumerate(ordered, start=1)
+            ],
         )
 
     def _charge_worst_case(
@@ -422,17 +428,21 @@ def _is_ambiguous_person(candidate: dict[str, Any]) -> bool:
 
 def _review_row(
     row: StagedImportRow,
+    ordinal: int,
     projection: tuple[list[dict[str, Any]], bool] | None,
 ) -> ImportReviewRow:
     """Project one staging row for review, attaching its match options only where one is owed."""
     if projection is None:
-        return ImportReviewRow(id=row.id, source=row.source, status=row.status, candidate=row.candidate)
+        return ImportReviewRow(
+            id=row.id, source=row.source, status=row.status, candidate=row.candidate, ordinal=ordinal
+        )
     entries, truncated = projection
     return ImportReviewRow(
         id=row.id,
         source=row.source,
         status=row.status,
         candidate=row.candidate,
+        ordinal=ordinal,
         match_candidates=[MatchCandidate.model_validate(entry) for entry in entries],
         match_candidates_truncated=truncated,
     )

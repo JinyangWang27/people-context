@@ -241,8 +241,8 @@ def _run_init_vcard_import(runtime: ApplicationRuntime, path: Path, self_person:
         return 1
     print_import_review(review.candidates)
     accepted_ids = parse_candidate_selection(
-        input("Candidate IDs to accept (comma-separated): "),
-        {row.id for row in review.candidates},
+        [input("Candidates to accept (numbers, ranges, or ids; comma-separated): ")],
+        review.candidates,
     )
     if accepted_ids is None:
         return 2

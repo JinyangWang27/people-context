@@ -78,12 +78,16 @@ class ImportReviewCandidateEntry(BaseModel):
     an ambiguous person row: they name the existing people that row could be, so a reviewer can
     choose one instead of committing a guess. They are computed at read time, so two reads of the
     same batch may differ if people were merged or forgotten in between — which is the point.
+
+    `ordinal` is an additive M29.2 field: the row's stable 1-based position in staging order, the
+    number `pctx import commit --accept` and `--interactive` select by.
     """
 
     id: str
     source: str
     status: str
     candidate: dict[str, Any] = Field(default_factory=dict)
+    ordinal: int = 0
     match_candidates: list[MatchCandidate] | None = None
     match_candidates_truncated: bool = False
 
@@ -173,6 +177,7 @@ def import_review_document(result: ImportReviewResult) -> ImportReviewDocument:
                 source=row.source,
                 status=row.status,
                 candidate=row.candidate,
+                ordinal=row.ordinal,
                 match_candidates=row.match_candidates,
                 match_candidates_truncated=row.match_candidates_truncated,
             )
