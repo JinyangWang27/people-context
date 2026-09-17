@@ -505,6 +505,37 @@ class _BatchEditor:
             budget=self._budget,
         )
 
+    def _settle_receipt(
+        self,
+        session: SourceSessionRow,
+        rows: list[StagedImportRow],
+        withdrawn: list[str],
+    ) -> None:
+        """Advance the receipt to what this batch now means, journalling any change.
+
+        An unchanged status writes nothing, so withdrawing one row out of many is as silent as it
+        should be. A withdrawal that empties the batch is not: the receipt becomes `committed` if
+        anything was committed and terminal `withdrawn` if nothing was, and either is a durable
+        transition a peer replaying this database has to see.
+        """
+        if self._sources is None or self._audit is None or self._clock is None:
+            return
+        status = _session_status(rows, rejected=withdrawn)
+        if status == session.status:
+            return
+        self._sources.set_session_status(session.id, status)
+        audit_mutation(
+            self._audit,
+            self._clock,
+            op="update",
+            entity_type="import_source_session",
+            entity_id=session.id,
+            payload={"status": status},
+            replay_payload=source_session_snapshot(replace(session, status=status)),
+            changed_fields=["status"],
+            source="import",
+        )
+
 
 class AmendStagedCandidate(_BatchEditor):
     """Correct one staged candidate in place, under every rule staging applied to it.
@@ -570,36 +601,40 @@ class WithdrawStagedCandidates(_BatchEditor):
             self._settle_receipt(session, rows, withdrawn)
         return self._review.execute(batch_id, budget=self._budget)
 
-    def _settle_receipt(
-        self,
-        session: SourceSessionRow,
-        rows: list[StagedImportRow],
-        withdrawn: list[str],
-    ) -> None:
-        """Advance the receipt to what this batch now means, journalling any change.
 
-        An unchanged status writes nothing, so withdrawing one row out of many is as silent as it
-        should be. A withdrawal that empties the batch is not: the receipt becomes `committed` if
-        anything was committed and terminal `withdrawn` if nothing was, and either is a durable
-        transition a peer replaying this database has to see.
-        """
-        if self._sources is None or self._audit is None or self._clock is None:
-            return
-        status = _session_status(rows, rejected=withdrawn)
-        if status == session.status:
-            return
-        self._sources.set_session_status(session.id, status)
-        audit_mutation(
-            self._audit,
-            self._clock,
-            op="update",
-            entity_type="import_source_session",
-            entity_id=session.id,
-            payload={"status": status},
-            replay_payload=source_session_snapshot(replace(session, status=status)),
-            changed_fields=["status"],
-            source="import",
+class ApplyReviewEdits(_BatchEditor):
+    """Apply every edit an operator made to one rendered review document, or none of them.
+
+    Calling amend and withdraw row by row cannot keep the all-or-nothing promise an edited
+    document makes: each would commit its own transaction before a later row's refusal was found.
+    This validates every amendment and withdrawal against the batch as it would stand after all
+    of them, then writes them inside one unit of work that took the write lock before it read.
+
+    The digest is required rather than optional. A document is by definition a view rendered
+    earlier, so there is always a stale view to be refused.
+    """
+
+    @transactional
+    def execute(
+        self,
+        batch_id: str,
+        amendments: dict[str, dict[str, Any]],
+        withdrawals: list[str],
+        *,
+        expected_batch_digest: str,
+    ) -> ImportReviewResult:
+        withdrawn = list(dict.fromkeys(withdrawals))
+        rows, session = self._load(batch_id)
+        validated = self._validate(
+            rows, BatchEdit(amendments=amendments, withdrawals=tuple(withdrawn)), session, expected_batch_digest
         )
+        for amended_id, candidate in validated.amended.items():
+            self._staging.update_candidate(amended_id, candidate)
+        if withdrawn:
+            self._staging.mark_status(withdrawn, STAGING_STATUS_REJECTED)
+            if session is not None:
+                self._settle_receipt(session, rows, withdrawn)
+        return self._review.execute(batch_id, budget=self._budget)
 
 
 class CommitImport:

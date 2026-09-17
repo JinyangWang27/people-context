@@ -92,6 +92,10 @@ a receipt `withdrawn`.
 M29.2 added `ordinal`, a row's stable 1-based position in staging order, to the import review document and the
 `review_import` response — additive, with no format string or version change.
 
+M29.3 added the `pctx import edit` command with `--from` and `--no-commit`, and the additive import error codes
+`review_field_changed` and `invalid_review_document`. It changes no document format or version: the edited
+document is the existing version-1 import review document.
+
 **Planned, not implemented:** [M30](specs/m30-local-web-review.md) adds an additive
 top-level `truncated` to the version-1 person brief and an additive `next_cursor` to the version-1 person index.
 

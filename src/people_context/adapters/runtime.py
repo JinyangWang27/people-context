@@ -77,6 +77,7 @@ from people_context.app.groups.connections import ExplainSharedConnections
 from people_context.app.groups.queries import FindGroups, GetGroup, ListPersonMemberships
 from people_context.app.imports import (
     AmendStagedCandidate,
+    ApplyReviewEdits,
     CandidateStager,
     CommitImport,
     ImportContent,
@@ -192,6 +193,7 @@ class RuntimeUseCases:
     commit_import: CommitImport
     amend_staged_candidate: AmendStagedCandidate
     withdraw_staged_candidates: WithdrawStagedCandidates
+    apply_review_edits: ApplyReviewEdits
     stage_candidates: StageCandidates
     list_import_sources: ListImportSources
     show_import_source: ShowImportSource
@@ -417,6 +419,9 @@ def build_runtime(
             import_staging, review_import, repo, import_sources, audit, runtime_clock
         ),
         withdraw_staged_candidates=WithdrawStagedCandidates(
+            import_staging, review_import, repo, import_sources, audit, runtime_clock
+        ),
+        apply_review_edits=ApplyReviewEdits(
             import_staging, review_import, repo, import_sources, audit, runtime_clock
         ),
         commit_import=CommitImport(

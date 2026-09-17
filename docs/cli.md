@@ -17,10 +17,10 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) `import review --interactive` and
-`import edit`; and [M30](specs/m30-local-web-review.md) `browse`. Commands below describe delivered behavior,
-including M28.1 `group`, M28.2 `group shared`, M28.3's `group` and `group_membership` candidate types accepted by
-`import stage-candidates`, and M29.1 `import amend` and `import reject`.
+**Planned, not implemented:** [M30](specs/m30-local-web-review.md) `browse`. Commands below describe delivered
+behavior, including M28.1 `group`, M28.2 `group shared`, M28.3's `group` and `group_membership` candidate types
+accepted by `import stage-candidates`, M29.1 `import amend` and `import reject`, M29.2
+`import review --interactive`, and M29.3 `import edit`.
 
 | Command | Purpose |
 |---|---|
@@ -60,6 +60,7 @@ including M28.1 `group`, M28.2 `group shared`, M28.3's `group` and `group_member
 | `import review BATCH_ID [--json\|--interactive]` | Show a batch summary and every staged candidate numbered `#n`, with its status and canonical id; `--interactive` steps through the pending ones. |
 | `import amend BATCH_ID CANDIDATE_ID --patch JSON\|- [--json]` | Correct one staged candidate in place; nothing is committed. |
 | `import reject BATCH_ID CANDIDATE_ID... [--json]` | Withdraw staged candidates so they are listed but never committed. |
+| `import edit BATCH_ID [--no-commit\|--from FILE\|-]` | Edit the batch's review document in `$VISUAL`/`$EDITOR`: a deleted row is withdrawn, a changed candidate amended. |
 | `import commit BATCH_ID --all\|--accept SELECTION... [--json]` | Commit the explicitly accepted candidates of one batch. |
 | `sources [--limit N] [--cursor CURSOR] [--json]` | List local import receipts newest-first, one bounded keyset page at a time. |
 | `source show SOURCE_SESSION_ID [--limit N] [--cursor CURSOR] [--json]` | Show one receipt, its aggregate candidate counts, and one bounded page of committed candidate outcomes. |
@@ -128,6 +129,8 @@ uv run pctx import reject 01J...BATCH 01J...CANDIDATE 01J...OTHER
 uv run pctx import commit 01J...BATCH --accept 01J...CANDIDATE --accept 01J...OTHER
 uv run pctx import commit 01J...BATCH --accept 1,3-5 01J...CANDIDATE
 uv run pctx import review 01J...BATCH --interactive
+uv run pctx import edit 01J...BATCH
+uv run pctx import review 01J...BATCH --json > batch.json && $EDITOR batch.json && uv run pctx import edit 01J...BATCH --from batch.json
 uv run pctx import commit 01J...BATCH --all
 ```
 
@@ -152,6 +155,21 @@ takes one. Withdrawals and edits are written as you make them; accepted candidat
 last pending row is decided, and `q` commits nothing. If another client changes the batch mid-loop, the next action
 refuses, every acceptance collected so far is discarded, and the loop starts over on the current batch, so nothing
 is committed that you did not see as it now stands. `--interactive` and `--json` refuse together.
+
+`import edit BATCH_ID` writes the batch's review JSON document to an owner-only (`0600`) temporary file, opens it
+with `$VISUAL`, then `$EDITOR` (split like a shell word list, run without a shell), and applies what you saved: a
+deleted row is withdrawn, a row whose `candidate` changed is amended, and an untouched row is left alone. Only a
+row's `candidate` is editable; changing `status`, `source`, `ordinal`, `id`, `match_candidates`, or any document
+field refuses the whole apply with `review_field_changed`, and adding a row refuses too. The apply is
+all-or-nothing: one invalid row refuses every edit, naming the row index and field without echoing the value. If
+another client changed the batch after the document was rendered, the apply refuses with `batch_changed`. An
+editor that exits non-zero applies nothing, and with neither variable set the command exits 2. The temporary file
+is removed in every case. After a successful apply, the batch summary is printed and `Commit N pending candidates?
+[y/N]` is asked on the controlling terminal; `--no-commit` skips the question. `--from FILE` (or `-` for stdin)
+applies an already-edited document without an editor and never asks, leaving commit to `import commit`; it refuses
+together with `--no-commit`. The edited document is read under a bound derived from the batch — its current
+rendered size plus the remaining staged-payload headroom at the renderer's worst-case expansion — so an unchanged
+document always applies back, however large.
 
 `import review` and `import commit` also read a batch an agent staged over MCP, so they render the full
 candidate vocabulary — including the `observation`, `trait`, and `relationship` types M17 added. A person

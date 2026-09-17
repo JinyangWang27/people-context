@@ -290,7 +290,7 @@ or durable speculative memberships. M28 is independent of M27.
 
 ## M29 — Editable staging and ergonomic review
 
-**Status:** M29.1 and M29.2 shipped; M29.3 planned.
+**Status:** Delivered.
 
 Amend and withdraw staged candidates in place, without a migration: `status` gains the additive value `rejected`
 on the existing `TEXT` column. MCP gains `amend_candidate` and `withdraw_candidates`; chat guidance in the usage

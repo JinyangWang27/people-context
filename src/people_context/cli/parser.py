@@ -616,6 +616,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the refreshed review JSON document for the whole batch.",
     )
 
+    import_edit = import_subcommands.add_parser(
+        "edit",
+        help="Edit a staged batch's review document in $VISUAL or $EDITOR, then apply it.",
+    )
+    import_edit.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
+    edit_mode = import_edit.add_mutually_exclusive_group()
+    edit_mode.add_argument(
+        "--from",
+        dest="from_file",
+        metavar="FILE",
+        default=None,
+        help="Apply an already-edited review document from FILE, or `-` for stdin, without opening an editor.",
+    )
+    edit_mode.add_argument(
+        "--no-commit",
+        action="store_true",
+        help="Apply the edits without asking whether to commit the pending candidates.",
+    )
+
     import_commit = import_subcommands.add_parser("commit", help="Commit accepted candidates from one batch.")
     import_commit.add_argument("batch_id", help="Batch id reported by `pctx import stage`.")
     selection = import_commit.add_mutually_exclusive_group(required=True)
