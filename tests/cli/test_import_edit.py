@@ -559,3 +559,27 @@ def test_the_read_bound_is_measured_from_the_rendered_rows(
     assert _edit(db_file, batch_id, "--from", "-") == 0
 
     assert captured == seen == [stored]
+
+
+@pytest.mark.parametrize("from_stdin", [False, True])
+def test_an_unchanged_document_with_crlf_line_endings_fits_the_bound(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, from_stdin: bool
+) -> None:
+    """A batch at the ceiling leaves no headroom, so the bound is exactly the LF-rendered document."""
+    db_file = tmp_path / "people.db"
+    batch_id = _stage(db_file, tmp_path, capsys)
+    assert cli.main(["--db", str(db_file), "import", "review", batch_id, "--json"]) == 0
+    rendered = capsys.readouterr().out
+    monkeypatch.setattr(cli_imports, "edited_document_read_bound", lambda *args, **kwargs: len(rendered.encode()))
+    crlf = rendered.replace("\n", "\r\n").encode("utf-8")
+    if from_stdin:
+        monkeypatch.setattr(sys, "stdin", _Stdin(crlf))
+        source = "-"
+    else:
+        path = tmp_path / "crlf.json"
+        path.write_bytes(crlf)
+        source = str(path)
+
+    assert _edit(db_file, batch_id, "--from", source) == 0
+
+    assert "Applied 0 amendments and 0 withdrawals." in capsys.readouterr().out

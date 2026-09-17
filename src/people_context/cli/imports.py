@@ -557,29 +557,41 @@ def _edit_in_editor(editor: list[str], rendered_text: str, bound: int) -> str | 
 
 
 def _read_edited_document(raw_input: str, bound: int) -> str | None:
-    """Return an edited review document read under the batch-derived bound, or None once refused."""
+    """Return an edited review document read under the batch-derived bound, or None once refused.
+
+    The bound counts the document as rendered, with `\n` line endings. A file saved on Windows, or by
+    an editor that writes `\r\n`, carries one more byte per line, so the raw read may take up to twice
+    the bound and the bound is then enforced on the text with `\r\n` normalized — still a finite read.
+    """
     too_large = f"{INVALID_REVIEW_DOCUMENT}: the edited review document grew past what this batch can hold"
+    raw_limit = 2 * bound
     if raw_input == "-":
-        raw = sys.stdin.buffer.read(bound + 1)
-        if len(raw) > bound:
+        raw = sys.stdin.buffer.read(raw_limit + 1)
+        if len(raw) > raw_limit:
             _refuse(too_large)
             return None
         try:
-            return raw.decode("utf-8")
+            text = raw.decode("utf-8")
         except UnicodeDecodeError:
             _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is not valid UTF-8")
             return None
-    path = _readable_source(raw_input)
-    if path is None:
+    else:
+        path = _readable_source(raw_input)
+        if path is None:
+            return None
+        try:
+            text = read_source_text(str(path), encoding="utf-8", max_bytes=raw_limit)
+        except ImportExtractionError as exc:
+            _refuse(too_large if exc.code == SOURCE_TOO_LARGE else f"cannot read review document: {exc}")
+            return None
+        except OSError as exc:
+            _refuse(f"cannot read review document: {exc}")
+            return None
+    normalized = text.replace("\r\n", "\n")
+    if len(normalized.encode("utf-8")) > bound:
+        _refuse(too_large)
         return None
-    try:
-        return read_source_text(str(path), encoding="utf-8", max_bytes=bound)
-    except ImportExtractionError as exc:
-        _refuse(too_large if exc.code == SOURCE_TOO_LARGE else f"cannot read review document: {exc}")
-        return None
-    except OSError as exc:
-        _refuse(f"cannot read review document: {exc}")
-        return None
+    return normalized
 
 
 def _print_edit_locator(exc: ImportPipelineError, edited: object, review: ImportReviewResult) -> None:
