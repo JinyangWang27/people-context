@@ -286,7 +286,7 @@ class ImportContent:
 #: Charging a worst case up front is the point: the refusal has to come before the reads it
 #: prevents, so an oversized ambiguous batch is refused like any other rather than rendered row by
 #: row first. The three parts are stated separately because they are three different arguments.
-_MATCH_CANDIDATE_WORST_CASE_BYTES: Final = (
+MATCH_CANDIDATE_WORST_CASE_BYTES: Final = (
     # The cut canonical name, at UTF-8's worst case: a cap in characters says nothing about bytes.
     (MAX_MATCH_CANDIDATE_NAME_CHARS * 4)
     # The person id, held to the same character bound. Ids this installation mints are short, and
@@ -371,7 +371,7 @@ class ReviewImport:
         limit = limits.max_staged_payload_bytes
         if limit is None or self._people is None:
             return
-        projected = ambiguous * MAX_MATCH_CANDIDATES * _MATCH_CANDIDATE_WORST_CASE_BYTES
+        projected = ambiguous * MAX_MATCH_CANDIDATES * MATCH_CANDIDATE_WORST_CASE_BYTES
         if stored + projected > limit:
             raise _oversized_review(batch_id, limit)
 

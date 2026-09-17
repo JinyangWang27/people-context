@@ -13,13 +13,15 @@ names the row index and a field this document declares, and shows any other key 
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from math import ceil
 from typing import Any, Final
 
 from people_context.app.imports.amendment import REDACTED_FIELD
 from people_context.app.imports.documents import ImportReviewCandidateEntry, ImportReviewDocument
-from people_context.app.imports.models import ImportPipelineError
+from people_context.app.imports.models import MAX_MATCH_CANDIDATES, ImportPipelineError
+from people_context.app.imports.workflow import MATCH_CANDIDATE_WORST_CASE_BYTES
 
 #: Refusal for an edit to anything the review document renders other than a row's `candidate`.
 REVIEW_FIELD_CHANGED: Final = "review_field_changed"
@@ -58,6 +60,12 @@ _EDITABLE_ROW_FIELD: Final = "candidate"
 #: excludes them so an unrelated merge does not invalidate a reviewer's decision.
 _PROJECTED_ROW_FIELDS: Final = frozenset({"match_candidates", "match_candidates_truncated"})
 
+#: Rendered bytes one `match_candidates` entry adds beyond its id and name, and one row's list adds
+#: beyond its entries: newlines, indentation, keys, and punctuation at the entries' fixed depth.
+#: `tests/app/imports/test_apply_review_edits.py` pins both.
+RENDERED_MATCH_ENTRY_OVERHEAD: Final = 128
+RENDERED_MATCH_LIST_OVERHEAD: Final = 64
+
 
 @dataclass(frozen=True)
 class ReviewEdits:
@@ -67,15 +75,31 @@ class ReviewEdits:
     withdrawals: list[str] = field(default_factory=list)
 
 
-def edited_document_read_bound(rendered_bytes: int, payload_bytes: int, payload_limit: int) -> int:
+def edited_document_read_bound(
+    rendered_bytes: int,
+    payload_bytes: int,
+    payload_limit: int,
+    *,
+    stale_projection_rows: int = 0,
+) -> int:
     """Return how many bytes of edited review document may be read for one batch.
 
     Derived from the batch rather than from a request bound: the document as rendered now, plus
     the headroom left under the staged-payload ceiling at the renderer's worst-case expansion. An
     unchanged document therefore always fits, and growth the ceiling could never admit is refused
     before it is parsed. Whatever is read is still re-measured against the ceiling when applied.
+
+    `stale_projection_rows` counts ambiguous rows whose `match_candidates` may have been rendered by
+    an earlier command (`--from`). Those projections follow the person table, so a saved document
+    can carry more of them than a fresh render; each such row is allowed the same worst case the
+    review read already charges against the ceiling. No candidate growth comes out of that allowance
+    that re-measurement would not refuse.
     """
-    return rendered_bytes + max(0, payload_limit - payload_bytes) * RENDERED_EXPANSION
+    projection_allowance = stale_projection_rows * (
+        MAX_MATCH_CANDIDATES * (MATCH_CANDIDATE_WORST_CASE_BYTES + RENDERED_MATCH_ENTRY_OVERHEAD)
+        + RENDERED_MATCH_LIST_OVERHEAD
+    )
+    return rendered_bytes + max(0, payload_limit - payload_bytes) * RENDERED_EXPANSION + projection_allowance
 
 
 def review_document_edits(
@@ -96,9 +120,9 @@ def review_document_edits(
         raise _invalid("the edited review document must be a JSON object")
     _require_same_fields(edited, rendered, _DOCUMENT_FIELDS, location="document")
     for name in ("format", "version", "batch_id"):
-        if edited[name] != rendered[name]:
+        if not _same_json(edited[name], rendered[name]):
             raise _changed(f"document.{name}")
-    if edited["batch_digest"] != rendered["batch_digest"]:
+    if not _same_json(edited["batch_digest"], rendered["batch_digest"]):
         raise ImportPipelineError(
             "batch_changed",
             "the batch changed since this review document was rendered; review it again before editing",
@@ -127,21 +151,34 @@ def review_document_edits(
         if not projections_current:
             compared -= _PROJECTED_ROW_FIELDS
         for name in sorted(compared):
-            if row[name] != original[name]:
+            if not _same_json(row[name], original[name]):
                 raise _changed(f"candidates[{index}].{name}", index=index, field=name)
         candidate = row[_EDITABLE_ROW_FIELD]
-        if candidate == original[_EDITABLE_ROW_FIELD]:
+        if _same_json(candidate, original[_EDITABLE_ROW_FIELD]):
             continue
         if not isinstance(candidate, dict):
             raise _invalid(f"candidates[{index}].candidate must be a JSON object", index=index)
         stored = original[_EDITABLE_ROW_FIELD]
-        patch = {name: value for name, value in candidate.items() if name not in stored or stored[name] != value}
+        patch = {
+            name: value
+            for name, value in candidate.items()
+            if name not in stored or not _same_json(stored[name], value)
+        }
         # A shallow patch cannot delete a key, so a removed field is sent as null: an optional field
         # is cleared, and a required one is refused by validation under its own declared name.
         patch.update({name: None for name in stored if name not in candidate})
         edits.amendments[original["id"]] = patch
     edits.withdrawals.extend(row["id"] for row in rendered["candidates"] if row["id"] not in claimed)
     return edits
+
+
+def _same_json(left: Any, right: Any) -> bool:
+    """Compare two JSON values with their JSON types, which Python equality conflates.
+
+    `1 == True` and `1 == 1.0` hold in Python, so an edit turning a number into a boolean would
+    otherwise read as untouched and skip the validation that refuses it.
+    """
+    return json.dumps(left, sort_keys=True, ensure_ascii=False) == json.dumps(right, sort_keys=True, ensure_ascii=False)
 
 
 def _address(

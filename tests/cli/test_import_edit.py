@@ -422,7 +422,9 @@ def test_a_document_past_the_read_bound_is_refused_before_it_is_parsed(
     doc = _review(db_file, batch_id, capsys)
     path = tmp_path / "grown.json"
     path.write_text(json.dumps(doc, indent=2) + " " * 64, encoding="utf-8")
-    monkeypatch.setattr(cli_imports, "edited_document_read_bound", lambda *args: len(json.dumps(doc, indent=2)))
+    monkeypatch.setattr(
+        cli_imports, "edited_document_read_bound", lambda *args, **kwargs: len(json.dumps(doc, indent=2))
+    )
 
     def never_parse(*args: object) -> None:
         raise AssertionError("an oversized document must not be diffed")
@@ -490,3 +492,10 @@ def test_a_malformed_row_ordinal_is_never_echoed(
     err = capsys.readouterr().err
     assert "candidate_not_in_batch" in err
     assert "private note" not in err
+
+
+def test_the_terminal_prompt_uses_the_console_devices_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli_imports.os, "name", "nt")
+    assert cli_imports._terminal_paths() == ("CONIN$", "CONOUT$")
+    monkeypatch.setattr(cli_imports.os, "name", "posix")
+    assert cli_imports._terminal_paths() == ("/dev/tty", "/dev/tty")

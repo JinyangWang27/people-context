@@ -447,7 +447,13 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
     rendered_text = render_import_json(document)
     limit = CLI_IMPORT_BUDGET.max_staged_payload_bytes
     bound = edited_document_read_bound(
-        len(rendered_text.encode("utf-8")), size.payload_bytes, limit if limit is not None else 0
+        len(rendered_text.encode("utf-8")),
+        size.payload_bytes,
+        limit if limit is not None else 0,
+        # Only a document rendered by an earlier command can carry projections this render lacks.
+        stale_projection_rows=(
+            sum(row.match_candidates is not None for row in review.candidates) if args.from_file is not None else 0
+        ),
     )
     if args.from_file is None:
         editor = _configured_editor()
@@ -586,13 +592,21 @@ def _print_edit_locator(exc: ImportPipelineError, edited: object, review: Import
             print(f"  at candidates[{index}] (#{ordinals[candidate_id]})", file=sys.stderr)
 
 
+def _terminal_paths() -> tuple[str, str]:
+    """Return the controlling terminal's input and output device for this platform."""
+    if os.name == "nt":
+        return "CONIN$", "CONOUT$"
+    return "/dev/tty", "/dev/tty"
+
+
 def _confirm_on_terminal(prompt: str) -> bool:
     """Ask on the controlling terminal, never on a pipe; no terminal means no."""
+    input_path, output_path = _terminal_paths()
     try:
-        with open("/dev/tty", "r+", encoding="utf-8") as tty:
-            tty.write(prompt)
-            tty.flush()
-            answer = tty.readline()
+        with open(output_path, "w", encoding="utf-8") as output, open(input_path, encoding="utf-8") as terminal:
+            output.write(prompt)
+            output.flush()
+            answer = terminal.readline()
     except OSError:
         return False
     return answer.strip().casefold() in {"y", "yes"}

@@ -18,9 +18,12 @@ import pytest
 
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.imports import (
+    MAX_MATCH_CANDIDATE_NAME_CHARS,
+    MAX_MATCH_CANDIDATES,
     RENDERED_EXPANSION,
     ImportBudget,
     ImportPipelineError,
+    MatchCandidate,
     edited_document_read_bound,
     import_review_document,
     render_import_json,
@@ -323,3 +326,54 @@ def test_the_pinned_depth_is_the_deepest_indent_the_renderer_emits() -> None:
 def test_an_unchanged_document_always_fits_its_read_bound() -> None:
     assert edited_document_read_bound(1000, payload_bytes=500, payload_limit=400) == 1000
     assert edited_document_read_bound(1000, payload_bytes=390, payload_limit=400) == 1000 + 10 * RENDERED_EXPANSION
+
+
+# --- review fixes: JSON types and stale projections ------------------------
+
+
+def test_a_number_turned_into_a_boolean_is_an_edit_not_a_no_op(runtime: ApplicationRuntime) -> None:
+    """`1 == True` in Python; an edit to a computed count must still reach validation."""
+    batch_id = _stage(runtime)
+    rendered = _document(runtime, batch_id)
+    edited = copy.deepcopy(rendered)
+    edited["candidates"][0]["candidate"]["match_count"] = False  # stored as 0, and 0 == False in Python
+    edited["candidates"].pop(5)
+
+    edits = review_document_edits(rendered, edited)
+
+    assert edits.amendments == {rendered["candidates"][0]["id"]: {"match_count": False}}
+    with pytest.raises(ImportPipelineError):
+        _apply(runtime, rendered, edited)
+    assert _document(runtime, batch_id) == rendered
+
+
+def test_a_version_turned_into_a_boolean_refuses() -> None:
+    rendered = {"format": "f", "version": 1, "batch_id": "b", "batch_digest": "d", "candidates": []}
+
+    with pytest.raises(ImportPipelineError) as raised:
+        review_document_edits(rendered, {**rendered, "version": True})
+
+    assert raised.value.code == "review_field_changed"
+
+
+def test_a_saved_document_with_larger_stale_projections_fits_its_read_bound() -> None:
+    long_id = "i" * MAX_MATCH_CANDIDATE_NAME_CHARS
+    long_name = "\U0001f600" * MAX_MATCH_CANDIDATE_NAME_CHARS
+    person = {**_PERSON, "match_disposition": "ambiguous", "match_count": 12}
+
+    def document(entries: list[MatchCandidate]) -> bytes:
+        entry = ImportReviewCandidateEntry(
+            id="c", source="s", status="pending", candidate=person, ordinal=1,
+            match_candidates=entries, match_candidates_truncated=bool(entries),
+        )
+        return render_import_json(ImportReviewDocument(batch_id="b", candidates=[entry])).encode("utf-8")
+
+    saved = document(
+        [MatchCandidate(id=long_id, canonical_name=long_name, name_truncated=True)] * MAX_MATCH_CANDIDATES
+    )
+    fresh = document([])
+
+    bound = edited_document_read_bound(len(fresh), payload_bytes=100, payload_limit=100, stale_projection_rows=1)
+
+    assert len(saved) <= bound
+    assert edited_document_read_bound(len(fresh), payload_bytes=100, payload_limit=100) < len(saved)
