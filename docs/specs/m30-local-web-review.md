@@ -1,6 +1,6 @@
 # M30 — Local web view, review, and edit
 
-Status: M30.1 implemented; M30.2 and M30.3 planned.
+Status: M30.1 and M30.2 implemented; M30.3 planned.
 See [roadmap](../roadmap.md#m30--local-web-view-review-and-edit) and
 [PR checklist](pr-plan.md#m30--local-web-view-review-and-edit).
 

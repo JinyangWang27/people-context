@@ -947,7 +947,7 @@ independent of M28.3.
     a JavaScript framework or build step, editing durable records, displaying sensitive records without the
     existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.
 
-- [ ] **M30.2 — Batch review in the browser**
+- [x] **M30.2 — Batch review in the browser**
   - **Scope:** Depends on M29.1 and M29.2. Add one batch page listing candidates ordered by `ordinal`, with a checkbox
     on each `pending` row, a one-line candidate summary, person-candidate match state, and a status badge with no
     checkbox on withdrawn/committed rows; a header carrying the batch id and counts by status, with no source label or

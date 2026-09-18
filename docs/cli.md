@@ -17,10 +17,10 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** M30.2 batch review and M30.3 inline edit in the
+**Planned, not implemented:** M30.3 inline edit in the
 [browser](specs/m30-local-web-review.md). Commands below describe delivered behavior, including M28.1 `group`, M28.2
 `group shared`, M28.3's `group` and `group_membership` candidate types accepted by `import stage-candidates`, M29.1
-`import amend` and `import reject`, M29.2 `import review --interactive`, M29.3 `import edit`, and M30.1 `browse`.
+`import amend` and `import reject`, M29.2 `import review --interactive`, M29.3 `import edit`, M30.1 `browse`, and M30.2 browser batch review.
 
 | Command | Purpose |
 |---|---|
@@ -36,7 +36,7 @@ what encryption does and does not protect.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N]` | Serve a read-only local page of people, one person's brief, and import sources on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N]` | Serve a local page of people, one person's brief, import sources, and staged-batch review (withdraw and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
@@ -569,9 +569,10 @@ uv run pctx browse
 uv run pctx browse --open --port 8766
 ```
 
-Serves one read-only page on `127.0.0.1` for whoever finds a table easier than a terminal: the people list, one
-person's brief, and the import sources with each receipt's staged counts. It is a fourth client of the reads
-`pctx list --json`, `pctx brief`, `pctx sources`, and `pctx source show` already call, and records nothing. It is
+Serves one page on `127.0.0.1` for whoever finds a table easier than a terminal: the people list, one person's
+brief, the import sources with each receipt's staged counts, and review of one staged batch. It is a fourth client
+of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import review`,
+`pctx import reject`, and `pctx import commit` already call; it writes only through the last two. It is
 not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or configuration, and
 two launches are two unrelated processes.
 
@@ -604,6 +605,26 @@ were cut at their bound. A source opens to its receipt and its `staged_total` an
 committed mappings name and count durable records without a disclosure filter, so they never leave the process
 and remain with the operator-only `pctx source show`. A forgotten (redacted) source's counts are withheld, sent as `null` and
 shown as withheld, never as zero.
+
+The batch page (M30.2) opens from a source's receipt, or by typing a batch id on the sources view, which is how a
+batch staged without a receipt is reached. It lists every row in `pctx import review` order — the same `#n`
+ordinals and the same one-line description, withdrawn and committed rows included with a status badge — plus each
+person row's match state (new, matches an existing person, or ambiguous with its count) and the staged candidate
+verbatim, under the review disclosure warning. As in `pctx import review`, staged candidates are shown unfiltered,
+including a `sensitive` fact, because the reviewer must see what they would commit. The header carries the batch
+id and counts by status only.
+
+Pending rows have a checkbox. **Accept selected** writes nothing; it marks rows for the commit, as `pctx import
+review --interactive` does. **Withdraw selected** calls the same use case as `pctx import reject`, and **Commit
+accepted** the same as `pctx import commit`, after one confirmation that names how many rows were accepted. The
+result reports the committed, unresolved, and already-committed counts: an accepted ambiguous person, and a fact
+that resolves through it, are reported unresolved rather than committed. There is no auto-commit and no control
+that selects every row. Both writes send the `batch_digest` of the review on screen, so if another tab, a CLI
+command, or an MCP client amended, withdrew, or committed anything in the batch since, the whole action is refused
+with `batch_changed` and nothing is written. A refusal is shown by its use-case code alone — `batch_changed`,
+`candidate_withdrawn`, `candidate_not_pending`, and the rest — never the refused payload. After every action the
+page reads the batch again; acceptances made against a batch that has since changed elsewhere are discarded. The
+same ceilings that bound `pctx import review` bound the batch page.
 
 ## Person index
 

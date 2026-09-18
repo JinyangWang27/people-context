@@ -482,8 +482,9 @@ The same lifecycle is available to a person at the terminal through `pctx import
 adds no source type, no candidate type, and no matching or commit policy of its own, and it keeps the review gate
 as separate commands because a staged batch is durable review state that may be inspected in a later invocation.
 
-**Planned, not implemented:** [M30](specs/m30-local-web-review.md) adds a loopback-only browser page over the
-same use cases.
+[M30](specs/m30-local-web-review.md) adds a loopback-only browser page over the same use cases: M30.2's batch
+review withdraws and commits through `WithdrawStagedCandidates` and `CommitImport` with the displayed
+`batch_digest` (see [cli.md](cli.md#local-browser-viewer)). M30.3 inline edit is planned, not implemented.
 
 ### Correcting a batch before committing it (M29.1)
 
