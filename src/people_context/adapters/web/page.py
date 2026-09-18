@@ -111,11 +111,22 @@ async function api(path, options) {
   return body;
 }
 
+// Every view and every batch action takes a navigation number before it awaits, and renders only
+// if nothing was opened since: a slow response must not paint over the view the user moved to, nor
+// carry one batch's result or digest into another.
+let navigation = 0;
+
+function navigate() {
+  navigation += 1;
+  return navigation;
+}
+
 function show(title, ...nodes) {
   view.replaceChildren(el("h2", title), ...nodes);
 }
 
-function fail(error) {
+function fail(error, at) {
+  if (at !== undefined && at !== navigation) return;
   view.replaceChildren(el("p", "Error: " + error.message, "error"));
 }
 
@@ -152,8 +163,10 @@ function pager(back, cursor, nextCursor, open) {
 }
 
 async function showPeople(cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const rows = doc.people.map((person) => [
     button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
     person.aliases.join(", "),
@@ -168,8 +181,10 @@ async function showPeople(cursor, back) {
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
 async function showPerson(personId, cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const identity = el("dl");
   const fields = [
     ["Aliases", doc.person.aliases.join(", ") || "(none)"],
@@ -194,8 +209,10 @@ async function showPerson(personId, cursor, back) {
 }
 
 async function showSources(cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/sources" + query({ cursor })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/sources" + query({ cursor })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const rows = doc.sources.map((source) => [
     button(source.source_kind, () => showSource(source.id, cursor, back), "link"),
     source.label,
@@ -220,8 +237,10 @@ async function showSources(cursor, back) {
 }
 
 async function showSource(sourceId, cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const details = el("dl");
   const fields = [
     ["Source", doc.source.id],
@@ -266,8 +285,10 @@ async function showBatch(batchId, message, baseline) {
     || (batchState.id === batchId && batchState.review ? batchState.review.batch_digest : null);
   batchState.id = batchId;
   batchState.message = message || null;
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/batch" + query({ id: batchId })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/batch" + query({ id: batchId })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   if (shown !== null && doc.review.batch_digest !== shown && batchState.accepted.size) {
     batchState.accepted = new Set();
     batchState.message = (batchState.message ? batchState.message + " " : "")
@@ -343,6 +364,8 @@ async function batchAction(path, ids) {
 
 async function withdrawSelected(ids) {
   if (!ids.length) return;
+  const at = navigate();
+  const batchId = batchState.id;
   let message;
   let baseline;
   try {
@@ -350,7 +373,7 @@ async function withdrawSelected(ids) {
     message = "Withdrew " + result.withdrawn + ".";
     baseline = result.batch_digest;
   } catch (error) { message = "Refused: " + error.message; }
-  return showBatch(batchState.id, message, baseline);
+  if (at === navigation) return showBatch(batchId, message, baseline);
 }
 
 // One explicit click, on a confirmation naming how many were accepted. The result may commit
@@ -368,6 +391,8 @@ function confirmCommit(area) {
 }
 
 async function commitAccepted() {
+  const at = navigate();
+  const batchId = batchState.id;
   const ids = Array.from(batchState.accepted);
   batchState.accepted = new Set();
   let message;
@@ -376,7 +401,7 @@ async function commitAccepted() {
     message = "Committed " + result.committed_ids.length + "; " + result.unresolved_ids.length
       + " unresolved; " + result.skipped_ids.length + " already committed.";
   } catch (error) { message = "Refused: " + error.message; }
-  return showBatch(batchState.id, message);
+  if (at === navigation) return showBatch(batchId, message);
 }
 
 async function done() {

@@ -715,3 +715,28 @@ def test_the_batch_page_confirms_a_commit_by_count_and_offers_no_select_all(db_f
     assert "/api/batch/accept" not in page
     assert "select all" not in page.casefold() and "selectall" not in page.casefold()
     assert REVIEW_DISCLOSURE_WARNING in page
+
+
+def test_a_late_response_never_renders_over_the_view_the_user_moved_to(db_file: Path) -> None:
+    """A withdrawal or commit that completes after the user opened another view or batch is dropped.
+
+    Its continuation refreshes the batch it was started on, captured before the request, and only
+    while no navigation happened since; every view's own fetch is held to the same rule.
+    """
+    with _client(db_file) as client:
+        page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
+    script = page[page.index("<script") :]
+    for view in ("showPeople", "showPerson", "showSources", "showSource", "showBatch"):
+        body = script[script.index(f"async function {view}(") :]
+        body = body[: body.index("\n}\n")]
+        assert "const at = navigate();" in body and "if (at !== navigation) return;" in body, view
+    for action, refresh in (
+        ("withdrawSelected", "showBatch(batchId, message, baseline)"),
+        ("commitAccepted", "showBatch(batchId, message)"),
+    ):
+        body = script[script.index(f"async function {action}(") :]
+        body = body[: body.index("\n}\n")]
+        assert body.index("const at = navigate();") < body.index("await ")
+        assert body.index("const batchId = batchState.id;") < body.index("await ")
+        assert f"if (at === navigation) return {refresh};" in body
+        assert "showBatch(batchState.id" not in body
