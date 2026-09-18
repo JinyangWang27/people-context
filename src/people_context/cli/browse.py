@@ -43,15 +43,16 @@ _LOG_CONFIG: dict[str, Any] = {
 }
 
 
-def _address_reuse_option() -> int:
+def _address_reuse_option() -> int | None:
     """Return the bind option that keeps a busy port refused while allowing a prompt restart.
 
-    Elsewhere `SO_REUSEADDR` lets a port left in TIME_WAIT by the last session be bound again at
-    once, while a port another socket listens on is still refused. On Windows the same option would
-    let a second listener share a busy port, so the exclusive option is used there instead.
+    On POSIX, `SO_REUSEADDR` lets a port left in TIME_WAIT by the last session be bound again at
+    once while a port another socket listens on is still refused. Windows' default bind already
+    behaves that way; there `SO_REUSEADDR` would share a busy port and `SO_EXCLUSIVEADDRUSE` would
+    delay the restart, so no option is set — the same choice asyncio's `create_server` makes.
     """
     if sys.platform == "win32":
-        return socket.SO_EXCLUSIVEADDRUSE
+        return None
     return socket.SO_REUSEADDR
 
 
@@ -61,7 +62,9 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         print("Error: --port must be between 0 and 65535.", file=sys.stderr)
         return 2
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.setsockopt(socket.SOL_SOCKET, _address_reuse_option(), 1)
+    reuse_option = _address_reuse_option()
+    if reuse_option is not None:
+        listener.setsockopt(socket.SOL_SOCKET, reuse_option, 1)
     try:
         listener.bind((LOOPBACK_HOST, args.port))
         listener.listen()

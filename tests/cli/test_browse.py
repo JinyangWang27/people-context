@@ -203,12 +203,11 @@ def test_a_fixed_port_can_be_reused_straight_after_a_session(
     assert capsys.readouterr().out.startswith(f"http://127.0.0.1:{port}/")
 
 
-def test_windows_binds_the_port_exclusively(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_windows_keeps_its_default_bind(monkeypatch: pytest.MonkeyPatch) -> None:
     from people_context.cli import browse
 
-    # SO_REUSEADDR on Windows would let a second listener share a busy port.
+    # SO_REUSEADDR on Windows would share a busy port; SO_EXCLUSIVEADDRUSE would delay a restart.
     monkeypatch.setattr(browse.sys, "platform", "win32")
-    monkeypatch.setattr(socket, "SO_EXCLUSIVEADDRUSE", -5, raising=False)
-    assert browse._address_reuse_option() == -5
+    assert browse._address_reuse_option() is None
     monkeypatch.setattr(browse.sys, "platform", "linux")
     assert browse._address_reuse_option() == socket.SO_REUSEADDR
