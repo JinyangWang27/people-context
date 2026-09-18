@@ -8,6 +8,7 @@ identity level, carrying no facts, interactions, traits, or reminders at any sen
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Final
 
@@ -108,26 +109,55 @@ class ListPersonIndex:
                 f"limit must be between {MIN_PERSON_PAGE_LIMIT} and {MAX_PERSON_PAGE_LIMIT}",
                 code=INVALID_PERSON_PAGE_LIMIT,
             )
-        after = None
-        if cursor is not None:
-            try:
-                after = decode_cursor(cursor, scope=PERSON_INDEX_SCOPE)
-            except ValueError as exc:
-                raise PersonIndexError(str(exc), code=INVALID_PERSON_CURSOR) from None
+        after = None if cursor is None else self._anchor(cursor)
         rows = self._people.page_people(limit=limit + 1, after_person_id=after)
         if rows is None:
             raise PersonIndexError("this cursor no longer names a person", code=INVALID_PERSON_CURSOR)
         page = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit:
+            anchor = page[-1]
+            next_cursor = encode_cursor(PERSON_INDEX_SCOPE, _name_digest(anchor.canonical_name) + anchor.id)
         return PersonIndexDocument(
             generated_at=self._clock.now(),
             people=[_entry(person) for person in page],
-            next_cursor=encode_cursor(PERSON_INDEX_SCOPE, page[-1].id) if len(rows) > limit else None,
+            next_cursor=next_cursor,
         )
+
+    def _anchor(self, cursor: str) -> str:
+        """Return the id a cursor resumes after, refusing one whose person moved in the order.
+
+        The store resolves the anchor's *current* position, so a rename between two pages would
+        resume from the wrong place and skip or repeat people. The cursor therefore also carries a
+        digest of the name it was issued under, and a changed name refuses rather than continues.
+        """
+        try:
+            key = decode_cursor(cursor, scope=PERSON_INDEX_SCOPE)
+        except ValueError as exc:
+            raise PersonIndexError(str(exc), code=INVALID_PERSON_CURSOR) from None
+        digest, person_id = key[:_NAME_DIGEST_CHARS], key[_NAME_DIGEST_CHARS:]
+        anchor = self._people.get(person_id) if person_id else None
+        if anchor is None:
+            raise PersonIndexError("this cursor no longer names a person", code=INVALID_PERSON_CURSOR)
+        if digest != _name_digest(anchor.canonical_name):
+            raise PersonIndexError(
+                "the list changed since this page; start again from the first page", code=INVALID_PERSON_CURSOR
+            )
+        return person_id
 
 
 def render_person_index_json(document: PersonIndexDocument) -> str:
     """Render the versioned machine document as canonical JSON text."""
     return render_json_document(document)
+
+
+#: Fixed width of the name digest that opens every person-index cursor key.
+_NAME_DIGEST_CHARS: Final = 16
+
+
+def _name_digest(canonical_name: str) -> str:
+    """Return a fixed-width fingerprint of the ordering key a cursor was issued under."""
+    return hashlib.sha256(normalize_name(canonical_name).encode("utf-8")).hexdigest()[:_NAME_DIGEST_CHARS]
 
 
 def _entry(person: Person) -> PersonIndexEntry:

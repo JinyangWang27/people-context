@@ -163,7 +163,7 @@ async function showPeople(cursor, back) {
 
 async function showPerson(personId) {
   let doc;
-  try { doc = await api("/api/people/" + encodeURIComponent(personId)); } catch (error) { return fail(error); }
+  try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error); }
   const identity = el("dl");
   const fields = [
     ["Aliases", doc.person.aliases.join(", ") || "(none)"],
@@ -206,7 +206,7 @@ async function showSources(cursor, back) {
 
 async function showSource(sourceId) {
   let doc;
-  try { doc = await api("/api/sources/" + encodeURIComponent(sourceId)); } catch (error) { return fail(error); }
+  try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error); }
   const details = el("dl");
   const fields = [
     ["Source", doc.source.id],
@@ -214,18 +214,17 @@ async function showSource(sourceId) {
     ["Label", doc.source.label || "-"],
     ["Status", doc.source.status],
     ["Batch", doc.source.batch_id || "-"],
-    ["Staged candidates", doc.staged_total],
   ];
   for (const [term, value] of fields) details.append(el("dt", term), el("dd", value));
+  const back = button("Back to sources", () => showSources(null, []));
+  if (doc.source.redacted) {
+    // A forgotten source's counts are withheld, not zero, so none are shown.
+    show("Import source", details, el("p", "This source was forgotten; its counts are withheld.", "notice"), back);
+    return;
+  }
+  details.append(el("dt", "Staged candidates"), el("dd", doc.staged_total));
   const counts = Object.entries(doc.staged_by_status).map(([status, count]) => status + ": " + count);
-  show(
-    "Import source",
-    el("p", reviewWarning, "warning"),
-    details,
-    el("h3", "Staged by status"),
-    list(counts),
-    button("Back to sources", () => showSources(null, [])),
-  );
+  show("Import source", el("p", reviewWarning, "warning"), details, el("h3", "Staged by status"), list(counts), back);
 }
 
 async function done() {

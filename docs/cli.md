@@ -596,10 +596,12 @@ markup is displayed, not run.
 Disclosure follows the MCP server's ordinary reads. The person view shows no `sensitive` or `restricted` record
 unless `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` is set in the environment of the `pctx browse` process itself, and no
 control on the page can change that. The people list pages the person index 50 at a time (1–200 through the
-endpoint's `limit`), following its `next_cursor`. The person view says when the brief's facts and interactions
+endpoint's `limit`), following its `next_cursor`; a cursor whose last person was renamed since it was issued is
+refused rather than resumed from the wrong place, and the list starts again from the first page. The person view says when the brief's facts and interactions
 were cut at their bound. A source opens to its receipt and its `staged_total` and `staged_by_status` counts only:
 committed mappings name and count durable records without a disclosure filter, so they never leave the process
-and remain with the operator-only `pctx source show`.
+and remain with the operator-only `pctx source show`. A forgotten (redacted) source's counts are withheld, sent as `null` and
+shown as withheld, never as zero.
 
 ## Person index
 

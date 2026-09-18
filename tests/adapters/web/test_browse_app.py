@@ -72,7 +72,9 @@ def _cli_json(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, Any]:
     return document
 
 
-def _seed_committed_source(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> str:
+def _seed_committed_source(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], *receipt: str
+) -> str:
     """Stage and commit a receipt-backed batch that produced a sensitive fact; return the source id."""
     candidates = [
         {"type": "person", "ref": "ida", "name": "Ida Kerr", "aliases": []},
@@ -100,6 +102,7 @@ def _seed_committed_source(db_file: Path, tmp_path: Path, capsys: pytest.Capture
         "meeting_transcript",
         "--label",
         "Allotment meeting",
+        *receipt,
         "--json",
     )
     _cli_json(capsys, *db, "import", "commit", staged["batch_id"], "--all", "--json")
@@ -115,6 +118,8 @@ def _client(
     *,
     include_sensitive: bool = False,
     on_done: Callable[[], None] = lambda: None,
+    port: int = _PORT,
+    base_url: str = _ORIGIN,
 ) -> Iterator[TestClient]:
     @contextmanager
     def open_runtime() -> Iterator[ApplicationRuntime]:
@@ -128,13 +133,13 @@ def _client(
     app = create_browse_app(
         open_runtime,
         token=_TOKEN,
-        port=_PORT,
+        port=port,
         include_sensitive=include_sensitive,
         on_done=on_done,
         review_warning=REVIEW_DISCLOSURE_WARNING,
         sources_warning=SOURCES_DISCLOSURE_WARNING,
     )
-    with TestClient(app, base_url=_ORIGIN, headers={TOKEN_HEADER: _TOKEN}) as client:
+    with TestClient(app, base_url=base_url, headers={TOKEN_HEADER: _TOKEN}) as client:
         yield client
 
 
@@ -200,8 +205,8 @@ def test_the_page_is_one_self_contained_document_under_its_own_nonce(db_file: Pa
     nonce = _assert_security_headers(first.headers)
     assert nonce != _assert_security_headers(second.headers)
     page = first.text
-    assert re.findall(r"<script[^>]*>", page) == [f'<script nonce="{nonce}">']
-    assert re.findall(r"<style[^>]*>", page) == [f'<style nonce="{nonce}">']
+    assert re.findall(r"<script[^>]*>", page, re.IGNORECASE) == [f'<script nonce="{nonce}">']
+    assert re.findall(r"<style[^>]*>", page, re.IGNORECASE) == [f'<style nonce="{nonce}">']
     assert "style=" not in page
     assert "innerHTML" not in page and "insertAdjacentHTML" not in page and "document.write" not in page
     assert "http://" not in page and "https://" not in page and "src=" not in page
@@ -249,7 +254,7 @@ def test_a_markup_name_is_returned_as_data_not_markup(db_file: Path) -> None:
     ids = _seed_people(db_file)
     with _client(db_file) as client:
         listing = client.get("/api/people")
-        brief = client.get(f"/api/people/{ids['toma']}")
+        brief = client.get("/api/person", params={"id": ids["toma"]})
     assert listing.headers["content-type"] == "application/json"
     assert _MARKUP_NAME in [p["canonical_name"] for p in listing.json()["people"]]
     assert brief.json()["person"]["canonical_name"] == _MARKUP_NAME
@@ -258,9 +263,9 @@ def test_a_markup_name_is_returned_as_data_not_markup(db_file: Path) -> None:
 def test_sensitive_records_follow_the_process_elevation_only(db_file: Path) -> None:
     ids = _seed_people(db_file)
     with _client(db_file) as client:
-        ordinary = client.get(f"/api/people/{ids['elena']}", params={"include_sensitive": "true"})
+        ordinary = client.get("/api/person", params={"id": ids["elena"], "include_sensitive": "true"})
     with _client(db_file, include_sensitive=True) as client:
-        elevated = client.get(f"/api/people/{ids['elena']}")
+        elevated = client.get("/api/person", params={"id": ids["elena"]})
     assert _SENSITIVE_VALUE not in ordinary.text
     assert "Gardener" in ordinary.text
     assert ordinary.json()["disclosure"]["context"] == "ordinary"
@@ -273,9 +278,9 @@ def test_the_person_view_carries_the_brief_truncation_flag(
 ) -> None:
     ids = _seed_people(db_file)
     with _client(db_file) as client:
-        over = client.get(f"/api/people/{ids['toma']}").json()
-        under = client.get(f"/api/people/{ids['elena']}").json()
-        missing = client.get("/api/people/no-such-person")
+        over = client.get("/api/person", params={"id": ids["toma"]}).json()
+        under = client.get("/api/person", params={"id": ids["elena"]}).json()
+        missing = client.get("/api/person", params={"id": "no-such-person"})
     assert over["truncated"] is True and len(over["facts"]) == BRIEF_CONTEXT_ITEMS
     assert under["truncated"] is False
     assert missing.status_code == 404 and missing.json() == {"error": "unknown_person"}
@@ -312,10 +317,10 @@ def test_source_detail_exposes_staged_counts_and_no_committed_mappings(
     shown = _cli_json(capsys, "--db", str(db_file), "source", "show", source_id, "--json")
     capsys.readouterr()
     with _client(db_file) as client:
-        ordinary = client.get(f"/api/sources/{source_id}")
-        missing = client.get("/api/sources/no-such-source")
+        ordinary = client.get("/api/source", params={"id": source_id})
+        missing = client.get("/api/source", params={"id": "no-such-source"})
     with _client(db_file, include_sensitive=True) as client:
-        elevated = client.get(f"/api/sources/{source_id}")
+        elevated = client.get("/api/source", params={"id": source_id})
     _assert_security_headers(ordinary.headers)
     body = ordinary.json()
     assert set(body) == {"source", "staged_total", "staged_by_status"}
@@ -356,7 +361,42 @@ def test_an_internal_error_is_generic_and_carries_no_detail(
 
     with _client(db_file) as client:
         monkeypatch.setattr(type(client.app_state["runtime"].use_cases.compose_person_brief), "execute", explode)
-        response = client.get(f"/api/people/{ids['elena']}")
+        response = client.get("/api/person", params={"id": ids["elena"]})
     assert response.status_code == 500
     assert "Elena" not in response.text
     _assert_security_headers(response.headers)
+
+
+def test_port_80_accepts_the_default_port_form_browsers_send(db_file: Path) -> None:
+    with _client(db_file, port=80, base_url="http://127.0.0.1") as client:
+        bare = client.get("/api/people", headers={"origin": "http://127.0.0.1"})
+        explicit = client.get("/api/people", headers={"host": "127.0.0.1:80", "origin": "http://127.0.0.1:80"})
+        foreign = client.get("/api/people", headers={"host": "127.0.0.1:8080"})
+    assert bare.status_code == 200
+    assert explicit.status_code == 200
+    assert foreign.status_code == 403
+
+
+def test_opaque_ids_containing_a_slash_open_their_person(db_file: Path) -> None:
+    conn = open_db(db_file)
+    try:
+        SqlitePeopleRepository(conn).save_person(Person(id="restored/elena", canonical_name="Elena Marsh"))
+    finally:
+        conn.close()
+    with _client(db_file) as client:
+        listed = client.get("/api/people").json()["people"][0]["id"]
+        brief = client.get("/api/person", params={"id": listed})
+    assert listed == "restored/elena"
+    assert brief.status_code == 200 and brief.json()["person"]["id"] == "restored/elena"
+
+
+def test_a_forgotten_source_withholds_its_counts_rather_than_reporting_zero(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source_id = _seed_committed_source(db_file, tmp_path, capsys, "--content-digest", "a" * 64)
+    assert cli.main(["--db", str(db_file), "delete", "Ida Kerr", "--yes"]) == 0
+    capsys.readouterr()
+    with _client(db_file) as client:
+        body = client.get("/api/source", params={"id": source_id}).json()
+    assert body["source"]["redacted"] is True
+    assert body["staged_total"] is None and body["staged_by_status"] is None

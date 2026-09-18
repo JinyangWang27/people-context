@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 import uvicorn
@@ -132,7 +132,7 @@ def _serve_and_read(db_file: Path, person_id: str, *, elevated: bool) -> tuple[s
         assert _request(f"{base}/api/people", "wrong")[0] == 403
         status, people = _request(f"{base}/api/people", token)
         assert status == 200 and json.loads(people)["people"][0]["id"] == person_id
-        status, brief = _request(f"{base}/api/people/{person_id}", token)
+        status, brief = _request(f"{base}/api/person?{urlencode({'id': person_id})}", token)
         assert status == 200
         assert _request(f"{base}/api/done", token, method="POST")[0] == 200
         rest, err = process.communicate(timeout=15)

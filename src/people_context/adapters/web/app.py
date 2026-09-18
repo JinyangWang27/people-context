@@ -62,8 +62,10 @@ class _Guard:
     def __init__(self, app: ASGIApp, *, token: str, port: int) -> None:
         self._app = app
         self._token = token.encode("utf-8")
-        self._host = f"{LOOPBACK_HOST}:{port}"
-        self._origin = f"http://{LOOPBACK_HOST}:{port}"
+        # Browsers omit the default port from both headers, so port 80 is also accepted bare.
+        authorities = {f"{LOOPBACK_HOST}:{port}"} | ({LOOPBACK_HOST} if port == 80 else set())
+        self._hosts = frozenset(authorities)
+        self._origins = frozenset(f"http://{authority}" for authority in authorities)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -96,10 +98,10 @@ class _Guard:
 
     def _allowed(self, request: Request) -> bool:
         headers = request.headers
-        if headers.get("host") != self._host:
+        if headers.get("host") not in self._hosts:
             return False
         origin = headers.get("origin")
-        if origin is not None and origin != self._origin:
+        if origin is not None and origin not in self._origins:
             return False
         fetch_site = headers.get("sec-fetch-site")
         if fetch_site is not None and fetch_site not in _SAME_ORIGIN_FETCH_SITES:
@@ -148,8 +150,13 @@ def create_browse_app(
 
     async def person(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
-        document = runtime.use_cases.compose_person_brief.execute(
-            request.path_params["person_id"], include_sensitive=include_sensitive
+        # Ids travel as a query parameter, not a path segment: restored ids are opaque and may
+        # contain `/`, which a decoded path would split.
+        person_id = request.query_params.get("id", "")
+        document = (
+            runtime.use_cases.compose_person_brief.execute(person_id, include_sensitive=include_sensitive)
+            if person_id
+            else None
         )
         if document is None:
             return _error("unknown_person", 404)
@@ -169,15 +176,17 @@ def create_browse_app(
         runtime: ApplicationRuntime = request.state.runtime
         try:
             # One mapping is the smallest page the use case reads; none of it leaves the process.
-            result = runtime.use_cases.show_import_source.execute(request.path_params["source_id"], limit=1)
+            result = runtime.use_cases.show_import_source.execute(request.query_params.get("id", ""), limit=1)
         except SourceInspectionError as exc:
             return _error(exc.code, 404 if exc.code == UNKNOWN_SOURCE_SESSION else 400)
         # Built here from the receipt and staged counts only: mappings name and count committed
         # records with no disclosure filter, so they never reach the response.
+        # A redacted receipt's counts are withheld, not zero, so they are sent as null.
+        redacted = result.source.redacted
         body = {
             "source": result.source.model_dump(mode="json"),
-            "staged_total": result.counts.staged_total,
-            "staged_by_status": result.counts.staged_by_status,
+            "staged_total": None if redacted else result.counts.staged_total,
+            "staged_by_status": None if redacted else result.counts.staged_by_status,
         }
         return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
 
@@ -189,9 +198,9 @@ def create_browse_app(
         routes=[
             Route("/", page, methods=["GET"]),
             Route("/api/people", people, methods=["GET"]),
-            Route("/api/people/{person_id}", person, methods=["GET"]),
+            Route("/api/person", person, methods=["GET"]),
             Route("/api/sources", sources, methods=["GET"]),
-            Route("/api/sources/{source_id}", source, methods=["GET"]),
+            Route("/api/source", source, methods=["GET"]),
             Route("/api/done", done, methods=["POST"]),
         ],
         lifespan=lifespan,

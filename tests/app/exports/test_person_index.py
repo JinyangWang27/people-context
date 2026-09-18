@@ -166,7 +166,13 @@ def test_page_limits_and_cursors_are_refused_with_stable_codes() -> None:
         with pytest.raises(PersonIndexError) as refused:
             index.page(limit=limit)
         assert refused.value.code == INVALID_PERSON_PAGE_LIMIT
-    for cursor in ("not a cursor", encode_cursor(SOURCE_LIST_SCOPE, first.id), encode_cursor("people", "gone")):
+    refused_cursors = (
+        "not a cursor",
+        encode_cursor(SOURCE_LIST_SCOPE, first.id),
+        encode_cursor("people", "gone"),
+        encode_cursor("people", "0" * 16 + "gone"),
+    )
+    for cursor in refused_cursors:
         with pytest.raises(PersonIndexError) as refused:
             index.page(cursor=cursor)
         assert refused.value.code == INVALID_PERSON_CURSOR
@@ -183,3 +189,18 @@ def test_a_cursor_naming_a_soft_deleted_person_still_resumes() -> None:
     people.save_person(ada.model_copy(update={"deleted_at": _NOW}))
 
     assert [entry.id for entry in _index(people).page(cursor=cursor).people] == [bea.id]
+
+
+def test_a_cursor_whose_anchor_was_renamed_is_refused_rather_than_skipping_people() -> None:
+    people = FakePeopleRepository()
+    ada, bea, cal = _person("Ada"), _person("Bea"), _person("Cal")
+    for person in (ada, bea, cal):
+        people.save_person(person)
+    cursor = _index(people).page(limit=1).next_cursor
+    # Renamed past Bea: resuming from Ada's new position would silently skip Bea.
+    people.save_person(ada.model_copy(update={"canonical_name": "Zed"}))
+
+    with pytest.raises(PersonIndexError) as refused:
+        _index(people).page(limit=1, cursor=cursor)
+
+    assert refused.value.code == INVALID_PERSON_CURSOR

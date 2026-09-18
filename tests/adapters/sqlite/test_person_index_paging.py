@@ -6,10 +6,11 @@ from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from ulid import ULID
 
 from people_context.adapters.sqlite import SqlitePeopleRepository, open_db
-from people_context.app.exports import ListPersonIndex
+from people_context.app.exports import INVALID_PERSON_CURSOR, ListPersonIndex, PersonIndexError
 from people_context.domain.shared import normalize_name
 
 _PEOPLE = 10_000
@@ -70,3 +71,18 @@ def test_an_unpaged_limit_keeps_its_meaning(tmp_path: Path) -> None:
 
     assert len(document.people) == 1000
     assert document.next_cursor is None
+
+
+def test_a_rename_of_the_page_anchor_between_pages_refuses_the_cursor(tmp_path: Path) -> None:
+    repository = _store(tmp_path)
+    index = ListPersonIndex(repository, _Clock())
+    first = index.page(limit=10)
+    assert first.next_cursor is not None
+    anchor = repository.get(first.people[-1].id)
+    assert anchor is not None
+    repository.save_person(anchor.model_copy(update={"canonical_name": "Zara Quill"}))
+
+    with pytest.raises(PersonIndexError) as refused:
+        index.page(limit=10, cursor=first.next_cursor)
+
+    assert refused.value.code == INVALID_PERSON_CURSOR

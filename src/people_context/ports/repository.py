@@ -83,8 +83,11 @@ class PersonIndexReader(Protocol):
     ``page_people`` orders by normalized canonical name then id, and resumes after the person
     ``after_person_id`` names — soft-deleted or not, since its row still fixes a position. It
     returns ``None`` when no row has that id any more, so a caller can refuse a stale cursor
-    instead of silently restarting at the top.
+    instead of silently restarting at the top. ``get`` lets the caller check the anchor has not
+    moved in the order since the cursor was issued.
     """
+
+    def get(self, person_id: str) -> Person | None: ...
 
     def list_people(self, include_deleted: bool = False, limit: int | None = None) -> list[Person]: ...
 
