@@ -120,6 +120,9 @@ class PersonBriefDocument(BaseModel):
     guidance: BriefGuidance = Field(default_factory=BriefGuidance)
     # `None` distinguishes "history was not requested" from "requested and empty".
     history: BriefHistory | None = None
+    # Additive (M30.1): the facts/interactions budget cut the ranked list, with the same name and
+    # meaning as `get_person_context`'s flag, so a bounded section is never read as complete.
+    truncated: bool = False
 
 
 class ComposePersonBrief:
@@ -212,6 +215,7 @@ class ComposePersonBrief:
                 communication_philosophy=guidance.communication_philosophy,
             ),
             history=history,
+            truncated=context.truncated,
         )
 
 
@@ -259,6 +263,13 @@ def render_brief_markdown(document: PersonBriefDocument) -> str:
             [f"{record.affiliation.role} at {record.organization_name}" for record in document.affiliations],
         )
     )
+    if document.truncated:
+        lines.extend(
+            [
+                f"_Facts and interactions are bounded at {BRIEF_CONTEXT_ITEMS}; more exist beyond this brief._",
+                "",
+            ]
+        )
     lines.extend(_section("Facts", [f"{fact.predicate}: {fact.value}" for fact in document.facts]))
     lines.extend(
         _section(

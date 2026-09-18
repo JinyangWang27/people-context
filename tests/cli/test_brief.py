@@ -16,6 +16,7 @@ from people_context.adapters.sqlite import (
     SqliteRecordStore,
     open_db,
 )
+from people_context.app.exports.brief import BRIEF_CONTEXT_ITEMS
 from people_context.app.records import RecordFact, RecordFactInput, SetReminder, SetReminderInput
 from people_context.cli import main
 from people_context.domain.person import Person
@@ -336,3 +337,47 @@ def test_out_of_range_history_limit_exits_two(
     assert main(args) == 2
 
     assert "limit must be between 1 and 200" in capsys.readouterr().err
+
+
+def test_a_brief_cut_at_its_bound_says_so_in_json_and_text(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    person_id = _seed(db_path)
+    conn = open_db(db_path)
+    try:
+        record_fact = RecordFact(
+            SqlitePeopleRepository(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock()
+        )
+        for index in range(BRIEF_CONTEXT_ITEMS):
+            record_fact.execute(
+                RecordFactInput(person_id=person_id, predicate=f"note_{index:02d}", value="x", source="cli")
+            )
+    finally:
+        conn.close()
+
+    assert main(["--db", str(db_path), "brief", person_id, "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert main(["--db", str(db_path), "brief", person_id]) == 0
+    text = capsys.readouterr().out
+
+    assert payload["truncated"] is True
+    assert len(payload["facts"]) == BRIEF_CONTEXT_ITEMS
+    assert f"bounded at {BRIEF_CONTEXT_ITEMS}; more exist beyond this brief" in text
+
+
+def test_a_brief_under_its_bound_is_not_marked_truncated(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "people.db"
+    person_id = _seed(db_path)
+
+    assert main(["--db", str(db_path), "brief", person_id, "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert main(["--db", str(db_path), "brief", person_id]) == 0
+    text = capsys.readouterr().out
+
+    assert payload["truncated"] is False
+    assert "more exist beyond this brief" not in text

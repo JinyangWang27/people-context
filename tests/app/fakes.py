@@ -98,8 +98,21 @@ class FakePeopleRepository:
 
     def list_people(self, include_deleted: bool = False, limit: int | None = None) -> list[Person]:
         people = [p for p in self._people.values() if include_deleted or p.deleted_at is None]
-        people.sort(key=lambda p: p.canonical_name)
+        people.sort(key=lambda p: (p.canonical_name, p.id))
         return people[:limit] if limit is not None else people
+
+    def page_people(self, *, limit: int, after_person_id: str | None) -> list[Person] | None:
+        def key(person: Person) -> tuple[str, str]:
+            return (normalize_name(person.canonical_name), person.id)
+
+        after: tuple[str, str] | None = None
+        if after_person_id is not None:
+            anchor = self._people.get(after_person_id)
+            if anchor is None:
+                return None
+            after = key(anchor)
+        active = sorted((p for p in self._people.values() if p.deleted_at is None), key=key)
+        return [p for p in active if after is None or key(p) > after][:limit]
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         matches: list[Person] = []

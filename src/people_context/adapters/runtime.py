@@ -256,7 +256,8 @@ def build_runtime(
     path = resolve_openable_db_path(db_path)
     conn = open_encrypted_db(path, resolve_db_key()) if encrypted else open_db(path)
     runtime_clock = clock or SystemClock()
-    repo: SqlitePeopleRepository | IndexingPeopleRepository = SqlitePeopleRepository(conn)
+    sqlite_repo = SqlitePeopleRepository(conn)
+    repo: SqlitePeopleRepository | IndexingPeopleRepository = sqlite_repo
     records: SqliteRecordStore | IndexingRecordStore = SqliteRecordStore(conn)
     merge_store: SqliteMergeStore | IndexingMergeStore = SqliteMergeStore(conn)
     forget_store: SqliteForgetStore | IndexingForgetStore = SqliteForgetStore(conn)
@@ -342,7 +343,8 @@ def build_runtime(
         report_doctor_findings=ReportDoctorFindings(curation_reader, runtime_clock),
         report_store_stats=ReportStoreStats(stats_reader, runtime_clock),
         list_upcoming_dates=ListUpcomingDates(context_reader, list_reminders, repo, runtime_clock),
-        list_person_index=ListPersonIndex(repo, runtime_clock),
+        # Reads only, so the unwrapped store serves the index exactly as the indexing wrapper would.
+        list_person_index=ListPersonIndex(sqlite_repo, runtime_clock),
         search_people=SearchPeople(repo),
         semantic_search=SemanticSearch(
             SqliteSemanticMetadataReader(conn),

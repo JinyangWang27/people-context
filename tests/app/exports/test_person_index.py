@@ -5,14 +5,22 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+import pytest
+
 from people_context.app.exports import (
+    DEFAULT_PERSON_PAGE_LIMIT,
+    INVALID_PERSON_CURSOR,
+    INVALID_PERSON_PAGE_LIMIT,
+    MAX_PERSON_PAGE_LIMIT,
     PERSON_INDEX_FORMAT,
     PERSON_INDEX_VERSION,
     ListPersonIndex,
     PersonIndexDocument,
+    PersonIndexError,
     render_person_index_json,
 )
 from people_context.domain.person import Alias, AliasKind, Person
+from people_context.domain.source_cursor import SOURCE_LIST_SCOPE, encode_cursor
 from tests.app.fakes import FakeClock, FakePeopleRepository
 
 _NOW = datetime(2026, 3, 4, 5, 6, tzinfo=UTC)
@@ -125,3 +133,53 @@ def test_empty_store_still_produces_a_complete_document() -> None:
 
     assert document.people == []
     assert json.loads(render_person_index_json(document))["people"] == []
+
+
+def test_a_page_is_bounded_and_resumes_exactly_after_its_last_person() -> None:
+    people = FakePeopleRepository()
+    for name in ("Toma Ibarra", "elena marsh", "Élena Marsh", "Ada"):
+        people.save_person(_person(name))
+    index = _index(people)
+
+    seen: list[str] = []
+    cursor = None
+    while True:
+        page = index.page(limit=1, cursor=cursor)
+        seen.extend(entry.id for entry in page.people)
+        cursor = page.next_cursor
+        if cursor is None:
+            break
+
+    assert seen == [entry.id for entry in index.execute().people]
+    assert index.page().next_cursor is None
+    assert len(index.page().people) == 4
+
+
+def test_page_limits_and_cursors_are_refused_with_stable_codes() -> None:
+    people = FakePeopleRepository()
+    first = _person("Ada")
+    people.save_person(first)
+    people.save_person(_person("Bea"))
+    index = _index(people)
+
+    for limit in (0, MAX_PERSON_PAGE_LIMIT + 1):
+        with pytest.raises(PersonIndexError) as refused:
+            index.page(limit=limit)
+        assert refused.value.code == INVALID_PERSON_PAGE_LIMIT
+    for cursor in ("not a cursor", encode_cursor(SOURCE_LIST_SCOPE, first.id), encode_cursor("people", "gone")):
+        with pytest.raises(PersonIndexError) as refused:
+            index.page(cursor=cursor)
+        assert refused.value.code == INVALID_PERSON_CURSOR
+    assert len(index.page(limit=MAX_PERSON_PAGE_LIMIT).people) == 2
+    assert index.page(limit=DEFAULT_PERSON_PAGE_LIMIT).next_cursor is None
+
+
+def test_a_cursor_naming_a_soft_deleted_person_still_resumes() -> None:
+    people = FakePeopleRepository()
+    ada, bea = _person("Ada"), _person("Bea")
+    people.save_person(ada)
+    people.save_person(bea)
+    cursor = _index(people).page(limit=1).next_cursor
+    people.save_person(ada.model_copy(update={"deleted_at": _NOW}))
+
+    assert [entry.id for entry in _index(people).page(cursor=cursor).people] == [bea.id]
