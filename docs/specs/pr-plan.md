@@ -913,7 +913,7 @@ These three planned PRs are additional to all historical and supplemental totals
 dependencies are M30.1 → M30.2 → M30.3; M30.2 depends on M29.1 and M29.2; M30.3 depends on M29.1. M30 is
 independent of M28.3.
 
-- [ ] **M30.1 — Read-only local viewer**
+- [x] **M30.1 — Read-only local viewer**
   - **Scope:** Add `pctx browse [--open] [--port N]`, a Starlette application under uvicorn bound to `127.0.0.1` only,
     printing a URL carrying a per-launch `secrets.token_urlsafe` token, checked with `secrets.compare_digest` on every
     request alongside `Host`/`Origin`/`Sec-Fetch-Site`. Send `Content-Security-Policy: default-src 'self'` with

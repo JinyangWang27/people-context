@@ -230,6 +230,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     brief.add_argument("--output", default=None, help="Write to this owner-only file instead of stdout.")
 
+    browse = subparsers.add_parser(
+        "browse",
+        help="Serve a read-only local page of people and import sources on 127.0.0.1 until Ctrl-C.",
+    )
+    browse.add_argument("--open", action="store_true", help="Open the printed URL in the default browser.")
+    browse.add_argument(
+        "--port",
+        type=int,
+        default=0,
+        help="Loopback port to listen on (default: an ephemeral port). There is no host option.",
+    )
+
     search = subparsers.add_parser("search", help="Ranked search results for a name query.")
     search.add_argument("query")
     search.add_argument("--limit", type=int, default=10, help="Maximum number of results.")

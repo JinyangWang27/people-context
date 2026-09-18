@@ -96,8 +96,10 @@ M29.3 added the `pctx import edit` command with `--from` and `--no-commit`, and 
 `review_field_changed` and `invalid_review_document`. It changes no document format or version: the edited
 document is the existing version-1 import review document.
 
-**Planned, not implemented:** [M30](specs/m30-local-web-review.md) adds an additive
-top-level `truncated` to the version-1 person brief and an additive `next_cursor` to the version-1 person index.
+M30.1 added a top-level `truncated` to the version-1 person brief, which is `true` when the facts/interactions
+budget cut the ranked list, and `next_cursor` to the version-1 person index. `next_cursor` is `null` on every
+`pctx list --json` document and is set only by the paged read behind `pctx browse`. Both are additive, with no
+format string or version change. It also added the `pctx browse` command.
 
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|

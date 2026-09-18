@@ -19,10 +19,11 @@ M6 implements local durable change capture only. It adds one installation device
 a plaintext replay changelog inside the same SQLite file. It adds no network path, account, pairing, relay, peer
 registration, remote access, batch encryption, replay engine, bootstrap restore, or background sync process.
 
-**Planned, not implemented:** [M30](specs/m30-local-web-review.md) plans `pctx browse`, a short-lived
-loopback-only browser page with a per-launch token and Host/Origin checks. It adds no network path, account,
-daemon, or remote mode, and applies the same ordinary-read disclosure and operator-elevation rules as the MCP
-server.
+M30.1 adds `pctx browse`, a short-lived, read-only browser page bound to `127.0.0.1` only. It adds no
+network path, account, daemon, or remote mode, loads no external resource, and applies the same ordinary-read
+disclosure and operator-elevation rules as the MCP server; see
+[threat model notes](#threat-model-notes). M30.2 batch review and M30.3 inline edit remain
+[planned](specs/m30-local-web-review.md).
 
 ## Minimal disclosure
 
@@ -631,6 +632,18 @@ physical deletion from an unreachable device or third-party backup.
   and common browser rebinding attacks, but it is not process isolation: every local process able to reach
   loopback can attempt to use the MCP endpoint. Do not run it on a shared machine unless that trust boundary
   is acceptable. Authenticated or remotely reachable HTTP is explicitly deferred.
+- **The local browser viewer is loopback-only and token-guarded.**`pctx browse`
+  binds only `127.0.0.1`; there is no host option. Every request must carry the per-launch token — a query
+  parameter on the first load, then a header — and a `Host`, `Origin`, and `Sec-Fetch-Site` matching the bound
+  origin, compared with `secrets.compare_digest`; any failure gets one generic refusal naming no check. The
+  token is printed once in the URL on stdout and is never logged, stored, or echoed; the page removes it from the
+  address bar and history before its first request. Every response sends a per-response CSP nonce for its one
+  inline script and stylesheet, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`, and recorded values
+  render as text. Sensitive and restricted durable records appear only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`
+  is set in the `pctx browse` process environment, never from a page control; a source's committed mappings are
+  never served. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
+  not against another local process running as the same user, which the loopback MCP transport does not
+  defend against either.
 - **Semantic vectors are sensitivity-filtered derived data.** Only active people and public/personal
   interaction summaries are indexed. Search rechecks primary rows during hydration, so a stale vector for a
   deleted person or newly sensitive interaction is not returned. Reindex remains the repair path.

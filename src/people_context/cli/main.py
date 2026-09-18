@@ -14,6 +14,7 @@ from people_context.adapters.sqlite.db import (
     inspect_schema,
     latest_schema_version,
 )
+from people_context.cli.browse import cmd_browse
 from people_context.cli.groups import cmd_group
 from people_context.cli.imports import cmd_import
 from people_context.cli.insights import cmd_stale, cmd_timeline, cmd_upcoming
@@ -72,6 +73,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "doctor": cmd_doctor,
     "stats": cmd_stats,
     "brief": cmd_brief,
+    "browse": cmd_browse,
     "export": cmd_export,
     "export-vault": cmd_export_vault,
     "export-vcard": cmd_export_vcard,
