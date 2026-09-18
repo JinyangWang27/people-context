@@ -1191,7 +1191,9 @@ dependencies = [
     { name = "mcp" },
     { name = "pydantic" },
     { name = "python-ulid" },
+    { name = "starlette" },
     { name = "tzdata" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -1205,6 +1207,7 @@ semantic = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx2" },
     { name = "ipykernel" },
     { name = "model2vec" },
     { name = "mypy" },
@@ -1221,12 +1224,15 @@ requires-dist = [
     { name = "python-ulid", specifier = ">=2.2" },
     { name = "sqlcipher3-binary", marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'encrypted'", specifier = ">=0.6.0,<0.7" },
     { name = "sqlite-vec", marker = "extra == 'semantic'", specifier = ">=0.1.9,<0.2" },
+    { name = "starlette", specifier = ">=1,<2" },
     { name = "tzdata", specifier = ">=2024.1" },
+    { name = "uvicorn", specifier = ">=0.31.1" },
 ]
 provides-extras = ["semantic", "encrypted"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx2", specifier = ">=2.5" },
     { name = "ipykernel", specifier = ">=7.3.0" },
     { name = "model2vec", specifier = ">=0.8.2,<0.10" },
     { name = "mypy", specifier = ">=1.18" },

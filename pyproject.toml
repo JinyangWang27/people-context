@@ -18,7 +18,16 @@ classifiers = [
     "Topic :: Database",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-dependencies = ["mcp>=2,<3", "pydantic>=2.7", "python-ulid>=2.2", "tzdata>=2024.1"]
+# `starlette` and `uvicorn` are already resolved beneath `mcp`; they are declared because
+# `pctx browse` imports them directly, not added.
+dependencies = [
+    "mcp>=2,<3",
+    "pydantic>=2.7",
+    "python-ulid>=2.2",
+    "starlette>=1,<2",
+    "tzdata>=2024.1",
+    "uvicorn>=0.31.1",
+]
 
 [project.urls]
 Homepage = "https://github.com/JinyangWang27/people-context"
@@ -47,6 +56,8 @@ pctx = "people_context.cli:main"
 
 [dependency-groups]
 dev = [
+    # `starlette.testclient` imports `httpx2`, which `mcp` already requires.
+    "httpx2>=2.5",
     "ipykernel>=7.3.0",
     "mypy>=1.18",
     "pytest>=8",
