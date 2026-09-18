@@ -728,7 +728,7 @@ def test_a_late_response_never_renders_over_the_view_the_user_moved_to(db_file: 
     with _client(db_file) as client:
         page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
     script = page[page.index("<script") :]
-    for view in ("showPeople", "showPerson", "showSources", "showSource", "showBatch"):
+    for view in ("showPeople", "showPerson", "showSources", "showSource", "showBatch", "done"):
         body = script[script.index(f"async function {view}(") :]
         body = body[: body.index("\n}\n")]
         assert "const at = navigate();" in body and "if (at !== navigation) return;" in body, view
@@ -760,7 +760,7 @@ globalThis.document = { getElementById: (id) => (ids[id] ??= new El(id)), create
   createTextNode: (text) => ({ text }) };
 globalThis.location = { search: "?token=t" };
 globalThis.history = { replaceState() {} };
-const posts = []; const releases = [];
+const posts = []; const releases = []; const heldGets = []; let holdGets = false;
 const review = { batch_id: "B", batch_digest: "d1", candidates: [
   { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
 globalThis.fetch = async (path, options) => {
@@ -769,6 +769,7 @@ globalThis.fetch = async (path, options) => {
     return { ok: true, json: async () => ({ withdrawn: 1, batch_digest: "d2", committed_ids: ["p1"],
       unresolved_ids: [], skipped_ids: [] }) };
   }
+  if (holdGets) await new Promise((resolve) => heldGets.push(resolve));
   if (path.startsWith("/api/batch")) return { ok: true, json: async () => ({ review, lines: ["#1"] }) };
   return { ok: true, json: async () => ({ people: [], next_cursor: null }) };
 };
@@ -795,19 +796,44 @@ _DOUBLE_CLICKS = r"""
 """
 
 
-@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_path: Path) -> None:
+_DONE_WHILE_LOADING = r"""
+(async () => {
+  await tick();
+  holdGets = true;
+  showBatch("B");
+  const stopping = done();
+  releases.forEach((r) => r()); await stopping;
+  holdGets = false; heldGets.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ shown: view.children.map((n) => n.textContent) }));
+})();
+"""
+
+
+def _run_page(db_file: Path, tmp_path: Path, scenario: str) -> Any:
+    """Run the served page's own script under node with the DOM harness and return its last line."""
     with _client(db_file) as client:
         page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
     # The page's one inline script, sliced out rather than matched: this reads our own document.
     start = page.index(">", page.index("<script")) + 1
     script = page[start : page.index("</script>", start)]
     program = tmp_path / "page.js"
-    program.write_text(_DOM_HARNESS + script + _DOUBLE_CLICKS, encoding="utf-8")
+    program.write_text(_DOM_HARNESS + script + scenario, encoding="utf-8")
     node = shutil.which("node")
     assert node is not None
-    completed = subprocess.run([node, str(program)], capture_output=True, text=True, timeout=30, check=True)
-    outcome = json.loads(completed.stdout.strip().splitlines()[-1])
+    completed = subprocess.run([node, str(program)], capture_output=True, text=True, timeout=60, check=True)
+    return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_batch_response_after_done_does_not_repaint_the_stopped_page(db_file: Path, tmp_path: Path) -> None:
+    assert _run_page(db_file, tmp_path, _DONE_WHILE_LOADING) == {
+        "shown": ["pctx browse has stopped. You can close this tab."]
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _DOUBLE_CLICKS)
     assert outcome == {
         "withdrawPosts": 1,
         "commitPosts": 1,

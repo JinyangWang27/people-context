@@ -416,7 +416,10 @@ async function commitAccepted() {
 }
 
 async function done() {
-  try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error); }
+  // Stopping is a navigation too: no pending view or batch response may repaint after it.
+  const at = navigate();
+  try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   view.replaceChildren(el("p", "pctx browse has stopped. You can close this tab."));
 }
 
