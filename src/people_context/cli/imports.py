@@ -18,13 +18,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shlex
+import shutil
+import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 from typing import Any, TypeVar
 
+from people_context.adapters.filesystem.private_file import atomic_write_private_text
 from people_context.adapters.importers.bounded_source import SOURCE_TOO_LARGE, read_source_text
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.runtime import ApplicationRuntime
@@ -33,6 +39,7 @@ from people_context.app.imports import (
     CANDIDATE_MODELS,
     CLI_IMPORT_BUDGET,
     INVALID_CANDIDATE_JSON,
+    INVALID_REVIEW_DOCUMENT,
     MAX_CLI_CANDIDATE_JSON_BYTES,
     SOURCE_PREVIOUSLY_REDACTED,
     CommitImportResult,
@@ -40,13 +47,16 @@ from people_context.app.imports import (
     ImportPipelineError,
     ImportReviewResult,
     ImportReviewRow,
+    edited_document_read_bound,
     enforce_extraction_request_limits,
     import_batch_document,
     import_commit_document,
     import_review_document,
     render_import_json,
+    review_document_edits,
+    review_payload_bytes,
 )
-from people_context.cli.rendering import import_review_lines, print_import_review
+from people_context.cli.rendering import import_review_lines, import_review_summary, print_import_review
 from people_context.domain.import_provenance import STAGING_STATUS_PENDING, STAGING_STATUS_REJECTED
 from people_context.ports.sources import STATUS_COMMITTED, STATUS_WITHDRAWN
 
@@ -411,6 +421,217 @@ def _print_revised_batch(review: ImportReviewResult, as_json: bool, summary: str
     return 0
 
 
+#: Environment variables naming the operator's editor, in the order they are consulted.
+_EDITOR_VARIABLES = ("VISUAL", "EDITOR")
+
+#: Exit status for an edit that cannot start because no editor is configured.
+_NO_EDITOR_EXIT = 2
+
+
+def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Edit a batch's review document, then apply every change it expresses, or none of them.
+
+    Only a row's `candidate` is editable. A deleted row is withdrawn, a changed candidate is
+    amended, and an untouched row is a no-op, all through one write-locked use case that checks
+    the document's `batch_digest` first. `--from` applies a document edited elsewhere and never
+    prompts, because a stdin document leaves nothing to read a confirmation from.
+    """
+    batch_id = args.batch_id
+    review = _bounded_review(runtime, batch_id)
+    if isinstance(review, int):
+        return review
+    document = import_review_document(review)
+    rendered_text = render_import_json(document)
+    limit = CLI_IMPORT_BUDGET.max_staged_payload_bytes
+    bound = edited_document_read_bound(
+        len(rendered_text.encode("utf-8")),
+        # Measured from the rows just rendered, not a separate earlier read, so a concurrent change
+        # cannot pair one snapshot's headroom with another snapshot's document.
+        review_payload_bytes(review.candidates),
+        limit if limit is not None else 0,
+        # Only a document rendered by an earlier command can carry projections this render lacks.
+        stale_projection_rows=(
+            sum(row.match_candidates is not None for row in review.candidates) if args.from_file is not None else 0
+        ),
+    )
+    if args.from_file is None:
+        editor = _configured_editor()
+        if editor is None:
+            print(
+                f"Error: no editor configured; set {' or '.join(_EDITOR_VARIABLES)} (checked both)",
+                file=sys.stderr,
+            )
+            return _NO_EDITOR_EXIT
+        print(f"Warning: {REVIEW_DISCLOSURE_WARNING}", file=sys.stderr)
+        edited_text = _edit_in_editor(editor, rendered_text, bound)
+    else:
+        edited_text = _read_edited_document(args.from_file, bound)
+    if edited_text is None:
+        return 1
+    try:
+        edited = json.loads(edited_text)
+    except ValueError:
+        return _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is not valid JSON")
+    except RecursionError:
+        return _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is nested too deeply")
+    try:
+        rendered = document.model_dump(mode="json")
+        edits = review_document_edits(rendered, edited, projections_current=args.from_file is None)
+        revised = runtime.use_cases.apply_review_edits.execute(
+            batch_id,
+            edits.amendments,
+            edits.withdrawals,
+            expected_batch_digest=review.batch_digest,
+        )
+    except ImportPipelineError as exc:
+        _refuse(f"import edit failed: {exc.code}: {exc}")
+        _print_edit_locator(exc, edited, review)
+        _print_validation_details(exc)
+        return 1
+    print(f"Applied {len(edits.amendments)} amendments and {len(edits.withdrawals)} withdrawals.")
+    print(import_review_summary(revised.candidates))
+    pending = [row.id for row in revised.candidates if row.status == STAGING_STATUS_PENDING]
+    if args.from_file is not None or args.no_commit or not pending:
+        if pending:
+            print(f"Commit with: pctx import commit {batch_id} --all")
+        return 0
+    if not _confirm_on_terminal(f"Commit {len(pending)} pending candidates? [y/N] "):
+        print(f"Nothing committed. Commit with: pctx import commit {batch_id} --all")
+        return 0
+    try:
+        result = runtime.use_cases.commit_import.execute(
+            batch_id, pending, expected_batch_digest=revised.batch_digest
+        )
+    except ImportPipelineError as exc:
+        return _refuse(f"import commit failed: {exc.code}: {exc}")
+    print_import_commit(result)
+    return 0
+
+
+def _configured_editor() -> list[str] | None:
+    """Return the editor command from `$VISUAL`, then `$EDITOR`, split without a shell.
+
+    POSIX splitting treats a backslash as an escape, which would turn `C:\\Windows\\notepad.exe` into
+    `C:Windowsnotepad.exe`. Windows splits in non-POSIX mode, which keeps backslashes literal and
+    keeps quotes on a token, so a quoted path such as `"C:\\Program Files\\Editor\\editor.exe"` has
+    them stripped here.
+    """
+    posix = os.name != "nt"
+    for variable in _EDITOR_VARIABLES:
+        value = os.environ.get(variable, "").strip()
+        if not value:
+            continue
+        try:
+            argv = shlex.split(value, posix=posix)
+        except ValueError:
+            continue
+        if not posix:
+            argv = [token[1:-1] if len(token) >= 2 and token[0] == token[-1] == '"' else token for token in argv]
+        if argv:
+            return argv
+    return None
+
+
+def _edit_in_editor(editor: list[str], rendered_text: str, bound: int) -> str | None:
+    """Open the rendered document in the editor and return what it saved, or None once refused.
+
+    The file is owner-only, lives in a private temporary directory, and is removed in every case
+    as soon as the editor's result is read. The exit status is checked before anything is read:
+    `subprocess.run` does not raise on a nonzero one, and a crashed editor must never lead to a
+    commit prompt over a batch nobody finished reviewing.
+    """
+    directory = Path(tempfile.mkdtemp(prefix="pctx-import-edit-"))
+    try:
+        path = atomic_write_private_text(directory / "review.json", rendered_text)
+        try:
+            completed = subprocess.run([*editor, str(path)], check=False)
+        except OSError as exc:
+            _refuse(f"cannot start editor: {exc.strerror or exc.__class__.__name__}; nothing applied")
+            return None
+        if completed.returncode != 0:
+            _refuse(f"editor exited with status {completed.returncode}; nothing applied")
+            return None
+        return _read_edited_document(str(path), bound)
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def _read_edited_document(raw_input: str, bound: int) -> str | None:
+    """Return an edited review document read under the batch-derived bound, or None once refused.
+
+    The bound counts the document as rendered, with `\n` line endings. A file saved on Windows, or by
+    an editor that writes `\r\n`, carries one more byte per line, so the raw read may take up to twice
+    the bound and the bound is then enforced on the text with `\r\n` normalized — still a finite read.
+    """
+    too_large = f"{INVALID_REVIEW_DOCUMENT}: the edited review document grew past what this batch can hold"
+    raw_limit = 2 * bound
+    if raw_input == "-":
+        raw = sys.stdin.buffer.read(raw_limit + 1)
+        if len(raw) > raw_limit:
+            _refuse(too_large)
+            return None
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is not valid UTF-8")
+            return None
+    else:
+        path = _readable_source(raw_input)
+        if path is None:
+            return None
+        try:
+            text = read_source_text(str(path), encoding="utf-8", max_bytes=raw_limit)
+        except ImportExtractionError as exc:
+            _refuse(too_large if exc.code == SOURCE_TOO_LARGE else f"cannot read review document: {exc}")
+            return None
+        except OSError as exc:
+            _refuse(f"cannot read review document: {exc}")
+            return None
+    normalized = text.replace("\r\n", "\n")
+    if len(normalized.encode("utf-8")) > bound:
+        _refuse(too_large)
+        return None
+    return normalized
+
+
+def _print_edit_locator(exc: ImportPipelineError, edited: object, review: ImportReviewResult) -> None:
+    """Name the document row a use-case refusal is about, by index and ordinal, never by content.
+
+    Only an id the refusal named *and* the batch holds is matched, and the ordinal printed is the
+    batch's own, so nothing an edited row carries is echoed.
+    """
+    named = exc.details.get("candidate_ids") or [exc.details.get("candidate_id")]
+    ordinals = {row.id: row.ordinal for row in review.candidates}
+    wanted = {candidate_id for candidate_id in named if isinstance(candidate_id, str) and candidate_id in ordinals}
+    rows = edited.get("candidates") if isinstance(edited, dict) else None
+    if not wanted or not isinstance(rows, list):
+        return
+    for index, row in enumerate(rows):
+        candidate_id = row.get("id") if isinstance(row, dict) else None
+        if isinstance(candidate_id, str) and candidate_id in wanted:
+            print(f"  at candidates[{index}] (#{ordinals[candidate_id]})", file=sys.stderr)
+
+
+def _terminal_paths() -> tuple[str, str]:
+    """Return the controlling terminal's input and output device for this platform."""
+    if os.name == "nt":
+        return "CONIN$", "CONOUT$"
+    return "/dev/tty", "/dev/tty"
+
+
+def _confirm_on_terminal(prompt: str) -> bool:
+    """Ask on the controlling terminal, never on a pipe; no terminal means no."""
+    input_path, output_path = _terminal_paths()
+    try:
+        with open(output_path, "w", encoding="utf-8") as output, open(input_path, encoding="utf-8") as terminal:
+            output.write(prompt)
+            output.flush()
+            answer = terminal.readline()
+    except OSError:
+        return False
+    return answer.strip().casefold() in {"y", "yes"}
+
+
 def cmd_import_commit(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Commit the explicitly accepted candidates of one batch.
 
@@ -756,5 +977,6 @@ _IMPORT_SUBCOMMANDS: dict[str, Callable[[ApplicationRuntime, argparse.Namespace]
     "review": cmd_import_review,
     "amend": cmd_import_amend,
     "reject": cmd_import_reject,
+    "edit": cmd_import_edit,
     "commit": cmd_import_commit,
 }

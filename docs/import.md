@@ -482,9 +482,8 @@ The same lifecycle is available to a person at the terminal through `pctx import
 adds no source type, no candidate type, and no matching or commit policy of its own, and it keeps the review gate
 as separate commands because a staged batch is durable review state that may be inspected in a later invocation.
 
-**Planned, not implemented:** [M29](specs/m29-editable-staging-and-review.md) adds numbered and interactive
-review and an `$EDITOR` round-trip over this same lifecycle; [M30](specs/m30-local-web-review.md) adds a
-loopback-only browser page over the same use cases.
+**Planned, not implemented:** [M30](specs/m30-local-web-review.md) adds a loopback-only browser page over the
+same use cases.
 
 ### Correcting a batch before committing it (M29.1)
 
@@ -525,6 +524,32 @@ ranges, and canonical ids mixed in one selection, and a value that exactly equal
 `pctx import review --interactive` walks the pending candidates with accept, skip, withdraw, edit, and quit, holds
 the `batch_digest` of what it showed, and discards its collected acceptances and restarts if the batch changes
 elsewhere.
+
+### Editing a whole batch in `$EDITOR` (M29.3)
+
+`pctx import edit BATCH` opens the batch's `people-context-import-review` document in `$VISUAL` or `$EDITOR` and
+applies what you save. Deleting a row withdraws that candidate; changing a row's `candidate` amends it; leaving a
+row alone does nothing. Nothing else in the document is editable — a `status` changed to `rejected` refuses with
+`review_field_changed` rather than being mistaken for a no-op the commit prompt would then commit — and rows
+cannot be added.
+
+Every edit in the document is applied in one write-locked transaction, or none is. The document's `batch_digest`
+is checked first, so a batch another client amended, withdrew from, or committed after the document was rendered
+refuses with `batch_changed` and keeps that newer change. Each amendment is then held to exactly the rules
+`pctx import amend` applies, against the batch as it would stand after every edit together. A refusal names the
+row index and a declared field; the edited file is untrusted input, so no value and no invented key is echoed.
+
+The document carries distilled personal data, so the disclosure warning is printed before the editor opens, the
+temporary file is created owner-only, and it is removed as soon as the editor's result is read — including when
+the editor exits non-zero, which applies nothing. After an apply, the command asks
+`Commit N pending candidates? [y/N]` on the controlling terminal, never a pipe, and passes the refreshed digest to
+commit so a change in between refuses rather than commits unseen. `--no-commit` skips the question.
+`pctx import edit BATCH --from FILE|-` applies a document you edited another way and never asks.
+
+The edited document is read under a bound derived from the batch rather than the 1 MiB `stage-candidates` request
+bound: the size of the document rendered now, plus the staged-payload headroom left under the 64 MiB ceiling times
+the renderer's worst-case expansion of an added value. An unchanged document therefore always fits, and the batch
+is re-measured against the ceiling when the edits are applied.
 
 What the CLI does add is a process boundary that is bounded from its first release, because a path typed at a
 terminal is a much weaker promise than a file an MCP caller already chose:

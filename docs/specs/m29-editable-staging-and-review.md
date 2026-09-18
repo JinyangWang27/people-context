@@ -1,6 +1,6 @@
 # M29 — Editable staging and ergonomic review
 
-Status: M29.1 and M29.2 implemented; M29.3 planned.
+Status: Implemented.
 See [roadmap](../roadmap.md#m29--editable-staging-and-ergonomic-review) and
 [PR checklist](pr-plan.md#m29--editable-staging-and-ergonomic-review).
 

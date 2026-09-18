@@ -879,7 +879,7 @@ M29.1 → M29.2 → M29.3.
     and restarts the loop, so an earlier accepted row amended elsewhere is not committed unseen.
   - **Out:** a TUI dependency — `input()` and the existing review document are enough for the loop.
 
-- [ ] **M29.3 — Edit a batch in `$EDITOR`**
+- [x] **M29.3 — Edit a batch in `$EDITOR`**
   - **Scope:** Add `pctx import edit BATCH`, writing the review document through the shared atomic private-file writer
     at mode `0600`, opening it with `$VISUAL` then `$EDITOR` resolved through `shlex.split` and run with
     `subprocess.run` without a shell, then diffing the edited document against the batch: a removed candidate is

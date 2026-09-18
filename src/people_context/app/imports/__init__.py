@@ -105,6 +105,15 @@ from people_context.app.imports.models import (
     contains_extraction_candidate,
 )
 from people_context.app.imports.preflight import PreflightImportBatch
+from people_context.app.imports.review_edits import (
+    INVALID_REVIEW_DOCUMENT,
+    RENDERED_EXPANSION,
+    REVIEW_FIELD_CHANGED,
+    ReviewEdits,
+    edited_document_read_bound,
+    review_document_edits,
+    review_payload_bytes,
+)
 from people_context.app.imports.sources import (
     INVALID_SOURCE_METADATA,
     SOURCE_PREVIOUSLY_REDACTED,
@@ -114,6 +123,7 @@ from people_context.app.imports.sources import (
 from people_context.app.imports.staging import CandidateStager, StageCandidates
 from people_context.app.imports.workflow import (
     AmendStagedCandidate,
+    ApplyReviewEdits,
     CommitImport,
     ImportContent,
     ReviewImport,
@@ -181,6 +191,14 @@ __all__ = [
     "REDACTED_FIELD",
     "AffiliationCandidateInput",
     "AmendStagedCandidate",
+    "INVALID_REVIEW_DOCUMENT",
+    "RENDERED_EXPANSION",
+    "REVIEW_FIELD_CHANGED",
+    "ReviewEdits",
+    "edited_document_read_bound",
+    "review_document_edits",
+    "review_payload_bytes",
+    "ApplyReviewEdits",
     "BatchEdit",
     "CandidateAlias",
     "CandidateStager",
