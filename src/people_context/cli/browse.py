@@ -42,15 +42,25 @@ _LOG_CONFIG: dict[str, Any] = {
 }
 
 
+def _address_reuse_option() -> int:
+    """Return the bind option that keeps a busy port refused while allowing a prompt restart.
+
+    Elsewhere `SO_REUSEADDR` lets a port left in TIME_WAIT by the last session be bound again at
+    once, while a port another socket listens on is still refused. On Windows the same option would
+    let a second listener share a busy port, so the exclusive option is used there instead.
+    """
+    if sys.platform == "win32":
+        return socket.SO_EXCLUSIVEADDRUSE
+    return socket.SO_REUSEADDR
+
+
 def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Serve the read-only local viewer until interrupted."""
     if not 0 <= args.port <= 65535:
         print("Error: --port must be between 0 and 65535.", file=sys.stderr)
         return 2
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    # As uvicorn does for its own listeners: a port left in TIME_WAIT by the last session can be
-    # bound again at once, while a port another socket is listening on is still refused.
-    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.setsockopt(socket.SOL_SOCKET, _address_reuse_option(), 1)
     try:
         listener.bind((LOOPBACK_HOST, args.port))
         listener.listen()
