@@ -144,12 +144,35 @@ class SqlitePeopleRepository:
         sql = "SELECT * FROM persons"
         if not include_deleted:
             sql += " WHERE deleted_at IS NULL"
-        sql += " ORDER BY canonical_name"
+        sql += " ORDER BY canonical_name, id"
         params: tuple[object, ...] = ()
         if limit is not None:
             sql += " LIMIT ?"
             params = (limit,)
         return [self._hydrate(row) for row in self._conn.execute(sql, params).fetchall()]
+
+    def page_people(self, *, limit: int, after_person_id: str | None) -> list[Person] | None:
+        if after_person_id is None:
+            rows = self._conn.execute(
+                "SELECT * FROM persons WHERE deleted_at IS NULL ORDER BY canonical_name_normalized, id LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [self._hydrate(row) for row in rows]
+        key = self._conn.execute(
+            "SELECT canonical_name_normalized, id FROM persons WHERE id = ?", (after_person_id,)
+        ).fetchone()
+        if key is None:
+            return None
+        rows = self._conn.execute(
+            """
+            SELECT * FROM persons
+            WHERE deleted_at IS NULL AND (canonical_name_normalized, id) > (?, ?)
+            ORDER BY canonical_name_normalized, id
+            LIMIT ?
+            """,
+            (key[0], key[1], limit),
+        ).fetchall()
+        return [self._hydrate(row) for row in rows]
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         rows = self._conn.execute(

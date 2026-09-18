@@ -8,18 +8,42 @@ identity level, carrying no facts, interactions, traits, or reminders at any sen
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
+from typing import Final
 
 from pydantic import BaseModel, Field
 
 from people_context.app.exports._document import render_json_document
 from people_context.domain.person import Person
 from people_context.domain.shared import normalize_name
+from people_context.domain.source_cursor import decode_cursor, encode_cursor
 from people_context.ports.clock import Clock
-from people_context.ports.repository import PersonReader
+from people_context.ports.repository import PersonIndexReader
 
 PERSON_INDEX_FORMAT = "people-context-person-index"
 PERSON_INDEX_VERSION = 1
+
+#: Scope of a cursor issued by the paged person index.
+PERSON_INDEX_SCOPE: Final = "people"
+
+#: The page a cursor request carries when the caller names no limit, and the bounds it may ask
+#: for. They apply only to paged reads: an unpaged `execute` keeps its own unbounded contract.
+DEFAULT_PERSON_PAGE_LIMIT: Final = 50
+MIN_PERSON_PAGE_LIMIT: Final = 1
+MAX_PERSON_PAGE_LIMIT: Final = 200
+
+#: Stable refusals for a paged read.
+INVALID_PERSON_PAGE_LIMIT: Final = "invalid_person_page_limit"
+INVALID_PERSON_CURSOR: Final = "invalid_person_cursor"
+
+
+class PersonIndexError(ValueError):
+    """Raised when a paged person-index argument is refused; ``code`` is stable."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class PersonIndexEntry(BaseModel):
@@ -43,12 +67,14 @@ class PersonIndexDocument(BaseModel):
     generated_at: datetime
     include_deleted: bool = False
     people: list[PersonIndexEntry] = Field(default_factory=list)
+    # Additive (M30.1): set only by a paged read when more people remain after this page.
+    next_cursor: str | None = None
 
 
 class ListPersonIndex:
     """Project the stored people into one stably ordered index document."""
 
-    def __init__(self, people: PersonReader, clock: Clock) -> None:
+    def __init__(self, people: PersonIndexReader, clock: Clock) -> None:
         self._people = people
         self._clock = clock
 
@@ -70,10 +96,68 @@ class ListPersonIndex:
             people=entries,
         )
 
+    def page(self, *, limit: int = DEFAULT_PERSON_PAGE_LIMIT, cursor: str | None = None) -> PersonIndexDocument:
+        """Return one bounded page of active people, and where the next page resumes.
+
+        Pages are ordered by normalized name and id, the same order `execute` sorts into, and
+        continue by keyset rather than offset, so following `next_cursor` reaches every person
+        exactly once. The cursor names the last person returned, encoded like the import-sources
+        cursor; one naming a person that no longer exists is refused, not restarted.
+        """
+        if not MIN_PERSON_PAGE_LIMIT <= limit <= MAX_PERSON_PAGE_LIMIT:
+            raise PersonIndexError(
+                f"limit must be between {MIN_PERSON_PAGE_LIMIT} and {MAX_PERSON_PAGE_LIMIT}",
+                code=INVALID_PERSON_PAGE_LIMIT,
+            )
+        after = None if cursor is None else self._anchor(cursor)
+        rows = self._people.page_people(limit=limit + 1, after_person_id=after)
+        if rows is None:
+            raise PersonIndexError("this cursor no longer names a person", code=INVALID_PERSON_CURSOR)
+        page = rows[:limit]
+        next_cursor = None
+        if len(rows) > limit:
+            anchor = page[-1]
+            next_cursor = encode_cursor(PERSON_INDEX_SCOPE, _name_digest(anchor.canonical_name) + anchor.id)
+        return PersonIndexDocument(
+            generated_at=self._clock.now(),
+            people=[_entry(person) for person in page],
+            next_cursor=next_cursor,
+        )
+
+    def _anchor(self, cursor: str) -> str:
+        """Return the id a cursor resumes after, refusing one whose person moved in the order.
+
+        The store resolves the anchor's *current* position, so a rename between two pages would
+        resume from the wrong place and skip or repeat people. The cursor therefore also carries a
+        digest of the name it was issued under, and a changed name refuses rather than continues.
+        """
+        try:
+            key = decode_cursor(cursor, scope=PERSON_INDEX_SCOPE)
+        except ValueError as exc:
+            raise PersonIndexError(str(exc), code=INVALID_PERSON_CURSOR) from None
+        digest, person_id = key[:_NAME_DIGEST_CHARS], key[_NAME_DIGEST_CHARS:]
+        anchor = self._people.get(person_id) if person_id else None
+        if anchor is None:
+            raise PersonIndexError("this cursor no longer names a person", code=INVALID_PERSON_CURSOR)
+        if digest != _name_digest(anchor.canonical_name):
+            raise PersonIndexError(
+                "the list changed since this page; start again from the first page", code=INVALID_PERSON_CURSOR
+            )
+        return person_id
+
 
 def render_person_index_json(document: PersonIndexDocument) -> str:
     """Render the versioned machine document as canonical JSON text."""
     return render_json_document(document)
+
+
+#: Fixed width of the name digest that opens every person-index cursor key.
+_NAME_DIGEST_CHARS: Final = 16
+
+
+def _name_digest(canonical_name: str) -> str:
+    """Return a fixed-width fingerprint of the ordering key a cursor was issued under."""
+    return hashlib.sha256(normalize_name(canonical_name).encode("utf-8")).hexdigest()[:_NAME_DIGEST_CHARS]
 
 
 def _entry(person: Person) -> PersonIndexEntry:

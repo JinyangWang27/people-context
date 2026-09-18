@@ -17,10 +17,10 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** [M30](specs/m30-local-web-review.md) `browse`. Commands below describe delivered
-behavior, including M28.1 `group`, M28.2 `group shared`, M28.3's `group` and `group_membership` candidate types
-accepted by `import stage-candidates`, M29.1 `import amend` and `import reject`, M29.2
-`import review --interactive`, and M29.3 `import edit`.
+**Planned, not implemented:** M30.2 batch review and M30.3 inline edit in the
+[browser](specs/m30-local-web-review.md). Commands below describe delivered behavior, including M28.1 `group`, M28.2
+`group shared`, M28.3's `group` and `group_membership` candidate types accepted by `import stage-candidates`, M29.1
+`import amend` and `import reject`, M29.2 `import review --interactive`, M29.3 `import edit`, and M30.1 `browse`.
 
 | Command | Purpose |
 |---|---|
@@ -36,6 +36,7 @@ accepted by `import stage-candidates`, M29.1 `import amend` and `import reject`,
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
+| `browse [--open] [--port N]` | Serve a read-only local page of people, one person's brief, and import sources on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
@@ -535,6 +536,10 @@ event date, alongside any validity period, source-session reference, and readabl
 bounded, disclosure-filtered page of durable records — not a complete personal history, and not a durable
 biography.
 
+Facts and interactions share a budget of 10 items. When it cut the ranked list, the Markdown says so in words
+before the Facts section and the JSON carries `truncated: true` (an additive M30.1 field, with the same meaning as
+`get_person_context`'s flag), so a bounded section is never read as complete.
+
 In JSON, `history` is `null` when it was not requested, which is a different fact from a requested page whose
 `entries` are empty; `disclosure.history` is `null` in the same case and otherwise names the level.
 
@@ -557,6 +562,49 @@ is replaced instead of followed, and a failed write leaves any previous file unt
 without writing anything, when `--output` names the database it is reading or one of that database's `-wal`,
 `-shm`, or `-journal` sidecars.
 
+## Local browser viewer
+
+```bash
+uv run pctx browse
+uv run pctx browse --open --port 8766
+```
+
+Serves one read-only page on `127.0.0.1` for whoever finds a table easier than a terminal: the people list, one
+person's brief, and the import sources with each receipt's staged counts. It is a fourth client of the reads
+`pctx list --json`, `pctx brief`, `pctx sources`, and `pctx source show` already call, and records nothing. It is
+not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or configuration, and
+two launches are two unrelated processes.
+
+The bind is loopback only. There is no `--host`; `--port` picks the port (default: an ephemeral one) and a busy
+port exits 1. The command prints one URL on stdout carrying a per-launch `secrets.token_urlsafe` token, and the
+review disclosure warning on stderr; `--open` hands that URL to the default browser. The token is printed there
+and nowhere else — not in a log line, an error, a file, or the database — because uvicorn's access log is off and
+its logging never formats a request path.
+
+Every request is checked before routing: `Host` must be the bound `127.0.0.1:PORT`, a present `Origin` must be
+that same origin, a present `Sec-Fetch-Site` must be `same-origin` or `none`, and the token must match — as the
+`token` query parameter on the first page load, and as the `X-Pctx-Token` header the page sends on every request
+after it. Any failure gets the same generic `403 Forbidden`, naming no check and carrying no data. The page reads
+the token and replaces its history entry with a token-free `/` before its first request, so the token does not stay
+in the address bar or history; reloading that address is refused, and the printed URL opens the page again.
+
+Every response carries `Content-Security-Policy: default-src 'self'; script-src 'nonce-N'; style-src 'nonce-N'`
+with a fresh nonce, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`. The page is one inline document
+with no external script, stylesheet, or font; it renders every recorded value as text, so a name containing
+markup is displayed, not run.
+
+Disclosure follows the MCP server's ordinary reads. The person view shows no `sensitive` or `restricted` record
+unless `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` is set in the environment of the `pctx browse` process itself, and no
+control on the page can change that. The people list pages the person index 50 at a time (1–200 through the
+endpoint's `limit`), following its `next_cursor`; a cursor whose last person was renamed since it was issued is
+refused rather than resumed from the wrong place, and the list starts again from the first page. Like every
+keyset listing here, paging reaches each person exactly once while the store is unchanged; a concurrent rename
+of some other person can move that one person across a page boundary. The person view says when the brief's facts and interactions
+were cut at their bound. A source opens to its receipt and its `staged_total` and `staged_by_status` counts only:
+committed mappings name and count durable records without a disclosure filter, so they never leave the process
+and remain with the operator-only `pctx source show`. A forgotten (redacted) source's counts are withheld, sent as `null` and
+shown as withheld, never as zero.
+
 ## Person index
 
 ```bash
@@ -573,6 +621,11 @@ Soft-deleted people are excluded unless `--all` is supplied, and then they are m
 rather than by a suffix on the name. `--limit` bounds how many people are read, exactly as it does for the table;
 the entries that survive it are ordered by normalized name and then id, so the document does not depend on the
 database's own collation. An empty store still produces a complete, parseable document.
+
+`next_cursor` is an additive M30.1 field, and it is `null` here: `pctx list --json` is never paged, so
+`--limit` keeps its meaning and no limit still lists everyone. Only the `pctx browse` people list asks for
+bounded pages, ordered by normalized name then id and continued from the cursor, which names the last person
+returned. People with equal names are always listed in id order.
 
 ## Data-quality findings
 

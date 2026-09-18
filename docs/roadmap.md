@@ -178,7 +178,6 @@ The following remain candidates, not commitments:
 - multi-user ownership and sharing;
 - authenticated remote transport;
 - reminder notification daemon (M13 ships only a pull-based calendar-feed export);
-- (moved) the read-only local web viewer is now planned as M30.1;
 - CardDAV synchronization (M14 ships only one-way vCard export);
 - watched-folder/background ingestion orchestration outside the core import transaction;
 - source-session rollback/retraction after safe lifecycle semantics are designed from real usage.
@@ -310,7 +309,7 @@ M29.3, and M29 is independent of M28.3.
 
 ## M30 — Local web view, review, and edit
 
-**Status:** Planned — not implemented.
+**Status:** M30.1 shipped; M30.2 and M30.3 planned.
 
 Add `pctx browse`, a loopback-only Starlette/uvicorn page — `starlette` and `uvicorn` are already resolved as
 transitive dependencies of `mcp` and only need declaring — with a per-launch token, `Host`/`Origin` checks, and

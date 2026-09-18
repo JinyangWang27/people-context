@@ -15,11 +15,16 @@ from people_context.app.exports.brief import (
 )
 from people_context.app.exports.json import ExportData, ExportDocument
 from people_context.app.exports.person_index import (
+    DEFAULT_PERSON_PAGE_LIMIT,
+    INVALID_PERSON_CURSOR,
+    INVALID_PERSON_PAGE_LIMIT,
+    MAX_PERSON_PAGE_LIMIT,
     PERSON_INDEX_FORMAT,
     PERSON_INDEX_VERSION,
     ListPersonIndex,
     PersonIndexDocument,
     PersonIndexEntry,
+    PersonIndexError,
     render_person_index_json,
 )
 from people_context.app.exports.reminders_ics import (
@@ -43,8 +48,12 @@ from people_context.app.exports.vcard import (
 __all__ = [
     "BRIEF_FORMAT",
     "BRIEF_VERSION",
+    "DEFAULT_PERSON_PAGE_LIMIT",
     "DEFAULT_VCARD_VERSION",
     "DISCLOSURE_NOTICE",
+    "INVALID_PERSON_CURSOR",
+    "INVALID_PERSON_PAGE_LIMIT",
+    "MAX_PERSON_PAGE_LIMIT",
     "PERSON_INDEX_FORMAT",
     "PERSON_INDEX_VERSION",
     "SUPPORTED_RECURRENCES",
@@ -65,6 +74,7 @@ __all__ = [
     "PersonBriefDocument",
     "PersonIndexDocument",
     "PersonIndexEntry",
+    "PersonIndexError",
     "ReminderCalendarResult",
     "VCardExportError",
     "VCardExportResult",
