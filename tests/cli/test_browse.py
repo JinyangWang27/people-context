@@ -165,3 +165,23 @@ def test_elevation_comes_from_the_browse_process_environment(tmp_path: Path) -> 
 
     assert (out + err).count(token) == 1
     assert _SENSITIVE_VALUE in brief
+
+
+def test_a_fixed_port_can_be_reused_straight_after_a_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A previous session's listener, as `browse` creates it, whose served connection the server
+    # closed first: that leaves the port in TIME_WAIT.
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        served, _ = listener.accept()
+        served.close()
+        client.close()
+    monkeypatch.setattr(uvicorn.Server, "run", lambda _server, sockets: None)
+
+    assert main(["--db", str(tmp_path / "people.db"), "browse", "--port", str(port)]) == 0
+    assert capsys.readouterr().out.startswith(f"http://127.0.0.1:{port}/")

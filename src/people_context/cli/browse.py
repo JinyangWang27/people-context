@@ -48,6 +48,9 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         print("Error: --port must be between 0 and 65535.", file=sys.stderr)
         return 2
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # As uvicorn does for its own listeners: a port left in TIME_WAIT by the last session can be
+    # bound again at once, while a port another socket is listening on is still refused.
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         listener.bind((LOOPBACK_HOST, args.port))
         listener.listen()
