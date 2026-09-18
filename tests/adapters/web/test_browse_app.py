@@ -214,6 +214,9 @@ def test_the_page_is_one_self_contained_document_under_its_own_nonce(db_file: Pa
     assert _TOKEN not in page
     assert page.index("history.replaceState") < page.index("fetch(")
     assert REVIEW_DISCLOSURE_WARNING in page and SOURCES_DISCLOSURE_WARNING in page
+    # A detail view's Back returns to the page it was opened from, not to page one.
+    assert 'button("Back to people", () => showPeople(cursor, back))' in page
+    assert 'button("Back to sources", () => showSources(cursor, back))' in page
 
 
 def test_the_people_list_pages_the_person_index(db_file: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -150,7 +150,7 @@ async function showPeople(cursor, back) {
   let doc;
   try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error); }
   const rows = doc.people.map((person) => [
-    button(person.canonical_name, () => showPerson(person.id), "link"),
+    button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
     person.aliases.join(", "),
     person.summary,
   ]);
@@ -161,7 +161,8 @@ async function showPeople(cursor, back) {
   );
 }
 
-async function showPerson(personId) {
+// `cursor` and `back` are the people page this was opened from, so Back returns to it.
+async function showPerson(personId, cursor, back) {
   let doc;
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error); }
   const identity = el("dl");
@@ -183,7 +184,7 @@ async function showPerson(personId) {
     ["Traits", doc.traits.map((trait) => trait.category + ": " + trait.value)],
   ];
   for (const [title, items] of sections) nodes.push(el("h3", title), list(items));
-  nodes.push(button("Back to people", () => showPeople(null, [])));
+  nodes.push(button("Back to people", () => showPeople(cursor, back)));
   show(doc.person.canonical_name, ...nodes);
 }
 
@@ -191,7 +192,7 @@ async function showSources(cursor, back) {
   let doc;
   try { doc = await api("/api/sources" + query({ cursor })); } catch (error) { return fail(error); }
   const rows = doc.sources.map((source) => [
-    button(source.source_kind, () => showSource(source.id), "link"),
+    button(source.source_kind, () => showSource(source.id, cursor, back), "link"),
     source.label,
     source.status,
     source.batch_id,
@@ -204,7 +205,7 @@ async function showSources(cursor, back) {
   );
 }
 
-async function showSource(sourceId) {
+async function showSource(sourceId, cursor, back) {
   let doc;
   try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error); }
   const details = el("dl");
@@ -216,15 +217,15 @@ async function showSource(sourceId) {
     ["Batch", doc.source.batch_id || "-"],
   ];
   for (const [term, value] of fields) details.append(el("dt", term), el("dd", value));
-  const back = button("Back to sources", () => showSources(null, []));
+  const toList = button("Back to sources", () => showSources(cursor, back));
   if (doc.source.redacted) {
     // A forgotten source's counts are withheld, not zero, so none are shown.
-    show("Import source", details, el("p", "This source was forgotten; its counts are withheld.", "notice"), back);
+    show("Import source", details, el("p", "This source was forgotten; its counts are withheld.", "notice"), toList);
     return;
   }
   details.append(el("dt", "Staged candidates"), el("dd", doc.staged_total));
   const counts = Object.entries(doc.staged_by_status).map(([status, count]) => status + ": " + count);
-  show("Import source", el("p", reviewWarning, "warning"), details, el("h3", "Staged by status"), list(counts), back);
+  show("Import source", el("p", reviewWarning, "warning"), details, el("h3", "Staged by status"), list(counts), toList);
 }
 
 async function done() {
