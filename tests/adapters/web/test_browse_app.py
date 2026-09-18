@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sqlite3
+import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -740,3 +742,73 @@ def test_a_late_response_never_renders_over_the_view_the_user_moved_to(db_file: 
         assert body.index("const batchId = batchState.id;") < body.index("await ")
         assert f"if (at === navigation) return {refresh};" in body
         assert "showBatch(batchState.id" not in body
+
+
+# A DOM just large enough to run the page's own script under node, so a click sequence is exercised
+# for real rather than inferred from the script text. Each write POST is held until released.
+_DOM_HARNESS = r"""
+class El { constructor(tag) { Object.assign(this, { tag, children: [], listeners: {}, textContent: "",
+  disabled: false, checked: false }); }
+  append(...nodes) { this.children.push(...nodes); } replaceChildren(...nodes) { this.children = nodes; }
+  addEventListener(event, handler) { this.listeners[event] = handler; } setAttribute() {}
+  all() { const out = []; const walk = (n) => { for (const c of n.children || []) { out.push(c); walk(c); } };
+    walk(this); return out; }
+  querySelectorAll() { return this.all().filter((n) => n.tag === "button" || n.tag === "input"); } }
+globalThis.Node = El;
+const ids = {};
+globalThis.document = { getElementById: (id) => (ids[id] ??= new El(id)), createElement: (t) => new El(t),
+  createTextNode: (text) => ({ text }) };
+globalThis.location = { search: "?token=t" };
+globalThis.history = { replaceState() {} };
+const posts = []; const releases = [];
+const review = { batch_id: "B", batch_digest: "d1", candidates: [
+  { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
+globalThis.fetch = async (path, options) => {
+  if (options && options.method === "POST") {
+    posts.push(path); await new Promise((resolve) => releases.push(resolve));
+    return { ok: true, json: async () => ({ withdrawn: 1, batch_digest: "d2", committed_ids: ["p1"],
+      unresolved_ids: [], skipped_ids: [] }) };
+  }
+  if (path.startsWith("/api/batch")) return { ok: true, json: async () => ({ review, lines: ["#1"] }) };
+  return { ok: true, json: async () => ({ people: [], next_cursor: null }) };
+};
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+"""
+
+_DOUBLE_CLICKS = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const check = () => { view.all().find((n) => n.tag === "input").checked = true; };
+  await showBatch("B"); check();
+  const withdraw = find("Withdraw selected");
+  withdraw.listeners.click(); withdraw.listeners.click();
+  const withdrawPosts = posts.length;
+  releases.forEach((r) => r()); await tick();
+  check(); find("Accept selected").listeners.click(); await tick();
+  find("Commit accepted").listeners.click();
+  const confirm = find("Confirm commit of 1");
+  confirm.listeners.click(); confirm.listeners.click();
+  const commitPosts = posts.length - withdrawPosts;
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ withdrawPosts, commitPosts, message: batchState.message }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_path: Path) -> None:
+    with _client(db_file) as client:
+        page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
+    script = re.search(r"<script[^>]*>(.*)</script>", page, re.DOTALL)
+    assert script is not None
+    program = tmp_path / "page.js"
+    program.write_text(_DOM_HARNESS + script.group(1) + _DOUBLE_CLICKS, encoding="utf-8")
+    node = shutil.which("node")
+    assert node is not None
+    completed = subprocess.run([node, str(program)], capture_output=True, text=True, timeout=30, check=True)
+    outcome = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert outcome == {
+        "withdrawPosts": 1,
+        "commitPosts": 1,
+        "message": "Committed 1; 0 unresolved; 0 already committed.",
+    }

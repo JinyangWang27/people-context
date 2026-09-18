@@ -267,7 +267,17 @@ async function showSource(sourceId, cursor, back) {
 // `pctx import review --interactive` does. Withdraw and commit always send the digest of the review
 // on screen, so a batch another client changed since is refused with `batch_changed`. After every
 // action the batch is read again from the server rather than patched locally.
-const batchState = { id: null, review: null, lines: [], accepted: new Set(), message: null };
+const batchState = { id: null, review: null, lines: [], accepted: new Set(), message: null, busy: false };
+
+// One write at a time: a second click while a withdrawal or commit is in flight would send a
+// second request that supersedes the first's result. Every control is disabled synchronously, and
+// the re-rendered batch brings fresh ones.
+function beginAction() {
+  if (batchState.busy) return false;
+  batchState.busy = true;
+  for (const control of view.querySelectorAll("button, input")) control.disabled = true;
+  return true;
+}
 
 function matchState(candidate) {
   if (candidate.type !== "person") return "";
@@ -363,7 +373,7 @@ async function batchAction(path, ids) {
 }
 
 async function withdrawSelected(ids) {
-  if (!ids.length) return;
+  if (!ids.length || !beginAction()) return;
   const at = navigate();
   const batchId = batchState.id;
   let message;
@@ -372,7 +382,7 @@ async function withdrawSelected(ids) {
     const result = await batchAction("/api/batch/withdraw", ids);
     message = "Withdrew " + result.withdrawn + ".";
     baseline = result.batch_digest;
-  } catch (error) { message = "Refused: " + error.message; }
+  } catch (error) { message = "Refused: " + error.message; } finally { batchState.busy = false; }
   if (at === navigation) return showBatch(batchId, message, baseline);
 }
 
@@ -391,6 +401,7 @@ function confirmCommit(area) {
 }
 
 async function commitAccepted() {
+  if (!batchState.accepted.size || !beginAction()) return;
   const at = navigate();
   const batchId = batchState.id;
   const ids = Array.from(batchState.accepted);
@@ -400,7 +411,7 @@ async function commitAccepted() {
     const result = await batchAction("/api/batch/commit", ids);
     message = "Committed " + result.committed_ids.length + "; " + result.unresolved_ids.length
       + " unresolved; " + result.skipped_ids.length + " already committed.";
-  } catch (error) { message = "Refused: " + error.message; }
+  } catch (error) { message = "Refused: " + error.message; } finally { batchState.busy = false; }
   if (at === navigation) return showBatch(batchId, message);
 }
 
