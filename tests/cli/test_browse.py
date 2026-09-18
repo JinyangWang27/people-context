@@ -7,6 +7,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
@@ -77,15 +78,30 @@ def test_open_hands_the_printed_loopback_url_to_the_browser(
 ) -> None:
     opened: list[str] = []
     bound: list[tuple[str, int]] = []
+    order: list[str] = []
+    serving = threading.Event()
+    browser_done = threading.Event()
 
     def fake_run(_server: uvicorn.Server, sockets: list[socket.socket]) -> None:
         bound.extend(sock.getsockname() for sock in sockets)
+        order.append("serve")
+        serving.set()
+
+    def blocking_browser(url: str) -> bool:
+        # A text-mode browser returns only when it exits, which needs the server already serving.
+        serving.wait(timeout=2)
+        order.append("browser exits")
+        opened.append(url)
+        browser_done.set()
+        return True
 
     monkeypatch.setattr(uvicorn.Server, "run", fake_run)
-    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+    monkeypatch.setattr("webbrowser.open", blocking_browser)
 
     assert main(["--db", str(tmp_path / "people.db"), "browse", "--open"]) == 0
+    assert browser_done.wait(timeout=5)
 
+    assert order == ["serve", "browser exits"]
     out, err = capsys.readouterr()
     url = out.strip()
     parts = urlsplit(url)

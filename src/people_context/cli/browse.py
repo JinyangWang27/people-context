@@ -16,6 +16,7 @@ import contextlib
 import secrets
 import socket
 import sys
+import threading
 import webbrowser
 from typing import Any
 
@@ -96,7 +97,9 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     print(f"Warning: {REVIEW_DISCLOSURE_WARNING}", file=sys.stderr)
     print("Serving on loopback only. Press Ctrl-C, or Done in the page, to stop.", file=sys.stderr, flush=True)
     if args.open:
-        webbrowser.open(url)
+        # A text-mode browser blocks `webbrowser.open` until it exits, so it must not hold up the
+        # server it is about to talk to; the socket is already listening and queues its request.
+        threading.Thread(target=webbrowser.open, args=(url,), daemon=True).start()
     try:
         server.run(sockets=[listener])
     finally:
