@@ -799,10 +799,11 @@ _DOUBLE_CLICKS = r"""
 def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_path: Path) -> None:
     with _client(db_file) as client:
         page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
-    script = re.search(r"<script[^>]*>(.*)</script>", page, re.DOTALL)
-    assert script is not None
+    # The page's one inline script, sliced out rather than matched: this reads our own document.
+    start = page.index(">", page.index("<script")) + 1
+    script = page[start : page.index("</script>", start)]
     program = tmp_path / "page.js"
-    program.write_text(_DOM_HARNESS + script.group(1) + _DOUBLE_CLICKS, encoding="utf-8")
+    program.write_text(_DOM_HARNESS + script + _DOUBLE_CLICKS, encoding="utf-8")
     node = shutil.which("node")
     assert node is not None
     completed = subprocess.run([node, str(program)], capture_output=True, text=True, timeout=30, check=True)
