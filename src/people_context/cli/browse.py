@@ -1,4 +1,4 @@
-"""`pctx browse` — a short-lived, loopback-only browser page over the existing reads (M30.1).
+"""`pctx browse` — a short-lived, loopback-only browser page over the existing use cases (M30.1, M30.2).
 
 It is not a service: it runs until Ctrl-C or until the page says it is done, serves one browser on
 127.0.0.1, and leaves nothing behind — no daemon, PID file, or configuration. There is no `--host`,
@@ -25,6 +25,7 @@ import uvicorn
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.adapters.web import LOOPBACK_HOST, create_browse_app
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
+from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
 from people_context.config import SENSITIVE_CONTEXT_ENV, process_elevation_enabled
 
@@ -57,7 +58,7 @@ def _address_reuse_option() -> int | None:
 
 
 def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
-    """Serve the read-only local viewer until interrupted."""
+    """Serve the local viewer and batch review page until interrupted."""
     if not 0 <= args.port <= 65535:
         print("Error: --port must be between 0 and 65535.", file=sys.stderr)
         return 2
@@ -93,6 +94,7 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         on_done=stop,
         review_warning=REVIEW_DISCLOSURE_WARNING,
         sources_warning=SOURCES_DISCLOSURE_WARNING,
+        review_lines=import_review_lines,
     )
     server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_config=_LOG_CONFIG, lifespan="on"))
 

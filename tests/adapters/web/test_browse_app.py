@@ -1,9 +1,12 @@
-"""The `pctx browse` application: its guard, its security headers, and its read endpoints (M30.1)."""
+"""The `pctx browse` application: its guard, security headers, read endpoints (M30.1), and batch review (M30.2)."""
 
 from __future__ import annotations
 
 import json
 import re
+import shutil
+import sqlite3
+import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -17,9 +20,12 @@ from people_context import cli
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, SqliteRecordStore, open_db
 from people_context.adapters.web import TOKEN_HEADER, create_browse_app
+from people_context.adapters.web import app as web_app
 from people_context.app.exports.brief import BRIEF_CONTEXT_ITEMS
+from people_context.app.imports import ImportPipelineError, ImportReviewRow
 from people_context.app.records import RecordFact, RecordFactInput
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
+from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
 from people_context.domain.person import Person
 from people_context.domain.shared import Sensitivity
@@ -138,6 +144,7 @@ def _client(
         on_done=on_done,
         review_warning=REVIEW_DISCLOSURE_WARNING,
         sources_warning=SOURCES_DISCLOSURE_WARNING,
+        review_lines=import_review_lines,
     )
     with TestClient(app, base_url=base_url, headers={TOKEN_HEADER: _TOKEN}) as client:
         yield client
@@ -403,3 +410,432 @@ def test_a_forgotten_source_withholds_its_counts_rather_than_reporting_zero(
         body = client.get("/api/source", params={"id": source_id}).json()
     assert body["source"]["redacted"] is True
     assert body["staged_total"] is None and body["staged_by_status"] is None
+
+
+# --- M30.2 batch review ----------------------------------------------------------------------
+
+_SAME_ORIGIN = {"origin": _ORIGIN, "sec-fetch-site": "same-origin"}
+
+
+def _stage(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], candidates: list[Any]) -> str:
+    input_path = tmp_path / "batch.json"
+    input_path.write_text(json.dumps(candidates), encoding="utf-8")
+    staged = _cli_json(
+        capsys, "--db", str(db_file), "import", "stage-candidates", "--source", "allotment meeting",
+        "--input", str(input_path), "--json",
+    )
+    batch_id = staged["batch_id"]
+    assert isinstance(batch_id, str)
+    return batch_id
+
+
+def _elena_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> str:
+    """Elena with a sensitive fact, a markup-bearing fact, and a note to withdraw."""
+    return _stage(
+        db_file,
+        tmp_path,
+        capsys,
+        [
+            {"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []},
+            {"type": "fact", "person_ref": "elena", "predicate": "health", "value": _SENSITIVE_VALUE,
+             "sensitivity": "sensitive"},
+            {"type": "fact", "person_ref": "elena", "predicate": "role", "value": _MARKUP_NAME},
+            {"type": "fact", "person_ref": "elena", "predicate": "note", "value": "Drop this one"},
+        ],
+    )
+
+
+def _cli_review(capsys: pytest.CaptureFixture[str], db_file: Path, batch_id: str) -> dict[str, Any]:
+    return _cli_json(capsys, "--db", str(db_file), "import", "review", batch_id, "--json")
+
+
+def _ids(review: dict[str, Any]) -> dict[str, str]:
+    """Candidate ids by person name or fact predicate."""
+    return {
+        row["candidate"].get("predicate") or row["candidate"]["name"]: row["id"] for row in review["candidates"]
+    }
+
+
+def _action(client: TestClient, verb: str, batch_id: str, ids: list[str], digest: str) -> Any:
+    return client.post(
+        f"/api/batch/{verb}",
+        json={"batch_id": batch_id, "candidate_ids": ids, "expected_batch_digest": digest},
+        headers=_SAME_ORIGIN,
+    )
+
+
+def test_the_batch_view_is_the_cli_review_verbatim(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    note = _ids(_cli_review(capsys, db_file, batch_id))["note"]
+    assert cli.main(["--db", str(db_file), "import", "reject", batch_id, note]) == 0
+    capsys.readouterr()
+    expected = _cli_review(capsys, db_file, batch_id)
+    with _client(db_file) as client:
+        response = client.get("/api/batch", params={"id": batch_id})
+        missing = client.get("/api/batch", params={"id": "no-such-batch"})
+    _assert_security_headers(response.headers)
+    body = response.json()
+    assert body["review"] == expected
+    assert [row["ordinal"] for row in body["review"]["candidates"]] == [1, 2, 3, 4]
+    assert "rejected" in [row["status"] for row in body["review"]["candidates"]]
+    rows = [ImportReviewRow.model_validate(row) for row in expected["candidates"]]
+    assert body["lines"] == import_review_lines(rows)
+    # Staged candidates are shown as `pctx import review` shows them: a sensitive one without
+    # elevation, and a markup value as data.
+    assert _SENSITIVE_VALUE in response.text
+    assert _MARKUP_NAME in [row["candidate"].get("value") for row in body["review"]["candidates"]]
+    assert missing.status_code == 404 and missing.json() == {"error": "batch_not_found"}
+
+
+def test_withdrawing_with_the_displayed_digest_matches_the_cli(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        response = _action(client, "withdraw", batch_id, [_ids(shown)["note"]], shown["batch_digest"])
+        reloaded = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+    _assert_security_headers(response.headers)
+    assert response.status_code == 200
+    fresh = _cli_review(capsys, db_file, batch_id)
+    assert response.json() == {"withdrawn": 1, "batch_digest": fresh["batch_digest"]}
+    assert reloaded == fresh
+    assert {row["id"]: row["status"] for row in fresh["candidates"]}[_ids(shown)["note"]] == "rejected"
+
+
+@pytest.mark.parametrize("change", ["amend_checked", "amend_unchecked_person", "commit_checked"])
+def test_a_batch_changed_after_display_refuses_withdraw_and_commit(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], change: str
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    db = ["--db", str(db_file)]
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        ids = _ids(shown)
+        checked = [ids["role"]]
+        if change == "amend_checked":
+            argv = ["import", "amend", batch_id, ids["role"], "--patch", '{"value": "Beekeeper"}']
+        elif change == "amend_unchecked_person":
+            argv = ["import", "amend", batch_id, ids["Elena Marsh"], "--patch", '{"name": "Elena Marsh-Ibarra"}']
+        else:
+            argv = ["import", "commit", batch_id, "--accept", ids["Elena Marsh"], ids["health"]]
+        assert cli.main([*db, *argv]) == 0
+        capsys.readouterr()
+        before = _cli_review(capsys, db_file, batch_id)
+        withdraw = _action(client, "withdraw", batch_id, checked, shown["batch_digest"])
+        commit = _action(client, "commit", batch_id, checked, shown["batch_digest"])
+    for response in (withdraw, commit):
+        assert response.status_code == 409
+        assert response.json() == {"error": "batch_changed"}
+        _assert_security_headers(response.headers)
+    assert _cli_review(capsys, db_file, batch_id) == before
+
+
+def test_a_refusal_carries_the_use_case_code_and_never_the_payload(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        ids = _ids(shown)
+        withdrawn = _action(client, "withdraw", batch_id, [ids["health"]], shown["batch_digest"]).json()
+        commit = _action(client, "commit", batch_id, [ids["health"]], withdrawn["batch_digest"])
+        foreign = _action(client, "withdraw", batch_id, ["not-in-this-batch"], withdrawn["batch_digest"])
+    assert commit.status_code == 400 and commit.json() == {"error": "candidate_withdrawn"}
+    assert foreign.status_code == 400 and set(foreign.json()) == {"error"}
+    for response in (commit, foreign):
+        assert ids["health"] not in response.text and "not-in-this-batch" not in response.text
+        assert _SENSITIVE_VALUE not in response.text
+
+
+def test_committing_reports_the_use_case_counts_and_matches_a_fresh_review(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        ids = _ids(shown)
+        accepted = [ids["Elena Marsh"], ids["role"]]
+        response = _action(client, "commit", batch_id, accepted, shown["batch_digest"])
+        reloaded = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+    _assert_security_headers(response.headers)
+    body = response.json()
+    assert body["committed_ids"] == accepted
+    assert body["unresolved_ids"] == [] and body["skipped_ids"] == []
+    fresh = _cli_review(capsys, db_file, batch_id)
+    assert reloaded == fresh
+    statuses = {row["id"]: row["status"] for row in fresh["candidates"]}
+    assert [statuses[ids[key]] for key in ("Elena Marsh", "role", "health", "note")] == [
+        "committed", "committed", "pending", "pending",
+    ]
+
+
+def test_an_accepted_ambiguous_person_and_its_fact_are_both_unresolved(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    conn = open_db(db_file)
+    try:
+        repository = SqlitePeopleRepository(conn)
+        repository.save_person(Person(canonical_name="Toma Ibarra"))
+        repository.save_person(Person(canonical_name="Toma Ibarra"))
+    finally:
+        conn.close()
+    batch_id = _stage(
+        db_file,
+        tmp_path,
+        capsys,
+        [
+            {"type": "person", "ref": "toma", "name": "Toma Ibarra", "aliases": []},
+            {"type": "fact", "person_ref": "toma", "predicate": "role", "value": "Treasurer"},
+        ],
+    )
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        ids = _ids(shown)
+        both = [ids["Toma Ibarra"], ids["role"]]
+        response = _action(client, "commit", batch_id, both, shown["batch_digest"])
+    assert shown["candidates"][0]["candidate"]["match_disposition"] == "ambiguous"
+    assert response.status_code == 200
+    assert response.json()["committed_ids"] == []
+    assert sorted(response.json()["unresolved_ids"]) == sorted(both)
+
+
+def test_a_second_connection_cannot_write_the_batch_while_the_commit_holds_it(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An amendment from elsewhere waits for the commit; it can never land between check and write."""
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    attempts: list[str] = []
+
+    class _Contending:
+        def __init__(self, inner: Any) -> None:
+            self._inner = inner
+
+        def execute(self, *args: Any, **kwargs: Any) -> Any:
+            contender = open_db(db_file)
+            contender.execute("PRAGMA busy_timeout = 0")
+            try:
+                contender.execute(
+                    "UPDATE import_staging SET candidate_json = candidate_json WHERE batch_id = ?", (batch_id,)
+                )
+                attempts.append("written")
+            except sqlite3.OperationalError as exc:
+                attempts.append(str(exc))
+            finally:
+                contender.close()
+            return self._inner.execute(*args, **kwargs)
+
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        commit_import = client.app_state["runtime"].use_cases.commit_import
+        commit_import._remember_person = _Contending(commit_import._remember_person)
+        response = _action(client, "commit", batch_id, [_ids(shown)["Elena Marsh"]], shown["batch_digest"])
+    assert attempts == ["database is locked"]
+    assert response.status_code == 200 and len(response.json()["committed_ids"]) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"not json",
+        b"[]",
+        json.dumps({"batch_id": "b", "candidate_ids": []}).encode(),
+        json.dumps({"batch_id": "b", "candidate_ids": [], "expected_batch_digest": ""}).encode(),
+        json.dumps({"batch_id": "b", "candidate_ids": "x", "expected_batch_digest": "d"}).encode(),
+        json.dumps({"batch_id": "b", "candidate_ids": [], "expected_batch_digest": "d", "all": True}).encode(),
+    ],
+)
+def test_a_malformed_action_is_refused_without_echoing_it(db_file: Path, body: bytes) -> None:
+    with _client(db_file) as client:
+        responses = [
+            client.post(f"/api/batch/{verb}", content=body, headers=_SAME_ORIGIN) for verb in ("withdraw", "commit")
+        ]
+    for response in responses:
+        assert response.status_code == 400 and response.json() == {"error": "invalid_request"}
+
+
+def test_an_oversized_action_is_refused_before_it_is_parsed(
+    db_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(web_app, "MAX_BATCH_ACTION_BYTES", 64)
+    body = json.dumps({"batch_id": "b", "candidate_ids": ["x" * 100], "expected_batch_digest": "d"})
+    with _client(db_file) as client:
+        response = client.post("/api/batch/commit", content=body, headers=_SAME_ORIGIN)
+    assert response.status_code == 413 and response.json() == {"error": "request_too_large"}
+
+
+def test_a_cross_origin_action_is_refused_and_writes_nothing(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    before = _cli_review(capsys, db_file, batch_id)
+    with _client(db_file) as client:
+        for verb in ("withdraw", "commit"):
+            response = client.post(
+                f"/api/batch/{verb}",
+                json={
+                    "batch_id": batch_id,
+                    "candidate_ids": [row["id"] for row in before["candidates"]],
+                    "expected_batch_digest": before["batch_digest"],
+                },
+                headers={"origin": "http://evil.example"},
+            )
+            assert response.status_code == 403 and response.text == "Forbidden\n"
+    assert _cli_review(capsys, db_file, batch_id) == before
+
+
+def test_every_batch_endpoint_applies_the_cli_review_ceiling_first(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    batch_id = _elena_batch(db_file, tmp_path, capsys)
+    before = _cli_review(capsys, db_file, batch_id)
+
+    def too_large(_batch_id: str) -> None:
+        raise ImportPipelineError("batch_too_large_for_cli", "Elena Marsh batch is too large")
+
+    with _client(db_file) as client:
+        client.app_state["runtime"].use_cases.preflight_import_batch.execute = too_large
+        read = client.get("/api/batch", params={"id": batch_id})
+        writes = [
+            _action(client, verb, batch_id, [before["candidates"][0]["id"]], before["batch_digest"])
+            for verb in ("withdraw", "commit")
+        ]
+    for response in (read, *writes):
+        assert response.status_code == 400 and response.json() == {"error": "batch_too_large_for_cli"}
+    assert _cli_review(capsys, db_file, batch_id) == before
+
+
+def test_the_batch_page_confirms_a_commit_by_count_and_offers_no_select_all(db_file: Path) -> None:
+    with _client(db_file) as client:
+        page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
+    assert "async function showBatch(" in page
+    assert '"Confirm commit of " + count' in page
+    assert "expected_batch_digest: batchState.review.batch_digest" in page
+    # Accepting writes nothing, and nothing selects every row.
+    assert "/api/batch/accept" not in page
+    assert "select all" not in page.casefold() and "selectall" not in page.casefold()
+    assert REVIEW_DISCLOSURE_WARNING in page
+
+
+def test_a_late_response_never_renders_over_the_view_the_user_moved_to(db_file: Path) -> None:
+    """A withdrawal or commit that completes after the user opened another view or batch is dropped.
+
+    Its continuation refreshes the batch it was started on, captured before the request, and only
+    while no navigation happened since; every view's own fetch is held to the same rule.
+    """
+    with _client(db_file) as client:
+        page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
+    script = page[page.index("<script") :]
+    for view in ("showPeople", "showPerson", "showSources", "showSource", "showBatch", "done"):
+        body = script[script.index(f"async function {view}(") :]
+        body = body[: body.index("\n}\n")]
+        assert "const at = navigate();" in body and "if (at !== navigation) return;" in body, view
+    for action, refresh in (
+        ("withdrawSelected", "showBatch(batchId, message, baseline)"),
+        ("commitAccepted", "showBatch(batchId, message)"),
+    ):
+        body = script[script.index(f"async function {action}(") :]
+        body = body[: body.index("\n}\n")]
+        assert body.index("const at = navigate();") < body.index("await ")
+        assert body.index("const batchId = batchState.id;") < body.index("await ")
+        assert f"if (at === navigation) return {refresh};" in body
+        assert "showBatch(batchState.id" not in body
+
+
+# A DOM just large enough to run the page's own script under node, so a click sequence is exercised
+# for real rather than inferred from the script text. Each write POST is held until released.
+_DOM_HARNESS = r"""
+class El { constructor(tag) { Object.assign(this, { tag, children: [], listeners: {}, textContent: "",
+  disabled: false, checked: false }); }
+  append(...nodes) { this.children.push(...nodes); } replaceChildren(...nodes) { this.children = nodes; }
+  addEventListener(event, handler) { this.listeners[event] = handler; } setAttribute() {}
+  all() { const out = []; const walk = (n) => { for (const c of n.children || []) { out.push(c); walk(c); } };
+    walk(this); return out; }
+  querySelectorAll() { return this.all().filter((n) => n.tag === "button" || n.tag === "input"); } }
+globalThis.Node = El;
+const ids = {};
+globalThis.document = { getElementById: (id) => (ids[id] ??= new El(id)), createElement: (t) => new El(t),
+  createTextNode: (text) => ({ text }) };
+globalThis.location = { search: "?token=t" };
+globalThis.history = { replaceState() {} };
+const posts = []; const releases = []; const heldGets = []; let holdGets = false;
+const review = { batch_id: "B", batch_digest: "d1", candidates: [
+  { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
+globalThis.fetch = async (path, options) => {
+  if (options && options.method === "POST") {
+    posts.push(path); await new Promise((resolve) => releases.push(resolve));
+    return { ok: true, json: async () => ({ withdrawn: 1, batch_digest: "d2", committed_ids: ["p1"],
+      unresolved_ids: [], skipped_ids: [] }) };
+  }
+  if (holdGets) await new Promise((resolve) => heldGets.push(resolve));
+  if (path.startsWith("/api/batch")) return { ok: true, json: async () => ({ review, lines: ["#1"] }) };
+  return { ok: true, json: async () => ({ people: [], next_cursor: null }) };
+};
+const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+"""
+
+_DOUBLE_CLICKS = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const check = () => { view.all().find((n) => n.tag === "input").checked = true; };
+  await showBatch("B"); check();
+  const withdraw = find("Withdraw selected");
+  withdraw.listeners.click(); withdraw.listeners.click();
+  const withdrawPosts = posts.length;
+  releases.forEach((r) => r()); await tick();
+  check(); find("Accept selected").listeners.click(); await tick();
+  find("Commit accepted").listeners.click();
+  const confirm = find("Confirm commit of 1");
+  confirm.listeners.click(); confirm.listeners.click();
+  const commitPosts = posts.length - withdrawPosts;
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ withdrawPosts, commitPosts, message: batchState.message }));
+})();
+"""
+
+
+_DONE_WHILE_LOADING = r"""
+(async () => {
+  await tick();
+  holdGets = true;
+  showBatch("B");
+  const stopping = done();
+  releases.forEach((r) => r()); await stopping;
+  holdGets = false; heldGets.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ shown: view.children.map((n) => n.textContent) }));
+})();
+"""
+
+
+def _run_page(db_file: Path, tmp_path: Path, scenario: str) -> Any:
+    """Run the served page's own script under node with the DOM harness and return its last line."""
+    with _client(db_file) as client:
+        page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
+    # The page's one inline script, sliced out rather than matched: this reads our own document.
+    start = page.index(">", page.index("<script")) + 1
+    script = page[start : page.index("</script>", start)]
+    program = tmp_path / "page.js"
+    program.write_text(_DOM_HARNESS + script + scenario, encoding="utf-8")
+    node = shutil.which("node")
+    assert node is not None
+    completed = subprocess.run([node, str(program)], capture_output=True, text=True, timeout=60, check=True)
+    return json.loads(completed.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_batch_response_after_done_does_not_repaint_the_stopped_page(db_file: Path, tmp_path: Path) -> None:
+    assert _run_page(db_file, tmp_path, _DONE_WHILE_LOADING) == {
+        "shown": ["pctx browse has stopped. You can close this tab."]
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _DOUBLE_CLICKS)
+    assert outcome == {
+        "withdrawPosts": 1,
+        "commitPosts": 1,
+        "message": "Committed 1; 0 unresolved; 0 already committed.",
+    }

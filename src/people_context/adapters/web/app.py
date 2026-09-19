@@ -1,8 +1,10 @@
-"""The loopback Starlette application behind `pctx browse` (M30.1).
+"""The loopback Starlette application behind `pctx browse` (M30.1, M30.2).
 
 The browser is a fourth client of the use cases the CLI and MCP already call: every endpoint here
-wraps an existing read and returns what it returns. No use case, validation, or disclosure rule
-exists only for the page.
+wraps an existing use case and returns what it returns. No use case, validation, or disclosure rule
+exists only for the page. The only writes are batch withdrawal and commit, through the same use
+cases `pctx import reject` and `pctx import commit` call, always with the digest of the review the
+page displayed.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
@@ -21,8 +23,9 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractContextManager, asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 from starlette.applications import Starlette
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
@@ -39,9 +42,16 @@ from people_context.app.exports import (
     render_person_index_json,
 )
 from people_context.app.imports import (
+    CLI_IMPORT_BUDGET,
     DEFAULT_SOURCE_PAGE_LIMIT,
+    MAX_CLI_STAGED_PAYLOAD_BYTES,
     UNKNOWN_SOURCE_SESSION,
+    ImportPipelineError,
+    ImportReviewResult,
+    ImportReviewRow,
     SourceInspectionError,
+    import_commit_document,
+    import_review_document,
     import_sources_document,
     render_import_json,
 )
@@ -54,6 +64,30 @@ _REFUSAL = "Forbidden\n"
 _SAME_ORIGIN_FETCH_SITES = frozenset({"same-origin", "none"})
 
 RuntimeOpener = Callable[[], AbstractContextManager[ApplicationRuntime]]
+ReviewLines = Callable[[list[ImportReviewRow]], list[str]]
+
+#: Bytes one batch-action body may carry. Its ids name rows of one batch the CLI ceiling already
+#: bounds, so the same ceiling bounds the request that selects them.
+MAX_BATCH_ACTION_BYTES = MAX_CLI_STAGED_PAYLOAD_BYTES
+
+_NonBlank = Annotated[str, StringConstraints(min_length=1)]
+
+
+class _BatchAction(BaseModel):
+    """One withdraw or commit request: which rows, of which batch, as the page displayed it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    batch_id: _NonBlank
+    candidate_ids: list[str]
+    expected_batch_digest: _NonBlank
+
+
+class _RequestRefused(Exception):
+    def __init__(self, code: str, status: int) -> None:
+        super().__init__(code)
+        self.code = code
+        self.status = status
 
 
 class _Guard:
@@ -122,11 +156,14 @@ def create_browse_app(
     on_done: Callable[[], None],
     review_warning: str,
     sources_warning: str,
+    review_lines: ReviewLines,
 ) -> Starlette:
-    """Build the page and its read endpoints.
+    """Build the page and its endpoints.
 
     `include_sensitive` is the operator's process-level elevation, fixed before the process starts;
     no request can change it. `on_done` is called when the page says the user is finished.
+    `review_lines` is the CLI's own one-line rendering of review rows, so the batch page and
+    `pctx import review` describe a candidate identically.
     """
 
     @asynccontextmanager
@@ -190,6 +227,48 @@ def create_browse_app(
         }
         return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
 
+    async def batch(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            review = _bounded_review(runtime, request.query_params.get("id", ""))
+        except ImportPipelineError as exc:
+            return _refusal(exc)
+        body = {
+            "review": import_review_document(review).model_dump(mode="json"),
+            "lines": review_lines(review.candidates),
+        }
+        return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
+
+    async def withdraw(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _batch_action(request)
+            runtime.use_cases.preflight_import_batch.execute(action.batch_id)
+            revised = runtime.use_cases.withdraw_staged_candidates.execute(
+                action.batch_id, action.candidate_ids, expected_batch_digest=action.expected_batch_digest
+            )
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except ImportPipelineError as exc:
+            return _refusal(exc)
+        # The digest after this withdrawal lets the page tell its own change from another client's.
+        body = {"withdrawn": len(set(action.candidate_ids)), "batch_digest": revised.batch_digest}
+        return _json(json.dumps(body) + "\n")
+
+    async def commit(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _batch_action(request)
+            runtime.use_cases.preflight_import_batch.execute(action.batch_id)
+            result = runtime.use_cases.commit_import.execute(
+                action.batch_id, action.candidate_ids, expected_batch_digest=action.expected_batch_digest
+            )
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except ImportPipelineError as exc:
+            return _refusal(exc)
+        return _json(render_import_json(import_commit_document(result)))
+
     async def done(_request: Request) -> Response:
         on_done()
         return _json(json.dumps({"stopped": True}) + "\n")
@@ -201,6 +280,9 @@ def create_browse_app(
             Route("/api/person", person, methods=["GET"]),
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),
+            Route("/api/batch", batch, methods=["GET"]),
+            Route("/api/batch/withdraw", withdraw, methods=["POST"]),
+            Route("/api/batch/commit", commit, methods=["POST"]),
             Route("/api/done", done, methods=["POST"]),
         ],
         lifespan=lifespan,
@@ -218,6 +300,34 @@ def _limit(request: Request, default: int) -> int:
         return int(raw)
     except ValueError:
         return 0
+
+
+def _bounded_review(runtime: ApplicationRuntime, batch_id: str) -> ImportReviewResult:
+    """Read one batch under the ceilings `pctx import review` applies, and no others."""
+    runtime.use_cases.preflight_import_batch.execute(batch_id)
+    return runtime.use_cases.review_import.execute(batch_id, budget=CLI_IMPORT_BUDGET)
+
+
+async def _batch_action(request: Request) -> _BatchAction:
+    """Read a bounded JSON body and validate it, refusing without echoing any of it."""
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > MAX_BATCH_ACTION_BYTES:
+        raise _RequestRefused("request_too_large", 413)
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_BATCH_ACTION_BYTES:
+            raise _RequestRefused("request_too_large", 413)
+    try:
+        return _BatchAction.model_validate_json(bytes(body))
+    except ValidationError as exc:
+        raise _RequestRefused("invalid_request", 400) from exc
+
+
+def _refusal(exc: ImportPipelineError) -> Response:
+    """Report a use-case refusal by its code alone: never its message, details, or the refused ids."""
+    status = {"batch_changed": 409, "batch_not_found": 404}.get(exc.code, 400)
+    return _error(exc.code, status)
 
 
 def _json(text: str) -> Response:

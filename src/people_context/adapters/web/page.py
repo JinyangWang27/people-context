@@ -52,6 +52,11 @@ th { color: var(--muted); font-weight: 600; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
 dt { color: var(--muted); }
 dd { margin: 0; overflow-wrap: anywhere; }
+.badge { display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; }
+.accepted { border-color: var(--accent); color: var(--accent); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
+.confirm { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 12px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
 </style>
 </head>
 <body>
@@ -106,11 +111,22 @@ async function api(path, options) {
   return body;
 }
 
+// Every view and every batch action takes a navigation number before it awaits, and renders only
+// if nothing was opened since: a slow response must not paint over the view the user moved to, nor
+// carry one batch's result or digest into another.
+let navigation = 0;
+
+function navigate() {
+  navigation += 1;
+  return navigation;
+}
+
 function show(title, ...nodes) {
   view.replaceChildren(el("h2", title), ...nodes);
 }
 
-function fail(error) {
+function fail(error, at) {
+  if (at !== undefined && at !== navigation) return;
   view.replaceChildren(el("p", "Error: " + error.message, "error"));
 }
 
@@ -147,8 +163,10 @@ function pager(back, cursor, nextCursor, open) {
 }
 
 async function showPeople(cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const rows = doc.people.map((person) => [
     button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
     person.aliases.join(", "),
@@ -163,8 +181,10 @@ async function showPeople(cursor, back) {
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
 async function showPerson(personId, cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const identity = el("dl");
   const fields = [
     ["Aliases", doc.person.aliases.join(", ") || "(none)"],
@@ -189,25 +209,38 @@ async function showPerson(personId, cursor, back) {
 }
 
 async function showSources(cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/sources" + query({ cursor })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/sources" + query({ cursor })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const rows = doc.sources.map((source) => [
     button(source.source_kind, () => showSource(source.id, cursor, back), "link"),
     source.label,
     source.status,
     source.batch_id,
   ]);
+  // A batch staged without a receipt is not listed, so it is opened by id.
+  const batchInput = el("input");
+  batchInput.type = "text";
+  batchInput.placeholder = "Batch id";
+  batchInput.setAttribute("aria-label", "Batch id");
+  const openBatch = el("div", null, "actions");
+  const openTyped = () => { if (batchInput.value.trim()) showBatch(batchInput.value.trim()); };
+  openBatch.append(batchInput, button("Open batch", openTyped));
   show(
     "Import sources",
     el("p", sourcesWarning, "warning"),
+    openBatch,
     doc.sources.length ? table(["Kind", "Label", "Status", "Batch"], rows) : el("p", "No import sources.", "notice"),
     pager(back, cursor, doc.next_cursor, showSources),
   );
 }
 
 async function showSource(sourceId, cursor, back) {
+  const at = navigate();
   let doc;
-  try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error); }
+  try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   const details = el("dl");
   const fields = [
     ["Source", doc.source.id],
@@ -225,11 +258,168 @@ async function showSource(sourceId, cursor, back) {
   }
   details.append(el("dt", "Staged candidates"), el("dd", doc.staged_total));
   const counts = Object.entries(doc.staged_by_status).map(([status, count]) => status + ": " + count);
-  show("Import source", el("p", reviewWarning, "warning"), details, el("h3", "Staged by status"), list(counts), toList);
+  const nodes = [el("p", reviewWarning, "warning"), details, el("h3", "Staged by status"), list(counts)];
+  if (doc.source.batch_id && doc.staged_total) nodes.push(button("Open batch", () => showBatch(doc.source.batch_id)));
+  show("Import source", ...nodes, toList);
+}
+
+// Batch review (M30.2). Accepting writes nothing: it only marks rows for the commit, as
+// `pctx import review --interactive` does. Withdraw and commit always send the digest of the review
+// on screen, so a batch another client changed since is refused with `batch_changed`. After every
+// action the batch is read again from the server rather than patched locally.
+const batchState = { id: null, review: null, lines: [], accepted: new Set(), message: null, busy: false };
+
+// One write at a time: a second click while a withdrawal or commit is in flight would send a
+// second request that supersedes the first's result. Every control is disabled synchronously, and
+// the re-rendered batch brings fresh ones.
+function beginAction() {
+  if (batchState.busy) return false;
+  batchState.busy = true;
+  for (const control of view.querySelectorAll("button, input")) control.disabled = true;
+  return true;
+}
+
+function matchState(candidate) {
+  if (candidate.type !== "person") return "";
+  if (candidate.match_disposition === "ambiguous") {
+    return "ambiguous (" + (candidate.match_count ?? "several") + " candidates)";
+  }
+  return candidate.matched_person_id ? "matches existing person" : "new";
+}
+
+// `baseline` is the digest the kept acceptances were made against: the one on screen, or the one
+// this page's own withdrawal produced. Any other digest means another client changed the batch.
+async function showBatch(batchId, message, baseline) {
+  if (batchState.id !== batchId) batchState.accepted = new Set();
+  const shown = baseline
+    || (batchState.id === batchId && batchState.review ? batchState.review.batch_digest : null);
+  batchState.id = batchId;
+  batchState.message = message || null;
+  const at = navigate();
+  let doc;
+  try { doc = await api("/api/batch" + query({ id: batchId })); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
+  if (shown !== null && doc.review.batch_digest !== shown && batchState.accepted.size) {
+    batchState.accepted = new Set();
+    batchState.message = (batchState.message ? batchState.message + " " : "")
+      + "Batch changed elsewhere; acceptances discarded.";
+  }
+  batchState.review = doc.review;
+  batchState.lines = doc.lines;
+  const pending = new Set(doc.review.candidates.filter((row) => row.status === "pending").map((row) => row.id));
+  for (const id of batchState.accepted) if (!pending.has(id)) batchState.accepted.delete(id);
+  renderBatch();
+}
+
+function renderBatch() {
+  const review = batchState.review;
+  const counts = {};
+  for (const row of review.candidates) counts[row.status] = (counts[row.status] || 0) + 1;
+  const header = el("dl");
+  header.append(el("dt", "Batch"), el("dd", review.batch_id));
+  for (const [status, count] of Object.entries(counts)) header.append(el("dt", status), el("dd", count));
+  const boxes = [];
+  const rows = review.candidates.map((row, index) => {
+    let pick = "";
+    if (row.status === "pending") {
+      pick = el("input");
+      pick.type = "checkbox";
+      pick.setAttribute("aria-label", "Select #" + row.ordinal);
+      boxes.push([pick, row.id]);
+    }
+    const status = el("span");
+    status.append(el("span", row.status, "badge"));
+    if (batchState.accepted.has(row.id)) status.append(" ", el("span", "accepted", "badge accepted"));
+    const verbatim = el("details");
+    verbatim.append(el("summary", "Candidate"), el("pre", JSON.stringify(row.candidate, null, 2)));
+    return [pick, "#" + row.ordinal, status, batchState.lines[index], matchState(row.candidate), verbatim];
+  });
+  const selected = () => boxes.filter(([box]) => box.checked).map(([, id]) => id);
+  const confirmArea = el("div");
+  const actions = el("div", null, "actions");
+  actions.append(
+    button("Accept selected", () => acceptSelected(selected())),
+    button("Withdraw selected", () => withdrawSelected(selected())),
+  );
+  const commit = button("Commit accepted", () => confirmCommit(confirmArea));
+  commit.disabled = batchState.accepted.size === 0;
+  actions.append(commit, el("span", batchState.accepted.size + " accepted", "notice"));
+  const nodes = [header, el("p", reviewWarning, "warning")];
+  if (batchState.message) nodes.push(el("p", batchState.message, "notice"));
+  nodes.push(
+    actions,
+    confirmArea,
+    table(["", "#", "Status", "Candidate", "Match", "Staged"], rows),
+    button("Back to sources", () => showSources(null, [])),
+  );
+  show("Import batch", ...nodes);
+}
+
+function acceptSelected(ids) {
+  for (const id of ids) batchState.accepted.add(id);
+  return showBatch(batchState.id, ids.length ? "Accepted " + ids.length + "; nothing is committed yet." : null);
+}
+
+async function batchAction(path, ids) {
+  return api(path, {
+    method: "POST",
+    headers: { "X-Pctx-Token": token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      batch_id: batchState.id,
+      candidate_ids: ids,
+      expected_batch_digest: batchState.review.batch_digest,
+    }),
+  });
+}
+
+async function withdrawSelected(ids) {
+  if (!ids.length || !beginAction()) return;
+  const at = navigate();
+  const batchId = batchState.id;
+  let message;
+  let baseline;
+  try {
+    const result = await batchAction("/api/batch/withdraw", ids);
+    message = "Withdrew " + result.withdrawn + ".";
+    baseline = result.batch_digest;
+  } catch (error) { message = "Refused: " + error.message; } finally { batchState.busy = false; }
+  if (at === navigation) return showBatch(batchId, message, baseline);
+}
+
+// One explicit click, on a confirmation naming how many were accepted. The result may commit
+// fewer: an ambiguous person, or a row that resolves through one, is reported unresolved.
+function confirmCommit(area) {
+  const count = batchState.accepted.size;
+  const panel = el("div", null, "confirm");
+  panel.append(
+    el("p", "Commit " + count + " accepted candidates? Unresolved rows stay pending."),
+    button("Confirm commit of " + count, () => commitAccepted()),
+    " ",
+    button("Cancel", () => area.replaceChildren()),
+  );
+  area.replaceChildren(panel);
+}
+
+async function commitAccepted() {
+  if (!batchState.accepted.size || !beginAction()) return;
+  const at = navigate();
+  const batchId = batchState.id;
+  const ids = Array.from(batchState.accepted);
+  batchState.accepted = new Set();
+  let message;
+  try {
+    const result = await batchAction("/api/batch/commit", ids);
+    message = "Committed " + result.committed_ids.length + "; " + result.unresolved_ids.length
+      + " unresolved; " + result.skipped_ids.length + " already committed.";
+  } catch (error) { message = "Refused: " + error.message; } finally { batchState.busy = false; }
+  if (at === navigation) return showBatch(batchId, message);
 }
 
 async function done() {
-  try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error); }
+  // Stopping is a navigation too: no pending view or batch response may repaint after it.
+  const at = navigate();
+  try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
   view.replaceChildren(el("p", "pctx browse has stopped. You can close this tab."));
 }
 

@@ -19,11 +19,13 @@ M6 implements local durable change capture only. It adds one installation device
 a plaintext replay changelog inside the same SQLite file. It adds no network path, account, pairing, relay, peer
 registration, remote access, batch encryption, replay engine, bootstrap restore, or background sync process.
 
-M30.1 adds `pctx browse`, a short-lived, read-only browser page bound to `127.0.0.1` only. It adds no
+M30.1 adds `pctx browse`, a short-lived browser page bound to `127.0.0.1` only. It adds no
 network path, account, daemon, or remote mode, loads no external resource, and applies the same ordinary-read
 disclosure and operator-elevation rules as the MCP server; see
-[threat model notes](#threat-model-notes). M30.2 batch review and M30.3 inline edit remain
-[planned](specs/m30-local-web-review.md).
+[threat model notes](#threat-model-notes). M30.2 adds batch review to it: staged candidates are shown
+verbatim under the review disclosure warning, as `pctx import review` shows them, and the page's only writes are
+withdrawal and commit through the existing use cases, each carrying the displayed `batch_digest` so a stale view
+is refused with `batch_changed`. M30.3 inline edit remains [planned](specs/m30-local-web-review.md).
 
 ## Minimal disclosure
 
@@ -641,7 +643,8 @@ physical deletion from an unreachable device or third-party backup.
   inline script and stylesheet, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`, and recorded values
   render as text. Sensitive and restricted durable records appear only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`
   is set in the `pctx browse` process environment, never from a page control; a source's committed mappings are
-  never served. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
+  never served. Batch withdrawal and commit (M30.2) are token-guarded `POST`s through the same use cases and
+  audit seam as the CLI, and a refusal returns only the use-case error code. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
   not against another local process running as the same user, which the loopback MCP transport does not
   defend against either.
 - **Semantic vectors are sensitivity-filtered derived data.** Only active people and public/personal
