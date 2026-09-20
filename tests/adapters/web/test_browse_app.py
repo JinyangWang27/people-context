@@ -970,6 +970,26 @@ _ONE_SAVE_CARRIES_BOTH = r"""
 """
 
 
+_ACCEPT_KEEPS_THE_OPEN_FORM = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  setRow({ candidate: { type: "person", name: "Elena Marsh", summary: "Allotment" } });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  labelled("name").value = "Elena Marshe";
+  // Accepting writes nothing, but it refetches and re-renders the batch around the open form.
+  view.all().find((n) => n.tag === "input" && n.attrs["aria-label"] === "Select #1").checked = true;
+  find("Accept selected").listeners.click(); await tick();
+  const kept = labelled("name").value;
+  const enabled = !labelled("name").disabled;
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ kept, enabled, patch: JSON.parse(posts[0].body).patch }));
+})();
+"""
+
+
 _SHELL_COMMAND = r"""
 (async () => {
   const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
@@ -1523,3 +1543,14 @@ def test_one_save_carries_both_the_match_and_the_field_edits(db_file: Path, tmp_
     # An untouched picker stays out: naming `matched_person_id` reopens identity in the use case,
     # which would put a choice the reviewer already made back to ambiguous.
     assert outcome["untouched"] == {"summary": "Runs the allotment club"}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_accepting_rows_does_not_discard_an_open_form_s_unsaved_edits(
+    db_file: Path, tmp_path: Path
+) -> None:
+    """Accepting writes nothing, so it must not cost the reviewer what they have typed."""
+    outcome = _run_page(db_file, tmp_path, _ACCEPT_KEEPS_THE_OPEN_FORM)
+    assert outcome["kept"] == "Elena Marshe"
+    assert outcome["enabled"] is True
+    assert outcome["patch"] == {"name": "Elena Marshe"}

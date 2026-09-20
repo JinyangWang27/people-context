@@ -280,7 +280,7 @@ async function showSource(sourceId, cursor, back) {
 // on screen, so a batch another client changed since is refused with `batch_changed`. After every
 // action the batch is read again from the server rather than patched locally.
 const batchState = { id: null, review: null, lines: [], accepted: new Set(), message: null, busy: false,
-  fields: {}, aliasFields: [], editing: null, commit: null };
+  fields: {}, aliasFields: [], editing: null, commit: null, form: null };
 
 // One write at a time: a second click while a withdrawal or commit is in flight would send a
 // second request that supersedes the first's result. Every control is disabled synchronously, and
@@ -312,7 +312,11 @@ function matchState(candidate) {
 // `baseline` is the digest the kept acceptances were made against: the one on screen, or the one
 // this page's own withdrawal produced. Any other digest means another client changed the batch.
 async function showBatch(batchId, message, baseline) {
-  if (batchState.id !== batchId) { batchState.accepted = new Set(); batchState.editing = null; }
+  if (batchState.id !== batchId) {
+    batchState.accepted = new Set();
+    batchState.editing = null;
+    batchState.form = null;
+  }
   const shown = baseline
     || (batchState.id === batchId && batchState.review ? batchState.review.batch_digest : null);
   batchState.id = batchId;
@@ -334,7 +338,10 @@ async function showBatch(batchId, message, baseline) {
   for (const id of batchState.accepted) if (!pending.has(id)) batchState.accepted.delete(id);
   // A row another client committed or withdrew is no longer editable, and the use case would
   // refuse the edit; the form closes rather than inviting one.
-  if (batchState.editing !== null && !pending.has(batchState.editing)) batchState.editing = null;
+  if (batchState.editing !== null && !pending.has(batchState.editing)) {
+    batchState.editing = null;
+    batchState.form = null;
+  }
   renderBatch();
 }
 
@@ -384,17 +391,36 @@ function renderBatch() {
     actions,
     confirmArea,
     table(["", "#", "Status", "Candidate", "Match", "Staged", ""], rows),
-    editing ? editForm(editing) : el("div"),
+    editing ? currentForm(editing) : el("div"),
     button("Back to sources", () => showSources(null, [])),
   );
   show("Import batch", ...nodes);
 }
 
 // Opening a form reads nothing from the server: it is built from the batch already on screen and
-// the field lists that came with it, so one row at a time is open and closing one loses nothing.
+// the field lists that came with it, so one row at a time is open. Closing one is the reviewer
+// saying to drop what they typed, which is the one place the kept form is deliberately thrown away.
 function toggleEdit(candidateId) {
   batchState.editing = batchState.editing === candidateId ? null : candidateId;
+  if (batchState.editing === null) batchState.form = null;
   renderBatch();
+}
+
+// The open form holds edits nobody has saved yet. The batch re-renders for reasons that have
+// nothing to do with them — an acceptance, which writes nothing at all, is the ordinary one — so
+// the form's own nodes are kept and re-attached rather than rebuilt from the stored candidate,
+// which would silently discard every unsaved value. It is rebuilt only when its basis moved: a
+// different row, or a batch whose content changed under it.
+function currentForm(row) {
+  const cached = batchState.form;
+  if (cached && cached.id === row.id && cached.digest === batchState.review.batch_digest) {
+    // Whatever disabled these was an action that has since finished; a re-render is never busy.
+    for (const control of cached.node.querySelectorAll(_CONTROLS)) control.disabled = false;
+    return cached.node;
+  }
+  const node = editForm(row);
+  batchState.form = { id: row.id, digest: batchState.review.batch_digest, node };
+  return node;
 }
 
 // --- M30.3 inline edit ------------------------------------------------------------------------
@@ -737,6 +763,7 @@ async function amendRow(row, patch, controls, rowErrors, message) {
   }
   batchState.busy = false;
   batchState.editing = null;
+  batchState.form = null;
   // An acceptance is a decision about content that was on screen, and this amendment changed
   // content — either the accepted row's own, or, for a person row, the identity an accepted
   // dependent resolves through. Carrying the acceptances across would let the next commit write

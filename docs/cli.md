@@ -647,7 +647,9 @@ still current, so the form stays open with what was typed, each message shown ag
 field and never the value submitted, with a refusal the use case located at the whole candidate shown for the row.
 A successful save reads the batch again, as every other action does, and discards any acceptances: an acceptance is
 a decision about content the amendment has just changed, and for a person row that includes the identity an
-accepted dependent would resolve through. Committed and withdrawn rows have no Edit button, and the use case
+accepted dependent would resolve through. An open form survives the page re-rendering around it — accepting rows
+writes nothing and must not cost the reviewer what they have typed — and is rebuilt only when its basis moved: a
+different row, a batch whose content changed under it, or the reviewer closing it with **Cancel**. Committed and withdrawn rows have no Edit button, and the use case
 refuses them with `candidate_not_pending` in any case.
 
 An ambiguous person row also gets a picker listing the people its name resolves to — the `match_candidates` review
