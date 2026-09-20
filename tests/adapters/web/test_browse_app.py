@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -752,8 +753,15 @@ def test_a_late_response_never_renders_over_the_view_the_user_moved_to(db_file: 
 # A DOM just large enough to run the page's own script under node, so a click sequence is exercised
 # for real rather than inferred from the script text. Each write POST is held until released.
 _DOM_HARNESS = r"""
+const NL = [String.fromCharCode(10), String.fromCharCode(13)];
 class El { constructor(tag) { Object.assign(this, { tag, children: [], listeners: {}, textContent: "",
-  disabled: false, checked: false, selected: false, value: "", attrs: {} }); }
+  disabled: false, checked: false, selected: false, attrs: {} }); this._value = ""; }
+  // A real `<input type="text">` sanitises its value by dropping CR and LF. Modelled here so a
+  // control that would flatten a staged multiline string fails the test instead of the reviewer.
+  set value(v) { let s = v === undefined || v === null ? "" : String(v);
+    if (this.tag === "input" && this.type === "text") for (const ch of NL) s = s.split(ch).join("");
+    this._value = s; }
+  get value() { return this._value; }
   append(...nodes) { this.children.push(...nodes); } replaceChildren(...nodes) { this.children = nodes; }
   removeChild(node) { this.children = this.children.filter((child) => child !== node); }
   addEventListener(event, handler) { this.listeners[event] = handler; }
@@ -761,7 +769,8 @@ class El { constructor(tag) { Object.assign(this, { tag, children: [], listeners
   get selectedOptions() { return this.children.filter((child) => child.selected); }
   all() { const out = []; const walk = (n) => { for (const c of n.children || []) { out.push(c); walk(c); } };
     walk(this); return out; }
-  querySelectorAll() { return this.all().filter((n) => ["button", "input", "select"].includes(n.tag)); } }
+  querySelectorAll() {
+    return this.all().filter((n) => ["button", "input", "select", "textarea"].includes(n.tag)); } }
 globalThis.Node = El;
 const ids = {};
 globalThis.document = { getElementById: (id) => (ids[id] ??= new El(id)), createElement: (t) => new El(t),
@@ -771,12 +780,24 @@ globalThis.history = { replaceState() {} };
 const posts = []; const releases = []; const heldGets = []; let holdGets = false;
 const review = { batch_id: "B", batch_digest: "d1", candidates: [
   { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
+// One row, shaped per scenario; and one POST made to fail, for the refusal paths.
+globalThis.setRow = (row) => {
+  review.candidates = [Object.assign({ id: "p1", status: "pending", ordinal: 1 }, row)];
+};
+let postFailure = null;
+globalThis.failNextPost = (status, body) => { postFailure = { status, body }; };
+const gets = [];
 globalThis.fetch = async (path, options) => {
   if (options && options.method === "POST") {
     posts.push({ path, body: options.body }); await new Promise((resolve) => releases.push(resolve));
+    if (postFailure) {
+      const failed = postFailure; postFailure = null;
+      return { ok: false, status: failed.status, json: async () => failed.body };
+    }
     return { ok: true, json: async () => ({ withdrawn: 1, batch_digest: "d2", committed_ids: ["p1"],
       unresolved_ids: [], skipped_ids: [] }) };
   }
+  gets.push(path);
   if (holdGets) await new Promise((resolve) => heldGets.push(resolve));
   if (path.startsWith("/api/batch")) {
     return { ok: true, json: async () => ({ review, lines: ["#1"], fields: __FIELDS__,
@@ -834,6 +855,106 @@ _EDIT_ONE_FIELD = r"""
   releases.forEach((r) => r()); await tick();
   console.log(JSON.stringify({ posts: posts.map((p) => [p.path, JSON.parse(p.body)]),
     untouched: untouched.value, message: batchState.message, editing: batchState.editing }));
+})();
+"""
+
+
+# The five behaviours the first Codex review found missing, each driven through the real script.
+_STALE_EDIT_RELOADS = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  await showBatch("B");
+  find("Edit").listeners.click();
+  labelled("name").value = "Elena Marshe";
+  failNextPost(409, { error: "batch_changed" });
+  const before = gets.length;
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ refetched: gets.length - before, message: batchState.message,
+    digest: batchState.review.batch_digest, stillOpen: batchState.editing }));
+})();
+"""
+
+_AMEND_DISCARDS_ACCEPTANCES = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  await showBatch("B");
+  view.all().find((n) => n.tag === "input" && n.attrs["aria-label"] === "Select #1").checked = true;
+  find("Accept selected").listeners.click(); await tick();
+  const accepted = batchState.accepted.size;
+  find("Edit").listeners.click();
+  labelled("name").value = "Elena Marshe";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ accepted, after: batchState.accepted.size, message: batchState.message }));
+})();
+"""
+
+_RESOLVED_ROW_KEEPS_A_PICKER = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  // A row the reviewer already resolved: `match_candidates` is no longer projected for it.
+  setRow({ candidate: { type: "person", name: "Elena Marsh", matched_person_id: "person-1",
+    match_disposition: "matched", match_count: 1 } });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  const select = labelled("Matching person");
+  const options = select.children.map((o) => o.value);
+  select.value = "";
+  find("Choose").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ options, opensOn: "person-1", patch: JSON.parse(posts[0].body).patch }));
+})();
+"""
+
+_PASTED_ID_IS_VERBATIM = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  setRow({ candidate: { type: "person", name: "Elena Marsh", matched_person_id: null,
+    match_disposition: "ambiguous", match_count: 12 },
+    match_candidates: [{ id: "person-1", canonical_name: "Elena Marsh", name_truncated: false }],
+    match_candidates_truncated: true });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  labelled("Person id").value = "  spaced-restored-id  ";
+  find("Choose").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ patch: JSON.parse(posts[0].body).patch }));
+})();
+"""
+
+_MULTILINE_SURVIVES = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  const prose = "Plans the allotment." + String.fromCharCode(10) + "Second line.";
+  setRow({ candidate: { type: "person", name: "Elena Marsh", summary: prose } });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  const summary = labelled("summary");
+  labelled("name").value = "Elena Marshe";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ tag: summary.tag, kept: summary.value === prose,
+    patch: JSON.parse(posts[0].body).patch }));
+})();
+"""
+
+_SHELL_COMMAND = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  setRow({ id: "cand'1", candidate: { type: "trait", person_candidate_id: "p9", category: "preference",
+    value: "Mornings", evidence_note: "Said so", confidence: 0.6,
+    evidence_ids: ["obs-1", "it's-opaque"] } });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  const shown = view.all().filter((n) => typeof n.textContent === "string"
+    && n.textContent.startsWith("Change with: "));
+  console.log(JSON.stringify({ command: shown[0].textContent.slice("Change with: ".length) }));
 })();
 """
 
@@ -1307,3 +1428,61 @@ def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
         )
     assert response.status_code == 413
     assert response.json() == {"error": "request_too_large"}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_stale_edit_refusal_reloads_the_batch_rather_than_keeping_the_form(
+    db_file: Path, tmp_path: Path
+) -> None:
+    """`batch_changed` is not a correction the open form can make: its digest is already obsolete."""
+    outcome = _run_page(db_file, tmp_path, _STALE_EDIT_RELOADS)
+    assert outcome["refetched"] == 1
+    assert outcome["message"].startswith("Refused: batch_changed.")
+    assert outcome["digest"] == "d1"  # the reload's own state, not the one that was refused
+    assert outcome["stillOpen"] == "p1"
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_amending_discards_the_acceptances_made_before_it(db_file: Path, tmp_path: Path) -> None:
+    """An acceptance is a decision about content the amendment has just changed."""
+    outcome = _run_page(db_file, tmp_path, _AMEND_DISCARDS_ACCEPTANCES)
+    assert outcome["accepted"] == 1
+    assert outcome["after"] == 0
+    assert "1 acceptance(s) discarded" in outcome["message"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_resolved_person_row_can_still_change_or_clear_its_match(db_file: Path, tmp_path: Path) -> None:
+    """The projection drops `match_candidates` once a row is matched; the control must not."""
+    outcome = _run_page(db_file, tmp_path, _RESOLVED_ROW_KEEPS_A_PICKER)
+    assert outcome["options"] == ["", "person-1"]
+    assert outcome["patch"] == {"matched_person_id": None}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_pasted_person_id_travels_exactly_as_it_was_entered(db_file: Path, tmp_path: Path) -> None:
+    """A person id is format-opaque and the matcher compares it exactly; trimming loses one."""
+    outcome = _run_page(db_file, tmp_path, _PASTED_ID_IS_VERBATIM)
+    assert outcome["patch"] == {"matched_person_id": "  spaced-restored-id  "}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_multiline_value_is_neither_flattened_nor_patched_by_an_unrelated_edit(
+    db_file: Path, tmp_path: Path
+) -> None:
+    """An `<input type="text">` drops CR and LF, which would read back as an edit nobody made."""
+    outcome = _run_page(db_file, tmp_path, _MULTILINE_SURVIVES)
+    assert outcome["tag"] == "textarea"
+    assert outcome["kept"] is True
+    assert outcome["patch"] == {"name": "Elena Marshe"}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_shown_amend_command_survives_a_posix_shell(db_file: Path, tmp_path: Path) -> None:
+    """The read-only `evidence_ids` fallback is advertised as a command, so it has to run."""
+    command = _run_page(db_file, tmp_path, _SHELL_COMMAND)["command"]
+    argv = shlex.split(command)
+    assert argv[:3] == ["pctx", "import", "amend"]
+    assert argv[3] == "B" and argv[4] == "cand'1"
+    assert argv[5] == "--patch"
+    assert json.loads(argv[6]) == {"evidence_ids": ["obs-1", "it's-opaque"]}

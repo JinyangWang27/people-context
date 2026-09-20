@@ -633,24 +633,32 @@ add to and remove from, with `value`, `kind`, `lang`, and `script` on each; `par
 `evidence_candidate_ids` are multi-selects, and the single-candidate references are selects, offering only rows of
 this batch whose type the amendment would accept — so no control can express a reference the use case refuses. A
 `datetime` field keeps a text box carrying the stored string, because a `datetime-local` picker has no timezone and
-would rewrite an offset nobody touched. `evidence_ids` names durable records outside the batch, so it is shown
-read-only beside the equivalent `pctx import amend` command.
+would rewrite an offset nobody touched, and a value containing line breaks gets a text area, because a single-line
+input silently drops them. `evidence_ids` names durable records outside the batch, so it is shown read-only beside
+the equivalent `pctx import amend` command, shell-quoted so it can be copied and run as printed.
 
 **Save** calls the same use case as `pctx import amend`, sending only the fields whose control moved: the amendment
 merge is shallow, so an untouched field keeps its stored value and a collection that is sent replaces the stored one
 outright — which is why an untouched alias row is sent back exactly as staged, `lang` and `script` included. The
 request carries the `batch_digest` of the review on screen, so an edit made from a view another client has moved is
-refused with `batch_changed` and writes nothing. A validation refusal is shown against the field it names, one
-message per field and never the value that was submitted; a refusal the use case located at the whole candidate is
-shown for the row. Nothing is written by a refusal, so the form stays open with what was typed. A successful save
-reads the batch again, as every other action does. Committed and withdrawn rows have no Edit button, and the use
-case refuses them with `candidate_not_pending` in any case.
+refused with `batch_changed` and writes nothing; because that digest is then obsolete, the page reloads the batch
+rather than leaving the form to repeat it. A validation refusal is different: nothing was written and the digest is
+still current, so the form stays open with what was typed, each message shown against the field it names — one per
+field and never the value submitted, with a refusal the use case located at the whole candidate shown for the row.
+A successful save reads the batch again, as every other action does, and discards any acceptances: an acceptance is
+a decision about content the amendment has just changed, and for a person row that includes the identity an
+accepted dependent would resolve through. Committed and withdrawn rows have no Edit button, and the use case
+refuses them with `candidate_not_pending` in any case.
 
 An ambiguous person row also gets a picker listing the people its name resolves to — the `match_candidates` review
 projects — with the option of leaving it unresolved. When more people share the name than are listed, the picker
-says so and takes a person id found with `pctx search` or the `resolve_person` tool. The choice is an ordinary
-`matched_person_id` patch, which the use case accepts only when the matcher itself produced that person, so it is
-visible to `pctx import review` like any other amendment. There is no form for authoring a candidate the importer
+says so and takes a person id found with `pctx search` or the `resolve_person` tool, used exactly as entered
+because a person id is format-opaque and the matcher compares it verbatim. A row that has already been resolved
+keeps the control, listing its current match: review stops projecting `match_candidates` once a row is matched, and
+without it a mistaken click could only be undone from the terminal. Leaving it unresolved clears the choice and
+re-runs the matcher, which puts an ambiguous row back to ambiguous with its full list. Every one of these is an
+ordinary `matched_person_id` patch, which the use case accepts only when the matcher itself produced that person,
+so it is visible to `pctx import review` like any other amendment. There is no form for authoring a candidate the importer
 did not produce, and nothing on the page edits a durable record.
 
 ## Person index
