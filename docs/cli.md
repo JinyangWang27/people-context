@@ -658,7 +658,10 @@ keeps the control, listing its current match: review stops projecting `match_can
 without it a mistaken click could only be undone from the terminal. Leaving it unresolved clears the choice and
 re-runs the matcher, which puts an ambiguous row back to ambiguous with its full list. Every one of these is an
 ordinary `matched_person_id` patch, which the use case accepts only when the matcher itself produced that person,
-so it is visible to `pctx import review` like any other amendment. There is no form for authoring a candidate the importer
+so it is visible to `pctx import review` like any other amendment. The picker is part of the form rather than an
+action beside it: one **Save** sends the match and the field edits together, and a picker nobody moved stays out of
+the patch, because naming `matched_person_id` at all reopens the identity question and would undo a choice already
+made. There is no form for authoring a candidate the importer
 did not produce, and nothing on the page edits a durable record.
 
 ## Person index

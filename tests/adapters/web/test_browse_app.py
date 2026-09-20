@@ -903,10 +903,11 @@ _RESOLVED_ROW_KEEPS_A_PICKER = r"""
   find("Edit").listeners.click();
   const select = labelled("Matching person");
   const options = select.children.map((o) => o.value);
+  const opensOn = select.value;
   select.value = "";
-  find("Choose").listeners.click();
+  find("Save").listeners.click();
   releases.forEach((r) => r()); await tick();
-  console.log(JSON.stringify({ options, opensOn: "person-1", patch: JSON.parse(posts[0].body).patch }));
+  console.log(JSON.stringify({ options, opensOn, patch: JSON.parse(posts[0].body).patch }));
 })();
 """
 
@@ -921,7 +922,7 @@ _PASTED_ID_IS_VERBATIM = r"""
   await showBatch("B");
   find("Edit").listeners.click();
   labelled("Person id").value = "  spaced-restored-id  ";
-  find("Choose").listeners.click();
+  find("Save").listeners.click();
   releases.forEach((r) => r()); await tick();
   console.log(JSON.stringify({ patch: JSON.parse(posts[0].body).patch }));
 })();
@@ -943,6 +944,31 @@ _MULTILINE_SURVIVES = r"""
     patch: JSON.parse(posts[0].body).patch }));
 })();
 """
+
+_ONE_SAVE_CARRIES_BOTH = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  setRow({ candidate: { type: "person", name: "Elena Marsh", summary: "Allotment", matched_person_id: null,
+    match_disposition: "ambiguous", match_count: 2 },
+    match_candidates: [{ id: "person-1", canonical_name: "Elena Marsh", name_truncated: false },
+      { id: "person-2", canonical_name: "Elena Marsh", name_truncated: false }] });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  labelled("summary").value = "Runs the allotment";
+  labelled("Matching person").value = "person-2";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  const both = JSON.parse(posts[0].body).patch;
+  // A picker nobody moved must stay out of the patch: naming the field reopens identity.
+  find("Edit").listeners.click();
+  labelled("summary").value = "Runs the allotment club";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ both, untouched: JSON.parse(posts[1].body).patch }));
+})();
+"""
+
 
 _SHELL_COMMAND = r"""
 (async () => {
@@ -1456,6 +1482,7 @@ def test_a_resolved_person_row_can_still_change_or_clear_its_match(db_file: Path
     """The projection drops `match_candidates` once a row is matched; the control must not."""
     outcome = _run_page(db_file, tmp_path, _RESOLVED_ROW_KEEPS_A_PICKER)
     assert outcome["options"] == ["", "person-1"]
+    assert outcome["opensOn"] == "person-1"  # on what is recorded, not silently on "unresolved"
     assert outcome["patch"] == {"matched_person_id": None}
 
 
@@ -1486,3 +1513,13 @@ def test_the_shown_amend_command_survives_a_posix_shell(db_file: Path, tmp_path:
     assert argv[3] == "B" and argv[4] == "cand'1"
     assert argv[5] == "--patch"
     assert json.loads(argv[6]) == {"evidence_ids": ["obs-1", "it's-opaque"]}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_one_save_carries_both_the_match_and_the_field_edits(db_file: Path, tmp_path: Path) -> None:
+    """The picker is a control of the form, so neither it nor the fields can drop the other."""
+    outcome = _run_page(db_file, tmp_path, _ONE_SAVE_CARRIES_BOTH)
+    assert outcome["both"] == {"summary": "Runs the allotment", "matched_person_id": "person-2"}
+    # An untouched picker stays out: naming `matched_person_id` reopens identity in the use case,
+    # which would put a choice the reviewer already made back to ambiguous.
+    assert outcome["untouched"] == {"summary": "Runs the allotment club"}

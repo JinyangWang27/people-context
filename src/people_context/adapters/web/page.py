@@ -598,10 +598,14 @@ function hasMatchDecision(row) {
   return Boolean(row.match_candidates) || Boolean(row.candidate.matched_person_id);
 }
 
-// The identity picker. Choosing, changing, or clearing is one ordinary `matched_person_id` patch,
-// which the use case accepts only when the matcher itself produced that person; clearing sends
-// null, which re-runs the matcher and puts an ambiguous row back to ambiguous with its full list.
-function matchPicker(row, rowErrors) {
+// The identity picker, which is a control of the form like any other rather than an action beside
+// it: a second button would post only its own field, and a reviewer who corrected a name and then
+// chose a person would have the rename silently rebuilt away by the reload. One Save sends both.
+//
+// Choosing, changing, or clearing is one ordinary `matched_person_id` patch, which the use case
+// accepts only when the matcher itself produced that person; clearing sends null, which re-runs
+// the matcher and puts an ambiguous row back to ambiguous with its full list.
+function matchPicker(row) {
   const matches = row.match_candidates || [];
   const resolved = seedText(row.candidate.matched_person_id);
   const select = el("select");
@@ -638,23 +642,39 @@ function matchPicker(row, rowErrors) {
       typed,
     );
   }
-  nodes.push(button("Choose", () => {
-    // Verbatim, never trimmed: a person id is format-opaque and the matcher compares it exactly,
-    // so a restored id carrying edge whitespace has to travel as it was pasted. Only whether the
-    // box was used at all is decided by trimming.
-    const pasted = typed.value;
-    const chosen = pasted.trim() === "" ? (select.value || null) : pasted;
-    return amendRow(row, { matched_person_id: chosen }, [], rowErrors, "Recorded the match for #" + row.ordinal + ".");
-  }));
   const node = el("div");
   node.append(...nodes);
-  return node;
+  // Present-and-null is how a person row records "matched nothing", so the comparison normalises
+  // both sides. Only an actual change is sent: naming the field at all reopens identity in the
+  // use case, which would put a decision the reviewer already made back to ambiguous.
+  const current = row.candidate.matched_person_id === undefined ? null : row.candidate.matched_person_id;
+  return {
+    node,
+    read: () => {
+      // Verbatim, never trimmed: a person id is format-opaque and the matcher compares it
+      // exactly, so a restored id carrying edge whitespace has to travel as it was pasted. Only
+      // whether the box was used at all is decided by trimming.
+      const pasted = typed.value;
+      const chosen = pasted.trim() === "" ? (select.value || null) : pasted;
+      return chosen === current ? undefined : chosen;
+    },
+  };
 }
 
 function editForm(row) {
   const descriptors = (batchState.fields || {})[row.candidate.type] || [];
   const controls = [];
   const grid = el("dl");
+  const panel = el("div", null, "edit");
+  panel.append(el("h3", "Editing #" + row.ordinal + " (" + row.candidate.type + ")"));
+  if (hasMatchDecision(row)) {
+    const picker = matchPicker(row);
+    picker.slot = el("div");
+    controls.push(["matched_person_id", picker]);
+    const holder = el("div");
+    holder.append(picker.node, picker.slot);
+    panel.append(holder);
+  }
   for (const descriptor of descriptors) {
     const control = buildControl(descriptor, row);
     control.slot = el("div");
@@ -664,9 +684,6 @@ function editForm(row) {
     grid.append(el("dt", descriptor.name), value);
   }
   const rowErrors = el("div");
-  const panel = el("div", null, "edit");
-  panel.append(el("h3", "Editing #" + row.ordinal + " (" + row.candidate.type + ")"));
-  if (hasMatchDecision(row)) panel.append(matchPicker(row, rowErrors));
   panel.append(grid, rowErrors);
   const actions = el("div", null, "actions");
   actions.append(
