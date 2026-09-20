@@ -973,7 +973,7 @@ independent of M28.3.
     a JavaScript framework or build step, editing durable records, displaying sensitive records without the
     existing operator elevation, replacing the Obsidian plugin, search, and graphs or visualisations.
 
-- [ ] **M30.3 — Inline edit in the browser**
+- [x] **M30.3 — Inline edit in the browser**
   - **Scope:** Depends on M29.1. Add an edit form to each pending row on the M30.2 batch page, generated from the
     candidate type's field list: native inputs for scalars, an add/remove list for `aliases` with `value`, `kind`,
     `lang`, and `script` per row, and multi-selects for `participant_candidate_ids` and `evidence_candidate_ids`
