@@ -28,7 +28,9 @@ from people_context.app.imports import (
     AmendStagedCandidate,
     ImportBudget,
     ImportPipelineError,
+    amendment_refusals,
 )
+from people_context.app.imports.amendment import WHOLE_CANDIDATE
 from people_context.domain.person import Person
 
 _NOW = datetime(2026, 9, 16, 9, 0, tzinfo=UTC)
@@ -1242,3 +1244,61 @@ def test_the_withdrawn_check_does_not_rebuild_the_selection_per_row(
     runtime.use_cases.commit_import.execute(batch_id, ids)
 
     assert conversions == 1
+
+
+# --- the per-field projection a browser form shows a refusal through (M30.3) ------------------
+
+
+def test_a_refusal_projects_one_message_per_declared_field() -> None:
+    """The amendment path's own entries carry a declared field and a message written here."""
+    refusal = ImportPipelineError(
+        "invalid_candidates",
+        "refused",
+        details=[
+            {"type": "value_error", "loc": ["row-1", "value"], "msg": "not a valid staged candidate"},
+            {"type": "value_error", "loc": ["row-1", "value"], "msg": "a later message for the same field"},
+            {"type": "value_error", "loc": ["row-1", WHOLE_CANDIDATE], "msg": "a rule spanning two fields"},
+        ],
+    )
+    assert amendment_refusals(refusal) == [
+        {"field": "value", "message": "not a valid staged candidate"},
+        {"field": WHOLE_CANDIDATE, "message": "a rule spanning two fields"},
+    ]
+
+
+def test_an_entry_that_is_not_the_amendment_path_s_own_loses_its_message() -> None:
+    """The guard, not the caller, is what keeps a message that quotes its input out of a response.
+
+    The staging rules raise `value_error` carrying the ref that failed, and a patch key an agent
+    invented lands in `loc`. Neither is a field this module declares, so both degrade to the
+    candidate and the error type — the message never travels.
+    """
+    refusal = ImportPipelineError(
+        "invalid_candidates",
+        "refused",
+        details=[
+            {"type": "value_error", "loc": [0, "ref"], "msg": "duplicate person ref: Elena from the minutes"},
+            {"type": "extra_forbidden", "loc": ["row-1", "Elena from the minutes"], "msg": "not permitted"},
+            {"type": "value_error", "loc": ["row-1", "value"], "msg": 17},
+            {"loc": ["row-1", "value"]},
+            "not an entry",
+        ],
+    )
+    projected = amendment_refusals(refusal)
+    assert projected == [{"field": WHOLE_CANDIDATE, "message": "value_error"}]
+    assert "Elena from the minutes" not in str(projected)
+
+
+def test_a_refusal_with_no_details_projects_nothing() -> None:
+    """`batch_changed`, `candidate_not_pending`, and the rest name no field at all."""
+    assert amendment_refusals(ImportPipelineError("batch_changed", "moved")) == []
+    assert amendment_refusals(ImportPipelineError("invalid_candidates", "refused", details="not a list")) == []
+
+
+def test_an_entry_with_no_location_is_reported_for_the_candidate() -> None:
+    assert amendment_refusals(
+        ImportPipelineError("invalid_candidates", "refused", details=[{"type": "missing"}])
+    ) == [{"field": WHOLE_CANDIDATE, "message": "missing"}]
+    assert amendment_refusals(
+        ImportPipelineError("invalid_candidates", "refused", details=[{"loc": []}])
+    ) == [{"field": WHOLE_CANDIDATE, "message": "invalid"}]

@@ -1288,3 +1288,22 @@ def test_a_markup_value_reaches_the_edit_form_as_data(
     # or an input's `value`, neither of which parses markup.
     assert _MARKUP_NAME not in page
     assert "innerHTML" not in page and "insertAdjacentHTML" not in page
+
+
+@pytest.mark.parametrize("verb", ["amend", "withdraw", "commit"])
+def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
+    db_file: Path, verb: str
+) -> None:
+    """A streamed body carries no `Content-Length`, so the ceiling has to hold as it arrives."""
+
+    def chunks() -> Iterator[bytes]:
+        for _ in range(4):
+            yield b"x" * (web_app.MAX_BATCH_ACTION_BYTES // 2 + 1)
+
+    with _client(db_file) as client:
+        response = client.post(
+            f"/api/batch/{verb}", content=chunks(),
+            headers={**_SAME_ORIGIN, "content-type": "application/json"},
+        )
+    assert response.status_code == 413
+    assert response.json() == {"error": "request_too_large"}
