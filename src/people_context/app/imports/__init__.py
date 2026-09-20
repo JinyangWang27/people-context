@@ -4,6 +4,7 @@ from people_context.app.imports.amendment import (
     REDACTED_FIELD,
     BatchEdit,
     ValidatedEdit,
+    amendment_refusals,
     batch_digest,
 )
 from people_context.app.imports.documents import (
@@ -238,6 +239,7 @@ __all__ = [
     "TraitCandidateInput",
     "ValidatedEdit",
     "WithdrawStagedCandidates",
+    "amendment_refusals",
     "batch_digest",
     "build_source_claim",
     "candidate_identity_tokens",

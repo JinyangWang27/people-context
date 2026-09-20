@@ -692,3 +692,53 @@ def _amendment_refusal(row: StagedImportRow, field_name: str, message: str) -> I
         allowed_types=list(CANDIDATE_MODELS),
         valid_fields={name: list(model.model_fields) for name, model in STAGED_CANDIDATE_MODELS.items()},
     )
+
+
+#: The locations an amendment refusal may report, beyond the declared candidate fields.
+#:
+#: `patch` names the request object itself, and the two placeholders above stand in for a field
+#: the models do not declare and for a rule that spans several.
+_REPORTABLE_NON_FIELDS: frozenset[str] = frozenset({REDACTED_FIELD, WHOLE_CANDIDATE, "patch"})
+
+
+def amendment_refusals(exc: ImportPipelineError) -> list[dict[str, str]]:
+    """Return one `{field, message}` per field an amendment refusal named.
+
+    A form shows a refusal against the control that caused it, which needs the field alone rather
+    than the dotted path `pctx import amend` prints to a terminal. Both are projections of the
+    same `details`; neither is the other's rendering.
+
+    Forwarding the message is safe *here specifically*. `_amendment_refusal` is the only thing
+    that attaches `details` to a refusal from the amendment path, its `loc` has already been
+    through `_safe_field`, and every message it carries is a literal written in this module —
+    never interpolated from the patch, unlike the staging rules' own `value_error` text. An entry
+    that does not match that shape is therefore not one of ours: it keeps its error type as the
+    message and is reported against the candidate rather than a field.
+
+    Deduplicated by field, first message kept, so a form shows one message per control.
+    """
+    details = exc.details.get("details")
+    if not isinstance(details, list):
+        return []
+    refusals: dict[str, str] = {}
+    for entry in details:
+        if not isinstance(entry, dict):
+            continue
+        field_name, message = _reportable_refusal(entry)
+        refusals.setdefault(field_name, message)
+    return [{"field": field_name, "message": message} for field_name, message in refusals.items()]
+
+
+def _reportable_refusal(entry: dict[str, Any]) -> tuple[str, str]:
+    """Return the field and message one detail entry may be shown as."""
+    location = entry.get("loc")
+    field_name = location[-1] if isinstance(location, (list, tuple)) and location else None
+    message = entry.get("msg")
+    if (
+        isinstance(field_name, str)
+        and (field_name in _DECLARED_STAGED_FIELDS or field_name in _REPORTABLE_NON_FIELDS)
+        and isinstance(message, str)
+    ):
+        return field_name, message
+    error_type = entry.get("type")
+    return WHOLE_CANDIDATE, error_type if isinstance(error_type, str) else "invalid"

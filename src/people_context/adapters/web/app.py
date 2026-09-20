@@ -23,7 +23,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractContextManager, asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 from starlette.applications import Starlette
@@ -34,6 +34,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from people_context.adapters.runtime import ApplicationRuntime
+from people_context.adapters.web.fields import ALIAS_FIELDS, CANDIDATE_FIELDS
 from people_context.adapters.web.page import render_page
 from people_context.app.exports import (
     DEFAULT_PERSON_PAGE_LIMIT,
@@ -50,6 +51,7 @@ from people_context.app.imports import (
     ImportReviewResult,
     ImportReviewRow,
     SourceInspectionError,
+    amendment_refusals,
     import_commit_document,
     import_review_document,
     import_sources_document,
@@ -71,6 +73,7 @@ ReviewLines = Callable[[list[ImportReviewRow]], list[str]]
 MAX_BATCH_ACTION_BYTES = MAX_CLI_STAGED_PAYLOAD_BYTES
 
 _NonBlank = Annotated[str, StringConstraints(min_length=1)]
+_ActionT = TypeVar("_ActionT", bound=BaseModel)
 
 
 class _BatchAction(BaseModel):
@@ -80,6 +83,17 @@ class _BatchAction(BaseModel):
 
     batch_id: _NonBlank
     candidate_ids: list[str]
+    expected_batch_digest: _NonBlank
+
+
+class _AmendAction(BaseModel):
+    """One edit of one staged candidate, of the batch as the page displayed it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    batch_id: _NonBlank
+    candidate_id: _NonBlank
+    patch: dict[str, Any]
     expected_batch_digest: _NonBlank
 
 
@@ -233,16 +247,39 @@ def create_browse_app(
             review = _bounded_review(runtime, request.query_params.get("id", ""))
         except ImportPipelineError as exc:
             return _refusal(exc)
+        # The field lists are static and small; sending them with the batch spares the page a
+        # second request and a cache of its own for something that cannot change while it runs.
         body = {
             "review": import_review_document(review).model_dump(mode="json"),
             "lines": review_lines(review.candidates),
+            "fields": CANDIDATE_FIELDS,
+            "alias_fields": ALIAS_FIELDS,
         }
         return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
+
+    async def amend(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AmendAction)
+            runtime.use_cases.preflight_import_batch.execute(action.batch_id)
+            revised = runtime.use_cases.amend_staged_candidate.execute(
+                action.batch_id,
+                action.candidate_id,
+                action.patch,
+                expected_batch_digest=action.expected_batch_digest,
+            )
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except ImportPipelineError as exc:
+            return _amend_refusal(exc)
+        # As for a withdrawal: the digest this edit produced lets the page tell its own change
+        # from another client's when it reloads.
+        return _json(json.dumps({"batch_digest": revised.batch_digest}) + "\n")
 
     async def withdraw(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
-            action = await _batch_action(request)
+            action = await _read_action(request, _BatchAction)
             runtime.use_cases.preflight_import_batch.execute(action.batch_id)
             revised = runtime.use_cases.withdraw_staged_candidates.execute(
                 action.batch_id, action.candidate_ids, expected_batch_digest=action.expected_batch_digest
@@ -258,7 +295,7 @@ def create_browse_app(
     async def commit(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
-            action = await _batch_action(request)
+            action = await _read_action(request, _BatchAction)
             runtime.use_cases.preflight_import_batch.execute(action.batch_id)
             result = runtime.use_cases.commit_import.execute(
                 action.batch_id, action.candidate_ids, expected_batch_digest=action.expected_batch_digest
@@ -281,6 +318,7 @@ def create_browse_app(
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),
             Route("/api/batch", batch, methods=["GET"]),
+            Route("/api/batch/amend", amend, methods=["POST"]),
             Route("/api/batch/withdraw", withdraw, methods=["POST"]),
             Route("/api/batch/commit", commit, methods=["POST"]),
             Route("/api/done", done, methods=["POST"]),
@@ -308,7 +346,7 @@ def _bounded_review(runtime: ApplicationRuntime, batch_id: str) -> ImportReviewR
     return runtime.use_cases.review_import.execute(batch_id, budget=CLI_IMPORT_BUDGET)
 
 
-async def _batch_action(request: Request) -> _BatchAction:
+async def _read_action(request: Request, model: type[_ActionT]) -> _ActionT:
     """Read a bounded JSON body and validate it, refusing without echoing any of it."""
     declared = request.headers.get("content-length")
     if declared is not None and declared.isdigit() and int(declared) > MAX_BATCH_ACTION_BYTES:
@@ -319,15 +357,32 @@ async def _batch_action(request: Request) -> _BatchAction:
         if len(body) > MAX_BATCH_ACTION_BYTES:
             raise _RequestRefused("request_too_large", 413)
     try:
-        return _BatchAction.model_validate_json(bytes(body))
+        return model.model_validate_json(bytes(body))
     except ValidationError as exc:
         raise _RequestRefused("invalid_request", 400) from exc
 
 
 def _refusal(exc: ImportPipelineError) -> Response:
     """Report a use-case refusal by its code alone: never its message, details, or the refused ids."""
-    status = {"batch_changed": 409, "batch_not_found": 404}.get(exc.code, 400)
-    return _error(exc.code, status)
+    return _error(exc.code, _refusal_status(exc))
+
+
+def _amend_refusal(exc: ImportPipelineError) -> Response:
+    """Report an amendment refusal by its code and the fields it named, and nothing else.
+
+    Only the amendment reports fields, and only this endpoint calls this. `amendment_refusals`
+    returns the declared field each rule was about and the fixed text the amendment use case
+    wrote for it, so an edit form can put a message against the control that failed without any
+    of the submitted patch coming back. Every other endpoint keeps the code-only refusal above.
+    """
+    fields = amendment_refusals(exc)
+    if not fields:
+        return _refusal(exc)
+    return JSONResponse({"error": exc.code, "fields": fields}, status_code=_refusal_status(exc))
+
+
+def _refusal_status(exc: ImportPipelineError) -> int:
+    return {"batch_changed": 409, "batch_not_found": 404}.get(exc.code, 400)
 
 
 def _json(text: str) -> Response:
