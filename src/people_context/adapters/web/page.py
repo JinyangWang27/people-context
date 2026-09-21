@@ -57,6 +57,12 @@ dd { margin: 0; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
 .confirm { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 12px; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 4px 0; }
+input, select, textarea { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 6px; max-width: 100%; }
+textarea { width: 100%; box-sizing: border-box; }
+.edit { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 12px; margin-top: 12px; }
+.edit dl { align-items: start; }
+.alias { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -107,7 +113,13 @@ async function api(path, options) {
   const response = await fetch(path, Object.assign({ headers: { "X-Pctx-Token": token }, cache: "no-store" }, options));
   let body = null;
   try { body = await response.json(); } catch (error) { body = null; }
-  if (!response.ok) throw new Error(body && body.error ? body.error : "refused (" + response.status + ")");
+  if (!response.ok) {
+    const refusal = new Error(body && body.error ? body.error : "refused (" + response.status + ")");
+    // The use case's own per-field refusals, which carry the field and a fixed message, never a
+    // submitted value. Absent on every endpoint but the amendment.
+    if (body && Array.isArray(body.fields)) refusal.fields = body.fields;
+    throw refusal;
+  }
   return body;
 }
 
@@ -267,16 +279,26 @@ async function showSource(sourceId, cursor, back) {
 // `pctx import review --interactive` does. Withdraw and commit always send the digest of the review
 // on screen, so a batch another client changed since is refused with `batch_changed`. After every
 // action the batch is read again from the server rather than patched locally.
-const batchState = { id: null, review: null, lines: [], accepted: new Set(), message: null, busy: false };
+const batchState = { id: null, review: null, lines: [], accepted: new Set(), message: null, busy: false,
+  fields: {}, aliasFields: [], editing: null, commit: null, form: null };
 
 // One write at a time: a second click while a withdrawal or commit is in flight would send a
 // second request that supersedes the first's result. Every control is disabled synchronously, and
 // the re-rendered batch brings fresh ones.
+const _CONTROLS = "button, input, select, textarea";
+
 function beginAction() {
   if (batchState.busy) return false;
   batchState.busy = true;
-  for (const control of view.querySelectorAll("button, input")) control.disabled = true;
+  for (const control of view.querySelectorAll(_CONTROLS)) control.disabled = true;
   return true;
+}
+
+// A refused amendment wrote nothing, so the open form is kept with its messages rather than
+// refetched, and the controls it disabled are handed back for the correction.
+function reenable() {
+  for (const control of view.querySelectorAll(_CONTROLS)) control.disabled = false;
+  if (batchState.commit) batchState.commit.disabled = batchState.accepted.size === 0;
 }
 
 function matchState(candidate) {
@@ -290,7 +312,11 @@ function matchState(candidate) {
 // `baseline` is the digest the kept acceptances were made against: the one on screen, or the one
 // this page's own withdrawal produced. Any other digest means another client changed the batch.
 async function showBatch(batchId, message, baseline) {
-  if (batchState.id !== batchId) batchState.accepted = new Set();
+  if (batchState.id !== batchId) {
+    batchState.accepted = new Set();
+    batchState.editing = null;
+    batchState.form = null;
+  }
   const shown = baseline
     || (batchState.id === batchId && batchState.review ? batchState.review.batch_digest : null);
   batchState.id = batchId;
@@ -306,8 +332,16 @@ async function showBatch(batchId, message, baseline) {
   }
   batchState.review = doc.review;
   batchState.lines = doc.lines;
+  batchState.fields = doc.fields || {};
+  batchState.aliasFields = doc.alias_fields || [];
   const pending = new Set(doc.review.candidates.filter((row) => row.status === "pending").map((row) => row.id));
   for (const id of batchState.accepted) if (!pending.has(id)) batchState.accepted.delete(id);
+  // A row another client committed or withdrew is no longer editable, and the use case would
+  // refuse the edit; the form closes rather than inviting one.
+  if (batchState.editing !== null && !pending.has(batchState.editing)) {
+    batchState.editing = null;
+    batchState.form = null;
+  }
   renderBatch();
 }
 
@@ -332,7 +366,12 @@ function renderBatch() {
     if (batchState.accepted.has(row.id)) status.append(" ", el("span", "accepted", "badge accepted"));
     const verbatim = el("details");
     verbatim.append(el("summary", "Candidate"), el("pre", JSON.stringify(row.candidate, null, 2)));
-    return [pick, "#" + row.ordinal, status, batchState.lines[index], matchState(row.candidate), verbatim];
+    // Only a pending row opens a form: the use case refuses an amendment of any other with
+    // `candidate_not_pending`, and the page does not offer what would be refused.
+    const edit = row.status === "pending"
+      ? button(batchState.editing === row.id ? "Close" : "Edit", () => toggleEdit(row.id))
+      : "";
+    return [pick, "#" + row.ordinal, status, batchState.lines[index], matchState(row.candidate), verbatim, edit];
   });
   const selected = () => boxes.filter(([box]) => box.checked).map(([, id]) => id);
   const confirmArea = el("div");
@@ -343,16 +382,416 @@ function renderBatch() {
   );
   const commit = button("Commit accepted", () => confirmCommit(confirmArea));
   commit.disabled = batchState.accepted.size === 0;
+  batchState.commit = commit;
   actions.append(commit, el("span", batchState.accepted.size + " accepted", "notice"));
   const nodes = [header, el("p", reviewWarning, "warning")];
   if (batchState.message) nodes.push(el("p", batchState.message, "notice"));
+  const editing = review.candidates.find((row) => row.id === batchState.editing && row.status === "pending");
   nodes.push(
     actions,
     confirmArea,
-    table(["", "#", "Status", "Candidate", "Match", "Staged"], rows),
+    table(["", "#", "Status", "Candidate", "Match", "Staged", ""], rows),
+    editing ? currentForm(editing) : el("div"),
     button("Back to sources", () => showSources(null, [])),
   );
   show("Import batch", ...nodes);
+}
+
+// Opening a form reads nothing from the server: it is built from the batch already on screen and
+// the field lists that came with it, so one row at a time is open. Closing one is the reviewer
+// saying to drop what they typed, which is the one place the kept form is deliberately thrown away.
+function toggleEdit(candidateId) {
+  batchState.editing = batchState.editing === candidateId ? null : candidateId;
+  if (batchState.editing === null) batchState.form = null;
+  renderBatch();
+}
+
+// The open form holds edits nobody has saved yet. The batch re-renders for reasons that have
+// nothing to do with them — an acceptance, which writes nothing at all, is the ordinary one — so
+// the form's own nodes are kept and re-attached rather than rebuilt from the stored candidate,
+// which would silently discard every unsaved value. It is rebuilt only when its basis moved: a
+// different row, or a batch whose content changed under it.
+function currentForm(row) {
+  const cached = batchState.form;
+  if (cached && cached.id === row.id && cached.digest === batchState.review.batch_digest) {
+    // Whatever disabled these was an action that has since finished; a re-render is never busy.
+    for (const control of cached.node.querySelectorAll(_CONTROLS)) control.disabled = false;
+    return cached.node;
+  }
+  const node = editForm(row);
+  batchState.form = { id: row.id, digest: batchState.review.batch_digest, node };
+  return node;
+}
+
+// --- M30.3 inline edit ------------------------------------------------------------------------
+// The form is generated from the candidate type's declared field list, which the batch response
+// carries, so a field left unset at staging still has an input. Saving sends only the fields whose
+// control moved: the amendment merge is shallow, so a field the patch does not name keeps its
+// stored value and a collection the patch does name replaces the stored one outright. Nothing
+// here validates — every rule is the use case's, and a refusal is shown against the field it named.
+
+function seedText(value) {
+  return value === undefined || value === null ? "" : String(value);
+}
+
+// An empty control means "no value", which is what a patch says with null; the use case refuses
+// it on a field that requires one, naming that field.
+function submitted(raw, numeric) {
+  if (raw === "") return null;
+  if (!numeric) return raw;
+  const parsed = Number(raw);
+  return Number.isNaN(parsed) ? raw : parsed;
+}
+
+// `<input type="text">` sanitises its value by removing CR and LF, so a staged multiline summary,
+// fact value, observation, or evidence note would come back flattened — and, compared against the
+// unflattened staged string, read as an edit nobody made. A textarea keeps the text exactly.
+const LF = String.fromCharCode(10);
+const CR = String.fromCharCode(13);
+
+function textControl(descriptor, staged) {
+  const seed = seedText(staged);
+  const multiline = descriptor.control === "text" && (seed.includes(LF) || seed.includes(CR));
+  const input = el(multiline ? "textarea" : "input");
+  if (multiline) {
+    input.rows = 4;
+  } else {
+    input.type = descriptor.control === "date" ? "date" : descriptor.control === "number" ? "number" : "text";
+    if (descriptor.control === "number") {
+      input.min = descriptor.min;
+      input.max = descriptor.max;
+      input.step = descriptor.step;
+    }
+  }
+  input.value = seed;
+  input.setAttribute("aria-label", descriptor.name);
+  // Compared against what the control actually holds, not against what it was handed: a value a
+  // browser normalised on the way in must not be patched back over a field nobody touched.
+  const shown = input.value;
+  const numeric = descriptor.control === "number";
+  return { node: input, read: () => (input.value === shown ? undefined : submitted(input.value, numeric)) };
+}
+
+function optionList(select, options, seed) {
+  const blank = el("option", "(unset)");
+  blank.value = "";
+  select.append(blank);
+  // A stored value the current vocabulary no longer offers stays on the list rather than being
+  // silently rewritten to nothing by an edit to some other field.
+  const known = options.some((option) => option.value === seed);
+  for (const option of seed !== "" && !known ? [{ value: seed, label: seed }, ...options] : options) {
+    const node = el("option", option.label);
+    node.value = option.value;
+    select.append(node);
+  }
+}
+
+function selectControl(descriptor, staged, options) {
+  const select = el("select");
+  const seed = seedText(staged);
+  optionList(select, options, seed);
+  select.value = seed;
+  select.setAttribute("aria-label", descriptor.name);
+  return { node: select, read: () => (select.value === seed ? undefined : submitted(select.value, false)) };
+}
+
+// Every row of the batch whose type this reference may name — withdrawn and committed included,
+// because the use case accepts those as targets, and no row of any other batch, because the page
+// only ever holds one.
+function referenceOptionsFor(descriptor) {
+  const options = [];
+  batchState.review.candidates.forEach((row, index) => {
+    if (descriptor.targets.includes(row.candidate.type)) {
+      options.push({ value: row.id, label: "#" + row.ordinal + " " + batchState.lines[index] });
+    }
+  });
+  return options;
+}
+
+function multiControl(descriptor, staged) {
+  const select = el("select");
+  select.multiple = true;
+  const chosen = Array.isArray(staged) ? staged : [];
+  const options = referenceOptionsFor(descriptor);
+  select.size = Math.min(Math.max(options.length, 2), 8);
+  for (const option of options) {
+    const node = el("option", option.label);
+    node.value = option.value;
+    node.selected = chosen.includes(option.value);
+    select.append(node);
+  }
+  select.setAttribute("aria-label", descriptor.name);
+  const same = (values) => values.length === chosen.length && values.every((value) => chosen.includes(value));
+  return {
+    node: select,
+    read: () => {
+      const values = Array.from(select.selectedOptions).map((option) => option.value);
+      return same(values) ? undefined : values;
+    },
+  };
+}
+
+// POSIX single-quoting, built from character codes so no backslash has to survive this file.
+// Every part of the command below is format-opaque — a batch id, a candidate id, and a restored
+// evidence id may carry anything non-blank — and JSON pasted into a shell unquoted loses the
+// quotes `pctx import amend --patch` requires, so the advertised command would simply fail.
+const SQ = String.fromCharCode(39);
+const SQ_ESCAPED = SQ + String.fromCharCode(92) + SQ + SQ;
+
+function shellQuote(value) {
+  return SQ + String(value).split(SQ).join(SQ_ESCAPED) + SQ;
+}
+
+// `evidence_ids` names durable records outside this batch, so there is nothing to pick from here;
+// the stored ids are shown with the command that changes them.
+function readonlyControl(descriptor, staged, row) {
+  const values = Array.isArray(staged) ? staged : [];
+  const node = el("div");
+  node.append(el("p", values.length ? values.join(", ") : "(none)"));
+  node.append(el("p", "Change with: pctx import amend " + shellQuote(batchState.id) + " "
+    + shellQuote(row.id) + " --patch "
+    + shellQuote(JSON.stringify({ [descriptor.name]: values })), "notice"));
+  return { node, read: () => undefined };
+}
+
+function aliasControl(descriptor, staged) {
+  const stagedRows = Array.isArray(staged) ? staged : [];
+  const container = el("div");
+  const rows = [];
+
+  const addRow = (base) => {
+    const entry = { base, controls: [], node: el("div", null, "alias") };
+    for (const field of batchState.aliasFields) {
+      const control = field.control === "select"
+        ? selectControl(field, base[field.name], field.options.map((value) => ({ value, label: value })))
+        : textControl(field, base[field.name]);
+      entry.controls.push([field.name, control]);
+      entry.node.append(el("span", field.name, "notice"), control.node);
+    }
+    entry.node.append(button("Remove", () => {
+      entry.removed = true;
+      container.removeChild(entry.node);
+    }));
+    rows.push(entry);
+    container.append(entry.node);
+  };
+
+  for (const alias of stagedRows) addRow(alias);
+  const adder = button("Add alias", () => addRow({}));
+  const node = el("div");
+  node.append(container, adder);
+
+  // An untouched row is re-emitted from what was staged, key for key, so rebuilding the list to
+  // change one alias never drops another alias's language or script.
+  const rebuild = () => rows.filter((entry) => !entry.removed).map((entry) => {
+    const alias = Object.assign({}, entry.base);
+    for (const [name, control] of entry.controls) {
+      const value = control.read();
+      if (value === undefined) continue;
+      if (value === null) delete alias[name];
+      else alias[name] = value;
+    }
+    return alias;
+  });
+  return {
+    node,
+    read: () => {
+      const rebuilt = rebuild();
+      return JSON.stringify(rebuilt) === JSON.stringify(stagedRows) ? undefined : rebuilt;
+    },
+  };
+}
+
+function buildControl(descriptor, row) {
+  const staged = row.candidate[descriptor.name];
+  if (descriptor.control === "alias_list") return aliasControl(descriptor, staged);
+  if (descriptor.control === "readonly") return readonlyControl(descriptor, staged, row);
+  if (descriptor.control === "candidate_multiselect") return multiControl(descriptor, staged);
+  if (descriptor.control === "candidate_select") {
+    return selectControl(descriptor, staged, referenceOptionsFor(descriptor));
+  }
+  if (descriptor.control === "select") {
+    return selectControl(descriptor, staged, descriptor.options.map((value) => ({ value, label: value })));
+  }
+  return textControl(descriptor, staged);
+}
+
+// Whether this person row owes or holds an identity decision. `match_candidates` is projected
+// only while the row is ambiguous, so a row the reviewer already resolved has no list — and
+// without a control of its own it could not be corrected from the page at all, though
+// `AmendStagedCandidate` accepts both a different choice and a clearing one.
+function hasMatchDecision(row) {
+  return Boolean(row.match_candidates) || Boolean(row.candidate.matched_person_id);
+}
+
+// The identity picker, which is a control of the form like any other rather than an action beside
+// it: a second button would post only its own field, and a reviewer who corrected a name and then
+// chose a person would have the rename silently rebuilt away by the reload. One Save sends both.
+//
+// Choosing, changing, or clearing is one ordinary `matched_person_id` patch, which the use case
+// accepts only when the matcher itself produced that person; clearing sends null, which re-runs
+// the matcher and puts an ambiguous row back to ambiguous with its full list.
+function matchPicker(row) {
+  const matches = row.match_candidates || [];
+  const resolved = seedText(row.candidate.matched_person_id);
+  const select = el("select");
+  const unresolved = el("option", "(leave unresolved)");
+  unresolved.value = "";
+  select.append(unresolved);
+  // The row's own choice stays on the list even once the projection no longer names it, so the
+  // control opens on what is recorded rather than silently on "unresolved".
+  if (resolved !== "" && !matches.some((match) => match.id === resolved)) {
+    const current = el("option", "(current match) " + resolved);
+    current.value = resolved;
+    select.append(current);
+  }
+  for (const match of matches) {
+    const option = el("option", match.canonical_name + (match.name_truncated ? " (name shortened)" : "")
+      + " - " + match.id);
+    option.value = match.id;
+    select.append(option);
+  }
+  select.value = resolved;
+  select.setAttribute("aria-label", "Matching person");
+  const typed = el("input");
+  typed.type = "text";
+  typed.setAttribute("aria-label", "Person id");
+  typed.placeholder = "Person id";
+  const nodes = [el("p", matches.length
+    ? "This name matches several people. Choose one, or leave it unresolved."
+    : "This row is resolved to one person. Leave it unresolved to match again, or paste another id."), select];
+  // A pasted id is the only way to reach a person the projection does not list, which is either
+  // because there are more than it shows or because the row is no longer ambiguous.
+  if (row.match_candidates_truncated || !matches.length) {
+    nodes.push(
+      el("p", "Find the right person with pctx search or the resolve_person tool and paste its id.", "notice"),
+      typed,
+    );
+  }
+  const node = el("div");
+  node.append(...nodes);
+  // Present-and-null is how a person row records "matched nothing", so the comparison normalises
+  // both sides. Only an actual change is sent: naming the field at all reopens identity in the
+  // use case, which would put a decision the reviewer already made back to ambiguous.
+  const current = row.candidate.matched_person_id === undefined ? null : row.candidate.matched_person_id;
+  return {
+    node,
+    read: () => {
+      // Verbatim, never trimmed: a person id is format-opaque and the matcher compares it
+      // exactly, so a restored id carrying edge whitespace has to travel as it was pasted. Only
+      // whether the box was used at all is decided by trimming.
+      const pasted = typed.value;
+      const chosen = pasted.trim() === "" ? (select.value || null) : pasted;
+      return chosen === current ? undefined : chosen;
+    },
+  };
+}
+
+function editForm(row) {
+  const descriptors = (batchState.fields || {})[row.candidate.type] || [];
+  const controls = [];
+  const grid = el("dl");
+  const panel = el("div", null, "edit");
+  panel.append(el("h3", "Editing #" + row.ordinal + " (" + row.candidate.type + ")"));
+  if (hasMatchDecision(row)) {
+    const picker = matchPicker(row);
+    picker.slot = el("div");
+    controls.push(["matched_person_id", picker]);
+    const holder = el("div");
+    holder.append(picker.node, picker.slot);
+    panel.append(holder);
+  }
+  for (const descriptor of descriptors) {
+    const control = buildControl(descriptor, row);
+    control.slot = el("div");
+    controls.push([descriptor.name, control]);
+    const value = el("dd");
+    value.append(control.node, control.slot);
+    grid.append(el("dt", descriptor.name), value);
+  }
+  const rowErrors = el("div");
+  panel.append(grid, rowErrors);
+  const actions = el("div", null, "actions");
+  actions.append(
+    button("Save", () => saveEdit(row, controls, rowErrors)),
+    button("Cancel", () => toggleEdit(row.id)),
+  );
+  panel.append(actions);
+  return panel;
+}
+
+function saveEdit(row, controls, rowErrors) {
+  const patch = {};
+  for (const [name, control] of controls) {
+    const value = control.read();
+    if (value !== undefined) patch[name] = value;
+  }
+  if (!Object.keys(patch).length) {
+    rowErrors.replaceChildren(el("p", "Nothing changed.", "notice"));
+    return;
+  }
+  return amendRow(row, patch, controls, rowErrors, "Amended #" + row.ordinal + ".");
+}
+
+async function amendRow(row, patch, controls, rowErrors, message) {
+  if (!beginAction()) return;
+  const at = navigate();
+  const batchId = batchState.id;
+  let result;
+  try {
+    result = await api("/api/batch/amend", {
+      method: "POST",
+      headers: { "X-Pctx-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        batch_id: batchId,
+        candidate_id: row.id,
+        patch,
+        expected_batch_digest: batchState.review.batch_digest,
+      }),
+    });
+  } catch (error) {
+    batchState.busy = false;
+    if (at !== navigation) return;
+    // A stale digest is not something the reviewer can correct in the open form: the batch has
+    // moved, and every later Save from this form would repeat the digest that was already
+    // refused. Reload instead, as withdraw and commit do, so the concurrent change is on screen.
+    if (error.message === "batch_changed") {
+      return showBatch(batchId, "Refused: batch_changed.");
+    }
+    showRefusal(error, controls, rowErrors);
+    return reenable();
+  }
+  batchState.busy = false;
+  batchState.editing = null;
+  batchState.form = null;
+  // An acceptance is a decision about content that was on screen, and this amendment changed
+  // content — either the accepted row's own, or, for a person row, the identity an accepted
+  // dependent resolves through. Carrying the acceptances across would let the next commit write
+  // something nobody accepted in its amended state, and the digest this edit produced would not
+  // refuse it. They are dropped whole rather than guessed at row by row.
+  const dropped = batchState.accepted.size;
+  batchState.accepted = new Set();
+  if (dropped) message += " " + dropped + " acceptance(s) discarded; review the amended batch again.";
+  if (at === navigation) return showBatch(batchId, message, result.batch_digest);
+}
+
+// One message per field, against the control that caused it. A refusal the use case located at
+// the whole candidate, or at a field it would not name, belongs to the row instead.
+function showRefusal(error, controls, rowErrors) {
+  const named = new Map();
+  for (const entry of error.fields || []) named.set(entry.field, entry.message);
+  const shown = new Set();
+  for (const [name, control] of controls) {
+    control.slot.replaceChildren();
+    if (!named.has(name)) continue;
+    control.slot.append(el("p", named.get(name), "error"));
+    shown.add(name);
+  }
+  const rest = [el("p", "Refused: " + error.message, "error")];
+  for (const entry of error.fields || []) {
+    if (!shown.has(entry.field)) rest.push(el("p", entry.field + ": " + entry.message, "error"));
+  }
+  rowErrors.replaceChildren(...rest);
 }
 
 function acceptSelected(ids) {

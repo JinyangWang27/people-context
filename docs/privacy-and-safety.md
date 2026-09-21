@@ -25,7 +25,9 @@ disclosure and operator-elevation rules as the MCP server; see
 [threat model notes](#threat-model-notes). M30.2 adds batch review to it: staged candidates are shown
 verbatim under the review disclosure warning, as `pctx import review` shows them, and the page's only writes are
 withdrawal and commit through the existing use cases, each carrying the displayed `batch_digest` so a stale view
-is refused with `batch_changed`. M30.3 inline edit remains [planned](specs/m30-local-web-review.md).
+is refused with `batch_changed`. M30.3 adds inline editing of a staged candidate on the same terms: the same
+`AmendStagedCandidate` the CLI calls, the same digest, and a refusal that names the field and never the value
+submitted. It edits staged candidates only — no durable person, fact, or reminder is editable from the page.
 
 ## Minimal disclosure
 
@@ -643,8 +645,10 @@ physical deletion from an unreachable device or third-party backup.
   inline script and stylesheet, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`, and recorded values
   render as text. Sensitive and restricted durable records appear only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`
   is set in the `pctx browse` process environment, never from a page control; a source's committed mappings are
-  never served. Batch withdrawal and commit (M30.2) are token-guarded `POST`s through the same use cases and
-  audit seam as the CLI, and a refusal returns only the use-case error code. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
+  never served. Batch withdrawal and commit (M30.2) and amendment of a staged candidate (M30.3) are token-guarded
+  `POST`s through the same use cases and audit seam as the CLI. A refusal returns the use-case error code, plus —
+  for an amendment — the declared field each rule named and the fixed text the use case wrote for it, so a form can
+  point at the control that failed without any of the submitted patch coming back. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
   not against another local process running as the same user, which the loopback MCP transport does not
   defend against either.
 - **Semantic vectors are sensitivity-filtered derived data.** Only active people and public/personal

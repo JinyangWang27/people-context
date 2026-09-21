@@ -101,6 +101,11 @@ budget cut the ranked list, and `next_cursor` to the version-1 person index. `ne
 `pctx list --json` document and is set only by the paged read behind `pctx browse`. Both are additive, with no
 format string or version change. It also added the `pctx browse` command.
 
+M30.2 and M30.3 add no document format, version, or field. The browser's batch review and edit form are HTTP
+projections of `ReviewImport`, `AmendStagedCandidate`, `WithdrawStagedCandidates`, and `CommitImport`; the
+`batch_digest` they carry and the `batch_changed` refusal they can receive are M29.1's, and the CLI and MCP paths
+that omit `expected_batch_digest` behave exactly as before.
+
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |

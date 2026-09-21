@@ -484,7 +484,9 @@ as separate commands because a staged batch is durable review state that may be 
 
 [M30](specs/m30-local-web-review.md) adds a loopback-only browser page over the same use cases: M30.2's batch
 review withdraws and commits through `WithdrawStagedCandidates` and `CommitImport` with the displayed
-`batch_digest` (see [cli.md](cli.md#local-browser-viewer)). M30.3 inline edit is planned, not implemented.
+`batch_digest` (see [cli.md](cli.md#local-browser-viewer)), and M30.3's edit form amends one staged candidate
+through `AmendStagedCandidate` with the same digest, from a form generated from the candidate type's declared
+fields. The page is a client of these use cases, not a second write path: every rule below applies to it unchanged.
 
 ### Correcting a batch before committing it (M29.1)
 

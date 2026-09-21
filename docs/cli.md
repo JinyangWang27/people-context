@@ -17,10 +17,10 @@ what encryption does and does not protect.
 
 ## Commands
 
-**Planned, not implemented:** M30.3 inline edit in the
-[browser](specs/m30-local-web-review.md). Commands below describe delivered behavior, including M28.1 `group`, M28.2
+Commands below describe delivered behavior, including M28.1 `group`, M28.2
 `group shared`, M28.3's `group` and `group_membership` candidate types accepted by `import stage-candidates`, M29.1
-`import amend` and `import reject`, M29.2 `import review --interactive`, M29.3 `import edit`, M30.1 `browse`, and M30.2 browser batch review.
+`import amend` and `import reject`, M29.2 `import review --interactive`, M29.3 `import edit`, M30.1 `browse`, M30.2
+browser batch review, and M30.3 browser inline edit.
 
 | Command | Purpose |
 |---|---|
@@ -36,7 +36,7 @@ what encryption does and does not protect.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N]` | Serve a local page of people, one person's brief, import sources, and staged-batch review (withdraw and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N]` | Serve a local page of people, one person's brief, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
@@ -570,11 +570,11 @@ uv run pctx browse --open --port 8766
 ```
 
 Serves one page on `127.0.0.1` for whoever finds a table easier than a terminal: the people list, one person's
-brief, the import sources with each receipt's staged counts, and review of one staged batch. It is a fourth client
-of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import review`,
-`pctx import reject`, and `pctx import commit` already call; it writes only through the last two. It is
-not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or configuration, and
-two launches are two unrelated processes.
+brief, the import sources with each receipt's staged counts, and review and editing of one staged batch. It is a
+fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
+review`, `pctx import amend`, `pctx import reject`, and `pctx import commit` already call; it writes only through
+the last three. It is not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or
+configuration, and two launches are two unrelated processes.
 
 The bind is loopback only. There is no `--host`; `--port` picks the port (default: an ephemeral one) and a busy
 port exits 1. The command prints one URL on stdout carrying a per-launch `secrets.token_urlsafe` token, and the
@@ -625,6 +625,46 @@ with `batch_changed` and nothing is written. A refusal is shown by its use-case 
 `candidate_withdrawn`, `candidate_not_pending`, and the rest — never the refused payload. After every action the
 page reads the batch again; acceptances made against a batch that has since changed elsewhere are discarded. The
 same ceilings that bound `pctx import review` bound the batch page.
+
+**Edit** on a pending row (M30.3) opens a form for that candidate, built from its type's declared field list rather
+than from the keys it happens to carry, so a field left unset at staging still has an input. Strings, dates, the
+sensitivity and category vocabularies, and confidence each get their native control; `aliases` is a list of rows to
+add to and remove from, with `value`, `kind`, `lang`, and `script` on each; `participant_candidate_ids` and
+`evidence_candidate_ids` are multi-selects, and the single-candidate references are selects, offering only rows of
+this batch whose type the amendment would accept — so no control can express a reference the use case refuses. A
+`datetime` field keeps a text box carrying the stored string, because a `datetime-local` picker has no timezone and
+would rewrite an offset nobody touched, and a value containing line breaks gets a text area, because a single-line
+input silently drops them. `evidence_ids` names durable records outside the batch, so it is shown read-only beside
+the equivalent `pctx import amend` command, shell-quoted so it can be copied and run as printed.
+
+**Save** calls the same use case as `pctx import amend`, sending only the fields whose control moved: the amendment
+merge is shallow, so an untouched field keeps its stored value and a collection that is sent replaces the stored one
+outright — which is why an untouched alias row is sent back exactly as staged, `lang` and `script` included. The
+request carries the `batch_digest` of the review on screen, so an edit made from a view another client has moved is
+refused with `batch_changed` and writes nothing; because that digest is then obsolete, the page reloads the batch
+rather than leaving the form to repeat it. A validation refusal is different: nothing was written and the digest is
+still current, so the form stays open with what was typed, each message shown against the field it names — one per
+field and never the value submitted, with a refusal the use case located at the whole candidate shown for the row.
+A successful save reads the batch again, as every other action does, and discards any acceptances: an acceptance is
+a decision about content the amendment has just changed, and for a person row that includes the identity an
+accepted dependent would resolve through. An open form survives the page re-rendering around it — accepting rows
+writes nothing and must not cost the reviewer what they have typed — and is rebuilt only when its basis moved: a
+different row, a batch whose content changed under it, or the reviewer closing it with **Cancel**. Committed and withdrawn rows have no Edit button, and the use case
+refuses them with `candidate_not_pending` in any case.
+
+An ambiguous person row also gets a picker listing the people its name resolves to — the `match_candidates` review
+projects — with the option of leaving it unresolved. When more people share the name than are listed, the picker
+says so and takes a person id found with `pctx search` or the `resolve_person` tool, used exactly as entered
+because a person id is format-opaque and the matcher compares it verbatim. A row that has already been resolved
+keeps the control, listing its current match: review stops projecting `match_candidates` once a row is matched, and
+without it a mistaken click could only be undone from the terminal. Leaving it unresolved clears the choice and
+re-runs the matcher, which puts an ambiguous row back to ambiguous with its full list. Every one of these is an
+ordinary `matched_person_id` patch, which the use case accepts only when the matcher itself produced that person,
+so it is visible to `pctx import review` like any other amendment. The picker is part of the form rather than an
+action beside it: one **Save** sends the match and the field edits together, and a picker nobody moved stays out of
+the patch, because naming `matched_person_id` at all reopens the identity question and would undo a choice already
+made. There is no form for authoring a candidate the importer
+did not produce, and nothing on the page edits a durable record.
 
 ## Person index
 

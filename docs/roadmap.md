@@ -309,7 +309,7 @@ M29.3, and M29 is independent of M28.3.
 
 ## M30 — Local web view, review, and edit
 
-**Status:** M30.1 and M30.2 shipped; M30.3 planned.
+**Status:** Delivered.
 
 Add `pctx browse`, a loopback-only Starlette/uvicorn page — `starlette` and `uvicorn` are already resolved as
 transitive dependencies of `mcp` and only need declaring — with a per-launch token, `Host`/`Origin` checks, and
