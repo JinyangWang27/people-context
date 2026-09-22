@@ -58,7 +58,6 @@ pctx = "people_context.cli:main"
 dev = [
     # `starlette.testclient` imports `httpx2`, which `mcp` already requires.
     "httpx2>=2.5",
-    "ipykernel>=7.3.0",
     "mypy>=1.18",
     "pytest>=8",
     "ruff>=0.6",
