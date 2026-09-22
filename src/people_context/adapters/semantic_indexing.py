@@ -15,7 +15,6 @@ from people_context.domain.person import Person
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.trait import Trait
-from people_context.ports.audit_log import AuditLog
 from people_context.ports.forget import ForgetPreviewStore, ForgetStore
 from people_context.ports.lifecycle import ForgetStoreResult, MergeStoreResult
 from people_context.ports.merge import MergeStore
@@ -165,11 +164,6 @@ class IndexingMergeStore:
         """Forward an adapter-provided transaction boundary when present."""
         return getattr(self._delegate, "unit_of_work", None)
 
-    @property
-    def audit_log(self) -> AuditLog:
-        """Forward the merge adapter's paired mutation journal."""
-        return self._delegate.audit_log
-
     def _best_effort(self, operation: Callable[[], None]) -> None:
         try:
             operation()
@@ -211,11 +205,6 @@ class IndexingForgetStore:
     def unit_of_work(self) -> UnitOfWork | None:
         """Forward an adapter-provided transaction boundary when present."""
         return getattr(self._delegate, "unit_of_work", None)
-
-    @property
-    def audit_log(self) -> AuditLog:
-        """Forward the forget adapter's paired mutation journal."""
-        return self._delegate.audit_log
 
     def _best_effort(self, operation: Callable[[], None]) -> None:
         try:

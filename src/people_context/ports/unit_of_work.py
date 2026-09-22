@@ -21,7 +21,7 @@ class UnitOfWork(Protocol):
 
 
 class NullUnitOfWork:
-    """No-op boundary used by pure port fakes and backward-compatible callers."""
+    """No-op boundary for adapters and port fakes that provide no transaction."""
 
     def __enter__(self) -> Self:
         return self

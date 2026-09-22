@@ -204,9 +204,11 @@ def test_merge_rolls_back_when_child_changelog_capture_fails() -> None:
     def fail(_: str) -> None:
         raise RuntimeError("merge changelog failure")
 
-    lifecycle = SqliteMergeStore(conn, changelog_failure_hook=fail)
+    lifecycle = SqliteMergeStore(conn)
     with pytest.raises(RuntimeError, match="merge changelog failure"):
-        MergePeople(people, lifecycle, clock).execute(primary.id, duplicate.id)
+        MergePeople(people, lifecycle, clock, SqliteAuditLog(conn, changelog_failure_hook=fail)).execute(
+            primary.id, duplicate.id
+        )
 
     assert people.get(duplicate.id) is not None and people.get(duplicate.id).deleted_at is None
     assert records.get_record("fact", fact.id).person_id == duplicate.id
@@ -308,9 +310,9 @@ def test_forget_rolls_back_deletion_redaction_audit_hlc_and_tombstone_on_capture
 
     from people_context.app.people import Forget
 
-    lifecycle = SqliteForgetStore(conn, changelog_failure_hook=fail)
+    lifecycle = SqliteForgetStore(conn)
     with pytest.raises(RuntimeError, match="forget changelog failure"):
-        Forget(people, lifecycle, clock).execute(person.id, "person")
+        Forget(people, lifecycle, clock, SqliteAuditLog(conn, changelog_failure_hook=fail)).execute(person.id, "person")
 
     assert people.get(person.id) is not None
     assert records.get_record("fact", fact.id) is not None

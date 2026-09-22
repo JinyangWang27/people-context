@@ -59,7 +59,7 @@ class _Store:
         self.interact = RecordInteraction(people, records, self.audit, _Clock())
         self.trait = RecordTrait(people, records, self.audit, _Clock(), self.evidence)
         forget_store = SqliteForgetStore(self.conn)
-        self.forget = Forget(people, forget_store, _Clock())
+        self.forget = Forget(people, forget_store, _Clock(), self.audit)
         self.preview = PreviewForget(people, forget_store)
 
     def person(self, name: str) -> str:

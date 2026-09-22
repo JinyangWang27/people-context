@@ -33,7 +33,7 @@ class ExportDocument(BaseModel):
 
 
 class ExportData:
-    """Build the M3-compatible snapshot export; M7 will define changelog/bootstrap portability."""
+    """Build the JSON snapshot export; machine-to-machine transfer uses sync bundles instead."""
 
     def __init__(self, reader: ExportReader, clock: Clock) -> None:
         self._reader = reader

@@ -8,7 +8,6 @@ from collections.abc import Callable
 from datetime import date
 from typing import cast
 
-from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.import_staging import json_text_fragment
 from people_context.adapters.sqlite.record_store import SqliteRecordStore
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
@@ -40,28 +39,14 @@ class SqliteMergeStore:
         self,
         conn: sqlite3.Connection,
         failure_hook: Callable[[str], None] | None = None,
-        *,
-        audit_failure_hook: Callable[[str], None] | None = None,
-        changelog_failure_hook: Callable[[str], None] | None = None,
     ) -> None:
         self._conn = conn
         self._failure_hook = failure_hook
-        self._audit_failure_hook = audit_failure_hook
-        self._changelog_failure_hook = changelog_failure_hook
 
     @property
     def unit_of_work(self) -> SqliteUnitOfWork:
         """Return a join-safe transaction boundary for application orchestration."""
         return SqliteUnitOfWork(self._conn)
-
-    @property
-    def audit_log(self) -> SqliteAuditLog:
-        """Expose the paired mutation journal for backward-compatible app construction."""
-        return SqliteAuditLog(
-            self._conn,
-            self._audit_failure_hook,
-            changelog_failure_hook=self._changelog_failure_hook,
-        )
 
     def merge_people(self, primary: Person, duplicate_id: str) -> MergeStoreResult:
         """Re-parent duplicate-linked rows and return exact row outcomes."""

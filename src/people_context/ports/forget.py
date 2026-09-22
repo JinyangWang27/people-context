@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from people_context.ports.audit_log import AuditLog
 from people_context.ports.lifecycle import ForgetStoreResult
 
 
 @runtime_checkable
 class ForgetStore(Protocol):
     """Persist destructive person or record forget operations atomically."""
-
-    @property
-    def audit_log(self) -> AuditLog: ...
 
     def forget_person(self, person_id: str) -> ForgetStoreResult: ...
 

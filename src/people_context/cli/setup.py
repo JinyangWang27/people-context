@@ -174,7 +174,7 @@ def build_entry(
     The key is never part of the entry either way: it is read from the server's own environment.
     """
     command = SERVER_COMMAND
-    args = ["--from", PACKAGE_NAME, SERVER_ENTRY_POINT]
+    args = list(SERVER_ARGS)
     if encrypted:
         if encrypted_extra_covers(platform, machine, libc):
             args = ["--from", f"{PACKAGE_NAME}[encrypted]", SERVER_ENTRY_POINT]
