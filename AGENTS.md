@@ -6,12 +6,13 @@ Application code lives under `src/people_context/` and follows a hexagonal archi
 
 - `domain/` contains Pydantic entities and dependency-free business rules.
 - `app/` groups focused use cases by capability and depends only on `domain/` and narrow protocols in `ports/`.
-- `adapters/` contains SQLite persistence, MCP transports/tools, importers, and optional semantic integrations.
+- `adapters/` contains SQLite persistence, MCP transports/tools, the local browser UI, importers, and optional semantic integrations.
 - `adapters/runtime.py` is the shared composition root; `cli/`, `config.py`, and `adapters/mcp/server.py` are
   process-boundary entry points.
 
 Tests mirror these layers and capabilities under `tests/domain/`, `tests/app/`, `tests/adapters/`, and
 `tests/cli/`. Design documentation, interface contracts, privacy rules, and ADRs live in `docs/`.
+The Obsidian integration lives in `obsidian-plugin/`; the developer evaluation harness lives in `evals/`.
 
 ## Build, Test, and Development Commands
 
@@ -20,6 +21,7 @@ Tests mirror these layers and capabilities under `tests/domain/`, `tests/app/`, 
 - `uv run people-context-mcp` starts the default stdio MCP server.
 - `uv run people-context-mcp --http --host 127.0.0.1 --port 8765` starts loopback HTTP.
 - `uv run pctx db-path` shows the active SQLite database.
+- `uv run pctx browse` starts the token-guarded local browser review UI.
 - `uv run pytest -q` runs the complete test suite.
 - `uv run ruff check .` checks formatting-independent style and imports.
 - `uv run mypy` type-checks `src/people_context`; Ruff does not check types.
@@ -49,4 +51,4 @@ Use concise imperative Conventional Commit subjects, matching history: `feat: ad
 
 ## Security & Configuration
 
-This repository stores sensitive personal data locally. Never persist raw import content or log private values. Keep HTTP loopback-only and unauthenticated; remote access is out of scope. Ordinary commands must not access the network—only explicit `people-context reindex --semantic` may download the pinned model.
+This repository stores sensitive personal data locally. Never persist raw import content or log private values. Keep MCP HTTP loopback-only and unauthenticated; the local browser UI is loopback-only and token-guarded. Remote access is out of scope. Ordinary commands must not access the network—only explicit `pctx reindex --semantic` may download the pinned model.
