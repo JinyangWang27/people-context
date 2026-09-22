@@ -5,6 +5,35 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/JinyangWang27/people-context/compare/v1.2.1...v1.3.0) (2026-09-22)
+
+
+### Features
+
+* add browser batch review to pctx browse (M30.2) ([38f1b83](https://github.com/JinyangWang27/people-context/commit/38f1b83a5bac574f24b7758b83fd691f2b3d77bf))
+* add browser batch review to pctx browse (M30.2) ([#161](https://github.com/JinyangWang27/people-context/issues/161)) ([f16c758](https://github.com/JinyangWang27/people-context/commit/f16c758e69ad6d02d82376573af765dde6fbda83))
+* add browser inline edit to pctx browse (M30.3) ([#162](https://github.com/JinyangWang27/people-context/issues/162)) ([49c88be](https://github.com/JinyangWang27/people-context/commit/49c88beab09acf04737e0c27bd5639da8cbcf310))
+* add pctx browse, a loopback read-only local viewer (M30.1) ([#160](https://github.com/JinyangWang27/people-context/issues/160)) ([f2bfd5c](https://github.com/JinyangWang27/people-context/commit/f2bfd5caeb8abb2a8c507636122a093f1dbf1051))
+* amend and withdraw staged candidates (M29.1) ([#157](https://github.com/JinyangWang27/people-context/issues/157)) ([7ad81bf](https://github.com/JinyangWang27/people-context/commit/7ad81bfa8598c93814737f11fcc1f151f7c338d3))
+* amend and withdraw staged candidates (M29.1) ([#157](https://github.com/JinyangWang27/people-context/issues/157)) ([7ad81bf](https://github.com/JinyangWang27/people-context/commit/7ad81bfa8598c93814737f11fcc1f151f7c338d3))
+* capture and use shared context through agents (M28.3) ([16c753d](https://github.com/JinyangWang27/people-context/commit/16c753dae89531060ed83c560a634ce89d057f59))
+* capture and use shared context through agents (M28.3) ([#156](https://github.com/JinyangWang27/people-context/issues/156)) ([16c753d](https://github.com/JinyangWang27/people-context/commit/16c753dae89531060ed83c560a634ce89d057f59))
+* edit a staged batch in $EDITOR (M29.3) ([#159](https://github.com/JinyangWang27/people-context/issues/159)) ([0132750](https://github.com/JinyangWang27/people-context/commit/0132750807d83dc3dbc3dad5f3f9d206e544080a))
+* number staged candidates and review them interactively (M29.2) ([#158](https://github.com/JinyangWang27/people-context/issues/158)) ([c018b41](https://github.com/JinyangWang27/people-context/commit/c018b41a09970d868d67c57245f94fe84ab5e3d0))
+
+
+### Bug Fixes
+
+* drop browse responses that arrive after the user navigated away (M30.2) ([882c8d8](https://github.com/JinyangWang27/people-context/commit/882c8d82f2c1aec4918a72ffff7b499e26d16ed1))
+* keep the stopped browse page from being repainted (M30.2) ([6dc72e7](https://github.com/JinyangWang27/people-context/commit/6dc72e797e91c2c9cfab8a6a9c80731905e64540))
+* send one browse withdrawal or commit per click (M30.2) ([2bd5684](https://github.com/JinyangWang27/people-context/commit/2bd5684744715db1c926d789135189f812545ebc))
+
+
+### Documentation
+
+* document browser batch review and mark M30.2 done ([2e46294](https://github.com/JinyangWang27/people-context/commit/2e4629496e1f8ee223b7019a87979bc9d130dc8f))
+* plan editable staging review and local web review (M29, M30) ([#154](https://github.com/JinyangWang27/people-context/issues/154)) ([a0f34ed](https://github.com/JinyangWang27/people-context/commit/a0f34ed8ef36066e312d95f5db5ad752a9525adc))
+
 ## [1.2.1](https://github.com/JinyangWang27/people-context/compare/v1.2.0...v1.2.1) (2026-09-14)
 
 
