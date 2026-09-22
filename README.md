@@ -73,10 +73,6 @@ server command in an MCP client and run the printed calls verbatim. See
 
 ## Quick start
 
-> **Upgrading from a release before the shared `~/.pctx/people.db` default?** Before any client starts the new
-> version, inventory and pin each client's existing database as described in
-> [Upgrading to the shared default](docs/cli.md#upgrading-to-the-shared-default).
-
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Pick your client; each is one step.
 
 <details open>

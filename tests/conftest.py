@@ -19,16 +19,15 @@ HOST_TIMEZONE_UTC_MINUS_12 = "XYZ+12"
 def isolated_database_locations(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep every implicit database location inside a temporary home.
 
-    The shared default lives under `HOME`, and legacy discovery reads `XDG_DATA_HOME` and
-    `OPENCLAW_WORKSPACE`, so a test that omits `--db` must never reach a developer's own store.
+    The shared default lives under `HOME`, config under `XDG_CONFIG_HOME`, and the demo under
+    `XDG_DATA_HOME`, so a test that omits `--db` must never reach a developer's own store.
     Tests that need particular values still override these with their own `monkeypatch` calls.
     """
     root = tmp_path_factory.mktemp("isolated-home")
     monkeypatch.setenv("HOME", str(root / "home"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(root / "config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(root / "data"))
-    for variable in ("PEOPLE_CONTEXT_DB", "OPENCLAW_WORKSPACE"):
-        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.delenv("PEOPLE_CONTEXT_DB", raising=False)
 
 
 @pytest.fixture

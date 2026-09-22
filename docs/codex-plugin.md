@@ -11,9 +11,6 @@ public endpoint, OAuth service, or shared database.
 
 ## Install from GitHub
 
-**Upgrading an existing installation?** Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before a release with the shared `~/.pctx/people.db`
-default starts: inventory each existing client's database with the old version and pin it explicitly.
-
 Add the repository as a marketplace, then install the plugin:
 
 ```bash
@@ -46,10 +43,6 @@ The selected path is outside the installed plugin copy, survives upgrades and un
 with the `pctx` CLI. Run `pctx db-path -v` to inspect the active path and its resolution
 trace.
 
-OpenClaw workspaces and the XDG data directory no longer select a database. If a legacy database is visible
-there and `~/.pctx/people.db` does not exist, the server refuses to start instead of creating a fresh store; see
-the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default).
-
 ## Security model
 
 Installing the plugin executes this repository's Python code with the current operating-system user's
@@ -67,8 +60,6 @@ MCP annotations are advisory metadata, not authorization. Process-level capabili
 high-disclosure boundaries. See [Privacy and Safety](privacy-and-safety.md) for the complete threat model.
 
 ## Update
-
-Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before updating from a release that used the earlier default location.
 
 Refresh the marketplace snapshot and reinstall the plugin after a release:
 

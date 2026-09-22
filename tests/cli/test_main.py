@@ -44,13 +44,6 @@ def _soft_delete(db_path: Path, person_id: str) -> None:
 # -- db-path ------------------------------------------------------------------
 
 
-def _legacy_xdg_store() -> tuple[Path, Path]:
-    """Write a fictional legacy XDG database inside the isolated test home; return (legacy, shared default)."""
-    legacy = Path(os.environ["XDG_DATA_HOME"]) / "people-context" / "people.db"
-    _seed(legacy, "Legacy Person")
-    return legacy, Path(os.environ["HOME"]) / ".pctx" / "people.db"
-
-
 def test_fresh_default_is_the_shared_home_database(capsys: pytest.CaptureFixture[str]) -> None:
     shared = Path(os.environ["HOME"]) / ".pctx" / "people.db"
     assert cli.main(["db-path"]) == 0
@@ -60,54 +53,6 @@ def test_fresh_default_is_the_shared_home_database(capsys: pytest.CaptureFixture
     assert cli.main(["list"]) == 0
     assert shared.exists()
     assert stat.S_IMODE(shared.stat().st_mode) == 0o600
-
-
-@pytest.mark.parametrize("argv", [["list"], ["init"], ["stats"], ["--encrypted", "list"]])
-def test_database_commands_refuse_a_blocked_transition_without_writing(
-    argv: list[str], capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("PEOPLE_CONTEXT_DB_KEY", "fictional key")
-    legacy, shared = _legacy_xdg_store()
-    before = legacy.read_bytes()
-
-    assert cli.main(argv) == 2
-    err = capsys.readouterr().err
-    assert str(legacy) in err
-    assert "--db" in err and "PEOPLE_CONTEXT_DB" in err
-    assert not shared.parent.exists()
-    assert legacy.read_bytes() == before
-
-
-def test_db_path_reports_a_blocked_transition_without_writing(capsys: pytest.CaptureFixture[str]) -> None:
-    legacy, shared = _legacy_xdg_store()
-
-    assert cli.main(["db-path"]) == 0
-    assert capsys.readouterr().out.strip() == str(shared)
-    assert cli.main(["db-path", "-v"]) == 0
-    out = capsys.readouterr().out
-    assert "BLOCKED" in out
-    assert f"{legacy} (FOUND)" in out
-    assert "=> blocked:" in out
-    assert not shared.parent.exists()
-
-
-def test_explicit_selection_of_the_legacy_store_keeps_working(capsys: pytest.CaptureFixture[str]) -> None:
-    legacy, shared = _legacy_xdg_store()
-
-    assert cli.main(["--db", str(legacy), "list"]) == 0
-    assert "Legacy Person" in capsys.readouterr().out
-    assert not shared.parent.exists()
-
-
-def test_existing_shared_default_wins_over_legacy_store(capsys: pytest.CaptureFixture[str]) -> None:
-    _legacy, shared = _legacy_xdg_store()
-    _seed(shared, "Shared Person")
-
-    assert cli.main(["list"]) == 0
-    out = capsys.readouterr().out
-    assert "Shared Person" in out
-    assert "Legacy Person" not in out
-
 
 
 def test_db_path_prints_resolved_path(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

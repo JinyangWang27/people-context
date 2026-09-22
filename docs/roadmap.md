@@ -249,7 +249,7 @@ new candidate type, or native Ideashell integration. M26 is independent of M25.
 
 **Status:** Delivered. M27.1 made `~/.pctx/people.db` the shared default, removed workspace and XDG data-directory
 selection, added the legacy transition guard to CLI, MCP startup, `stats`, and setup, and documented the
-pre-upgrade inventory and deliberate relocation in [cli.md](cli.md#upgrading-to-the-shared-default). It is a
+pre-upgrade inventory and deliberate relocation in cli.md (since removed). It is a
 breaking change under the compatibility promise.
 
 Use `~/.pctx/people.db` as the common CLI/MCP default, preserving explicit argument, environment, and config-file

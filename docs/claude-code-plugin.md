@@ -9,10 +9,6 @@ The repository is also a self-hosted Claude Code plugin marketplace. The plugin 
 
 ## Install from GitHub
 
-**Upgrading an existing installation?** Before the plugin updates or starts on a release with the shared
-`~/.pctx/people.db` default, complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default): inventory the database each existing client selects with the old
-version and pin it explicitly. The runtime can only detect legacy stores visible in its own environment.
-
 Add the marketplace:
 
 ```bash
@@ -53,11 +49,6 @@ marketplace updates, reinstalls, and uninstalls, and it is the same file the `pc
 by default, so `pctx show` and `pctx export` work against the plugin's data with no
 extra configuration. To isolate or relocate the store, set `PEOPLE_CONTEXT_DB` in the environment that
 launches Claude Code.
-
-Earlier releases fell back to an OpenClaw workspace or `~/.local/share/people-context/people.db`. If such a
-database is visible and `~/.pctx/people.db` does not exist, the server refuses to start rather than creating an
-empty store beside it; select the old store with `PEOPLE_CONTEXT_DB` or relocate it deliberately as described in
-the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default).
 
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
 
@@ -159,8 +150,6 @@ MCP annotations are advisory client metadata, not authorization. The process-lev
 See [Privacy and Safety](privacy-and-safety.md) for the complete threat model.
 
 ## Update and release
-
-Complete the [upgrade prerequisite](cli.md#upgrading-to-the-shared-default) before updating from a release that used the earlier default location.
 
 Refresh the marketplace and plugin after a new release is merged:
 
