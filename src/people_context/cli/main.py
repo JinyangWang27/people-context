@@ -11,6 +11,7 @@ from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
     UnsafeDatabasePathError,
+    UnsupportedSchemaError,
     inspect_schema,
     latest_schema_version,
 )
@@ -146,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         MissingDatabaseKeyError,
         EncryptedDatabaseError,
         UnsafeDatabasePathError,
+        UnsupportedSchemaError,
     ) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
@@ -171,6 +173,7 @@ def main(argv: list[str] | None = None) -> int:
         MissingDatabaseKeyError,
         EncryptedDatabaseError,
         UnsafeDatabasePathError,
+        UnsupportedSchemaError,
     ) as exc:
         # Refuse with the reason only; the message never carries key material.
         print(f"Error: {exc}", file=sys.stderr)

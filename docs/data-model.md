@@ -2,7 +2,8 @@
 
 The primary store is one user-owned SQLite database. `adapters/sqlite/migrations/010_schema.sql` creates the
 whole schema at `user_version` 10; later changes are added as forward-only numbered migrations that `open_db`
-applies in order. Domain and application code reach these tables only through ports and SQLite adapters.
+applies in order. A database at `user_version` 1–9 is refused by name; open it once with people-context
+1.3.0, which still ships the step migrations, to bring it to 10. Domain and application code reach these tables only through ports and SQLite adapters.
 
 ## Conventions
 

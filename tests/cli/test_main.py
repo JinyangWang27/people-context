@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import stat
 from pathlib import Path
 
@@ -418,3 +419,19 @@ def test_semantic_reindex_is_explicit_and_preserves_metadata_on_download_failure
     finally:
         conn.close()
     assert stored == '"prior/model"'
+
+
+def test_a_database_older_than_the_schema_baseline_is_refused_by_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    conn = sqlite3.connect(db_file)
+    conn.execute("CREATE TABLE persons (id TEXT PRIMARY KEY)")
+    conn.execute("PRAGMA user_version = 3")
+    conn.commit()
+    conn.close()
+
+    assert cli.main(["--db", str(db_file), "list"]) == 2
+    err = capsys.readouterr().err
+    assert "schema version 3" in err
+    assert "people-context 1.3.0" in err

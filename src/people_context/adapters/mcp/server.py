@@ -21,7 +21,11 @@ from people_context import __version__
 from people_context.adapters.mcp.prompts import register_prompts
 from people_context.adapters.mcp.tools import register_all
 from people_context.adapters.runtime import build_runtime
-from people_context.adapters.sqlite.db import EncryptedDatabaseError, UnsafeDatabasePathError
+from people_context.adapters.sqlite.db import (
+    EncryptedDatabaseError,
+    UnsafeDatabasePathError,
+    UnsupportedSchemaError,
+)
 from people_context.config import MissingDatabaseKeyError
 from people_context.ports.clock import Clock
 
@@ -146,6 +150,7 @@ def main(argv: list[str] | None = None) -> None:
         MissingDatabaseKeyError,
         EncryptedDatabaseError,
         UnsafeDatabasePathError,
+        UnsupportedSchemaError,
     ) as exc:
         # Refuse with the reason only; the message never carries key material. The log handler
         # writes to stderr, so a refusal never reaches the stdio protocol stream.

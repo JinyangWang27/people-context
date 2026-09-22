@@ -12,6 +12,7 @@ from people_context.adapters.sqlite.curation_reader import SqliteCurationReader
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
     UnsafeDatabasePathError,
+    UnsupportedSchemaError,
     open_db,
     open_encrypted_db,
 )
@@ -46,6 +47,7 @@ from people_context.adapters.sqlite.vault_reader import SqliteVaultReader
 __all__ = [
     "EncryptedDatabaseError",
     "UnsafeDatabasePathError",
+    "UnsupportedSchemaError",
     "SqliteAuditLog",
     "SqliteBootstrapRestorer",
     "SqliteBundleReader",

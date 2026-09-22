@@ -57,6 +57,14 @@ class EncryptedDatabaseError(RuntimeError):
     """
 
 
+class UnsupportedSchemaError(RuntimeError):
+    """Raised when a database predates the schema baseline this release can create.
+
+    Releases up to 1.3.0 shipped step migrations 001-010; this release ships only the version-10
+    baseline, so an older store is refused by name rather than failing half-way through it.
+    """
+
+
 class UnsafeDatabasePathError(RuntimeError):
     """Raised when the database path stopped being safe to create while resolving it.
 
@@ -499,7 +507,14 @@ def _read_only_uri(path: str | Path) -> str:
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
     current = conn.execute("PRAGMA user_version").fetchone()[0]
-    for version, sql in _discover_migrations():
+    migrations = _discover_migrations()
+    baseline = migrations[0][0]
+    if 0 < current < baseline:
+        raise UnsupportedSchemaError(
+            f"This database is at schema version {current}, older than the version-{baseline} baseline this "
+            "release can open. Open it once with people-context 1.3.0 to upgrade it, then retry."
+        )
+    for version, sql in migrations:
         if version <= current:
             continue
         try:
