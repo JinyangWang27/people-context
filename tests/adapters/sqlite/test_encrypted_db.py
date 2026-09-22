@@ -82,8 +82,6 @@ def test_migrations_run_after_keying_and_seed_one_local_device(tmp_path: Path) -
         assert conn.execute("SELECT count(*) FROM devices WHERE retired_at IS NULL").fetchone()[0] == 1
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        # The migration helper is registered on the encrypted connection too.
-        assert conn.execute("SELECT people_normalize('  Ada  LOVELACE ')").fetchone()[0] == "ada lovelace"
     finally:
         conn.close()
 

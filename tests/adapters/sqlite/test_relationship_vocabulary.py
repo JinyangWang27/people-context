@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime
-from importlib import resources
 from pathlib import Path
 
 from people_context.adapters.sqlite import (
@@ -34,26 +33,13 @@ def _people(conn: sqlite3.Connection) -> tuple[Person, Person]:
     return a, b
 
 
-def test_fresh_and_m6_database_apply_pending_migrations(tmp_path: Path) -> None:
+def test_a_fresh_database_is_seeded_with_the_vocabulary() -> None:
     fresh = open_db(":memory:")
     assert fresh.execute("PRAGMA user_version").fetchone()[0] == 10
     assert fresh.execute("SELECT COUNT(*) FROM relationship_types").fetchone()[0] == 14
-    assert fresh.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
-
-    path = tmp_path / "m6.db"
-    legacy = sqlite3.connect(path)
-    migrations = resources.files("people_context.adapters.sqlite.migrations")
-    legacy.executescript(migrations.joinpath("001_initial.sql").read_text(encoding="utf-8"))
-    legacy.executescript(migrations.joinpath("002_sync_foundations.sql").read_text(encoding="utf-8"))
-    legacy.execute("PRAGMA user_version = 2")
-    legacy.commit()
-    legacy.close()
-
-    upgraded = open_db(path)
-    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 10
-    inverse = upgraded.execute("SELECT inverse FROM relationship_types WHERE type = 'reports_to'").fetchone()[0]
+    inverse = fresh.execute("SELECT inverse FROM relationship_types WHERE type = 'reports_to'").fetchone()[0]
     assert inverse == "manages"
-    assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
+    assert fresh.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
 
 
 def test_set_relationship_normalizes_deduplicates_and_renders_perspective() -> None:

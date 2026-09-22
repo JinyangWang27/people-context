@@ -26,7 +26,6 @@ from people_context.domain.shared import Sensitivity
 from people_context.domain.sync_bundle import SYNC_BUNDLE_VERSION, InvalidBundleError, TargetNotEmptyError
 
 _NOW = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
-_GROUP_MIGRATION = 9
 
 
 class _Clock:
@@ -61,28 +60,12 @@ def _count(conn: sqlite3.Connection, table: str) -> int:
 
 
 class TestSchema:
-    def test_a_fresh_database_creates_both_tables_at_the_group_migration(self) -> None:
+    def test_a_fresh_database_creates_both_tables(self) -> None:
         conn = open_db(":memory:")
 
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
         assert {"identified_groups", "group_memberships"} <= tables
-        assert conn.execute("PRAGMA user_version").fetchone()[0] >= _GROUP_MIGRATION
-
-    def test_a_legacy_database_upgrades_without_inventing_groups(self, tmp_path: Path) -> None:
-        path = tmp_path / "legacy.db"
-        legacy = open_db(path)
-        legacy.execute("DROP TABLE group_memberships")
-        legacy.execute("DROP TABLE identified_groups")
-        legacy.execute(f"PRAGMA user_version = {_GROUP_MIGRATION - 1}")
-        legacy.commit()
-        legacy.close()
-
-        upgraded = open_db(path)
-
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] >= _GROUP_MIGRATION
-        assert _count(upgraded, "identified_groups") == 0
-
 
 class TestReads:
     def test_visible_memberships_survive_hidden_neighbours_without_changing_truncation(

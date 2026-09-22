@@ -18,7 +18,6 @@ from people_context.adapters.sqlite.db import (
     latest_schema_version,
     open_encrypted_db,
 )
-from people_context.domain.shared import normalize_name
 
 KEY = "correct horse battery staple"
 #: A fragment of the key that must never open the database or reach a message.
@@ -42,14 +41,12 @@ _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
 
 def _legacy_database(path: Path, *, through: int) -> None:
-    """Write a database the way a release shipping only the first `through` migrations would."""
+    """Write a database whose stored `user_version` says it predates the shipped schema."""
     conn = sqlite3.connect(path)
-    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
     try:
         for name in sorted(entry.name for entry in resources.files(_MIGRATIONS).iterdir()):
-            if not name.endswith(".sql") or int(name.split("_", 1)[0]) > through:
-                continue
-            conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
+            if name.endswith(".sql"):
+                conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
         conn.execute(f"PRAGMA user_version = {through}")
         conn.commit()
     finally:

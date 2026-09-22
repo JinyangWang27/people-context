@@ -108,8 +108,8 @@ The application layer owns transaction orchestration through the UoW port; SQLit
 
 Concrete implementations of the ports, plus anything that talks to the outside world:
 
-- `adapters/sqlite/` — `db.py` (connection, migrations, and local device initialization), migrations
-  `001_initial.sql` and `002_sync_foundations.sql`, repositories, focused merge/forget, organization, preference,
+- `adapters/sqlite/` — `db.py` (connection, migrations, and local device initialization), the schema
+  `migrations/010_schema.sql`, repositories, focused merge/forget, organization, preference,
   record, audit, changelog, HLC, and unit-of-work adapters. `record_store.py` persists only assertive records and
   reminders. `bundle_reader.py` reads every sync-bundle collection from one transaction so the exported bundle
   describes a single point in time. Adapter write methods join an enclosing transaction rather than committing

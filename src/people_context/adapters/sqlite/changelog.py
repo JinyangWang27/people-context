@@ -10,8 +10,8 @@ from datetime import datetime
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
 
-# The replication ordering key, matching `ChangelogEntry.comparison_key`. Migration
-# `005_changelog_replication_order.sql` indexes exactly these columns in this order, so a
+# The replication ordering key, matching `ChangelogEntry.comparison_key`. The schema's
+# `idx_changelog_replication_order` indexes exactly these columns in this order, so a
 # tail seeks straight to its cursor instead of rescanning history on every poll.
 _ASCENDING_ORDER = "hlc_physical_ms ASC, hlc_logical ASC, device_id ASC, op_id ASC"
 

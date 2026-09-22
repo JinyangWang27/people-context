@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sqlite3
-from importlib import resources
 from pathlib import Path
 
 from people_context.adapters.sqlite import SqliteHybridLogicalClock, open_db
@@ -30,31 +28,6 @@ def test_fresh_database_creates_sync_schema_and_one_stable_device(tmp_path: Path
         assert [row["id"] for row in second] == [first[0]["id"]]
     finally:
         reopened.close()
-
-
-def test_legacy_database_upgrades_without_inventing_changelog_history(tmp_path: Path) -> None:
-    db_path = tmp_path / "upgrade.db"
-    conn = sqlite3.connect(db_path)
-    migration = resources.files("people_context.adapters.sqlite.migrations").joinpath("001_initial.sql")
-    conn.executescript(migration.read_text(encoding="utf-8"))
-    conn.execute("PRAGMA user_version = 1")
-    conn.execute(
-        """INSERT INTO persons
-           (id, canonical_name, canonical_name_normalized, is_self, summary, created_at, updated_at, deleted_at)
-           VALUES ('01J00000000000000000000000', 'Historical Alice', 'historical alice', 0, NULL,
-                   '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00', NULL)"""
-    )
-    conn.commit()
-    conn.close()
-
-    upgraded = open_db(db_path)
-    try:
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 10
-        assert upgraded.execute("SELECT canonical_name FROM persons").fetchone()[0] == "Historical Alice"
-        assert upgraded.execute("SELECT COUNT(*) FROM devices WHERE retired_at IS NULL").fetchone()[0] == 1
-        assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
-    finally:
-        upgraded.close()
 
 
 def test_hlc_orders_same_millisecond_and_survives_rollback_clock_restart(tmp_path: Path) -> None:
