@@ -162,7 +162,7 @@ def test_readme_demo_documents_the_isolation_the_command_actually_enforces() -> 
     section = _demo_section()
 
     assert "`{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`" in section
-    for ignored in ("`--db`", "`PEOPLE_CONTEXT_DB`", "config", "workspace"):
+    for ignored in ("`--db`", "`PEOPLE_CONTEXT_DB`", "config"):
         assert ignored in section
     assert "-wal`/`-shm`" in section
     assert "never read or modified" in section

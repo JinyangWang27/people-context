@@ -32,7 +32,7 @@ retains a minimal propagation tombstone.
 Keep `audit_log` as the accountability trail. Its payloads may remain intentionally concise and may continue to
 be redacted in place by forget. Do not require the audit payload and changelog payload to be identical.
 
-M6 implements the local table, migration, transactional writer integration, and inspection surface. Exchange, pairing, replay, and bootstrap remain deferred to M7.
+M6 implements the local table, migration, transactional writer integration, and inspection surface. Exchange, pairing, and replay remain [roadmap candidates](../roadmap.md#candidates); bootstrap restore shipped in M11.
 
 ## Consequences
 

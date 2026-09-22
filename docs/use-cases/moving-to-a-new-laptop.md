@@ -59,7 +59,7 @@ Once you are satisfied, delete the bundle from the transfer medium and from both
 
 This is bootstrap restore into an empty database, not continuous two-way sync. Two machines that have both been
 written to since diverging cannot be reconciled by this path; incremental replay between diverged devices is a
-[post-roadmap candidate](../roadmap.md#post-roadmap-candidates), not a shipped feature.
+[post-roadmap candidate](../roadmap.md#candidates), not a shipped feature.
 
 ## Next
 

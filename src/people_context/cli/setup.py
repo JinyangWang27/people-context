@@ -30,12 +30,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from people_context.config import (
-    DB_KEY_ENV,
-    LegacyDatabaseTransitionError,
-    blocking_legacy_databases,
-    shared_default_db_path,
-)
+from people_context.config import DB_KEY_ENV
 
 #: The one server name every target registers under, so a re-run replaces rather than duplicates.
 SERVER_NAME = "people-context"
@@ -174,7 +169,7 @@ def build_entry(
     The key is never part of the entry either way: it is read from the server's own environment.
     """
     command = SERVER_COMMAND
-    args = ["--from", PACKAGE_NAME, SERVER_ENTRY_POINT]
+    args = list(SERVER_ARGS)
     if encrypted:
         if encrypted_extra_covers(platform, machine, libc):
             args = ["--from", f"{PACKAGE_NAME}[encrypted]", SERVER_ENTRY_POINT]
@@ -438,12 +433,6 @@ def run_setup(
     env = os.environ if env is None else env
     platform = sys.platform if platform is None else platform
     cwd = Path.cwd() if cwd is None else cwd
-    if db_path is None:
-        # An unpinned entry lets the server resolve its own default. While that default would be refused
-        # at launch, writing the entry would only produce a configuration that looks finished and is not.
-        legacy = blocking_legacy_databases(None, env)
-        if legacy:
-            raise SetupError(str(LegacyDatabaseTransitionError(shared_default_db_path(env), legacy)))
     entry = build_entry(db_path, encrypted=encrypted, platform=platform)
     if client == "json":
         lines = generic_json(entry)

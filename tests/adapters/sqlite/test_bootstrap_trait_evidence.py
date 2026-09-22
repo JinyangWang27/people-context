@@ -79,20 +79,6 @@ def _restore(document: Any, path: Path) -> tuple[sqlite3.Connection, Any]:
     return conn, RestoreSyncBundle(restorer).execute(document)
 
 
-def _downgraded(document: Any, version: int) -> dict[str, Any]:
-    """Present the export as an older accepted version by dropping what that version predates."""
-    payload = json.loads(render_bundle_json(document))
-    payload["version"] = version
-    if version < 5:
-        payload.pop("groups")
-        payload.pop("group_memberships")
-    if version < 3:
-        payload.pop("trait_evidence")
-    if version < 2:
-        payload.pop("imports")
-    return payload
-
-
 def _grounded(origin: _Origin) -> tuple[str, str, str]:
     """Record a trait grounded in both an observation and a shared interaction."""
     alice = origin.person("Alice Rivera")
@@ -142,43 +128,11 @@ def test_a_restored_trait_still_names_the_records_it_rests_on(tmp_path: Path) ->
     ] == [(trait_id, "interaction", interaction_id), (trait_id, "observation", observation_id)]
 
 
-@pytest.mark.parametrize("version", [1, 2])
-def test_an_older_bundle_restores_and_carries_no_links(tmp_path: Path, version: int) -> None:
-    origin = _Origin(tmp_path / "origin.db")
-    _grounded(origin)
-
-    document = _parse(json.dumps(_downgraded(origin.export(), version)))
-    conn, outcome = _restore(document, tmp_path / "restored.db")
-
-    assert outcome.trait_evidence == 0
-    assert conn.execute("SELECT COUNT(*) FROM trait_evidence").fetchone()[0] == 0
-    assert conn.execute("SELECT COUNT(*) FROM traits").fetchone()[0] == 1
-
-
-@pytest.mark.parametrize("version", [1, 2])
-def test_an_older_bundle_carrying_version_three_state_is_refused(tmp_path: Path, version: int) -> None:
-    """A reader that accepts a field must understand it, so an unknown one fails closed."""
-    origin = _Origin(tmp_path / "origin.db")
-    _grounded(origin)
-    payload = json.loads(render_bundle_json(origin.export()))
-    payload["version"] = version
-    payload.pop("groups")
-    payload.pop("group_memberships")
-    if version < 2:
-        payload.pop("imports")
-
-    with pytest.raises(InvalidBundleError) as excinfo:
-        _parse(json.dumps(payload))
-
-    assert any("trait_evidence" in detail for detail in excinfo.value.details)
-
-
-@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
-def test_a_non_empty_evidence_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
+def test_a_non_empty_evidence_table_refuses_restore(tmp_path: Path) -> None:
     """Freshness is a property of the destination, not of the document being restored."""
     origin = _Origin(tmp_path / "origin.db")
     _grounded(origin)
-    document = _parse(json.dumps(_downgraded(origin.export(), version)))
+    document = _parse(render_bundle_json(origin.export()))
 
     destination = _Origin(tmp_path / "destination.db")
     _grounded(destination)

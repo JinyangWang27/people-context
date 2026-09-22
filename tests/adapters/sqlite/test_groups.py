@@ -26,7 +26,6 @@ from people_context.domain.shared import Sensitivity
 from people_context.domain.sync_bundle import SYNC_BUNDLE_VERSION, InvalidBundleError, TargetNotEmptyError
 
 _NOW = datetime(2026, 9, 14, 9, 0, tzinfo=UTC)
-_GROUP_MIGRATION = 9
 
 
 class _Clock:
@@ -61,28 +60,12 @@ def _count(conn: sqlite3.Connection, table: str) -> int:
 
 
 class TestSchema:
-    def test_a_fresh_database_creates_both_tables_at_the_group_migration(self) -> None:
+    def test_a_fresh_database_creates_both_tables(self) -> None:
         conn = open_db(":memory:")
 
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
         assert {"identified_groups", "group_memberships"} <= tables
-        assert conn.execute("PRAGMA user_version").fetchone()[0] >= _GROUP_MIGRATION
-
-    def test_a_legacy_database_upgrades_without_inventing_groups(self, tmp_path: Path) -> None:
-        path = tmp_path / "legacy.db"
-        legacy = open_db(path)
-        legacy.execute("DROP TABLE group_memberships")
-        legacy.execute("DROP TABLE identified_groups")
-        legacy.execute(f"PRAGMA user_version = {_GROUP_MIGRATION - 1}")
-        legacy.commit()
-        legacy.close()
-
-        upgraded = open_db(path)
-
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] >= _GROUP_MIGRATION
-        assert _count(upgraded, "identified_groups") == 0
-
 
 class TestReads:
     def test_visible_memberships_survive_hidden_neighbours_without_changing_truncation(
@@ -384,25 +367,6 @@ class TestPortability:
         assert [row["id"] for row in document.groups] == [group]
         assert [row["id"] for row in document.group_memberships] == [membership]
 
-    def test_a_version_four_bundle_restores_with_no_groups(self, runtime: ApplicationRuntime) -> None:
-        self._seed(runtime)
-        payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-        payload["version"] = 4
-        payload.pop("groups")
-        payload.pop("group_memberships")
-
-        document = runtime.use_cases.restore_sync_bundle.parse(json.dumps(payload))
-
-        assert (document.groups, document.group_memberships) == ([], [])
-
-    def test_a_version_four_bundle_carrying_groups_is_refused(self, runtime: ApplicationRuntime) -> None:
-        self._seed(runtime)
-        payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-        payload["version"] = 4
-
-        with pytest.raises(InvalidBundleError):
-            runtime.use_cases.restore_sync_bundle.parse(json.dumps(payload))
-
     @pytest.mark.parametrize(
         ("mutate", "reason"),
         [
@@ -429,15 +393,10 @@ class TestPortability:
         assert _count(runtime.conn, "identified_groups") == 1
 
     @pytest.mark.parametrize("table", ["identified_groups", "group_memberships"])
-    @pytest.mark.parametrize("version", [1, 5])
     def test_a_non_empty_group_table_refuses_restore(
-        self, runtime: ApplicationRuntime, tmp_path: Path, table: str, version: int
+        self, runtime: ApplicationRuntime, tmp_path: Path, table: str
     ) -> None:
         payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-        if version == 1:
-            payload["version"] = 1
-            for key in ("groups", "group_memberships", "trait_evidence", "imports"):
-                payload.pop(key)
         destination = build_runtime(tmp_path / "destination.db", clock=_Clock())
         try:
             document = destination.use_cases.restore_sync_bundle.parse(json.dumps(payload))

@@ -1,16 +1,13 @@
 # Data model
 
-The primary store is one user-owned SQLite database. Migration `001_initial.sql` creates the core people data,
-`002_sync_foundations.sql` adds local replay capture, and `003_relationship_vocabulary.sql` adds the M7
-relationship vocabulary. `009_groups.sql` adds M28.1 identified groups and membership assertions. `004_curation_indexes.sql` and `005_changelog_replication_order.sql` add indexes only:
-the latter indexes the changelog's global replication ordering key so an ordered tail seeks to its cursor
-instead of rescanning history. Domain and application code reach these tables only through ports and SQLite
-adapters.
+The primary store is one user-owned SQLite database. `adapters/sqlite/migrations/010_schema.sql` creates the
+whole schema at `user_version` 10; later changes are added as forward-only numbered migrations that `open_db`
+applies in order. A database at `user_version` 1–9 is refused by name; open it once with people-context
+1.3.0, which still ships the step migrations, to bring it to 10. Domain and application code reach these tables only through ports and SQLite adapters.
 
 ## Conventions
 
-Existing affiliations and relationships are never automatically converted into
-[M28](specs/m28-groups-and-shared-connections.md) groups or memberships.
+Existing affiliations and relationships are never automatically converted into groups or memberships.
 
 - Primary entity and record ids are sortable ULID strings.
 - Human names also have normalized columns populated by `normalize_name()` for identity matching.
@@ -40,8 +37,8 @@ Existing affiliations and relationships are never automatically converted into
 | `interactions` / `interaction_participants` | Concise interaction summaries and participant joins; never raw transcripts. |
 | `reminders` | Follow-up, occasion, and standing communication-note reminders. |
 | `user_preferences` | JSON values such as communication philosophy and semantic model metadata. |
-| `import_staging` | Reviewable distilled import candidates; raw source content is not stored. |
-| `import_source_sessions` | Bounded import receipts: machine source kind, content digest, extraction fingerprint, and status — never source content or paths. |
+| `import_staging` | Reviewable distilled import candidates with status `pending`, `committed`, or `rejected` (withdrawn by a reviewer); raw source content is not stored. |
+| `import_source_sessions` | Bounded import receipts: machine source kind, content digest, extraction fingerprint, and status (`staged`, `partially_committed`, `committed`, `redacted`, `withdrawn`) — never source content or paths. |
 | `import_candidate_mappings` | What each committed candidate durably produced, and the canonical record-to-source association. |
 | `audit_log` | Privacy-oriented accountability record for every mutation. |
 
@@ -67,7 +64,7 @@ unknown vocabulary.
 
 See [relationship-graph.md](relationship-graph.md) for the complete normalization contract.
 
-## Relationship vocabulary (migration 003)
+## Relationship vocabulary
 
 ### `relationship_types`
 
@@ -90,35 +87,35 @@ Seeded social types: `friend_of`, `neighbor_of`, `acquaintance_of`.
 | `synonym` | TEXT PK | Normalized input spelling, for example `manager_of`. |
 | `type` | TEXT FK | Vocabulary row that the synonym resolves to. |
 
-Seed rows are reference data produced by migration, not user assertions, so they create no changelog entries.
+Seed rows are reference data created with the schema, not user assertions, so they create no changelog entries.
 Custom rows created through `relationship-types add` are portable user state and flow through audit/changelog.
 A relationship type with no vocabulary row remains legal and reads as category `uncategorized`.
 
-## Curation indexes (migration 004)
+## Curation indexes
 
-`organizations.name_normalized` stores the same normalization `normalize_name` applies to person names,
-backfilled at migration time through the deterministic `people_normalize` SQL function that `open_db`
-registers before migrations run, and indexed (`idx_organizations_name_norm`) so organization get-or-create
-matches by normalized name without scanning. `idx_changelog_entity` indexes `changelog(entity_id)` for
-per-entity changelog reads such as `sync-log --entity`.
+`organizations.name_normalized` stores the same normalization `normalize_name` applies to person names, and is
+indexed (`idx_organizations_name_norm`) so organization get-or-create matches by normalized name without
+scanning. `idx_changelog_entity` indexes `changelog(entity_id)` for
+per-entity changelog reads such as `sync-log --entity`, and `idx_changelog_replication_order` indexes the
+changelog's global replication ordering key so an ordered tail seeks to its cursor instead of rescanning history.
 
-## Sync-foundation tables (migration 002)
+## Sync-foundation tables
 
 `devices` holds one active installation id plus persisted hybrid logical clock state. `changelog` stores full
 replay operations with device id, HLC components, transaction id, entity type/id, operation kind, replay
 payload, changed fields, actor, schema version, and insertion time. Its deterministic order is
 `(hlc_physical_ms, hlc_logical, device_id, op_id)`.
 
-`sync_conflicts` is local staging for future conservative conflict review. M6/M7 add no exchange, pairing,
-relay, peer cursor, replay engine, or bootstrap protocol. Forget redacts covered replay payloads and retains
-stable-id tombstones.
+`sync_conflicts` is local staging for future conservative conflict review. There is no exchange, pairing, relay,
+peer cursor, or replay engine; the only transfer is the one-shot bootstrap bundle (`pctx sync push`/`pull`).
+Forget redacts covered replay payloads and retains stable-id tombstones.
 
 **Do not copy the SQLite file between machines as a sync substitute.** The active `devices` row is the
 installation's identity: two live copies of the same file (Dropbox/iCloud folder sync, restoring one backup
 onto two machines) share one device id and interleave its persisted HLC state, corrupting the changelog's
 per-origin ordering that future sync will rely on. Moving the file once to a new machine is fine; running two
-copies concurrently is not. Device re-registration/copy detection is deliberately deferred to the sync
-milestone. Use `pctx export` (or the vault export) to move data between machines today.
+copies concurrently is not. Use `pctx sync push` and `pctx sync pull` to move data to a new machine; see
+[moving to a new laptop](use-cases/moving-to-a-new-laptop.md).
 
 Every M7 write path—relationship create/update dedupe, custom vocabulary add, and applied legacy
 normalization—uses the same transactional `audit_mutation` capture seam as M6.

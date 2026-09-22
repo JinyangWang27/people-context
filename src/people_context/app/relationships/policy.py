@@ -11,7 +11,7 @@ from people_context.ports.relationship_vocabulary import RelationshipVocabularyR
 
 
 class EmptyRelationshipVocabulary:
-    """Fallback vocabulary for port fakes and legacy composition."""
+    """Vocabulary with no known types, used when none is injected."""
 
     def resolve(self, value: str) -> RelationshipType | None:
         return None

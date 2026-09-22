@@ -36,15 +36,10 @@ class RestoreOutcome:
     changelog_entries: int
     indexed_names: int
     local_watermark: HlcTimestamp
-    #: M18 import provenance. These default to zero so a restore of a version-1 bundle,
-    #: which carries none of it, reports the same outcome it always did.
     source_sessions: int = 0
     candidate_mappings: int = 0
     staged_candidates: int = 0
-    #: M18.3 trait evidence, defaulted for the same reason: a version-1 or version-2 bundle
-    #: carries none of it.
     trait_evidence: int = 0
-    #: M28.1 groups and memberships; a bundle older than version 5 carries none.
     groups: int = 0
     group_memberships: int = 0
 

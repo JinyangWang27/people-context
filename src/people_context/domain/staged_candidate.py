@@ -39,7 +39,7 @@ bundle would carry.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AfterValidator,
@@ -342,65 +342,13 @@ def parse_staged_candidate(candidate: dict[str, Any]) -> Any:
     return _STAGED_ADAPTER.validate_python(candidate)
 
 
-#: Fields M18.3 added to the persisted trait candidate.
-#:
-#: A bundle version that predates them must still reject them, because a released version is a
-#: closed shape: a reader that accepts a field must understand it, and the reader that wrote a
-#: version-2 document had no evidence relation to resolve these against.
-EVIDENCE_STAGED_FIELDS: Final[tuple[str, ...]] = ("evidence_candidate_ids", "evidence_ids")
-
-#: The field M22.1 added to the persisted fact and affiliation candidates.
-#:
-#: Gated for the same reason as the evidence fields above: a bundle version that predates the
-#: field must still reject it. Assertion attribution is not decoration a reader may ignore — a
-#: version-3 reader would restore the candidate and then commit it, silently dropping the very
-#: attribution that keeps a source's claim from being read as verified fact.
-ATTRIBUTION_STAGED_FIELDS: Final[tuple[str, ...]] = ("stated_by",)
-
-#: The candidate types M28.3 added.
-#:
-#: Gated like the fields above, and for a stronger reason: a whole type is not something a
-#: reader fails closed on by forbidding extras, because the discriminator picks the model before
-#: any field is seen. A bundle version that predates these types must refuse them outright, or a
-#: reader written against that version would restore a membership whose group reference it has
-#: no way to resolve and then report the batch as committable.
-GROUP_STAGED_TYPES: Final[tuple[str, ...]] = ("group", "group_membership")
-
-
-def staged_candidate_error(
-    candidate: dict[str, Any],
-    *,
-    evidence_allowed: bool = True,
-    attribution_allowed: bool = True,
-    group_types_allowed: bool = True,
-) -> str | None:
+def staged_candidate_error(candidate: dict[str, Any]) -> str | None:
     """Return why a persisted candidate is unacceptable, naming no value it carries.
 
     Pydantic's own message quotes rejected input, and a staged candidate is the one place a
     caller's raw source text would sit. The report is therefore built from the location and the
     error type only — enough to find the offending field, never enough to leak what was in it.
-
-    ``evidence_allowed`` and ``attribution_allowed`` are how an older bundle version keeps its
-    released shape. The models here describe what this installation persists *today*; validating a
-    version-2 document through them unchanged would accept an M18.3 field under a declaration that
-    predates it, and a version-3 document an M22.1 one, which is exactly the silent upgrade the
-    per-version contract exists to prevent. The flags are independent because the versions are:
-    version 2 predates both fields, version 3 only the attribution.
-
-    ``group_types_allowed`` is the same idea one level up, for the candidate types M28.3 added.
-    It is checked before the models are consulted at all, because the discriminated union would
-    otherwise accept a type no version through 5 had any way to commit.
     """
-    if not group_types_allowed and candidate.get("type") in GROUP_STAGED_TYPES:
-        return "type (literal_error)"
-    forbidden: tuple[str, ...] = ()
-    if not evidence_allowed:
-        forbidden += EVIDENCE_STAGED_FIELDS
-    if not attribution_allowed:
-        forbidden += ATTRIBUTION_STAGED_FIELDS
-    present = sorted(field for field in forbidden if field in candidate)
-    if present:
-        return "; ".join(f"{field} (extra_forbidden)" for field in present)
     try:
         parse_staged_candidate(candidate)
     except ValidationError as exc:

@@ -6,7 +6,6 @@ import json
 import sqlite3
 from collections.abc import Callable
 
-from people_context.adapters.sqlite.audit_log import SqliteAuditLog
 from people_context.adapters.sqlite.changelog import SqliteChangelog
 from people_context.adapters.sqlite.evidence_cleanup import TraitEvidenceCleaner
 from people_context.adapters.sqlite.import_cleanup import ImportCleanupResult, ImportProvenanceCleaner
@@ -25,14 +24,9 @@ class SqliteForgetStore:
         self,
         conn: sqlite3.Connection,
         failure_hook: Callable[[str], None] | None = None,
-        *,
-        audit_failure_hook: Callable[[str], None] | None = None,
-        changelog_failure_hook: Callable[[str], None] | None = None,
     ) -> None:
         self._conn = conn
         self._failure_hook = failure_hook
-        self._audit_failure_hook = audit_failure_hook
-        self._changelog_failure_hook = changelog_failure_hook
         self._cleaner = ImportProvenanceCleaner(conn)
         self._evidence_cleaner = TraitEvidenceCleaner(conn)
 
@@ -40,15 +34,6 @@ class SqliteForgetStore:
     def unit_of_work(self) -> SqliteUnitOfWork:
         """Return a join-safe transaction boundary for application orchestration."""
         return SqliteUnitOfWork(self._conn)
-
-    @property
-    def audit_log(self) -> SqliteAuditLog:
-        """Expose the paired mutation journal for app construction."""
-        return SqliteAuditLog(
-            self._conn,
-            self._audit_failure_hook,
-            changelog_failure_hook=self._changelog_failure_hook,
-        )
 
     def forget_person(self, person_id: str) -> ForgetStoreResult:
         """Hard-delete a person graph and redact covered accountability and replay history."""

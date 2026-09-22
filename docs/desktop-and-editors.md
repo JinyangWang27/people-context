@@ -1,10 +1,7 @@
 # Desktop bundle and editor configuration
 
 This document covers the native-UV MCPB Desktop bundle and the Cursor, Windsurf, and VS Code stdio
-configurations for `people-context`. It delivers checklist item **M8.3** of
-[docs/specs/pr-plan.md](specs/pr-plan.md); see
-[docs/specs/m8-distribution-and-reach.md](specs/m8-distribution-and-reach.md) for the binding milestone
-specification.
+configurations for `people-context`.
 
 The canonical tool inventory and response contracts live in [docs/mcp-interface.md](mcp-interface.md); this
 document does not restate them. Every path here runs the same local stdio server as
@@ -16,17 +13,6 @@ Every integration below runs local Python with your own filesystem permissions. 
 SQLite database is plaintext, so rely on filesystem permissions and full-disk encryption. Ordinary discovery
 excludes elevated sensitive context and full export; those tools require process environment flags and cannot
 be enabled through tool arguments.
-
-## Upgrading to the shared database default
-
-An unpinned `uvx --from people-context` entry picks up new releases on its own, and a reinstalled bundle runs
-the release it pins. Before either starts a release whose default database is `~/.pctx/people.db`, complete the
-[upgrade prerequisite](cli.md#upgrading-to-the-shared-default): with the old version, inventory the path each
-existing client selects in its real launch environment and pin it — with `PEOPLE_CONTEXT_DB` in an editor
-entry, or with `db_path` in the config file for the bundle, whose manifest exposes no environment setting. A desktop host does
-not inherit your shell's environment, so a terminal's `pctx db-path` does not describe it. The server refuses to
-create the shared default while it can see a legacy database, but it cannot see stores that only another
-client's environment points at.
 
 ## Native-UV MCPB Desktop bundle
 

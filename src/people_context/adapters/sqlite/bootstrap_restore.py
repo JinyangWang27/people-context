@@ -403,7 +403,7 @@ class SqliteBootstrapRestorer:
             ),
         )
         # After traits and interactions, because the relation's foreign key names the trait it
-        # grounds. A version-1 or version-2 bundle carries no links and writes nothing here.
+        # grounds.
         self._insert_many(
             "trait_evidence",
             ("trait_id", "evidence_type", "evidence_id", "created_at"),
@@ -413,7 +413,7 @@ class SqliteBootstrapRestorer:
             ),
         )
         # Groups after organizations, memberships after people and groups: each foreign key names a
-        # row already written. A bundle older than version 5 carries neither and writes nothing.
+        # row already written.
         self._insert_many(
             "identified_groups",
             ("id", "name", "name_normalized", "kind", "organization_id", "sensitivity",
@@ -437,10 +437,7 @@ class SqliteBootstrapRestorer:
         )
 
     def _insert_imports(self, document: SyncBundleDocument) -> None:
-        """Restore source receipts, commit mappings, and incomplete staging verbatim.
-
-        A version-1 bundle carries none of this and simply writes nothing here.
-        """
+        """Restore source receipts, commit mappings, and incomplete staging verbatim."""
         imports = document.imports
         self._insert_many(
             "import_source_sessions",

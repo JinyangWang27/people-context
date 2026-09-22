@@ -55,15 +55,9 @@ CLAIM_KEY_SEPARATOR: Final = "\x1f"
 #: not 64 hexadecimal characters, so it cannot collide with any real fingerprint.
 EXTRACTION_FINGERPRINT_ABSENT: Final = "fingerprint-absent"
 
-#: Statuses a persisted staging row may carry.
-#:
-#: `rejected` is M29's withdrawal: the row stays in its batch and stays listed by review, so a
-#: reviewer can still see what they dropped, and commit never touches it again. Only `pending` is
-#: reviewable — that one rule decides duplicate detection, receipt status, and what a bundle
-#: reports as still owing review.
-STAGING_STATUSES: Final[tuple[str, ...]] = ("pending", "committed", "rejected")
-
-#: The one staging status that still owes a decision. Everything else is terminal.
+#: The one staging status that still owes a decision. Everything else (`committed`, `rejected`) is
+#: terminal; that one rule decides duplicate detection, receipt status, and what a bundle reports as
+#: still owing review.
 STAGING_STATUS_PENDING: Final = "pending"
 
 #: A staging row a reviewer withdrew. It is never committed and never deleted by review.
@@ -152,13 +146,7 @@ REQUIRED_STAGED_REFERENCES: Final[dict[str, tuple[str, ...]]] = {
 }
 
 
-def check_staged_candidate(
-    candidate: dict[str, Any],
-    *,
-    evidence_allowed: bool = True,
-    attribution_allowed: bool = True,
-    group_types_allowed: bool = True,
-) -> str:
+def check_staged_candidate(candidate: dict[str, Any]) -> str:
     """Return the accepted persisted candidate's type, or raise ``ValueError``.
 
     The whole shape is checked, through the strict models in `domain/staged_candidate.py`, because
@@ -170,10 +158,6 @@ def check_staged_candidate(
     The reference fields are checked first and by hand, because their requirement is not a
     property of one candidate: they name *other rows in the same batch*, and the message that
     names the missing one is what the batch-local closure elsewhere reports against.
-
-    ``evidence_allowed``, ``attribution_allowed``, and ``group_types_allowed`` are passed through
-    by a bundle version that predates trait evidence, assertion attribution, or the group and
-    membership candidate types, so that document keeps the closed shape it was released with.
     """
     candidate_type = candidate.get("type")
     if candidate_type not in STAGED_CANDIDATE_TYPES:
@@ -184,12 +168,7 @@ def check_staged_candidate(
         resolved = {value} if isinstance(value, str) and value else identifier_list(value)
         if not resolved:
             raise ValueError(f"staged {kind} candidate must carry {field_name}")
-    reason = staged_candidate_error(
-        candidate,
-        evidence_allowed=evidence_allowed,
-        attribution_allowed=attribution_allowed,
-        group_types_allowed=group_types_allowed,
-    )
+    reason = staged_candidate_error(candidate)
     if reason is not None:
         raise ValueError(f"staged {kind} candidate is not a valid persisted candidate: {reason}")
     return kind

@@ -13,26 +13,21 @@ import pytest
 from people_context.config import (
     DB_KEY_ENV,
     DEFAULT_DB_FILENAME,
-    LegacyDatabaseTransitionError,
     MissingDatabaseKeyError,
-    blocking_legacy_databases,
     describe_resolution,
-    legacy_db_candidates,
     resolve_db_key,
     resolve_db_path,
-    resolve_openable_db_path,
     shared_default_db_path,
 )
 
 
 def _base_env(tmp_path: Path) -> dict[str, str]:
-    """Env with home + XDG dirs under tmp_path and no workspace/db overrides."""
+    """Env with home + config dir under tmp_path and no db overrides."""
     home = tmp_path / "home"
     home.mkdir()
     return {
         "HOME": str(home),
         "XDG_CONFIG_HOME": str(tmp_path / "config"),
-        "XDG_DATA_HOME": str(tmp_path / "data"),
     }
 
 
@@ -76,10 +71,6 @@ def _shared(env: dict[str, str]) -> Path:
     return Path(env["HOME"]) / ".pctx" / DEFAULT_DB_FILENAME
 
 
-def _xdg_legacy(env: dict[str, str]) -> Path:
-    return Path(env["XDG_DATA_HOME"]) / "people-context" / DEFAULT_DB_FILENAME
-
-
 def _make_file(path: Path, content: bytes = b"SQLite format 3\x00fictional") -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
@@ -93,15 +84,10 @@ def _snapshot(root: Path) -> dict[str, tuple[bytes, int]]:
     }
 
 
-def test_shared_default_ignores_workspaces_custom_xdg_and_working_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_shared_default_ignores_the_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env = _base_env(tmp_path)
-    workspace = tmp_path / "custom_workspace"
+    workspace = tmp_path / "workspace"
     workspace.mkdir()
-    (Path(env["HOME"]) / ".openclaw" / "workspace").mkdir(parents=True)
-    env["OPENCLAW_WORKSPACE"] = str(workspace)
-    env["XDG_DATA_HOME"] = str(tmp_path / "custom data")
     for cwd in (tmp_path, workspace):
         monkeypatch.chdir(cwd)
         assert resolve_db_path(env=env) == _shared(env)
@@ -120,127 +106,11 @@ def test_home_expansion_is_preserved_for_overrides(tmp_path: Path) -> None:
 
 def test_resolution_and_diagnostics_create_nothing(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
-    legacy = _make_file(_xdg_legacy(env))
     before = _snapshot(tmp_path)
     resolve_db_path(env=env)
-    blocking_legacy_databases(env=env)
     describe_resolution(env=env)
-    with pytest.raises(LegacyDatabaseTransitionError):
-        resolve_openable_db_path(env=env)
     assert _snapshot(tmp_path) == before
     assert not _shared(env).parent.exists()
-    assert legacy.exists()
-
-
-def test_fresh_environment_without_legacy_is_not_blocked(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    assert blocking_legacy_databases(env=env) == []
-    assert resolve_openable_db_path(env=env) == _shared(env)
-
-
-@pytest.mark.parametrize("candidate", ["openclaw_env", "openclaw_home", "xdg_custom", "xdg_default"])
-def test_each_legacy_candidate_blocks_the_fresh_default(tmp_path: Path, candidate: str) -> None:
-    env = _base_env(tmp_path)
-    home = Path(env["HOME"])
-    if candidate == "openclaw_env":
-        workspace = tmp_path / "workspace"
-        env["OPENCLAW_WORKSPACE"] = str(workspace)
-        legacy = _make_file(workspace / "people-context" / DEFAULT_DB_FILENAME)
-    elif candidate == "openclaw_home":
-        legacy = _make_file(home / ".openclaw" / "workspace" / "people-context" / DEFAULT_DB_FILENAME)
-    elif candidate == "xdg_custom":
-        legacy = _make_file(_xdg_legacy(env))
-    else:
-        del env["XDG_DATA_HOME"]
-        legacy = _make_file(home / ".local" / "share" / "people-context" / DEFAULT_DB_FILENAME)
-
-    assert blocking_legacy_databases(env=env) == [legacy]
-    with pytest.raises(LegacyDatabaseTransitionError) as exc_info:
-        resolve_openable_db_path(env=env)
-    message = str(exc_info.value)
-    assert str(legacy) in message
-    assert "--db" in message and "PEOPLE_CONTEXT_DB" in message and "db_path" in message
-    assert "other agent environments were not inventoried" in message
-
-
-def test_multiple_legacy_databases_all_reported_and_require_explicit_choice(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    workspace = tmp_path / "workspace"
-    env["OPENCLAW_WORKSPACE"] = str(workspace)
-    found = [
-        _make_file(workspace / "people-context" / DEFAULT_DB_FILENAME),
-        _make_file(Path(env["HOME"]) / ".openclaw" / "workspace" / "people-context" / DEFAULT_DB_FILENAME),
-        _make_file(_xdg_legacy(env)),
-    ]
-    assert blocking_legacy_databases(env=env) == found
-    with pytest.raises(LegacyDatabaseTransitionError) as exc_info:
-        resolve_openable_db_path(env=env)
-    assert all(str(path) in str(exc_info.value) for path in found)
-    assert "Several legacy databases" in str(exc_info.value)
-
-
-def test_workspace_directory_without_database_does_not_block(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    workspace = tmp_path / "workspace"
-    (workspace / "people-context").mkdir(parents=True)
-    env["OPENCLAW_WORKSPACE"] = str(workspace)
-    (Path(env["HOME"]) / ".openclaw" / "workspace").mkdir(parents=True)
-    assert blocking_legacy_databases(env=env) == []
-
-
-def test_encrypted_looking_legacy_file_blocks_without_being_read(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    legacy = _make_file(_xdg_legacy(env), bytes(range(256)) * 4)
-    legacy.chmod(0o000)
-    try:
-        assert blocking_legacy_databases(env=env) == [legacy]
-    finally:
-        legacy.chmod(0o600)
-
-
-def test_existing_shared_default_wins_despite_legacy_files(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    _make_file(_xdg_legacy(env))
-    _make_file(_shared(env))
-    assert blocking_legacy_databases(env=env) == []
-    assert resolve_openable_db_path(env=env) == _shared(env)
-
-
-def test_explicit_environment_and_config_overrides_bypass_the_guard(tmp_path: Path) -> None:
-    env = _base_env(tmp_path)
-    legacy = _make_file(_xdg_legacy(env))
-    assert resolve_openable_db_path(legacy, env=env) == legacy
-    assert resolve_openable_db_path(_shared(env), env=env) == _shared(env)
-    assert resolve_openable_db_path(env={**env, "PEOPLE_CONTEXT_DB": str(legacy)}) == legacy
-    _write_config(env, str(legacy))
-    assert resolve_openable_db_path(env=env) == legacy
-
-
-@pytest.mark.parametrize("variable", ["XDG_DATA_HOME", "OPENCLAW_WORKSPACE"])
-def test_store_hidden_in_another_environment_is_preserved_only_by_its_pin(tmp_path: Path, variable: str) -> None:
-    """Discovery cannot see another client's custom location; the pre-upgrade pin is what protects it."""
-    home = tmp_path / "home"
-    home.mkdir()
-    shared_config = str(tmp_path / "config")
-    custom = tmp_path / "agent-a-custom"
-    # Both legacy layouts store `<root>/people-context/people.db`.
-    hidden = _make_file(custom / "people-context" / DEFAULT_DB_FILENAME)
-    agent_a_old = {"HOME": str(home), "XDG_CONFIG_HOME": shared_config, variable: str(custom)}
-    agent_b = {"HOME": str(home), "XDG_CONFIG_HOME": shared_config}
-
-    # Agent B's environment cannot discover agent A's store: nothing blocks it.
-    assert hidden not in legacy_db_candidates(agent_b)
-    assert blocking_legacy_databases(env=agent_b) == []
-    # Inventory taken with the old version in A's real environment, then pinned before upgrading.
-    assert hidden in legacy_db_candidates(agent_a_old)
-    agent_a_pinned = {**agent_a_old, "PEOPLE_CONTEXT_DB": str(hidden)}
-    assert resolve_openable_db_path(env=agent_a_pinned) == hidden
-
-    # B creates the shared default; A's pin still selects its own store.
-    _make_file(_shared(agent_b))
-    assert resolve_openable_db_path(env=agent_b) == _shared(agent_b)
-    assert resolve_openable_db_path(env=agent_a_pinned) == hidden
-    assert hidden.read_bytes().startswith(b"SQLite format 3")
 
 
 def test_describe_resolution_mentions_winner(tmp_path: Path) -> None:
@@ -253,24 +123,12 @@ def test_describe_resolution_mentions_winner(tmp_path: Path) -> None:
     assert len(won_lines) == 1
     assert "PEOPLE_CONTEXT_DB" in won_lines[0]
     assert any(line.startswith("=> resolved:") for line in lines)
-    assert not any(line.startswith("=> blocked:") for line in lines)
 
 
-def test_describe_resolution_distinguishes_selected_default_from_blocked_transition(tmp_path: Path) -> None:
+def test_describe_resolution_reports_whether_the_shared_default_exists(tmp_path: Path) -> None:
     env = _base_env(tmp_path)
     selected = "\n".join(describe_resolution(env=env))
     assert f"[WON ] shared default: {_shared(env)} (absent; created on first database open)" in selected
-    assert f"legacy location: {_xdg_legacy(env)} (not found)" in selected
-    assert "=> blocked:" not in selected
-    assert "other agent environments were not inventoried" in selected
-
-    _make_file(_xdg_legacy(env))
-    blocked = describe_resolution(env=env)
-    joined = "\n".join(blocked)
-    assert "BLOCKED" in joined
-    assert f"legacy location: {_xdg_legacy(env)} (FOUND)" in joined
-    assert any(line.startswith("=> blocked:") for line in blocked)
-    assert "other agent environments were not inventoried" in joined
 
     _make_file(_shared(env))
     assert f"shared default: {_shared(env)} (exists)" in "\n".join(describe_resolution(env=env))

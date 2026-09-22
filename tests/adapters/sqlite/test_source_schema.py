@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -19,30 +18,9 @@ from people_context.adapters.sqlite import (
 )
 from people_context.adapters.sqlite.db import latest_schema_version
 from people_context.app.imports import CandidateStager, StageCandidates
-from people_context.domain.shared import normalize_name
 
-_MIGRATIONS = "people_context.adapters.sqlite.migrations"
 _DIGEST = "a" * 64
 _NEW_TABLES = ("import_source_sessions", "import_candidate_mappings")
-
-#: The migration that introduced those relations. Pinned rather than derived from the latest
-#: version, so a later additive migration does not silently turn this into a test of itself.
-_SOURCE_MIGRATION = 7
-
-
-def _legacy_database(path: Path, *, through: int) -> None:
-    """Write the database a release shipping only the first `through` migrations would."""
-    conn = sqlite3.connect(path)
-    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
-    try:
-        for name in sorted(entry.name for entry in resources.files(_MIGRATIONS).iterdir()):
-            if not name.endswith(".sql") or int(name.split("_", 1)[0]) > through:
-                continue
-            conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
-        conn.execute(f"PRAGMA user_version = {through}")
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def _tables(conn: Any) -> set[str]:
@@ -60,34 +38,6 @@ def test_a_fresh_database_creates_both_source_relations(tmp_path: Path) -> None:
     assert conn.execute("PRAGMA user_version").fetchone()[0] == latest_schema_version()
 
 
-def test_a_legacy_database_upgrades_without_losing_its_staging(tmp_path: Path) -> None:
-    path = tmp_path / "people.db"
-    _legacy_database(path, through=_SOURCE_MIGRATION - 1)
-    legacy = sqlite3.connect(path)
-    legacy.row_factory = sqlite3.Row
-    try:
-        assert not set(_NEW_TABLES) & _tables(legacy)
-        legacy.execute(
-            """INSERT INTO import_staging (id, batch_id, source, candidate_json, status, created_at)
-               VALUES ('c1', 'b1', 'import/linkedin', '{"type":"person"}', 'pending',
-                       '2026-07-20T12:00:00+00:00')"""
-        )
-        legacy.commit()
-    finally:
-        legacy.close()
-
-    upgraded = open_db(path)
-
-    assert set(_NEW_TABLES) <= _tables(upgraded)
-    assert upgraded.execute("SELECT COUNT(*) FROM import_staging").fetchone()[0] == 1
-    # A pre-M18 batch is left exactly as it was rather than backfilled with a guessed receipt.
-    assert upgraded.execute("SELECT COUNT(*) FROM import_source_sessions").fetchone()[0] == 0
-
-
-#: The migration that widened the receipt status for M29.1's withdrawal.
-_WITHDRAWN_MIGRATION = 10
-
-
 def _seed_receipt_and_mapping(conn: Any) -> None:
     conn.execute(
         """INSERT INTO import_source_sessions
@@ -103,34 +53,6 @@ def _seed_receipt_and_mapping(conn: Any) -> None:
            VALUES ('c1', 'b1', 's1', 'entity', 'person', 'p1', '2026-07-20T12:00:00+00:00')"""
     )
     conn.commit()
-
-
-def test_widening_the_receipt_status_keeps_every_receipt_and_every_mapping(tmp_path: Path) -> None:
-    """Migration 010 rebuilds a parent table whose children cascade on delete.
-
-    `import_candidate_mappings` references `import_source_sessions` `ON DELETE CASCADE`, and the
-    migration runner holds `PRAGMA foreign_keys=ON` inside one transaction, where turning it off
-    has no effect. Dropping the parent before the child would therefore fire an implicit cascading
-    DELETE and erase every commit mapping in the database — silently, because the bundle a reduced
-    database exports still validates. This is the test that would catch that.
-    """
-    path = tmp_path / "people.db"
-    _legacy_database(path, through=_WITHDRAWN_MIGRATION - 1)
-    legacy = sqlite3.connect(path)
-    legacy.row_factory = sqlite3.Row
-    try:
-        _seed_receipt_and_mapping(legacy)
-    finally:
-        legacy.close()
-
-    upgraded = open_db(path)
-
-    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == latest_schema_version()
-    receipt = upgraded.execute("SELECT * FROM import_source_sessions").fetchone()
-    assert (receipt["id"], receipt["status"], receipt["label"]) == ("s1", "partially_committed", "Nadia CV")
-    mapping = upgraded.execute("SELECT * FROM import_candidate_mappings").fetchone()
-    assert (mapping["candidate_id"], mapping["source_session_id"]) == ("c1", "s1")
-    assert upgraded.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_the_rebuilt_receipt_accepts_withdrawn_and_still_refuses_an_unknown_status(

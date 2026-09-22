@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     browse = subparsers.add_parser(
         "browse",
-        help="Serve a read-only local page of people and import sources on 127.0.0.1 until Ctrl-C.",
+        help="Serve a local page to browse people and review import batches on 127.0.0.1 until Ctrl-C.",
     )
     browse.add_argument("--open", action="store_true", help="Open the printed URL in the default browser.")
     browse.add_argument(

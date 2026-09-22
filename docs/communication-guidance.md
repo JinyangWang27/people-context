@@ -9,7 +9,7 @@ M0 schema (`traits`, `reminders`, `user_preferences` — see
 ## Traits
 
 Traits are derived, structured characteristics about a person, distinct from raw observations (see
-[docs/data-model.md](data-model.md#facts-vs-observations-vs-traits)). Each trait belongs to one category:
+[docs/data-model.md](data-model.md#facts-observations-and-traits)). Each trait belongs to one category:
 
 | Category | Meaning |
 |---|---|
@@ -41,7 +41,7 @@ while still letting any MCP client render advice in its own voice, matched to th
 
 1. The user (or an agent on the user's behalf) calls `set_communication_philosophy(text)` once, storing
    free-text guidance under the `communication_philosophy` key in `user_preferences` (see
-   [docs/data-model.md](data-model.md#user_preferences)). This can be edited at any time; there is no fixed
+   [docs/data-model.md](data-model.md#core-tables)). This can be edited at any time; there is no fixed
    schema for the text itself.
 2. When the user is about to communicate with a specific person, an agent calls
    `get_communication_guidance(person_id, situation?)`. The server assembles and returns a bundle
@@ -67,7 +67,7 @@ The implemented guidance path never returns observations. Traits and interaction
 
 ## Coaching workflow
 
-[M25 — Relationship-aware communication coaching](specs/m25-communication-coaching.md) turns these signals into
+M25 — Relationship-aware communication coaching turns these signals into
 a client workflow for replies, preparation, practice, and reflection across work, friends, and family. It ships
 as `skills/communication-coach/SKILL.md`, with the essential steps mirrored into the shared usage guidance that
 is served as the `people-context://guide` resource, so a client without plugin skills gets the same workflow.
@@ -116,4 +116,4 @@ Traits are treated the same way observations are, for privacy purposes (see
   that is the one context where they are the point.
 
 See [docs/mcp-interface.md](mcp-interface.md) for the exact tool signatures, and
-[docs/data-model.md](data-model.md#traits) for the underlying schema.
+[docs/data-model.md](data-model.md#facts-observations-and-traits) for the underlying schema.

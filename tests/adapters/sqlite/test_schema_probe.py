@@ -14,11 +14,11 @@ import pytest
 from people_context.adapters.sqlite import open_db
 from people_context.adapters.sqlite.db import (
     SQLCIPHER_MODULE,
+    UnsupportedSchemaError,
     inspect_schema,
     latest_schema_version,
     open_encrypted_db,
 )
-from people_context.domain.shared import normalize_name
 
 KEY = "correct horse battery staple"
 #: A fragment of the key that must never open the database or reach a message.
@@ -42,14 +42,12 @@ _MIGRATIONS = "people_context.adapters.sqlite.migrations"
 
 
 def _legacy_database(path: Path, *, through: int) -> None:
-    """Write a database the way a release shipping only the first `through` migrations would."""
+    """Write a database whose stored `user_version` says it predates the shipped schema."""
     conn = sqlite3.connect(path)
-    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
     try:
         for name in sorted(entry.name for entry in resources.files(_MIGRATIONS).iterdir()):
-            if not name.endswith(".sql") or int(name.split("_", 1)[0]) > through:
-                continue
-            conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
+            if name.endswith(".sql"):
+                conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
         conn.execute(f"PRAGMA user_version = {through}")
         conn.commit()
     finally:
@@ -227,3 +225,19 @@ def test_a_partial_schema_is_not_this_project_either(tmp_path: Path) -> None:
 
     assert probed is not None
     assert not probed.is_people_context
+
+
+def test_opening_a_database_older_than_the_baseline_refuses_without_migrating(tmp_path: Path) -> None:
+    """Releases before the single-schema baseline stepped through 001-010; that chain is gone."""
+    db_file = tmp_path / "people.db"
+    _legacy_database(db_file, through=latest_schema_version() - 1)
+
+    with pytest.raises(UnsupportedSchemaError, match=f"schema version {latest_schema_version() - 1}"):
+        open_db(db_file)
+
+    conn = sqlite3.connect(db_file)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == latest_schema_version() - 1
+        assert conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
+    finally:
+        conn.close()

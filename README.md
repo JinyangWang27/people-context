@@ -54,7 +54,7 @@ uvx --from people-context pctx demo --reset
 
 The demo always writes its own dedicated database at
 `{XDG_DATA_HOME or ~/.local/share}/people-context/demo.db`. It ignores `--db`, `PEOPLE_CONTEXT_DB`, the config
-file, and workspace discovery, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
+file, and `--reset` replaces only that file plus its `-wal`/`-shm` companions, so a
 real database is never read or modified. Seeding writes audited fictional people, handles, affiliations, facts,
 interactions, and a connected relationship graph, then prints the path-targeted server command and concrete
 tool calls that use the ids it just created:
@@ -72,10 +72,6 @@ server command in an MCP client and run the printed calls verbatim. See
 [docs/cli.md](docs/cli.md#packaged-demo).
 
 ## Quick start
-
-> **Upgrading from a release before the shared `~/.pctx/people.db` default?** Before any client starts the new
-> version, inventory and pin each client's existing database as described in
-> [Upgrading to the shared default](docs/cli.md#upgrading-to-the-shared-default).
 
 Requires Python 3.11+ and [`uv`](https://docs.astral.sh/uv/). Pick your client; each is one step.
 
@@ -219,6 +215,10 @@ encryption or opt into SQLCipher at-rest encryption (`uv sync --extra encrypted`
 - **Import**: `pctx import stage SOURCE PATH` then `review` and `commit`, over email, mbox, vCard, `.ics`,
   LinkedIn, Outlook, and WhatsApp exports. Agents can stage extracted candidates the same way. See
   [docs/import.md](docs/import.md).
+- **Local browser**: `pctx browse --open` serves a loopback-only, token-guarded page to browse people and review,
+  edit, and commit staged import batches. See [docs/cli.md](docs/cli.md#local-browser-viewer).
+- **Groups**: record classes, teams, clubs, and households with `pctx group`, then ask how two people know each
+  other with `pctx group shared A B`. See [docs/shared-connections-examples.md](docs/shared-connections-examples.md).
 - **Reports and maintenance**: `pctx stale`, `pctx upcoming`, `pctx timeline`, `pctx doctor`, `pctx stats`.
 - **Backup and second device**: `pctx sync push --output DIR` and `pctx sync pull --input PATH`.
 - **Docker**: `docker run --rm -i -v people-context-data:/data ghcr.io/jinyangwang27/people-context:latest`.
@@ -255,6 +255,8 @@ writing live in adapters. One composition root wires both stdio and HTTP. See
 | [docs/architecture.md](docs/architecture.md) | Layering, dependency rule, entrypoint wiring |
 | [docs/data-model.md](docs/data-model.md) | Schema, migrations, and perspective `display_type` |
 | [docs/relationship-graph.md](docs/relationship-graph.md) | Vocabulary, normalization, perspective, traversal, curation |
+| [docs/identity-resolution.md](docs/identity-resolution.md) | Resolution stages, ambiguity, and why transliterations are stored aliases |
+| [docs/communication-guidance.md](docs/communication-guidance.md) | Communication signals and the coaching workflow |
 | [docs/vault-export.md](docs/vault-export.md) | Layout, marker safety, determinism, sensitivity |
 | [docs/mcp-interface.md](docs/mcp-interface.md) | MCP tools and stable response contracts |
 | [docs/compatibility.md](docs/compatibility.md) | What stays stable across releases for MCP, DB, CLI, and JSON |
@@ -273,10 +275,8 @@ writing live in adapters. One composition root wires both stdio and HTTP. See
 | [docs/privacy-and-safety.md](docs/privacy-and-safety.md) | Disclosure, audit, forget, threat model |
 | [docs/use-cases](docs/use-cases/README.md) | Narrative recipes for onboarding, meeting prep, follow-up, migration, and auditing |
 | [docs/evals.md](docs/evals.md) | Evaluation harness, fixed tasks, scoring rules, and dated recorded results |
-| [docs/roadmap.md](docs/roadmap.md) | Delivered milestones and planned work |
-| [docs/specs](docs/specs/) | One implementation spec per planned milestone |
-| [M25 coaching spec](docs/specs/m25-communication-coaching.md) | Planned communication coaching, practice, and reflection |
-| [M26 transcript review spec](docs/specs/m26-transcript-attribution-review.md) | Planned review of split and mixed speaker attribution |
+| [coaching](docs/communication-coaching-examples.md), [transcript](docs/transcript-review-examples.md), and [shared-connection](docs/shared-connections-examples.md) examples | Fictional worked scenarios with review rubrics |
+| [docs/roadmap.md](docs/roadmap.md) | Delivered milestones and remaining candidates |
 
 ## Contributing
 

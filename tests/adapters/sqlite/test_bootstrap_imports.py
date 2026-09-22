@@ -137,25 +137,6 @@ def _round_trip(document: Any) -> Any:
     return _parse(render_bundle_json(document))
 
 
-def _downgraded(document: Any, version: int) -> dict[str, Any]:
-    """Render the export as an older accepted version by dropping what that version predates.
-
-    Each released version is a closed shape, so a document can only be presented as an older one
-    by removing the collections that version does not know about. Anything left behind would be
-    refused as an unknown field, which is the behaviour the strict contract is for.
-    """
-    payload = json.loads(render_bundle_json(document))
-    payload["version"] = version
-    if version < 5:
-        payload.pop("groups")
-        payload.pop("group_memberships")
-    if version < 3:
-        payload.pop("trait_evidence")
-    if version < 2:
-        payload.pop("imports")
-    return payload
-
-
 def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> None:
     origin = _Origin(tmp_path / "origin.db")
     batch = origin.stage.execute(
@@ -407,41 +388,10 @@ def test_a_merged_away_mapping_needs_no_live_entity(tmp_path: Path) -> None:
 # -- version acceptance and baseline emptiness -------------------------
 
 
-def test_a_version_one_bundle_still_restores(tmp_path: Path) -> None:
-    origin = _Origin(tmp_path / "origin.db")
-    batch = origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
-    rows = origin.review.execute(batch.batch_id).candidates
-    origin.commit.execute(batch.batch_id, [row.id for row in rows])
-    origin.conn.execute("DELETE FROM import_staging")
-    origin.conn.commit()
-    payload = _downgraded(origin.export(), 1)
-
-    document = _parse(json.dumps(payload))
-    conn, outcome = _restore(document, tmp_path / "restored.db")
-
-    assert outcome.source_sessions == 0
-    assert outcome.candidate_mappings == 0
-    assert conn.execute("SELECT COUNT(*) FROM import_source_sessions").fetchone()[0] == 0
-    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 1
-
-
-def test_a_version_one_bundle_carrying_version_two_state_is_refused(tmp_path: Path) -> None:
+def test_a_non_empty_import_table_refuses_restore(tmp_path: Path) -> None:
     origin = _Origin(tmp_path / "origin.db")
     origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
-    payload = json.loads(render_bundle_json(origin.export()))
-    payload["version"] = 1
-
-    with pytest.raises(InvalidBundleError) as excinfo:
-        _parse(json.dumps(payload))
-
-    assert any("imports" in detail for detail in excinfo.value.details)
-
-
-@pytest.mark.parametrize("version", [1, 2, 3, 4, 5, 6])
-def test_a_non_empty_import_table_refuses_every_accepted_version(tmp_path: Path, version: int) -> None:
-    origin = _Origin(tmp_path / "origin.db")
-    origin.stage.execute("weekly-sync", [_person("a", "Alice Ahmed", "alice@example.com")])
-    document = _parse(json.dumps(_downgraded(origin.export(), version)))
+    document = _parse(render_bundle_json(origin.export()))
 
     destination = _Origin(tmp_path / "destination.db")
     destination.stage.execute(
@@ -596,49 +546,3 @@ def test_a_withdrawn_receipt_survives_a_real_round_trip_carrying_no_staging(tmp_
         conn.close()
 
 
-@pytest.mark.parametrize("version", [2, 3, 4, 5, 6])
-def test_every_version_predating_m29_1_refuses_a_withdrawn_staging_row(
-    tmp_path: Path, version: int
-) -> None:
-    origin = _Origin(tmp_path / "origin.db")
-    batch = origin.stage.execute(
-        "nadia-cv",
-        [
-            _person("n", "Nadia Okonkwo", "nadia@example.com"),
-            {"type": "fact", "person_ref": "n", "predicate": "city", "value": "Lisbon"},
-        ],
-        source_kind="cv",
-        content_digest=_DIGEST,
-    )
-    rows = origin.review.execute(batch.batch_id).candidates
-    origin.withdraw.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "fact")])
-    payload = _downgraded(origin.export(), version)
-
-    with pytest.raises(InvalidBundleError):
-        _parse(json.dumps(payload))
-
-
-def test_a_version_three_document_refuses_a_staging_row_naming_who_asserted_it(tmp_path: Path) -> None:
-    """A released version is a closed shape, and this one predates attribution entirely."""
-    origin = _Origin(tmp_path / "origin.db")
-    origin.stage.execute(
-        "nadia-cv",
-        [
-            _person("n", "Nadia Okonkwo", "nadia@example.com"),
-            {
-                "type": "fact",
-                "person_ref": "n",
-                "predicate": "qualification",
-                "value": "MSc Structural Engineering",
-                "stated_by": "her CV",
-            },
-        ],
-        source_kind="cv",
-        content_digest=_DIGEST,
-    )
-    payload = json.loads(render_bundle_json(origin.export()))
-    assert payload["imports"]["staging"], "the row carrying attribution must actually travel"
-    payload["version"] = 3
-
-    with pytest.raises(InvalidBundleError):
-        _parse(json.dumps(payload))

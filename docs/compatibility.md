@@ -9,11 +9,6 @@ machine-readable JSON documents — and it states plainly which surfaces are del
 The project uses [Semantic Versioning](https://semver.org). The guarantees below hold **within a major version**:
 a change that violates one of them requires a new major version.
 
-While the project remains below `1.0.0`, a breaking change advances the minor version instead of implicitly
-creating `1.0.0`, as described in [releasing.md](releasing.md). The guarantees below describe the discipline
-applied to every change today; the `0.x` series does not weaken them, it only changes which version component a
-deliberate break advances.
-
 This promise covers the primary `people-context` distribution: the `people-context` and `people-context-mcp`
 server commands and the `pctx` CLI.
 
@@ -190,35 +185,9 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 7**, which added M29.1's editable staging: a staging row may be `rejected` and a
-  source receipt `withdrawn`. Version 6 before it added M28.3's staged `group` and `group_membership` candidate types to
-  the staging rows an incomplete import batch carries. Version 5 before it added M28.1's `groups` and
-  `group_memberships` collections, version 4 added optional assertion attribution (`stated_by`) to the staged
-  fact and affiliation candidates, version 3 added the durable trait-evidence relations linking an inferred trait
-  to the observations and interactions it rests on, and version 2 added durable import source receipts, candidate
-  commit mappings, and the staging rows an incomplete import batch still needs. `pctx sync pull` accepts
-  **versions 1 through 7**, validating each against its own strict shape: a version-1 document carrying a
-  version-2 collection is refused as an unknown field rather than quietly upgraded, and so is any older document
-  carrying a later version's field — a version-4 document carrying groups included. A released version stays readable; only which version is emitted
-  moves forward.
-
-  Version 4 is the case that shows the rule is about fields rather than collections. It adds no collection: the
-  new field sits inside a staging row's already-present `candidate` object. A version-3 reader still refuses it,
-  because accepting an attribution it does not understand would mean restoring the candidate and then committing
-  it with the attribution silently dropped — recording a source's own claim as though nobody had made it.
-
-  Version 6 is the stronger case. A new candidate `type` is not something a reader can fail closed on by
-  forbidding unknown keys, because the discriminator picks the model before any field is inspected, so every
-  version through 5 refuses `group` and `group_membership` candidates by name. A version-5 reader has no group
-  reference namespace and no group commit pass, so a membership it accepted would restore as a pending row that
-  review lists and commit can never resolve, while the receipt's claim kept suppressing a corrected restage.
-
-  Version 7 adds neither a field nor a collection: it adds a value to a `Literal` every released version shares,
-  and the rule treats that the same way. Every version through 6 refuses a `rejected` staging row and a
-  `withdrawn` receipt by name, because a reader without withdrawal in its vocabulary would have to restore a
-  rejected row as one of the two statuses it does know, and both answers are wrong — read as pending, a candidate
-  the reviewer explicitly dropped becomes committable again; read as committed, it claims a durable record that
-  was never written.
+  `pctx sync push` emits **version 7** and `pctx sync pull` accepts **only version 7**. Earlier bundle versions
+  are refused; re-export from a current release to move data. A new field, collection, candidate type, or status
+  value all advance the version, because a strict reader cannot fail closed on any of them.
 
 That strictness is the point: a bundle a release does not fully understand fails closed before preview or writes
 rather than restoring partial state. A bundle is restorable by releases that implement its declared version.

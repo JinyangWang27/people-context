@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -26,15 +25,9 @@ from people_context.app.records.interactions import RecordInteractionInput
 from people_context.app.records.observations import RecordObservationInput
 from people_context.app.records.trait_evidence import TraitEvidenceError, resolve_trait_evidence
 from people_context.app.records.traits import RecordTraitInput
-from people_context.domain.shared import Sensitivity, normalize_name
+from people_context.domain.shared import Sensitivity
 from people_context.domain.trait_evidence import trait_evidence_key
 from people_context.ports.evidence import EvidenceRecord, EvidenceReference
-
-_MIGRATIONS = "people_context.adapters.sqlite.migrations"
-
-#: The migration that introduced the relation, pinned so a later one cannot make this a test of
-#: itself.
-_EVIDENCE_MIGRATION = 8
 
 _NOW = datetime(2026, 8, 24, 9, 0, tzinfo=UTC)
 
@@ -59,7 +52,7 @@ class _Store:
         self.interact = RecordInteraction(people, records, self.audit, _Clock())
         self.trait = RecordTrait(people, records, self.audit, _Clock(), self.evidence)
         forget_store = SqliteForgetStore(self.conn)
-        self.forget = Forget(people, forget_store, _Clock())
+        self.forget = Forget(people, forget_store, _Clock(), self.audit)
         self.preview = PreviewForget(people, forget_store)
 
     def person(self, name: str) -> str:
@@ -75,21 +68,6 @@ class _Store:
         ]
 
 
-def _legacy_database(path: Path, *, through: int) -> None:
-    """Write the database a release shipping only the first `through` migrations would."""
-    conn = sqlite3.connect(path)
-    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
-    try:
-        for name in sorted(entry.name for entry in resources.files(_MIGRATIONS).iterdir()):
-            if not name.endswith(".sql") or int(name.split("_", 1)[0]) > through:
-                continue
-            conn.executescript(resources.files(_MIGRATIONS).joinpath(name).read_text(encoding="utf-8"))
-        conn.execute(f"PRAGMA user_version = {through}")
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def _tables(conn: Any) -> set[str]:
     return {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
 
@@ -103,37 +81,6 @@ def test_a_fresh_database_creates_the_relation_and_its_lookup_index(tmp_path: Pa
     assert "trait_evidence" in _tables(conn)
     indexes = {row["name"] for row in conn.execute("PRAGMA index_list(trait_evidence)")}
     assert "idx_trait_evidence_target" in indexes
-
-
-def test_a_legacy_database_upgrades_without_losing_its_traits(tmp_path: Path) -> None:
-    path = tmp_path / "people.db"
-    _legacy_database(path, through=_EVIDENCE_MIGRATION - 1)
-    legacy = sqlite3.connect(path)
-    legacy.row_factory = sqlite3.Row
-    try:
-        assert "trait_evidence" not in _tables(legacy)
-        legacy.execute(
-            """INSERT INTO persons (id, canonical_name, canonical_name_normalized, is_self,
-                                    created_at, updated_at)
-               VALUES ('p1', 'Alice', 'alice', 0, '2026-07-20T12:00:00+00:00',
-                       '2026-07-20T12:00:00+00:00')"""
-        )
-        legacy.execute(
-            """INSERT INTO traits (id, person_id, category, value, confidence, sensitivity,
-                                   provenance_source, updated_at)
-               VALUES ('t1', 'p1', 'other', 'Direct', 1.0, 'personal', 'user',
-                       '2026-07-20T12:00:00+00:00')"""
-        )
-        legacy.commit()
-    finally:
-        legacy.close()
-
-    upgraded = open_db(path)
-
-    assert "trait_evidence" in _tables(upgraded)
-    # A pre-M18.3 trait keeps its `evidence_note` and gains no invented link.
-    assert upgraded.execute("SELECT COUNT(*) FROM traits").fetchone()[0] == 1
-    assert upgraded.execute("SELECT COUNT(*) FROM trait_evidence").fetchone()[0] == 0
 
 
 def test_the_relation_refuses_an_unsupported_evidence_type(tmp_path: Path) -> None:

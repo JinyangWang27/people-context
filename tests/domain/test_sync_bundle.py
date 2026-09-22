@@ -245,12 +245,6 @@ def _document() -> dict[str, Any]:
     }
 
 
-def _drop_groups(payload: dict[str, Any]) -> None:
-    """Remove the version-5 collections from a payload declaring an older version."""
-    payload.pop("groups")
-    payload.pop("group_memberships")
-
-
 def _imports(payload: dict[str, Any]) -> dict[str, Any]:
     return payload["imports"]
 
@@ -1070,41 +1064,6 @@ def test_a_mapping_claiming_a_record_its_candidate_never_produced_is_rejected() 
     assert any("claims a interaction for a observation candidate" in detail for detail in excinfo.value.details)
 
 
-@pytest.mark.parametrize("field", ["evidence_candidate_ids", "evidence_ids"])
-def test_a_version_two_document_rejects_a_staged_trait_carrying_m18_3_fields(field: str) -> None:
-    """A released version is a closed shape all the way down.
-
-    The persisted-candidate models describe what this installation stores today; validating a
-    version-2 document through them unchanged would accept an M18.3 dependency field under a
-    declaration that predates the relation resolving it.
-    """
-    payload = _document()
-    _staged_evidence(payload, [_EVIDENCE_ROW_ID])
-    candidate = _imports(payload)["staging"][-1]["candidate"]
-    candidate.pop("evidence_candidate_ids", None)
-    candidate[field] = [_EVIDENCE_ROW_ID if field == "evidence_candidate_ids" else _OBSERVATION_ID]
-    payload["version"] = 2
-    _drop_groups(payload)
-    payload.pop("trait_evidence")
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
-
-
-def test_a_version_two_document_without_those_fields_still_parses() -> None:
-    """The narrowing is exactly one field pair; everything else a v2 bundle carries is untouched."""
-    payload = _document()
-    payload["version"] = 2
-    _drop_groups(payload)
-    payload.pop("trait_evidence")
-
-    document = parse_bundle_payload(payload)
-
-    assert document.version == SYNC_BUNDLE_VERSION
-    assert document.trait_evidence == []
-    assert len(document.imports.staging) == 1
-
-
 def _withdrawn_receipt(payload: dict[str, Any]) -> None:
     """Turn the bundled receipt into a terminal withdrawal, as a fully withdrawn batch leaves it.
 
@@ -1140,55 +1099,6 @@ def test_the_current_version_accepts_a_withdrawn_receipt() -> None:
 
     assert document.imports.source_sessions[0].status == "withdrawn"
     validate_bundle_document(document)
-
-
-@pytest.mark.parametrize("version", [2, 3, 4, 5, 6])
-def test_every_version_predating_m29_1_rejects_a_rejected_staging_row(version: int) -> None:
-    """Withdrawal is not a value an older reader can degrade safely.
-
-    It would have to restore the row as one of the two statuses it does know, and both are wrong:
-    read as pending, a candidate the reviewer explicitly dropped becomes committable again; read
-    as committed, it claims a durable record that was never written. Unlike the earlier bumps this
-    is a new value of a shared `Literal` rather than a new field, and the closed-shape rule treats
-    the two the same way.
-    """
-    payload = _document()
-    _imports(payload)["staging"][0]["status"] = "rejected"
-    _imports(payload)["candidate_mappings"].clear()
-    payload["version"] = version
-    if version < 5:
-        _drop_groups(payload)
-    if version < 3:
-        payload.pop("trait_evidence")
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
-
-
-@pytest.mark.parametrize("version", [2, 3, 4, 5, 6])
-def test_every_version_predating_m29_1_rejects_a_withdrawn_receipt(version: int) -> None:
-    payload = _document()
-    _withdrawn_receipt(payload)
-    payload["version"] = version
-    if version < 5:
-        _drop_groups(payload)
-    if version < 3:
-        payload.pop("trait_evidence")
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
-
-
-def test_a_version_six_document_without_either_new_status_still_parses() -> None:
-    """The narrowing is exactly two status values; everything else a v6 bundle carries is untouched."""
-    payload = _document()
-    payload["version"] = 6
-
-    document = parse_bundle_payload(payload)
-
-    assert document.version == SYNC_BUNDLE_VERSION
-    assert len(document.imports.staging) == 1
-    assert len(document.groups) == 1
 
 
 @pytest.mark.parametrize("carries", ["a pending row", "a commit mapping"])
@@ -1310,43 +1220,6 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
-@pytest.mark.parametrize("version", [2, 3])
-@pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
-def test_a_document_predating_m22_1_rejects_a_staged_candidate_carrying_attribution(
-    version: int, candidate_type: str
-) -> None:
-    """A released version is a closed shape, and dropping this field is not a safe degradation.
-
-    A reader that accepted the row would restore it and then commit it, writing the record with
-    the attribution silently gone — recording a source's own claim as though nobody had made it.
-
-    Version 1 is absent here because it carries no `imports` collection to put a staging row in;
-    it refuses the whole collection, which the version-1 shape tests already cover.
-    """
-    payload = _document()
-    _staged_attribution(payload, candidate_type)
-    payload["version"] = version
-    _drop_groups(payload)
-    if version < 3:
-        payload.pop("trait_evidence")
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
-
-
-def test_a_version_three_document_without_attribution_still_parses() -> None:
-    """The narrowing is exactly one field; everything else a v3 bundle carries is untouched."""
-    payload = _document()
-    payload["version"] = 3
-    _drop_groups(payload)
-
-    document = parse_bundle_payload(payload)
-
-    assert document.version == SYNC_BUNDLE_VERSION
-    assert len(document.imports.staging) == 1
-    assert len(document.trait_evidence) == 1
-
-
 @pytest.mark.parametrize("candidate_type", ["fact", "affiliation"])
 def test_a_restored_candidate_is_held_to_the_same_attribution_bound_as_staged_input(
     candidate_type: str,
@@ -1376,18 +1249,6 @@ def test_a_restored_candidate_at_exactly_the_attribution_bound_is_accepted(candi
     document = parse_bundle_payload(payload)
 
     assert document.imports.staging[-1].candidate["stated_by"] == "x" * MAX_STATED_BY_CHARS
-
-
-def test_a_version_two_document_rejects_attribution_as_well_as_evidence() -> None:
-    """Version 2 predates both fields, so it forbids both rather than only the older pair."""
-    payload = _document()
-    _staged_attribution(payload, "fact")
-    payload["version"] = 2
-    _drop_groups(payload)
-    payload.pop("trait_evidence")
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
 
 
 def test_a_link_naming_a_trait_the_bundle_omits_is_rejected() -> None:
@@ -1440,7 +1301,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 8, "7"])
+@pytest.mark.parametrize("version", [0, 1, 6, 8, "7"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version
@@ -1977,14 +1838,6 @@ def test_a_bundled_membership_whose_basis_contradicts_its_dates_is_rejected() ->
     """Every ordinary read rehydrates through the domain rule, so restore must refuse what it would."""
     payload = _document()
     payload["group_memberships"][0]["temporal_basis"] = "unknown"
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
-
-
-def test_a_version_four_document_declaring_groups_is_rejected() -> None:
-    payload = _document()
-    payload["version"] = 4
 
     with pytest.raises(ValidationError):
         parse_bundle_payload(payload)

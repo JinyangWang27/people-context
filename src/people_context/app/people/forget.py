@@ -56,12 +56,12 @@ class Forget:
         people: PersonReader,
         lifecycle: ForgetStore,
         clock: Clock,
-        audit: AuditLog | None = None,
+        audit: AuditLog,
     ) -> None:
         self._people = people
         self._lifecycle = lifecycle
         self._clock = clock
-        self._audit = audit or lifecycle.audit_log
+        self._audit = audit
         self._uow = unit_of_work_for(lifecycle, self._audit)
 
     @transactional

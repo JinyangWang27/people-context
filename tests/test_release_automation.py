@@ -7,10 +7,6 @@ from typing import Any
 
 ROOT = Path(__file__).parents[1]
 RELEASE_PLEASE_ACTION_SHA = "45996ed1f6d02564a971a2fa1b5860e934307cf7"
-#: The deliberate milestone release. Conventional Commits cannot reach it on their own
-#: while `bump-minor-pre-major` is set, so it is requested with a one-shot
-#: `Release-As:` commit footer rather than pinned in configuration.
-MILESTONE_RELEASE = "1.0.0"
 RELEASE_PR_WORKFLOWS = {
     "ci.yml",
     "codeql.yml",
@@ -39,7 +35,7 @@ def test_release_config_updates_all_coupled_primary_versions() -> None:
     assert config["release-type"] == "python"
     assert config["include-component-in-tag"] is False
     assert config["include-v-in-tag"] is True
-    assert config["bump-minor-pre-major"] is True
+    assert "bump-minor-pre-major" not in config
 
     package = config["packages"]["."]
     assert package["package-name"] == "people-context"
@@ -97,10 +93,10 @@ def test_explicit_versions_are_never_pinned_in_configuration() -> None:
     assert "release-as" not in _json(ROOT / "release-please-config.json")
 
 
-def test_release_docs_explain_the_one_shot_milestone_footer() -> None:
+def test_release_docs_explain_the_one_shot_version_footer() -> None:
     """Verifies the documented release step only; no test can verify a merge performed it.
 
-    Requesting a milestone version is a release action, not part of a feature pull
+    Requesting an explicit version is a release action, not part of a feature pull
     request, so the procedure must not depend on a `Release-As:` trailer surviving a
     squash merge — that message is composed by GitHub at merge time and is not
     repository content. The documented step is an explicit commit on `main`, which the
@@ -108,7 +104,7 @@ def test_release_docs_explain_the_one_shot_milestone_footer() -> None:
     """
     docs = (ROOT / "docs/releasing.md").read_text(encoding="utf-8")
 
-    assert f"Release-As: {MILESTONE_RELEASE}" in docs
+    assert "Release-As: 2.0.0" in docs
     # The documented step must be an explicit commit whose trailer is verified before
     # the push, not an instruction to hope a squash message preserves one.
     assert "git commit --allow-empty" in docs
@@ -118,7 +114,7 @@ def test_release_docs_explain_the_one_shot_milestone_footer() -> None:
     # sticky-pin failure mode is not reintroduced as a convenience.
     assert "would silently freeze" in docs
     assert "while CI stays green" in docs
-    # The 1.0 checklist is anchored on the published compatibility promise.
+    # The major-version guarantees are anchored on the published compatibility promise.
     assert "[compatibility.md](compatibility.md)" in docs
 
 

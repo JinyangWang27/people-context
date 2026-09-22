@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from people_context.adapters.filesystem.private_file import PRIVATE_FILE_MODE, restrict_fd_to_owner
-from people_context.domain.shared import new_id, normalize_name
+from people_context.domain.shared import new_id
 
 _MIGRATIONS_PACKAGE = "people_context.adapters.sqlite.migrations"
 _LEADING_NUMBER = re.compile(r"^(\d+)")
@@ -54,6 +54,14 @@ class EncryptedDatabaseError(RuntimeError):
 
     The message is deliberately generic: it never contains key material and
     never echoes decrypted page contents.
+    """
+
+
+class UnsupportedSchemaError(RuntimeError):
+    """Raised when a database predates the schema baseline this release can create.
+
+    Releases up to 1.3.0 shipped step migrations 001-010; this release ships only the version-10
+    baseline, so an older store is refused by name rather than failing half-way through it.
     """
 
 
@@ -397,9 +405,6 @@ def _configure_and_migrate(conn: sqlite3.Connection, *, is_memory: bool) -> None
     # Wait for concurrent writers (e.g. CLI beside a running server) instead of
     # failing immediately with "database is locked".
     conn.execute("PRAGMA busy_timeout=5000")
-    # Domain name normalization exposed to migration SQL for backfilling
-    # normalized columns (e.g. migration 004).
-    conn.create_function("people_normalize", 1, normalize_name, deterministic=True)
     _run_migrations(conn)
     _ensure_local_device(conn)
 
@@ -425,8 +430,6 @@ def latest_schema_version() -> int:
 
 
 #: Tables that identify a database as this project's rather than some other application's.
-#: `persons` has existed since the first migration and `devices` since the second, so any store
-#: at the current schema has both.
 _IDENTIFYING_TABLES = ("persons", "devices")
 
 _IDENTITY_SQL = (
@@ -504,7 +507,14 @@ def _read_only_uri(path: str | Path) -> str:
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
     current = conn.execute("PRAGMA user_version").fetchone()[0]
-    for version, sql in _discover_migrations():
+    migrations = _discover_migrations()
+    baseline = migrations[0][0]
+    if 0 < current < baseline:
+        raise UnsupportedSchemaError(
+            f"This database is at schema version {current}, older than the version-{baseline} baseline this "
+            "release can open. Open it once with people-context 1.3.0 to upgrade it, then retry."
+        )
+    for version, sql in migrations:
         if version <= current:
             continue
         try:
@@ -516,7 +526,7 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
 
 
 def _ensure_local_device(conn: sqlite3.Connection) -> None:
-    """Register one stable installation identity after migration 002."""
+    """Register one stable installation identity after migration."""
     row = conn.execute("SELECT id FROM devices WHERE retired_at IS NULL LIMIT 1").fetchone()
     if row is not None:
         return

@@ -5,7 +5,7 @@ vCard, `.ics` calendar attendees, LinkedIn and Outlook contact exports, WhatsApp
 agent-extracted notes candidates — into `people-context` without ever persisting raw source material.
 Import was delivered in **M3** (see
 [docs/roadmap.md](roadmap.md)); the `import_staging` table lives in the initial schema (see
-[docs/data-model.md](data-model.md#import_staging)).
+[docs/data-model.md](data-model.md#core-tables)).
 
 ## Extract-and-stage model
 
@@ -256,9 +256,8 @@ value records the self-description and whose `stated_by` names them; it never be
 a receipt proving the file was processed proves nothing about whether its claims are true. Unknown attribution
 stays absent — do not invent a speaker, and do not put processing metadata there instead.
 
-Candidates that omit `stated_by`, including every batch staged before M22.1, remain valid and commit exactly as
-they did. Because the bootstrap bundle forbids unknown fields inside a staged candidate, carrying attribution in
-an incomplete batch advances the bundle to **version 4**; see [docs/compatibility.md](compatibility.md).
+Candidates that omit `stated_by` remain valid and commit exactly as they did. The bootstrap bundle carries
+attribution inside an incomplete batch's staged candidates; see [docs/compatibility.md](compatibility.md).
 
 ### Capturing a CV, biography, or page of notes (M22.2)
 
@@ -482,7 +481,7 @@ The same lifecycle is available to a person at the terminal through `pctx import
 adds no source type, no candidate type, and no matching or commit policy of its own, and it keeps the review gate
 as separate commands because a staged batch is durable review state that may be inspected in a later invocation.
 
-[M30](specs/m30-local-web-review.md) adds a loopback-only browser page over the same use cases: M30.2's batch
+M30 adds a loopback-only browser page over the same use cases: M30.2's batch
 review withdraws and commits through `WithdrawStagedCandidates` and `CommitImport` with the displayed
 `batch_digest` (see [cli.md](cli.md#local-browser-viewer)), and M30.3's edit form amends one staged candidate
 through `AmendStagedCandidate` with the same digest, from a form generated from the candidate type's declared
@@ -948,7 +947,7 @@ reach the real tables:
   the wording; that path flows through the same review-and-commit approval as file imports.
 - Provenance for imported records references the source narrowly — e.g. the email's `Message-Id` header and
   its date — enough to trace where a fact came from, without storing the message itself.
-- Email addresses are stored as `aliases` of kind `handle` (see [docs/data-model.md](data-model.md#aliases))
+- Email addresses are stored as `aliases` of kind `handle` (see [docs/data-model.md](data-model.md#core-tables))
   — this is treated as contact data, not raw content, since it is directly analogous to a phone number or
   a nickname the user would otherwise type in by hand.
 
@@ -996,7 +995,7 @@ reported in deterministic input order through `skipped_message_ids` or `skipped_
 
 ## Transcript attribution review (M26.1)
 
-[M26 — Attribution-aware transcript review](specs/m26-transcript-attribution-review.md) adds a client workflow for
+M26 — Attribution-aware transcript review adds a client workflow for
 user-supplied transcripts, including exports with numbered speakers. A speaker label is not a person: several labels
 can refer to one person, and a shared room microphone can combine several people under one label. Whole-label
 mapping cannot resolve that second case; individual statements may require user clarification.
@@ -1020,12 +1019,11 @@ first name, an undated recording, a task nobody accepted, a sensitive aside, and
 series — are in [transcript-review-examples.md](transcript-review-examples.md). The lifecycle checks behind them
 run hand-authored candidate batches through the real stores in
 `tests/adapters/importers/test_transcript_capture_workflow.py`; extraction quality itself is assessed by a person
-against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution). See the
-[PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
+against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution).
 
 ## Capturing a shared context (M28.3)
 
-[M28 — Groups, memberships, and shared connections](specs/m28-groups-and-shared-connections.md) adds two staged
+M28 — Groups, memberships, and shared connections adds two staged
 candidate types to the lifecycle documented above, so an agent that hears "we were in the same class" has a
 reviewed path to record it. A `group` names the identified context — a class, cohort, team, department, club,
 household, or community — and carries a batch-local `ref`. A `group_membership` places one `person_ref` in one
@@ -1054,8 +1052,7 @@ Three rules shape the contract, and each is enforced rather than merely document
   so is one that stages a membership without `source_kind` — the mapping is the only thing that can reattach a
   membership to a group committed earlier, since matching the group by name is what this milestone forbids.
 
-Both types opt into the M17 extraction bounds, participate in export and bootstrap restore as sync bundle
-**version 6**, and are erased with their person by hard forget — a member's erasure removes their placements and
+Both types opt into the M17 extraction bounds, participate in export and bootstrap restore, and are erased with their person by hard forget — a member's erasure removes their placements and
 leaves the group candidate and everybody else's placements intact. Forgetting a *group* works the other way: it
 removes the commit mappings of the memberships that cascade with it, and any still-pending candidate naming it
 through `group_id`, because a candidate whose only possible target is gone could never commit and a bundle
@@ -1063,9 +1060,7 @@ carrying one is refused.
 
 A refused batch names the rule that broke and the candidate that broke it, never the value: a `ref`, a
 `person_ref`, and a `group_ref` are all free-form text the agent chose, and the MCP adapter returns those
-diagnostics verbatim. Every version through 5 refuses the two types
-by name, because a discriminator picks the model before any field is inspected and a reader that could not resolve
-a group reference would restore a batch commit could never finish.
+diagnostics verbatim.
 
 Nothing here writes automatically, extrapolates a roster, or records a speculative progression, and no new review
 framework is introduced. Eight fictional worked captures — a class with a proven term, the same school with
@@ -1075,8 +1070,7 @@ confirmed cohort continuity, and two friends of one person — are in
 hand-authored candidate batches through the real stores in `tests/adapters/importers/test_group_staging.py`,
 `tests/adapters/importers/test_group_commit.py`, and `tests/adapters/sqlite/test_bootstrap_group_candidates.py`;
 capture quality itself is assessed by a person against
-[Human review of shared-context capture](evals.md#human-review-of-shared-context-capture). See the
-[PR checklist](specs/pr-plan.md#m28--groups-memberships-and-shared-connections).
+[Human review of shared-context capture](evals.md#human-review-of-shared-context-capture).
 
 ## M6 changelog and export boundary
 
