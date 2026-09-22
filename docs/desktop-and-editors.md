@@ -1,10 +1,7 @@
 # Desktop bundle and editor configuration
 
 This document covers the native-UV MCPB Desktop bundle and the Cursor, Windsurf, and VS Code stdio
-configurations for `people-context`. It delivers checklist item **M8.3** of
-[docs/specs/pr-plan.md](specs/pr-plan.md); see
-[docs/specs/m8-distribution-and-reach.md](specs/m8-distribution-and-reach.md) for the binding milestone
-specification.
+configurations for `people-context`.
 
 The canonical tool inventory and response contracts live in [docs/mcp-interface.md](mcp-interface.md); this
 document does not restate them. Every path here runs the same local stdio server as

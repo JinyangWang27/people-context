@@ -32,7 +32,7 @@ Override that default as follows:
 A replica must record unresolved identity conflicts separately and exclude ambiguous results from normal identity
 resolution until reviewed. Automatic convergence is subordinate to preserving identity correctness and privacy.
 
-M6 implements the local HLC and conflict table foundation. Conflict replay, review UI, exchange, and bootstrap remain deferred to M7.
+M6 implements the local HLC and conflict table foundation. Conflict replay, review UI, and exchange remain [roadmap candidates](../roadmap.md#candidates); bootstrap restore shipped in M11.
 
 ## Consequences
 

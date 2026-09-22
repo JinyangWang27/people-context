@@ -29,7 +29,7 @@ no external database driver.
 
 - The database is a single, portable file. It works out of the box with `sqlite3` (the CLI shell), DB
   Browser for SQLite, and Datasette — satisfying the requirement that users can inspect/edit their own data
-  without this project's tooling (see [docs/cli.md](../cli.md#direct-database-access)).
+  without this project's tooling (see [docs/cli.md](../cli.md#direct-sqlite-access)).
 - WAL mode allows the CLI and the MCP server to open the same file concurrently without corrupting it,
   though it does not substitute for filesystem-level access control (see
   [docs/privacy-and-safety.md](../privacy-and-safety.md#threat-model-notes)).
@@ -37,7 +37,8 @@ no external database driver.
   identity resolution and the `search_people`/CLI `search` paths.
 - SQLite has no native encryption; the file is plaintext on disk. Mitigated today by recommending OS-level
   disk encryption, with SQLCipher noted as a possible future option if that changes — see
-  [docs/privacy-and-safety.md](../privacy-and-safety.md#threat-model-notes).
+  [docs/privacy-and-safety.md](../privacy-and-safety.md#threat-model-notes). *Addendum:* optional SQLCipher
+  encryption (`--encrypted`) shipped in M12.
 - Semantic vectors are derived, optional, and stored in the same file without a base-schema migration.
   Model id/dimension preferences are replaced atomically with the vectors; portable export retains the
   preferences but excludes derived vec0 storage. Incremental failures never roll back primary data and are

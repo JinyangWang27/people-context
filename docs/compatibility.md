@@ -9,11 +9,6 @@ machine-readable JSON documents — and it states plainly which surfaces are del
 The project uses [Semantic Versioning](https://semver.org). The guarantees below hold **within a major version**:
 a change that violates one of them requires a new major version.
 
-While the project remains below `1.0.0`, a breaking change advances the minor version instead of implicitly
-creating `1.0.0`, as described in [releasing.md](releasing.md). The guarantees below describe the discipline
-applied to every change today; the `0.x` series does not weaken them, it only changes which version component a
-deliberate break advances.
-
 This promise covers the primary `people-context` distribution: the `people-context` and `people-context-mcp`
 server commands and the `pctx` CLI.
 

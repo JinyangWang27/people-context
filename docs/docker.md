@@ -1,6 +1,6 @@
 # Docker image
 
-Status: Delivered as part of [M8 — Distribution & reach](roadmap.md#m8--distribution--reach).
+Status: Delivered as part of [M8 — Distribution & reach](roadmap.md).
 
 The container image is an **optional** convenience distribution of the same local stdio MCP server that
 `uvx --from people-context people-context` runs. It is not the default or recommended install path, and it is
@@ -38,7 +38,7 @@ The database is never baked into an image layer. The image sets `PEOPLE_CONTEXT_
 `/data` as a volume; mount your own storage there so the SQLite file survives container restarts.
 
 `PEOPLE_CONTEXT_DB` is the standard database-path environment variable (see
-[Database location](../README.md#database-location)); the image only sets a container default. Override it to place
+[Database location](cli.md#database-location-resolution)); the image only sets a container default. Override it to place
 the database elsewhere under the mounted volume.
 
 ### Named volume (works out of the box)

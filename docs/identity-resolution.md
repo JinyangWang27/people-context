@@ -83,7 +83,7 @@ candidates rather than silently picking the top one — the caller is expected t
 (organisation, role, recent conversation, or asking the user directly) to disambiguate. When no candidate
 clears the threshold, `candidates` is returned empty, signalling that the caller should offer to create a
 new person via `remember_person` rather than force a low-confidence match onto an unrelated existing record.
-See [docs/mcp-interface.md](mcp-interface.md#the-ambiguity-contract-of-resolve_person) for how this
+See [docs/mcp-interface.md](mcp-interface.md#resolve_person) for how this
 surfaces at the tool level.
 
 ## Why transliterations are stored aliases, not computed (v1)
@@ -91,8 +91,8 @@ surfaces at the tool level.
 The pipeline deliberately does **not** attempt algorithmic transliteration (e.g. automatically deriving
 "Wang" from "王" or vice versa) in v1. Instead, transliterations, native-script names, and nicknames are all
 stored as `aliases` rows with an explicit `kind` (`native_script`, `transliteration`, `nickname`, …), written
-whenever an agent or the user learns a new name variant for a person (via `remember_person` or the planned
-`add_alias`). Reasons for this choice:
+whenever an agent or the user learns a new name variant for a person (via `remember_person`, `add_alias`, or
+`pctx add-alias`). Reasons for this choice:
 
 - Algorithmic transliteration is inherently ambiguous and script/locale-dependent (a single Chinese surname
   can map to multiple romanizations depending on dialect and personal preference; a nickname is not
@@ -105,7 +105,7 @@ whenever an agent or the user learns a new name variant for a person (via `remem
 
 This may be revisited in a later milestone (e.g. as an optional low-confidence suggestion source feeding
 into stage 5's hint boosting), but is explicitly out of scope for v1. See
-[docs/data-model.md](data-model.md#aliases) for the `aliases` schema this relies on.
+[docs/data-model.md](data-model.md#core-tables) for the `aliases` schema this relies on.
 
 Because the match is a stored alias rather than a computed romanization, resolution stays bidirectional and
 symmetric: whichever of the two scripts is stored as the canonical name, querying the other one still reaches

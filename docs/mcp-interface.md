@@ -5,14 +5,14 @@ unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport r
 
 ## Annotations
 
-[M28.1](specs/m28-groups-and-shared-connections.md) added group/membership management and ordinary reads; M28.2
+M28.1 added group/membership management and ordinary reads; M28.2
 added the explicit pairwise `explain_shared_connections` lookup; see the
 [group contract](#m28-group-and-membership-contract). M28.3 added the `group` and `group_membership` staged candidate
 types to `stage_candidates`. M29.1 added the `amend_candidate` and `withdraw_candidates` write tools, the additive
 `rejected` status, `match_candidates`, `match_candidates_truncated`, and `batch_digest` on `review_import`, and the
 optional `expected_batch_digest` argument on `amend_candidate`, `withdraw_candidates`, and `commit_import`; see the
-[editable staging contract](#m29-editable-staging-contract). **Planned, not implemented:**
-[M29](specs/m29-editable-staging-and-review.md)'s additive `ordinal` field on `review_import`. Existing tools and
+[editable staging contract](#m29-editable-staging-contract). M29.2 added the additive `ordinal` field on each
+`review_import` row. Existing tools and
 graph results keep their meanings.
 
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
@@ -52,7 +52,6 @@ block and no structured payload.
 | `get_group` | One group and a bounded page of its memberships. | `group_id`, `limit=50` | `found`, group, ordinary memberships, `truncated`. |
 | `list_group_memberships` | One person's memberships with each group. | `person_id` or `person`, `limit=50` | `found`, memberships with group summaries, `truncated`. |
 | `explain_shared_connections` | How two people share identified groups, and when. | `person_a_id` or `person_a`, `person_b_id` or `person_b`, `limit=50` | `found`, membership-pair connections with label and temporal certainty, direct relationships, truncation flags. |
-
 | `review_import` | Staged candidates and statuses for one batch. | `batch_id` | Candidate rows; inspection only. |
 
 All seventeen tools are annotated `readOnlyHint=true`. `review_import` was annotated as a write before M21 even
@@ -643,6 +642,10 @@ nothing was.
 decision. Passing it back as `expected_batch_digest` to `amend_candidate`, `withdraw_candidates`, or
 `commit_import` refuses with `batch_changed`, writing nothing, when another client changed the batch after the
 read. Omitting it keeps the released behaviour exactly.
+
+Each `review_import` row also carries an additive `ordinal`: its 1-based position in the batch's staging order
+(`created_at`, then id). It is what numbered CLI selections such as `pctx import review --accept 1 3-5` resolve
+against; the MCP tools still take candidate ids.
 
 Matching re-runs only when a patch names `matched_person_id` or changes what the candidate is matched on — its
 normalized name and handle aliases. A patch that corrects anything else, including a nickname or other non-handle

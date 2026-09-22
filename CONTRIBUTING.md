@@ -21,7 +21,8 @@ ports-and-adapters architecture:
 
 - `domain/` contains dependency-free entities and business rules;
 - `app/` contains use cases and depends only on `domain/` and narrow `ports/` protocols;
-- `adapters/` implements persistence, MCP, import, export, and optional semantic integrations; and
+- `adapters/` implements persistence, MCP, the `pctx browse` web page, import, export, and optional semantic
+  integrations; and
 - composition belongs in `adapters/runtime.py`, shared by process boundaries such as `cli/` and
   `adapters/mcp/server.py`.
 

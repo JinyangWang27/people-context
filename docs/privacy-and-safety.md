@@ -41,7 +41,7 @@ Context-returning tools never dump full records. Responses are:
   no model-supplied boolean that can widen this boundary.
 
 This applies most directly to `get_person_context` (see
-[docs/mcp-interface.md](mcp-interface.md#minimal-disclosure-in-get_person_context)), but the same posture —
+[docs/mcp-interface.md](mcp-interface.md#person-context-compatibility)), but the same posture —
 never return more than the task needs — applies across the tool surface.
 
 Aggregate reports follow the same boundary. `get_stale_relationships` and `pctx stale` count only
@@ -125,7 +125,7 @@ Facts, observations, and traits are separated at three levels simultaneously —
 API (different tools: `record_fact` vs. `record_observation` vs. `record_trait`), and response formatting
 (a context bundle labels which items are objective facts and which are subjective observations/derived
 traits, rather than flattening them into one undifferentiated "here's what I know" block). See
-[docs/data-model.md](data-model.md#facts-vs-observations-vs-traits) for the full comparison.
+[docs/data-model.md](data-model.md#facts-observations-and-traits) for the full comparison.
 
 ## No raw emails, conversations, or transcripts
 
@@ -194,7 +194,7 @@ Two distinct deletion mechanisms exist, and they are not interchangeable:
   scope and deletion counts; the durable changelog tombstone keeps stable target/coverage ids only. Neither
   contains names, values, summaries, observation text, or preference content.
 
-See [docs/data-model.md](data-model.md#soft-delete-vs-forget) for the schema-level detail.
+See [docs/data-model.md](data-model.md#persons-and-soft-deletion) for the schema-level detail.
 
 ## Import receipts and what forget does to them
 
@@ -632,7 +632,7 @@ physical deletion from an unreachable device or third-party backup.
   and common browser rebinding attacks, but it is not process isolation: every local process able to reach
   loopback can attempt to use the MCP endpoint. Do not run it on a shared machine unless that trust boundary
   is acceptable. Authenticated or remotely reachable HTTP is explicitly deferred.
-- **The local browser viewer is loopback-only and token-guarded.**`pctx browse`
+- **The local browser viewer is loopback-only and token-guarded.** `pctx browse`
   binds only `127.0.0.1`; there is no host option. Every request must carry the per-launch token — a query
   parameter on the first load, then a header — and a `Host`, `Origin`, and `Sec-Fetch-Site` matching the bound
   origin, compared with `secrets.compare_digest`; any failure gets one generic refusal naming no check. The

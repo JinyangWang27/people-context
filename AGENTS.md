@@ -31,6 +31,15 @@ The Obsidian integration lives in `obsidian-plugin/`; the developer evaluation h
 
 Use four-space indentation, complete type hints, and a 120-character line limit. Ruff enforces `E`, `F`, `I`, `UP`, `B`, and `SIM` rules. Name modules and functions with `snake_case`, classes with `PascalCase`, and constants with `UPPER_CASE`. Keep functions focused and prefer explicit dependency injection through `typing.Protocol` ports. Never import `adapters`, `mcp`, or `sqlite3` from `domain/` or `app/`.
 
+- Every ordinary durable mutation flows through `audit_mutation`; bootstrap restore is the sole verbatim exception
+  and mints no audit or changelog rows.
+- Untrusted file, JSON, chat, and plugin inputs fail closed with explicit schemas and bounded resources.
+- Schema changes are forward-only migrations numbered after the latest file in `adapters/sqlite/migrations/`.
+- Personal-data files are written through `adapters/filesystem/private_file.py`, never an ad-hoc `open`.
+- Machine JSON documented for integrations is versioned and changes additively; the sync bundle is strict and
+  advances its version for any change.
+- Commit lockfiles (`uv.lock`, Node `package-lock.json` with `npm ci`); pin GitHub Actions to a commit SHA.
+
 ## Testing Guidelines
 
 Use pytest and name files `test_<subject>.py` and tests `test_<behavior>()`. Test application policy against in-memory fakes in `tests/app/fakes.py`; test persistence and transport behavior separately with SQLite and subprocess/E2E tests. Add a regression test for every bug and run focused tests before the full suite.

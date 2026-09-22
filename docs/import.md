@@ -5,7 +5,7 @@ vCard, `.ics` calendar attendees, LinkedIn and Outlook contact exports, WhatsApp
 agent-extracted notes candidates — into `people-context` without ever persisting raw source material.
 Import was delivered in **M3** (see
 [docs/roadmap.md](roadmap.md)); the `import_staging` table lives in the initial schema (see
-[docs/data-model.md](data-model.md#import_staging)).
+[docs/data-model.md](data-model.md#core-tables)).
 
 ## Extract-and-stage model
 
@@ -481,7 +481,7 @@ The same lifecycle is available to a person at the terminal through `pctx import
 adds no source type, no candidate type, and no matching or commit policy of its own, and it keeps the review gate
 as separate commands because a staged batch is durable review state that may be inspected in a later invocation.
 
-[M30](specs/m30-local-web-review.md) adds a loopback-only browser page over the same use cases: M30.2's batch
+M30 adds a loopback-only browser page over the same use cases: M30.2's batch
 review withdraws and commits through `WithdrawStagedCandidates` and `CommitImport` with the displayed
 `batch_digest` (see [cli.md](cli.md#local-browser-viewer)), and M30.3's edit form amends one staged candidate
 through `AmendStagedCandidate` with the same digest, from a form generated from the candidate type's declared
@@ -947,7 +947,7 @@ reach the real tables:
   the wording; that path flows through the same review-and-commit approval as file imports.
 - Provenance for imported records references the source narrowly — e.g. the email's `Message-Id` header and
   its date — enough to trace where a fact came from, without storing the message itself.
-- Email addresses are stored as `aliases` of kind `handle` (see [docs/data-model.md](data-model.md#aliases))
+- Email addresses are stored as `aliases` of kind `handle` (see [docs/data-model.md](data-model.md#core-tables))
   — this is treated as contact data, not raw content, since it is directly analogous to a phone number or
   a nickname the user would otherwise type in by hand.
 
@@ -995,7 +995,7 @@ reported in deterministic input order through `skipped_message_ids` or `skipped_
 
 ## Transcript attribution review (M26.1)
 
-[M26 — Attribution-aware transcript review](specs/m26-transcript-attribution-review.md) adds a client workflow for
+M26 — Attribution-aware transcript review adds a client workflow for
 user-supplied transcripts, including exports with numbered speakers. A speaker label is not a person: several labels
 can refer to one person, and a shared room microphone can combine several people under one label. Whole-label
 mapping cannot resolve that second case; individual statements may require user clarification.
@@ -1019,12 +1019,11 @@ first name, an undated recording, a task nobody accepted, a sensitive aside, and
 series — are in [transcript-review-examples.md](transcript-review-examples.md). The lifecycle checks behind them
 run hand-authored candidate batches through the real stores in
 `tests/adapters/importers/test_transcript_capture_workflow.py`; extraction quality itself is assessed by a person
-against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution). See the
-[PR checklist](specs/pr-plan.md#m26--attribution-aware-transcript-review).
+against [Human review of transcript attribution](evals.md#human-review-of-transcript-attribution).
 
 ## Capturing a shared context (M28.3)
 
-[M28 — Groups, memberships, and shared connections](specs/m28-groups-and-shared-connections.md) adds two staged
+M28 — Groups, memberships, and shared connections adds two staged
 candidate types to the lifecycle documented above, so an agent that hears "we were in the same class" has a
 reviewed path to record it. A `group` names the identified context — a class, cohort, team, department, club,
 household, or community — and carries a batch-local `ref`. A `group_membership` places one `person_ref` in one
@@ -1071,8 +1070,7 @@ confirmed cohort continuity, and two friends of one person — are in
 hand-authored candidate batches through the real stores in `tests/adapters/importers/test_group_staging.py`,
 `tests/adapters/importers/test_group_commit.py`, and `tests/adapters/sqlite/test_bootstrap_group_candidates.py`;
 capture quality itself is assessed by a person against
-[Human review of shared-context capture](evals.md#human-review-of-shared-context-capture). See the
-[PR checklist](specs/pr-plan.md#m28--groups-memberships-and-shared-connections).
+[Human review of shared-context capture](evals.md#human-review-of-shared-context-capture).
 
 ## M6 changelog and export boundary
 

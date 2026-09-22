@@ -8,16 +8,11 @@ them in the order that avoids rework: the official Registry first, because sever
 Everything below assumes a release is live on PyPI whose packaged README carries the marker
 `<!-- mcp-name: io.github.JinyangWang27/people-context -->`.
 
-> **Prerequisite, not yet satisfied.** Releases up to and including `1.1.0` shipped the lowercase
-> `io.github.jinyangwang27` spelling of that marker, which the Registry rejects — the ownership check compares it
-> byte-for-byte against the `name` in [`server.json`](../server.json), and the grant issued by
-> `mcp-publisher login github` covers the GitHub login's own casing (`io.github.JinyangWang27/*`) only. The
-> corrected marker currently exists in this repository alone; publication to the Registry stays blocked until a
-> release built from it is live on PyPI. Confirm before starting step 1:
->
-> ```bash
-> curl -s https://pypi.org/pypi/people-context/json | grep -o 'mcp-name: [^ ]*'
-> ```
+Confirm the live release carries it before starting step 1:
+
+```bash
+curl -s https://pypi.org/pypi/people-context/json | grep -o 'mcp-name: [^ ]*'
+```
 
 Budget: about two hours end to end, most of it waiting on forms and one PR review.
 
@@ -56,7 +51,7 @@ curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=people-conte
 rm -f mcp-publisher mcp-publisher_darwin_arm64.tar.gz
 ```
 
-Expected: one server named `io.github.JinyangWang27/people-context` at version `1.0.0` with a `pypi` package.
+Expected: one server named `io.github.JinyangWang27/people-context` at the current release version with a `pypi` package.
 
 Common failures:
 
@@ -64,7 +59,7 @@ Common failures:
   `mcp-name:` line. Confirm at https://pypi.org/project/people-context/ that the rendered description starts
   with it. It is an HTML comment, so view the page source.
 - `namespace` or `unauthorized`: the GitHub account used in the device flow is not `JinyangWang27`.
-- Version already exists: the Registry is a versioned snapshot. After the next release (`1.1.0` from PR #116),
+- Version already exists: the Registry is a versioned snapshot. After the next release,
   repeat the three commands; Release Please already bumped `server.json`.
 
 Every future release needs the same `publish` step, since nothing automates the device flow.
@@ -118,7 +113,7 @@ PulseMCP ingests the official Registry and GitHub metadata, so do this after ste
 
 ### Record it
 
-When each listing is live, edit the matrix in [mcp-registry.md](mcp-registry.md#community-directory-matrix):
+When each listing is live, edit the matrix in [mcp-registry.md](mcp-registry.md#community-directory-submission-matrix):
 replace the *Live publication* cell's "Manual …" text with `Published YYYY-MM-DD` and the listing URL.
 That doc has no test pinning those cells, so it is a plain edit. Commit it as
 `docs: record directory publication dates`.

@@ -11,54 +11,41 @@ See also: [docs/data-model.md](data-model.md) for what the core actually stores,
 
 ## Layer diagram
 
-[M28.1](specs/m28-groups-and-shared-connections.md) protected groups and memberships follow the existing layers:
-`domain/group.py`, the `ports/groups.py` `GroupStore`, `app/groups/`, and `adapters/sqlite/group_store.py`.
-M28.2's `app/groups/connections.py` derives pairwise shared context at read time from the same `GroupStore`
-reads, without persisted inferred edges or a general-purpose inference engine.
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ process entry points                                                     │
+│   cli/ (pctx)   adapters/mcp/server.py (people-context-mcp)   config.py  │
+│   adapters/runtime.py — the shared composition root                      │
+├──────────────────────────────────────────────────────────────────────────┤
+│ adapters                                                                 │
+│   sqlite/       db.py, migrations/, stores, readers, bootstrap restore   │
+│   mcp/          server.py, tools/, prompts.py, guide.md                  │
+│   web/          pctx browse: app.py, page.py, fields.py                  │
+│   importers/    email/mbox, ics, linkedin, outlook, vcard, whatsapp      │
+│   filesystem/   private_file.py, vault_writer.py, vcard_writer.py        │
+│   model2vec_embeddings.py, semantic_indexing.py                          │
+└──────────────────────────────┬───────────────────────────────────────────┘
+                               │ implements
+┌──────────────────────────────▼───────────────────────────────────────────┐
+│ ports — one narrow typing.Protocol module per concern                    │
+└──────────────────────────────┬───────────────────────────────────────────┘
+                               │ depended on by (never implemented in)
+┌──────────────────────────────▼───────────────────────────────────────────┐
+│ app — use cases by capability                                            │
+│   people/ context/ records/ relationships/ groups/ imports/ capture/     │
+│   insights/ exports/ semantic/ sync/ _mutation.py                        │
+└──────────────────────────────┬───────────────────────────────────────────┘
+                               │ operates on
+┌──────────────────────────────▼───────────────────────────────────────────┐
+│ domain — Pydantic entities and dependency-free rules                     │
+│   person, relationship, organization, fact, observation, trait, group,   │
+│   interaction, reminder, staged_candidate, sync_bundle, shared, …        │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
-```
-                         ┌───────────────────────────────────────────┐
-                         │                 adapters                    │
-                         │                                              │
-                         │  adapters/sqlite/     adapters/mcp/          │
-                         │    db.py                server.py            │
-                         │    migrations/*.sql     tools/*.py           │
-                         │    repository.py         merge_store.py      │
-                         │    forget_store.py       record_store.py     │
-                         │    audit_log.py          unit_of_work.py     │
-                         │    semantic.py        importers/*.py         │
-                         │                                              │
-                         │  cli/*.py              runtime.py config.py  │
-                         └───────────────────┬─────────────────────────┘
-                                             │ implements
-                         ┌───────────────────▼─────────────────────────┐
-                         │                  ports                       │
-                         │  ports/repository.py   PersonReader,         │
-                         │                          PersonWriter,        │
-                         │                          SearchHit            │
-                         │  ports/audit_log.py     AuditLog, AuditEntry  │
-                         │  ports/changelog.py     Changelog, entries     │
-                         │  ports/hlc.py           HybridLogicalClock     │
-                         │  ports/unit_of_work.py  UnitOfWork             │
-                         │  ports/clock.py         Clock, SystemClock     │
-                         │  ports/sleep.py         Sleeper, SystemSleeper │
-                         └───────────────────┬─────────────────────────┘
-                                             │ depended on by (never implemented in)
-                         ┌───────────────────▼─────────────────────────┐
-                         │                   app                        │
-                         │  people/      context/       records/         │
-                         │  relationships/ imports/     exports/         │
-                         │  semantic/      _mutation.py                  │
-                         └───────────────────┬─────────────────────────┘
-                                             │ operates on
-                         ┌───────────────────▼─────────────────────────┐
-                         │                  domain                      │
-                         │  person.py  relationship.py  organization.py │
-                         │  fact.py  observation.py  trait.py           │
-                         │  interaction.py  reminder.py  preferences.py │
-                         │  shared.py (Confidence, Sensitivity, …)      │
-                         └───────────────────────────────────────────────┘
-```
+Groups follow the same layers: `domain/group.py`, the `ports/groups.py` `GroupStore`, `app/groups/`, and
+`adapters/sqlite/group_store.py`. `app/groups/connections.py` derives pairwise shared context at read time from the
+same `GroupStore` reads, without persisted inferred edges or a general-purpose inference engine.
 
 ## Layer responsibilities
 
@@ -72,8 +59,8 @@ cohesive domain concepts.
 
 ### `app`
 
-Use cases are organized by product capability: `people`, `context`, `records`, `relationships`, `imports`,
-`exports`, and `semantic`. Small symmetric use cases may share a focused module; workflows with distinct
+Use cases are organized by product capability: `people`, `context`, `records`, `relationships`, `groups`,
+`imports`, `capture`, `insights`, `exports`, `semantic`, and `sync`. Small symmetric use cases may share a focused module; workflows with distinct
 models, staging, and orchestration responsibilities are split. Classes still remain focused and depend only
 on `domain` and narrow `ports`, never on a concrete adapter. The root `app` package is not a public barrel.
 Use cases contain the only place application-level policy (e.g. the ambiguity threshold in identity
@@ -82,19 +69,11 @@ actions in `records/doctor.py`, or the path redaction in `context/stats.py`) is 
 
 ### `ports`
 
-`typing.Protocol` interfaces, split narrowly by concern rather than one fat repository interface:
-`PersonReader` and `PersonWriter` (`ports/repository.py`), semantic embedding/vector/rebuild ports
-(`ports/semantic.py`), `AuditLog` (`ports/audit_log.py`), `Changelog` (`ports/changelog.py`),
-`MergeStore` (`ports/merge.py`), `ForgetStore` and `ForgetPreviewStore` (`ports/forget.py`),
-`HybridLogicalClock` (`ports/hlc.py`), `BundleReader` (`ports/sync_bundle.py`),
-`RecencyReader` (`ports/insights.py`), `PersonTimelineReader` (`ports/timeline.py`),
-`PersonConsolidationReader` (`ports/consolidation.py`),
-`CurationReader` (`ports/curation.py`),
-`StatsReader` (`ports/stats.py`),
-`ImportSourceStore` and the read-only `ImportSourceInspectionReader` (`ports/sources.py`),
-`TraitEvidenceStore` and its read-only `TraitEvidenceReader` (`ports/evidence.py`),
-`UnitOfWork` (`ports/unit_of_work.py`), `Clock` (`ports/clock.py`), and
-`Sleeper` (`ports/sleep.py`).
+`typing.Protocol` interfaces, split narrowly by concern rather than one fat repository interface — one module
+per concern under `ports/`, for example `PersonReader` and `PersonWriter` (`repository.py`), `AuditLog`
+(`audit_log.py`), `Changelog` (`changelog.py`), `MergeStore` (`merge.py`), `ForgetStore` (`forget.py`),
+`GroupStore` (`groups.py`), `ImportSourceStore` (`sources.py`), `TraitEvidenceStore` (`evidence.py`),
+`BundleReader` (`sync_bundle.py`), `UnitOfWork` (`unit_of_work.py`), and `Clock` (`clock.py`).
 Splitting concerns means read, merge, forget, audit, and sync use cases depend only on capabilities they consume.
 
 A few callers legitimately need every side of one store — the semantic indexing decorators wrap person and
@@ -115,20 +94,21 @@ Concrete implementations of the ports, plus anything that talks to the outside w
   describes a single point in time. Adapter write methods join an enclosing transaction rather than committing
   independently.
 - `adapters/filesystem/` — `private_file.py` (the shared atomic owner-only writer used by every personal-data
-  file output) and `vault_writer.py`.
+  file output), `vault_writer.py`, and `vcard_writer.py`.
 - `adapters/mcp/` — `server.py` (`build_server`/`main`, tool registration and annotations), `tools/` (one
-  module per tool group).
-- `adapters/importers/` — source-specific, stdlib-backed email, ICS, LinkedIn, and vCard extraction plus
-  routing; every importer feeds the shared candidate staging use case described in [docs/import.md](import.md).
+  module per tool group), `prompts.py`, and the packaged `guide.md`.
+- `adapters/web/` — the loopback-only `pctx browse` Starlette app (`app.py`), its single page (`page.py`), and the
+  editable-field declarations (`fields.py`); a fourth client of the same use cases.
+- `adapters/importers/` — source-specific, stdlib-backed email/mbox, ICS, LinkedIn, Outlook, vCard, and WhatsApp
+  extraction plus routing; every importer feeds the shared candidate staging use case described in [docs/import.md](import.md).
 - `adapters/model2vec_embeddings.py`, `adapters/semantic_indexing.py`, and `adapters/sqlite/semantic.py` —
   optional cached embeddings, best-effort lifecycle refresh decorators, and same-file cosine vec0 storage.
 - `cli/` — parser/dispatch and capability command modules for the `pctx` CLI, built on the same
   application runtime as the MCP tools while preserving `people_context.cli:main`.
 - `adapters/runtime.py` — the shared composition root for SQLite, optional semantic decorators, clocks, and
   application use cases. Process entrypoints inject their own warning sink.
-- `config.py` — DB path resolution (flag → env → config file → shared `~/.pctx/people.db`) and the legacy
-  transition guard used by every database-opening entry point; this is itself an
-  adapter concern (it reads environment and filesystem) but is small enough to live at the package root.
+- `config.py` — DB path resolution (flag → env → config file → shared `~/.pctx/people.db`) used by every
+  database-opening entry point; this is itself an adapter concern (it reads environment and filesystem) but is small enough to live at the package root.
 
 ## Dependency rule
 

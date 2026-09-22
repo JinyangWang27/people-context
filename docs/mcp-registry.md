@@ -2,9 +2,7 @@
 
 This document records how `people-context` presents itself to the official MCP Registry and to the community
 directories, which files in this repository carry that metadata, and which steps remain manual account-owner
-actions. It delivers checklist item **M8.2** of [docs/specs/pr-plan.md](specs/pr-plan.md); see
-[docs/specs/m8-distribution-and-reach.md](specs/m8-distribution-and-reach.md) for the binding milestone
-specification.
+actions.
 
 The canonical tool inventory and response contracts live in [docs/mcp-interface.md](mcp-interface.md). Directory
 listings reuse those descriptions; this document does not restate them.
@@ -70,9 +68,7 @@ The command identifier must not also be repeated in `packageArguments`.
 
 **Reproducible version selection.** A Registry entry is a versioned snapshot, so the primary requirement is pinned
 with `==<server version>` rather than left to resolve to the latest release. This keeps a client that selects the
-historical Registry entry on its matching `people-context` release and contracts, honouring the same-version
-package contract in [docs/specs/m8-distribution-and-reach.md](specs/m8-distribution-and-reach.md) and the
-synchronization assumptions in [docs/specs/m12-trust-stability-v1.md](specs/m12-trust-stability-v1.md). The pinned
+historical Registry entry on its matching `people-context` release and contracts. The pinned
 `--from` value, the reconstructed command, the single stdio PyPI entry, and the ownership marker are asserted — and
 kept in lockstep with the server version — both in CI
 (`.github/workflows/mcp-registry-validate.yml`) and in `tests/test_registry_metadata.py`. Release Please updates

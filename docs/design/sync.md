@@ -2,14 +2,14 @@
 
 ## Status and scope
 
-This document delivered M5 as the replication design and is the implementation specification for M6 and M7.
-M6 accepts ADRs [0004](../decisions/0004-changelog-vs-audit-log.md) and
-[0005](../decisions/0005-conflict-resolution-strategy.md) and implements the local durable-change-capture half.
-Transport, pairing, exchange, replay, and bootstrap remain M7 work.
+This document delivered M5 as the replication design and specified M6. M6 accepts ADRs
+[0004](../decisions/0004-changelog-vs-audit-log.md) and [0005](../decisions/0005-conflict-resolution-strategy.md)
+and implements the local durable-change-capture half. M11 added one-shot bootstrap export and restore; transport,
+pairing, exchange, and incremental replay remain [roadmap candidates](../roadmap.md#candidates).
 
 ## 1. Goals and non-goals
 
-[M28.1](../specs/m28-groups-and-shared-connections.md) groups and memberships participate in audit/changelog,
+M28.1 groups and memberships participate in audit/changelog,
 the bootstrap bundle, merge, and hard forget. M28.2 derived connections remain read results and are not
 portable primary state.
 
@@ -440,7 +440,7 @@ and existing rows have no ownership or sharing columns.
 
 ## 8. Migration path appendix
 
-M6 implements the single-user subset of this migration sketch. `sync_peer_cursors` remains deferred to M7.
+M6 implements the single-user subset of this migration sketch. `sync_peer_cursors` remains a roadmap candidate.
 
 Minimal backward-compatible additions could include:
 
@@ -534,12 +534,12 @@ design.
 M6 locks the following answers for the local sync foundation:
 
 1. Changelog payloads are plaintext in the local SQLite database. Primary tables already contain the same
-   plaintext; end-to-end encryption applies to M7 batch exchange, while SQLCipher remains separate work.
+   plaintext; end-to-end encryption would apply to a future batch exchange, while SQLCipher remains separate work.
 2. Merge records row-level child operations and one semantic parent manifest under the same `transaction_id`.
 3. Forget tombstones are retained indefinitely in M6 and are never compacted before peer-aware retention exists.
 4. `import_staging` remains device-local workflow state and is not captured in the changelog.
 5. Reminders are ordinary portable state and every reminder mutation is captured. Notification delivery state is
    separate from reminder state.
 
-M6 also defers `sync_peer_cursors` to M7 because no peers or exchange protocol exist yet. The local changelog is
+M6 also defers `sync_peer_cursors` because no peers or exchange protocol exist yet. The local changelog is
 not added to the M6 export envelope; pre-changelog rows and first-device bootstrap remain snapshot territory.
