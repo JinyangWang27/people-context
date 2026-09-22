@@ -577,17 +577,13 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   without minting new audit or changelog entries. Forgotten-record redaction therefore stays redacted, and
   nothing is reconstructed or enriched.
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
-- Since M18.1 the bundle carries import receipts, every durable candidate commit mapping, and the staging rows
-  of batches that are still reviewable; M18.3 made it version 3 and added the trait-evidence links, and since
-  M22.1 version 4's staged fact and affiliation candidates may name who asserted them. That
-  attribution is bounded, distilled text, never a copied document passage, and it travels only inside a staging
-  row a still-reviewable batch already carried. M28.1 made it **version 5**, carrying groups and memberships with
-  their own sensitivity verbatim; a refusal about them names ids only, never a group name. Restore accepts
-  versions 1 through 5, validating each document
-  against its own strict shape — an older version refuses the attribution rather than restoring a candidate it
-  would then commit with the attribution silently dropped — and
-  every new table joins the baseline-empty rule for *all* accepted versions — freshness is a property of the
-  destination, not of the document. A terminal `redacted` receipt travels as the minimal claim it was reduced
+- The bundle (version 7) carries import receipts, every durable candidate commit mapping, the staging rows of
+  batches that are still reviewable, trait-evidence links, and groups and memberships with their own sensitivity
+  verbatim; a refusal about groups names ids only, never a group name. Staged fact and affiliation candidates
+  may name who asserted them; that attribution is bounded, distilled text, never a copied document passage, and
+  it travels only inside a staging row a still-reviewable batch already carried. Restore accepts only version 7,
+  validated against its strict shape, and every table joins the baseline-empty rule — freshness is a property of
+  the destination, not of the document. A terminal `redacted` receipt travels as the minimal claim it was reduced
   to; a bundle that tried to reattach cleared caller metadata to one is refused. An evidence link is validated
   the way it was written: it must name records the bundle carries, and they must belong to the trait's subject.
 

@@ -114,29 +114,6 @@ def test_a_group_reference_survives_the_round_trip_pointing_at_the_same_row(runt
     assert referenced == set(group_ids)
 
 
-@pytest.mark.parametrize("version", [2, 3, 4, 5])
-@pytest.mark.parametrize("candidate_type", ["group", "group_membership"])
-def test_a_document_predating_m28_3_refuses_the_new_candidate_types(
-    runtime: ApplicationRuntime, version: int, candidate_type: str
-) -> None:
-    """A released version is a closed shape, and this one cannot even fail closed on a field.
-
-    The discriminator picks the model before any field is inspected, so a reader that did not
-    refuse the type by name would restore a membership it has no group reference namespace to
-    resolve and no group commit pass to run — a pending row review lists and commit never
-    resolves, while the receipt's claim keeps suppressing a corrected restage.
-    """
-    _stage(runtime)
-    payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-    payload["version"] = version
-    payload["imports"]["staging"] = [
-        row for row in payload["imports"]["staging"] if row["candidate"]["type"] in {"person", candidate_type}
-    ]
-
-    with pytest.raises(ValidationError):
-        parse_bundle_payload(payload)
-
-
 def test_forgetting_a_person_erases_their_placements_and_leaves_everyone_else_theirs(
     runtime: ApplicationRuntime,
 ) -> None:

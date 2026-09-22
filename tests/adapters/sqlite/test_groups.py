@@ -384,25 +384,6 @@ class TestPortability:
         assert [row["id"] for row in document.groups] == [group]
         assert [row["id"] for row in document.group_memberships] == [membership]
 
-    def test_a_version_four_bundle_restores_with_no_groups(self, runtime: ApplicationRuntime) -> None:
-        self._seed(runtime)
-        payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-        payload["version"] = 4
-        payload.pop("groups")
-        payload.pop("group_memberships")
-
-        document = runtime.use_cases.restore_sync_bundle.parse(json.dumps(payload))
-
-        assert (document.groups, document.group_memberships) == ([], [])
-
-    def test_a_version_four_bundle_carrying_groups_is_refused(self, runtime: ApplicationRuntime) -> None:
-        self._seed(runtime)
-        payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-        payload["version"] = 4
-
-        with pytest.raises(InvalidBundleError):
-            runtime.use_cases.restore_sync_bundle.parse(json.dumps(payload))
-
     @pytest.mark.parametrize(
         ("mutate", "reason"),
         [
@@ -429,15 +410,10 @@ class TestPortability:
         assert _count(runtime.conn, "identified_groups") == 1
 
     @pytest.mark.parametrize("table", ["identified_groups", "group_memberships"])
-    @pytest.mark.parametrize("version", [1, 5])
     def test_a_non_empty_group_table_refuses_restore(
-        self, runtime: ApplicationRuntime, tmp_path: Path, table: str, version: int
+        self, runtime: ApplicationRuntime, tmp_path: Path, table: str
     ) -> None:
         payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
-        if version == 1:
-            payload["version"] = 1
-            for key in ("groups", "group_memberships", "trait_evidence", "imports"):
-                payload.pop(key)
         destination = build_runtime(tmp_path / "destination.db", clock=_Clock())
         try:
             document = destination.use_cases.restore_sync_bundle.parse(json.dumps(payload))

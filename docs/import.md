@@ -256,9 +256,8 @@ value records the self-description and whose `stated_by` names them; it never be
 a receipt proving the file was processed proves nothing about whether its claims are true. Unknown attribution
 stays absent — do not invent a speaker, and do not put processing metadata there instead.
 
-Candidates that omit `stated_by`, including every batch staged before M22.1, remain valid and commit exactly as
-they did. Because the bootstrap bundle forbids unknown fields inside a staged candidate, carrying attribution in
-an incomplete batch advances the bundle to **version 4**; see [docs/compatibility.md](compatibility.md).
+Candidates that omit `stated_by` remain valid and commit exactly as they did. The bootstrap bundle carries
+attribution inside an incomplete batch's staged candidates; see [docs/compatibility.md](compatibility.md).
 
 ### Capturing a CV, biography, or page of notes (M22.2)
 
@@ -1054,8 +1053,7 @@ Three rules shape the contract, and each is enforced rather than merely document
   so is one that stages a membership without `source_kind` — the mapping is the only thing that can reattach a
   membership to a group committed earlier, since matching the group by name is what this milestone forbids.
 
-Both types opt into the M17 extraction bounds, participate in export and bootstrap restore as sync bundle
-**version 6**, and are erased with their person by hard forget — a member's erasure removes their placements and
+Both types opt into the M17 extraction bounds, participate in export and bootstrap restore, and are erased with their person by hard forget — a member's erasure removes their placements and
 leaves the group candidate and everybody else's placements intact. Forgetting a *group* works the other way: it
 removes the commit mappings of the memberships that cascade with it, and any still-pending candidate naming it
 through `group_id`, because a candidate whose only possible target is gone could never commit and a bundle
@@ -1063,9 +1061,7 @@ carrying one is refused.
 
 A refused batch names the rule that broke and the candidate that broke it, never the value: a `ref`, a
 `person_ref`, and a `group_ref` are all free-form text the agent chose, and the MCP adapter returns those
-diagnostics verbatim. Every version through 5 refuses the two types
-by name, because a discriminator picks the model before any field is inspected and a reader that could not resolve
-a group reference would restore a batch commit could never finish.
+diagnostics verbatim.
 
 Nothing here writes automatically, extrapolates a roster, or records a speculative progression, and no new review
 framework is introduced. Eight fictional worked captures — a class with a proven term, the same school with
