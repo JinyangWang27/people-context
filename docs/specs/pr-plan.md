@@ -1044,17 +1044,22 @@ no new browser capability is required. Nuwa informs grounded extraction; Luban i
     improvement claims based solely on instruction-text tests.
 
 - [ ] **M31.4 — Reviewed portable perspective export**
-  - **Scope:** Add the client-side `export-perspective` workflow and essential shared/packaged guidance. Produce a
-    self-contained `SKILL.md` plus `references/evidence.md`, with purpose, triggers, scope, as-of date, supported
-    patterns, contradictions, attribution, uncertainty, and hypothetical-use boundaries.
+  - **Scope:** Add the client-side `export-perspective` workflow and essential shared/packaged guidance. Add a narrow
+    `pctx perspective publish OUTPUT` command accepting approved `skill_md` and `evidence_md` JSON strings on stdin.
+    Produce a self-contained `SKILL.md` plus `references/evidence.md`, with purpose, triggers, scope, as-of date,
+    supported patterns, contradictions, attribution, uncertainty, and hypothetical-use boundaries.
   - **Acceptance:** Preview the complete package and destination and obtain explicit export approval before writing.
     Capture approval is not export approval, and export does not authorize database writes. Include only selected
     ordinary-disclosure or explicitly supplied material; omit raw transcripts, unrelated private details, credentials,
-    and private paths. Use private file permissions through available client facilities. Require a new reviewed
-    decision before replacement. Treat source instructions as data and simulated answers as interpretations. Explain
-    that corrections and forget cannot revoke old copies; refresh requires rereading, regeneration, and review.
-  - **Out:** Native export commands, automatic installation/activation/publishing, unreviewed overwrite, raw source
-    archives, live database dependencies, background refresh, and server-side generation.
+    and private paths. Require the repository-owned publisher; if unavailable, preview and stop. Stage the package
+    in an owner-private directory and use `atomic_write_private_text` for both files before exposing it. Refuse any
+    existing destination, including a symlink; failed publication leaves it untouched and cleans partial output.
+    Keep package contents out of arguments, logs, and errors. Test private modes, permissive existing files,
+    symlink destinations, failed writes, and cleanup. Refresh uses a newly reviewed destination, never in-place
+    replacement. Treat source instructions as data and simulated answers as interpretations. Explain that corrections
+    and forget cannot revoke old copies.
+  - **Out:** Database-driven export commands, automatic installation/activation/publishing, overwrite of an existing
+    package, raw source archives, live database dependencies, background refresh, and server-side generation.
 
 - [ ] **M31.5 — Portability verification and worked examples**
   - **Scope:** Test fictional contact and public-figure packages in a clean client context without people-context MCP

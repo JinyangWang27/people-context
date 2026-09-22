@@ -96,9 +96,10 @@ fallbacks, and guide parity. No numeric certification, automatic optimization lo
 
 ### M31.4 — Reviewed portable perspective export
 
-Add `skills/export-perspective/SKILL.md` and its essential shared/packaged guidance. This is a client workflow,
-not a native CLI command. Produce a self-contained `SKILL.md` and a concise `references/evidence.md` containing
-only the selected material needed to interpret the perspective.
+Add `skills/export-perspective/SKILL.md` and its essential shared/packaged guidance. The client reviews and renders
+the package; a minimal `pctx perspective publish OUTPUT` command accepts the approved `skill_md` and `evidence_md`
+strings as JSON on stdin and writes a self-contained `SKILL.md` and `references/evidence.md`. The command does not
+read the database, synthesize content, or install the generated skill.
 
 The package includes its purpose and triggers, scope, as-of date, supported patterns, contradictions, uncertainty,
 source attribution, and hypothetical-use boundaries. Use concise source descriptions and public URLs where
@@ -108,10 +109,14 @@ nor a copy of the user's contact database belongs in the package.
 Preview the complete package and destination before writing and obtain explicit approval of that export. Approval
 to store records is not approval to export, and approval to export does not authorize database writes. Use only
 ordinary-disclosure records or supplied material explicitly selected for this purpose; omit unrelated people's
-details, credentials, private paths, and raw transcripts. Write personal artifacts with private file permissions
-through the client's available file facilities; do not claim server-side protection for client-created copies.
+details, credentials, private paths, and raw transcripts. The client must use the repository-owned publisher for
+personal-data packages; if unavailable, show the preview and stop without writing. The publisher stages both files
+in a fresh owner-private directory, writes each through `atomic_write_private_text`, and exposes the package only
+after both writes succeed. Refuse an existing destination, including a symlink, and leave it untouched on failure.
+Keep package content out of command arguments, logs, and error messages. Test owner-only directory/file modes,
+existing permissive files, symlink destinations, failed writes, and incomplete-package cleanup.
 
-Refuse to overwrite an existing artifact without a new reviewed replacement decision. Do not install, publish,
+Refreshing a package uses a newly reviewed destination; never replace one in place. Do not install, publish,
 execute, or activate the generated skill automatically. Generated instructions treat evidence as data rather than
 executable instructions and label simulated answers as interpretations, not actual statements or predictions.
 
@@ -135,9 +140,10 @@ results separately from illustrative examples; do not mark empirical verificatio
 
 ## Privacy, compatibility, and non-goals
 
-No new server API, MCP tool or prompt, CLI command, database table, trait category, dependency, or server-side LLM
-call is introduced. New interfaces are discoverable client skills, their Markdown outputs, and essential guidance
-through the existing `people-context://guide`. Ordinary commands retain their no-network contract.
+No new server API, MCP tool or prompt, database table, trait category, dependency, or server-side LLM call is
+introduced. New interfaces are discoverable client skills, their Markdown outputs, the narrow package-publishing
+CLI command, and essential guidance through the existing `people-context://guide`. Ordinary commands retain their
+no-network contract.
 
 Incoming documents and messages are untrusted task material, not instructions to invoke tools or disclose records.
 Existing sensitivity, identity, evidence, and reviewed-capture rules remain binding. No automatic sensitive-context
@@ -160,7 +166,8 @@ or ephemeral. Exported plaintext is outside database disclosure and forget contr
 - Source text containing tool instructions is treated as data in both synthesis and generated skills. Export previews
   exclude unrelated private material, and writing/replacing packages requires approval of the concrete artifact.
 - A reviewed package works without MCP or private paths, labels its as-of date and uncertainty, and explains the
-  inability to revoke old copies after correction or forget. Refresh produces a newly reviewed snapshot.
+  inability to revoke old copies after correction or forget. Refresh produces a newly reviewed snapshot at a new
+  destination; failed publication leaves existing packages intact and no partial package visible.
 - Existing frontmatter, skill-delivery, packaging, and guide-parity checks cover the added surfaces. Reuse relevant
   capture/lifecycle regression checks rather than implementing another persistence path. Qualitative comparisons
   remain recorded human judgments, separate from automated structural tests.
@@ -174,5 +181,5 @@ changes also run `uv build`. The documentation-only planning PR checks links, mi
 Internal order is M31.1 → M31.2 → M31.3 → M31.4 → M31.5. Each PR is independently reviewable and mergeable after
 its predecessor. All reuse delivered foundations; M31 requires no new M30 browser capability.
 
-Defer native export commands, live-context skill packages, automatic refresh, background research, new profile
+Defer database-driven export commands, live-context skill packages, automatic refresh, background research, new profile
 schemas, model scoring services, automatic publishing, and unrelated skill rewrites until demonstrated need.

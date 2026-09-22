@@ -329,11 +329,13 @@ There is no remote access, no authentication, no daemon, and no JavaScript build
 Add a client workflow for evidence-grounded perspectives on contacts and public figures, refine relevant skills
 against recorded baselines, and explicitly export reviewed portable perspective snapshots. Adapt Nuwa's grounded
 extraction ideas and Luban's verification discipline while preserving ordinary disclosure, uncertainty, and reviewed
-capture. Reuse existing records and tools; no new profile store, server API, CLI command, or server-side LLM.
+capture. Reuse existing records and tools; the only new CLI surface is a narrow, database-free package publisher.
+No new profile store, server API, or server-side LLM is planned.
 
 M31.1 delivers the perspective workflow; M31.2 establishes evaluation fixtures and a baseline; M31.3 refines skills
 with recorded comparisons; M31.4 adds reviewed client-side export; M31.5 verifies portability and documents examples.
-The five PRs are sequential. Exports are dated snapshots, and corrections or forget operations cannot revoke copies.
+The five PRs are sequential. A narrow CLI publisher writes reviewed snapshots privately and atomically; corrections
+or forget operations cannot revoke copies.
 
 **Spec:** [M31 — Grounded perspectives and skill refinement](specs/m31-grounded-perspectives-and-skill-refinement.md).
 **PRs:** [M31 checklist](specs/pr-plan.md#m31--grounded-perspectives-and-skill-refinement).
