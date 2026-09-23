@@ -42,6 +42,7 @@ def build_report(
 ) -> dict[str, Any]:
     """Assemble the deterministic report document for one run."""
     ordered = sorted(outcomes, key=lambda outcome: (outcome.task_id, outcome.condition))
+    scored = loaded.suite.review == "rubric"
     return {
         "format": REPORT_FORMAT,
         "version": REPORT_VERSION,
@@ -53,6 +54,9 @@ def build_report(
             "world_id": world.world_id,
             "world_as_of": _instant(world.as_of),
         },
+        # "human" reports carry answers for a person to review and no totals: an empty
+        # rubric earns nothing, and printing that as a score would be a false grade.
+        "review": loaded.suite.review,
         "runner": {
             "name": runner_name,
             "kind": runner_kind,
@@ -71,15 +75,15 @@ def build_report(
             "system": loaded.suite.system_prompt,
             "tasks": [{"id": task.id, "title": task.title, "prompt": task.prompt} for task in tasks],
         },
-        "totals": _totals(ordered),
+        "totals": _totals(ordered) if scored else [],
         "runs": [
             {
                 "task_id": outcome.task_id,
                 "condition": outcome.condition,
                 "model_id": outcome.model_id,
-                "earned": outcome.score.earned,
-                "possible": outcome.score.possible,
-                "percent": outcome.score.percent,
+                "earned": outcome.score.earned if scored else None,
+                "possible": outcome.score.possible if scored else None,
+                "percent": outcome.score.percent if scored else None,
                 "criteria": [
                     {
                         "id": criterion.id,
@@ -129,6 +133,14 @@ def render_summary(report: dict[str, Any]) -> str:
         f"suite {report['suite']['id']} v{report['suite']['version']} "
         f"(world {report['suite']['world_id']}, harness {report['harness_version']})",
         f"runner {report['runner']['name']} ({report['runner']['kind']})",
+    ]
+    if report.get("review") == "human":
+        lines.extend(("", "human review — not scored", ""))
+        lines.extend(("| task | condition | answer chars |", "| --- | --- | ---: |"))
+        for run in report["runs"]:
+            lines.append(f"| {run['task_id']} | {run['condition']} | {len(run['answer'])} |")
+        return "\n".join(lines) + "\n"
+    lines += [
         "",
         "| condition | tasks | earned | possible | percent |",
         "| --- | ---: | ---: | ---: | ---: |",

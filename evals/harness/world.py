@@ -17,10 +17,17 @@ from evals.harness.suite import read_json_document
 from people_context.adapters.runtime import ApplicationRuntime, build_runtime
 from people_context.app.context import SetCommunicationPhilosophyInput
 from people_context.app.people import AliasInput, RememberPersonInput
-from people_context.app.records import RecordFactInput, RecordInteractionInput, SetAffiliationInput
+from people_context.app.records import (
+    RecordFactInput,
+    RecordInteractionInput,
+    RecordObservationInput,
+    RecordTraitInput,
+    SetAffiliationInput,
+)
 from people_context.app.relationships import SetRelationshipInput
 from people_context.config import resolve_db_path
 from people_context.domain.person import AliasKind, Person
+from people_context.domain.trait import TraitCategory
 
 #: Every fixture write is attributed to this source, so an evaluated store is
 #: distinguishable from a real one by inspection alone.
@@ -79,6 +86,38 @@ class WorldInteraction(_StrictModel):
         return value.astimezone(UTC)
 
 
+class WorldObservation(_StrictModel):
+    """One fictional subjective observation, keyed so a trait can cite it as evidence.
+
+    ``stated_by`` names who said it. An observation whose ``stated_by`` is the person it is
+    about is their own statement; any other value is someone else's report of them.
+    """
+
+    key: str = Field(min_length=1, max_length=64)
+    person_key: str
+    text: str = Field(min_length=1, max_length=1000)
+    observed_at: datetime
+    stated_by: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("observed_at")
+    @classmethod
+    def _aware(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("observation timestamps must be timezone-aware")
+        return value.astimezone(UTC)
+
+
+class WorldTrait(_StrictModel):
+    """One fictional derived trait, linked to the observations it rests on."""
+
+    person_key: str
+    category: TraitCategory
+    value: str = Field(min_length=1, max_length=400)
+    evidence_note: str | None = Field(default=None, min_length=1, max_length=1000)
+    confidence: float = Field(ge=0.0, le=1.0)
+    evidence_keys: tuple[str, ...] = Field(default=(), max_length=20)
+
+
 class WorldRelationship(_StrictModel):
     """One fictional relationship edge."""
 
@@ -100,6 +139,8 @@ class World(_StrictModel):
     facts: tuple[WorldFact, ...] = Field(default=(), max_length=400)
     interactions: tuple[WorldInteraction, ...] = Field(default=(), max_length=400)
     relationships: tuple[WorldRelationship, ...] = Field(default=(), max_length=400)
+    observations: tuple[WorldObservation, ...] = Field(default=(), max_length=400)
+    traits: tuple[WorldTrait, ...] = Field(default=(), max_length=200)
 
     @field_validator("as_of")
     @classmethod
@@ -126,9 +167,20 @@ class World(_StrictModel):
             referenced.extend(interaction.participant_keys)
         for relationship in self.relationships:
             referenced.extend((relationship.subject_key, relationship.object_key))
+        for observation in self.observations:
+            referenced.append(observation.person_key)
+        for trait in self.traits:
+            referenced.append(trait.person_key)
         dangling = sorted(set(referenced) - known)
         if dangling:
             raise ValueError("references to unknown person keys: " + ", ".join(dangling))
+        observation_keys = [observation.key for observation in self.observations]
+        if len(set(observation_keys)) != len(observation_keys):
+            raise ValueError("observation keys must be unique")
+        cited = {key for trait in self.traits for key in trait.evidence_keys}
+        missing = sorted(cited - set(observation_keys))
+        if missing:
+            raise ValueError("traits cite unknown observation keys: " + ", ".join(missing))
         return self
 
     @property
@@ -214,7 +266,7 @@ def _seed_people(runtime: ApplicationRuntime, world: World) -> dict[str, Person]
 
 
 def _seed_records(runtime: ApplicationRuntime, world: World, people: dict[str, Person]) -> None:
-    """Attach affiliations, facts, interactions, relationships, and the philosophy."""
+    """Attach affiliations, facts, interactions, relationships, observations, traits, and the philosophy."""
     use_cases = runtime.use_cases
     use_cases.set_communication_philosophy.execute(
         SetCommunicationPhilosophyInput(text=world.communication_philosophy, source=FIXTURE_SOURCE)
@@ -254,6 +306,29 @@ def _seed_records(runtime: ApplicationRuntime, world: World, people: dict[str, P
                 subject_id=people[relationship.subject_key].id,
                 object_id=people[relationship.object_key].id,
                 type=relationship.relationship_type,
+                source=FIXTURE_SOURCE,
+            )
+        )
+    observation_ids: dict[str, str] = {}
+    for observation in world.observations:
+        observation_ids[observation.key] = use_cases.record_observation.execute(
+            RecordObservationInput(
+                person_id=people[observation.person_key].id,
+                text=observation.text,
+                observed_at=observation.observed_at,
+                stated_by=observation.stated_by,
+                source=FIXTURE_SOURCE,
+            )
+        ).id
+    for trait in world.traits:
+        use_cases.record_trait.execute(
+            RecordTraitInput(
+                person_id=people[trait.person_key].id,
+                category=trait.category,
+                value=trait.value,
+                evidence_note=trait.evidence_note,
+                confidence=trait.confidence,
+                evidence_ids=[observation_ids[key] for key in trait.evidence_keys],
                 source=FIXTURE_SOURCE,
             )
         )

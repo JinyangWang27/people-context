@@ -1,0 +1,215 @@
+{
+  "format": "people-context.eval-world",
+  "version": 1,
+  "world_id": "lantern-2026-09",
+  "as_of": "2026-09-01T09:00:00Z",
+  "communication_philosophy": "Plain, short, and direct. Say what I want, keep it friendly, and skip corporate filler.",
+  "people": [
+    {
+      "key": "wen",
+      "name": "Wen Qiao",
+      "summary": "Engineering lead at Brightwater Labs; writes to friends and family in Chinese, to colleagues in English.",
+      "handles": ["wen.qiao@example.test"],
+      "is_self": true
+    },
+    {
+      "key": "dana",
+      "name": "Dana Whitlock",
+      "summary": "Director of Engineering at Brightwater Labs and Wen's manager; approves team headcount.",
+      "handles": ["dana.whitlock@example.test"]
+    },
+    {
+      "key": "omar",
+      "name": "Omar Haddad",
+      "summary": "Engineering manager at Brightwater Labs; a peer of Wen's who also reports to Dana.",
+      "handles": ["omar.haddad@example.test"]
+    },
+    {
+      "key": "sam-okafor",
+      "name": "Sam Okafor",
+      "summary": "Finance business partner who reviews Brightwater Labs engineering budgets.",
+      "handles": ["sam.okafor@example.test"]
+    },
+    {
+      "key": "sam-lindqvist",
+      "name": "Sam Lindqvist",
+      "summary": "Treasurer of the Alder Street community garden, where Wen volunteers.",
+      "handles": ["sam.lindqvist@example.test"]
+    },
+    {
+      "key": "jiahe",
+      "name": "陈嘉禾",
+      "summary": "温乔的大学同学和好朋友，现在在医院做轮班护士。",
+      "handles": ["chen.jiahe@example.test"]
+    },
+    {
+      "key": "xuman",
+      "name": "许蔓",
+      "summary": "温乔和陈嘉禾共同的大学同学。",
+      "handles": ["xu.man@example.test"]
+    },
+    {
+      "key": "limin",
+      "name": "周立民",
+      "summary": "温乔的舅舅，住在老家。",
+      "handles": ["zhou.limin@example.test"]
+    },
+    {
+      "key": "xiulan",
+      "name": "温秀兰",
+      "summary": "温乔的妈妈。",
+      "handles": ["wen.xiulan@example.test"]
+    }
+  ],
+  "affiliations": [
+    { "person_key": "wen", "organization": "Brightwater Labs", "role": "Engineering Lead" },
+    { "person_key": "dana", "organization": "Brightwater Labs", "role": "Director of Engineering" },
+    { "person_key": "omar", "organization": "Brightwater Labs", "role": "Engineering Manager" },
+    { "person_key": "sam-okafor", "organization": "Brightwater Labs", "role": "Finance Business Partner" },
+    { "person_key": "sam-lindqvist", "organization": "Alder Street Community Garden", "role": "Treasurer" }
+  ],
+  "facts": [
+    { "person_key": "dana", "predicate": "location", "value": "Rotterdam" },
+    { "person_key": "jiahe", "predicate": "work_schedule", "value": "医院轮班，排班每月才出", "valid_from": "2026-03-01" }
+  ],
+  "interactions": [
+    {
+      "summary": "Weekly 1:1 about on-call load and a possible SRE hire",
+      "participant_keys": ["wen", "dana"],
+      "occurred_at": "2026-08-19T13:00:00Z",
+      "channel": "video"
+    },
+    {
+      "summary": "Q3 engineering budget review",
+      "participant_keys": ["wen", "sam-okafor", "dana"],
+      "occurred_at": "2026-07-22T10:00:00Z",
+      "channel": "in-person"
+    },
+    {
+      "summary": "Garden tool-shed budget meeting",
+      "participant_keys": ["wen", "sam-lindqvist"],
+      "occurred_at": "2026-08-02T17:00:00Z",
+      "channel": "in-person"
+    },
+    {
+      "summary": "微信聊了下个月可能一起去旅行",
+      "participant_keys": ["wen", "jiahe"],
+      "occurred_at": "2026-08-10T12:00:00Z",
+      "channel": "wechat"
+    },
+    {
+      "summary": "春节家庭聚会",
+      "participant_keys": ["wen", "limin", "xiulan"],
+      "occurred_at": "2026-02-15T04:00:00Z",
+      "channel": "in-person"
+    }
+  ],
+  "relationships": [
+    { "subject_key": "wen", "object_key": "dana", "relationship_type": "reports_to" },
+    { "subject_key": "omar", "object_key": "dana", "relationship_type": "reports_to" },
+    { "subject_key": "wen", "object_key": "omar", "relationship_type": "colleague_of" },
+    { "subject_key": "wen", "object_key": "sam-okafor", "relationship_type": "colleague_of" },
+    { "subject_key": "wen", "object_key": "sam-lindqvist", "relationship_type": "neighbor_of" },
+    { "subject_key": "wen", "object_key": "jiahe", "relationship_type": "friend_of" },
+    { "subject_key": "wen", "object_key": "xuman", "relationship_type": "friend_of" },
+    { "subject_key": "wen", "object_key": "xiulan", "relationship_type": "child_of" },
+    { "subject_key": "xiulan", "object_key": "limin", "relationship_type": "sibling_of" }
+  ],
+  "observations": [
+    {
+      "key": "dana-written-case",
+      "person_key": "dana",
+      "text": "At the Q1 hiring calibration Dana said she will not approve a hire without a written case covering the gap the role fills and what stops if nobody is hired.",
+      "observed_at": "2026-03-10T14:00:00Z",
+      "stated_by": "Dana Whitlock"
+    },
+    {
+      "key": "dana-hallway-refusal",
+      "person_key": "dana",
+      "text": "Omar said Dana turned down his backfill request because he raised it verbally in a hallway conversation instead of writing it up.",
+      "observed_at": "2025-11-04T16:00:00Z",
+      "stated_by": "Omar Haddad"
+    },
+    {
+      "key": "dana-hallway-retold",
+      "person_key": "dana",
+      "text": "Omar retold, at the team offsite, the story of Dana refusing his hallway backfill request.",
+      "observed_at": "2026-02-12T11:00:00Z",
+      "stated_by": "Omar Haddad"
+    },
+    {
+      "key": "dana-load-data",
+      "person_key": "dana",
+      "text": "In a 1:1 Dana told Wen she prefers to decide on headcount after seeing at least two weeks of on-call load data, not before.",
+      "observed_at": "2026-06-18T13:00:00Z",
+      "stated_by": "Dana Whitlock"
+    },
+    {
+      "key": "dana-fast-contractor",
+      "person_key": "dana",
+      "text": "Wen noted that in the Q3 budget review Dana approved a contractor within the meeting when a customer escalation was at stake — the only same-day approval Wen has seen from her.",
+      "observed_at": "2026-07-22T12:00:00Z",
+      "stated_by": "Wen Qiao"
+    },
+    {
+      "key": "sam-okafor-cost-of-nothing",
+      "person_key": "sam-okafor",
+      "text": "Sam Okafor said every budget request should show the cost of doing nothing.",
+      "observed_at": "2026-05-20T10:00:00Z",
+      "stated_by": "Sam Okafor"
+    },
+    {
+      "key": "sam-lindqvist-member-vote",
+      "person_key": "sam-lindqvist",
+      "text": "Sam Lindqvist said the garden fund only pays for things the members have voted on.",
+      "observed_at": "2026-04-02T18:00:00Z",
+      "stated_by": "Sam Lindqvist"
+    },
+    {
+      "key": "jiahe-plans-ahead",
+      "person_key": "jiahe",
+      "text": "许蔓说嘉禾最讨厌临时改计划，出去玩一定要提前一周定好。",
+      "observed_at": "2024-05-02T12:00:00Z",
+      "stated_by": "许蔓"
+    },
+    {
+      "key": "jiahe-cancelled",
+      "person_key": "jiahe",
+      "text": "上次聚餐提前两周就约好了，嘉禾前一天取消，说临时要加班。",
+      "observed_at": "2025-12-20T12:00:00Z",
+      "stated_by": "Wen Qiao"
+    },
+    {
+      "key": "jiahe-prefers-short-notice",
+      "person_key": "jiahe",
+      "text": "嘉禾说自从换成轮班工作，她更喜欢临时约；提前太久定的计划她经常赴不了。",
+      "observed_at": "2026-08-10T12:00:00Z",
+      "stated_by": "陈嘉禾"
+    },
+    {
+      "key": "limin-old-house",
+      "person_key": "limin",
+      "text": "妈妈说舅舅过年时提到，不想再管老家房子的事了。",
+      "observed_at": "2026-02-15T12:00:00Z",
+      "stated_by": "温秀兰"
+    }
+  ],
+  "traits": [
+    {
+      "person_key": "dana",
+      "category": "preference",
+      "value": "Wants headcount requests as a written case, not a verbal ask",
+      "evidence_note": "Her own statement at the Q1 calibration, plus Omar's account of a refused hallway request (told twice).",
+      "confidence": 0.7,
+      "evidence_keys": ["dana-written-case", "dana-hallway-refusal", "dana-hallway-retold"]
+    },
+    {
+      "person_key": "jiahe",
+      "category": "preference",
+      "value": "喜欢提前定好计划，不喜欢临时改动",
+      "evidence_note": "来自许蔓 2024 年的说法。",
+      "confidence": 0.6,
+      "evidence_keys": ["jiahe-plans-ahead"]
+    }
+  ]
+}

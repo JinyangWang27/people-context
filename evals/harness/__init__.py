@@ -18,7 +18,7 @@ from __future__ import annotations
 
 #: Version of this harness, recorded in every report so a published number names
 #: the code that produced it. Bump on any change to prompts, scoring, or reports.
-HARNESS_VERSION = "1.0.0"
+HARNESS_VERSION = "1.1.0"
 
 #: Stable machine identity of the report document. Additive under the same rules
 #: as the M12 CLI JSON promise: new keys may appear, existing keys keep meaning.

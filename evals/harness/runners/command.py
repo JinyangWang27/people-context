@@ -27,7 +27,7 @@ from evals.harness.ports import AgentRequest, AgentResponse
 from evals.harness.suite import CommandRunnerConfig
 
 #: Placeholders substituted as whole arguments, and where each one is allowed.
-_BASE_PLACEHOLDERS = frozenset({"{system_prompt}", "{prompt}", "{model}"})
+_BASE_PLACEHOLDERS = frozenset({"{system_prompt}", "{prompt}", "{model}", "{skills_plugin}"})
 _MCP_PLACEHOLDERS = frozenset({"{mcp_config}"})
 
 #: Bytes of child stderr kept for a failure message. Enough to identify the
@@ -164,6 +164,10 @@ class CommandAgentRunner:
             "{prompt}": request.prompt,
             "{model}": self._config.model_id,
         }
+        if "{skills_plugin}" in self._config.argv or "{skills_plugin}" in self._config.mcp_argv:
+            if request.skills_plugin is None:
+                raise EvalHarnessError("the runner passes {skills_plugin} but no skills plugin was staged")
+            substitutions["{skills_plugin}"] = str(request.skills_plugin)
         argv = [substitutions.get(argument, argument) for argument in self._config.argv]
         if request.condition != "with_mcp":
             return argv
