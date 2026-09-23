@@ -111,7 +111,10 @@ def test_every_recorded_report_matches_the_current_rubrics() -> None:
     expected = {task["id"]: [item["id"] for item in task["rubric"]] for task in suite["tasks"]}
 
     for path in _recorded_reports():
-        for run in json.loads(_read(path))["runs"]:
+        report = json.loads(_read(path))
+        if report["suite"]["id"] != suite["suite_id"]:
+            continue
+        for run in report["runs"]:
             recorded = [criterion["id"] for criterion in run["criteria"]]
             assert recorded == expected[run["task_id"]], f"{path.name}: {run['task_id']} is stale"
 
@@ -142,10 +145,26 @@ def test_the_dry_run_is_documented_as_plumbing_rather_than_a_model_result() -> N
 
     assert "**This is not a measurement of any model.**" in document
     assert "**None recorded yet.**" in document
-    for report in _recorded_reports():
-        assert json.loads(_read(report))["runner"]["kind"] == "stub", (
-            "a model-backed report is published; update the 'None recorded yet' section"
-        )
+    for path in _recorded_reports():
+        report = json.loads(_read(path))
+        if report["suite"]["id"] == "people-context-core":
+            assert report["runner"]["kind"] == "stub", (
+                "a model-backed core report is published; update the 'None recorded yet' section"
+            )
+
+
+def test_every_human_review_report_is_labelled_unscored_and_unreviewed() -> None:
+    """Regression: a model-backed perspective answer must never read as a grade or as reviewed evidence."""
+    document = _read(EVALS_DOC)
+
+    for path in _recorded_reports():
+        report = json.loads(_read(path))
+        if report.get("review") != "human":
+            continue
+        assert report["totals"] == [], path.name
+        assert all(run["percent"] is None for run in report["runs"]), path.name
+        assert "(model-backed, unreviewed)" in document
+        assert "**No human review is recorded yet**" in document
 
 
 def test_the_docs_state_the_key_handling_the_suite_actually_enforces() -> None:

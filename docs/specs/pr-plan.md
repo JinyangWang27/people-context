@@ -26,7 +26,7 @@ reads, coaching, and staging; no new browser capability is required. Nuwa inform
   - **Out:** New APIs, candidate types, trait categories, profile storage, automatic research, sensitive-context
     escalation, personality diagnosis, and persistence of generated narratives or simulations.
 
-- [ ] **M31.2 — Evaluation fixtures and baseline**
+- [x] **M31.2 — Evaluation fixtures and baseline**
   - **Scope:** Add fictional Chinese and English scenarios for contacts and a fictional public figure with a source
     packet. Cover grounded synthesis, coaching, sparse evidence, conflicting accounts, and unfamiliar questions.
     Extend the existing human-review approach with source traceability, uncertainty, triggering, usefulness, and voice.

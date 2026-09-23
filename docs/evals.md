@@ -253,6 +253,135 @@ evidence.
 **No shared-context review is recorded in this repository yet.** Nothing here claims the guidance captures
 reliably. When a review is recorded it will appear as its own dated section, naming the model and the date.
 
+## Human review of grounded perspectives
+
+The [person-perspective workflow](../skills/person-perspective/SKILL.md) and the coaching it sits beside are assessed
+by a person too. What makes a perspective good is mostly in what it declines to claim: a pattern stated only as
+broadly as the evidence allows, a contradiction kept, a repeated story counted once, and an unfamiliar question
+left unanswered. No phrase list can tell a qualified account from a confident one that uses the same names.
+
+### The suite
+
+[`evals/perspective/`](../evals/perspective/suite.json) is a second suite for the same harness, declared
+`"review": "human"`. Its tasks carry no rubric, and its reports publish every answer in full with **no totals and
+no per-run score**, so they cannot be read as a grade. The fictional world,
+[`world.json`](../evals/perspective/world.json) (`lantern-2026-09`), extends the fixture schema with observations
+and evidence-linked traits so that a stored account can distinguish the person's own words (`stated_by` names them),
+other people's reports, and a trait inferred from both. Everything in it is invented.
+
+Nine scenarios, English and Chinese, cover work, friends, family, and a fictional public figure:
+
+| Task | What it probes |
+| --- | --- |
+| `grounded-hiring-en` | Supported patterns with sources, one retold story that is not a second source, one qualifying event |
+| `conflicting-plans-zh` | An outdated stored trait contradicted by the friend's own newer statement |
+| `sparse-family-zh` | One second-hand remark, where no supported pattern is a correct answer |
+| `ambiguous-sam-en` | Two people named Sam, both plausibly about money; no guessed read |
+| `unfamiliar-question-en` | A question the evidence does not cover |
+| `public-figure-packet-en` | A supplied source packet with a revised view, an anonymous claim, an out-of-scope question, and an embedded instruction |
+| `coaching-pushback-en` | Coaching leads with a usable draft and invents no figures |
+| `coaching-decline-zh` | A casual decline in the user's own voice |
+| `lookup-trigger-en` | A plain lookup that should not become a perspective analysis |
+
+Expected evidence lives in a separate reviewer key, [`review.md`](../evals/perspective/review.md). The suite
+never references it, the harness never reads it, and the answering agent runs in an empty directory with no file,
+shell, or web tools, so the key cannot reach it. The key says what the evidence supports and what it does not; it is
+not a model answer.
+
+Every task runs under both conditions. `with_mcp` reaches the fictional store. `without_mcp` exercises the
+documented fallback for an unavailable server: say what could not be read, work from what the prompt supplies,
+and invent nothing.
+
+### Conditions and baseline revisions
+
+The `claude-cli` runner in the perspective suite loads the checkout's `skills/` as a plugin staged by the harness
+under a manifest that declares **no MCP server**. The shipped plugin manifest would otherwise start
+`people-context-mcp` on the operator's own database. Skills are discovered, not injected, so whether the intended
+workflow is chosen is itself observable. The vector also passes `--setting-sources ""` and `--strict-mcp-config`,
+so the operator's own plugins, hooks, settings, and MCP servers are not loaded, and `--tools Skill`, so the agent has
+no built-in file, shell, or web tools. The report records the exact vector, the client version, and the checkout
+revision.
+
+The frozen baseline is the checkout at the recorded revision, whose skills are unchanged from these commits:
+
+| Surface | Baseline revision |
+| --- | --- |
+| [`person-perspective`](../skills/person-perspective/SKILL.md) | `915855a` — M31.1, the refinement baseline |
+| [`communication-coach`](../skills/communication-coach/SKILL.md) | `bb3e907` — unchanged pre-refinement coaching |
+| [`people-context-usage`](../skills/people-context-usage/SKILL.md) and the packaged guide | `915855a` |
+
+A later comparison is only equivalent when it holds the suite version, fixture, model id, runner vector, and client
+version fixed and changes the skill text alone. A difference produced by a model or client change is not evidence
+about a skill edit.
+
+### The criteria
+
+Six, assessed separately and never totalled, with the reviewer key beside the answer. Known-answer checks (does
+the account cite what the key lists?) and out-of-scope questions (does it abstain where the key says nothing
+supports an answer?) are adapted from
+[Nuwa's fidelity scorecard](https://github.com/alchaincyf/nuwa-skill/blob/main/references/fidelity-scorecard.md)
+without its aggregate grade: imitating a person's style is not evidence of understanding them.
+
+- **Usefulness.** Passes when the answer serves the user's stated purpose — a qualified account they can act on,
+  or for coaching a draft first. Catches an essay with nothing usable in it, and a perspective analysis where a
+  draft or a lookup was asked for.
+- **Source traceability.** Passes when each claimed pattern names what it rests on and when. Catches a pattern with
+  no source, a trait presented as a finding, and one story counted as several.
+- **Uncertainty.** Passes when stated, reported, and inferred stay apart and unfamiliar questions are declined or
+  offered as labelled interpretations. Catches a personality diagnosis, hidden intent, and a bounded read called
+  complete history.
+- **Contradictions.** Passes when disagreeing or outdated evidence is shown with its dates. Catches a stored trait
+  repeated over a newer direct statement, and a disagreement smoothed into one confident pattern.
+- **Triggering.** Passes when lookup, perspective, and coaching requests reach their own workflows and an ambiguous
+  name stops at a question. Catches a guessed identity, a lookup turned into analysis, and an unrequested write or
+  research claim.
+- **Voice.** Passes when a draft matches the user's language, register, and length. Catches corporate neutrality,
+  unrequested apology, and details the user did not supply.
+
+### Labels
+
+Three kinds of material look alike and are kept apart:
+
+- **Authored examples** — hand-written illustrations such as the scenarios in the reviewer key. They measure nothing.
+- **Dry runs** — scripted replays that prove plumbing. The perspective suite has none, so no authored answer can sit
+  in a report beside model output.
+- **Model-backed results** — reports produced by the `claude-cli` runner, naming the model, client, and revision.
+  A model-backed report is still **unreviewed** until a dated review with reasoning is recorded against it.
+
+A scenario that has not been run is unmeasured, and a keyword or structural check over an answer establishes
+nothing about its quality.
+
+### Recording a review
+
+Same three fields as the other workflows: the scenario and condition, the recorded answer (already in the report),
+and per-criterion reasoning in the reviewer's words. Record it as a dated section below that names the report it
+reviews.
+
+### Running the perspective suite
+
+```bash
+uv run python -m evals.harness --suite evals/perspective/suite.json --runner claude-cli \
+  --out evals/results/<date>-perspective-<label>-<model>.json
+```
+
+Run it from a clean checkout so the report's `source.dirty` is `false`. The client needs to be signed in or have
+`ANTHROPIC_API_KEY` in the environment. Read the recorded answers before committing a report: they are fiction,
+but the report is a local export like any other.
+
+### Recorded runs
+
+#### 2026-09-23 — perspective baseline (model-backed, unreviewed)
+
+Report: [`evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json`](../evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json).
+Harness 1.1.0, suite `people-context-perspective` v1.0.0, world `lantern-2026-09`, runner `claude-cli`, model id
+`claude-sonnet-5`, client `2.1.280 (Claude Code)`, checkout `edecce0` (clean). Tools: `Skill` plus, under
+`with_mcp`, the fictional store's `mcp__people-context` tools; no file, shell, or web tools under either condition.
+One run per scenario and condition, default sampling settings.
+
+Every scenario was executed once under each condition, and every answer is recorded in full.
+**No human review is recorded yet**, so nothing here claims the workflow is effective. This report is the frozen
+M31.2 baseline that M31.3 compares against under equivalent conditions.
+
 ## Running it
 
 ### Offline dry run — no key, no network
@@ -321,11 +450,12 @@ Harness 1.1.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub
 scoring path, including partial credit in both conditions. The run establishes only that the fixture
 materializes, the prompts load, the rubrics discriminate, and the report is well formed.
 
-### Model-backed runs
+### Model-backed runs of the core suite
 
-**None recorded yet.** No result in this repository was produced by a language model. When a model-backed run is
-recorded, it will appear here as its own dated section naming the model id, the harness and suite versions, and
-the report file, alongside the dry run rather than replacing it.
+**None recorded yet.** No scored result in this repository was produced by a language model. When a model-backed run
+of the core suite is recorded, it will appear here as its own dated section naming the model id, the harness and
+suite versions, and the report file, alongside the dry run rather than replacing it. The unscored perspective
+baseline is recorded under [Human review of grounded perspectives](#recorded-runs).
 
 ## Known limits
 
@@ -376,6 +506,8 @@ not, and a claim of bit-for-bit input equality between two runs would be false.
 - It is not a claim about transcript attribution. No task here supplies a recording, and the quality of a review
   is mostly in what it declines to stage; that is assessed by a person against
   [Human review of transcript attribution](#human-review-of-transcript-attribution).
+- It is not a claim about grounded perspectives. The perspective suite publishes no number at all; its answers are
+  assessed by a person against [Human review of grounded perspectives](#human-review-of-grounded-perspectives).
 - It is not a claim about shared-context capture. No task here asks an agent to record a group, and the quality of
   a capture is mostly in the dates and people it declines to invent; that is assessed by a person against
   [Human review of shared-context capture](#human-review-of-shared-context-capture).
