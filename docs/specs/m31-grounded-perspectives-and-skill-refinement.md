@@ -1,6 +1,6 @@
 # M31 — Grounded perspectives and skill refinement
 
-Status: Planned. This specification delivers nothing itself.
+Status: In progress — M31.1 delivered, M31.2–M31.5 planned. This specification delivers nothing itself.
 See [roadmap](../roadmap.md#m31--grounded-perspectives-and-skill-refinement) and
 [PR checklist](pr-plan.md#m31--grounded-perspectives-and-skill-refinement).
 

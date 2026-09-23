@@ -12,7 +12,7 @@ checklists live in git history. Repository-wide engineering rules are in [AGENTS
 Internal dependencies are M31.1 → M31.2 → M31.3 → M31.4 → M31.5. Reuse delivered capture, evidence, temporal
 reads, coaching, and staging; no new browser capability is required. Nuwa informs grounded extraction; Luban informs baseline-led refinement.
 
-- [ ] **M31.1 — Grounded person-perspective workflow**
+- [x] **M31.1 — Grounded person-perspective workflow**
   - **Scope:** Add `person-perspective` and mirror its essential workflow into shared usage guidance and the packaged
     MCP guide. Reuse existing identity, ordinary context, guidance, and bounded history reads. Present supported
     preferences, decision patterns, values, boundaries, source references, contradictions, and unknowns for contacts

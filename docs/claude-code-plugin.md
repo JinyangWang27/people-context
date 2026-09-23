@@ -57,9 +57,10 @@ The MCP server uses stdio. It does not listen on a TCP port and is available onl
 The plugin ships model-discoverable skills at the plugin root, where Claude Code discovers
 them rather than inside `.claude-plugin/`. `skills/people-context-usage/SKILL.md` is the
 general one, `skills/communication-coach/SKILL.md` covers help with one specific
-conversation, and `skills/transcript-review/SKILL.md` covers reviewing who said what in a
-transcript before anything is staged. None adds a tool or a capability; they teach agents to
-compose the existing tools correctly:
+conversation, `skills/person-perspective/SKILL.md` covers understanding how someone tends to
+think or decide from the available evidence, and `skills/transcript-review/SKILL.md` covers
+reviewing who said what in a transcript before anything is staged. None adds a tool or a
+capability; they teach agents to compose the existing tools correctly:
 
 - resolve identity with `resolve_person` first and preserve the `ambiguous` candidate-list
   contract instead of guessing;
@@ -74,22 +75,25 @@ compose the existing tools correctly:
 - treat the absence of `get_sensitive_person_context` and `export_data` from ordinary
   discovery as an intended privacy gate, not something to work around.
 
-All three are behavioural guidance only. They never enable elevated tools, never commit a
+All four are behavioural guidance only. They never enable elevated tools, never commit a
 staged batch automatically, and never copy raw transcript text into candidates. Coaching in
 particular writes nothing at all unless the user asks for a record afterwards, at which point
-the ordinary review-before-commit gate applies. Transcript review does stage, but only the
+the ordinary review-before-commit gate applies. Perspective work is read-only in the same
+way: it keeps what the person stated, what others reported, and what the agent inferred apart,
+and never saves the synthesized account itself. Transcript review does stage, but only the
 subset whose attribution the user confirmed, and only through that same gate; speaker labels
 and unresolved ownership stay in the conversation.
 
-All three can be reached either way, because a skill is invocable by you and by Claude unless
+All four can be reached either way, because a skill is invocable by you and by Claude unless
 its frontmatter says otherwise. None of them sets `user-invocable: false`, so each also has a
 namespaced command — `/people-context:communication-coach`,
-`/people-context:transcript-review`, and `/people-context:people-context-usage` — and none sets
-`disable-model-invocation`, so Claude also loads one on its own when its description matches
-what you are asking for. Describing the conversation you need help with in plain language is
-enough to pull in the coaching skill, and handing over a transcript to extract from is enough
-to pull in the review one; typing the command is the deterministic way to get either when you
-would rather not rely on the match.
+`/people-context:person-perspective`, `/people-context:transcript-review`, and
+`/people-context:people-context-usage` — and none sets `disable-model-invocation`, so Claude
+also loads one on its own when its description matches what you are asking for. Describing the
+conversation you need help with in plain language is enough to pull in the coaching skill,
+asking how someone tends to think or decide is enough to pull in the perspective one, and
+handing over a transcript to extract from is enough to pull in the review one; typing the
+command is the deterministic way to get any of them when you would rather not rely on the match.
 
 That is the one difference from the three workflows in the next section. Those set
 `disable-model-invocation`, which removes the automatic path and leaves only the typed one. It does
