@@ -50,7 +50,8 @@ extraction ideas and Luban's verification discipline while preserving ordinary d
 capture. Reuse existing records and tools; the only new CLI surface is a narrow, database-free package publisher.
 No new profile store, server API, or server-side LLM is planned.
 
-M31.1 delivers the perspective workflow; M31.2 establishes evaluation fixtures and a baseline; M31.3 refines skills
+M31.1 delivered the `person-perspective` skill and mirrored its essential workflow into the shared usage guidance
+and the packaged `people-context://guide`. M31.2 establishes evaluation fixtures and a baseline; M31.3 refines skills
 with recorded comparisons; M31.4 adds reviewed client-side export; M31.5 verifies portability and documents examples.
 The five PRs are sequential. A narrow CLI publisher writes reviewed snapshots privately and atomically; corrections
 or forget operations cannot revoke copies.

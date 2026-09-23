@@ -84,6 +84,23 @@ Eight fictional bilingual scenarios covering work, friends, and family are in
 be assessed against is in [evals.md](evals.md#human-review-of-communication-coaching). Neither is scored by the
 evaluation harness: whether a draft is usable and sounds like the user is a judgement a person makes.
 
+## Perspective workflow
+
+M31.1 adds a client workflow for understanding one person's documented preferences, decision patterns, values,
+and boundaries — for a contact, the user, or a public figure. It ships as `skills/person-perspective/SKILL.md`,
+with the essential steps mirrored into the same served guide. It composes the existing reads
+(`get_person_context`, `get_communication_guidance`, and `get_person_timeline`) and adds no tool, record type,
+or trait category.
+
+The workflow resolves identity before any personalized read; an ambiguous or unconfirmed match stops for the
+user, and an unknown person or unavailable server leaves clearly labelled work from supplied material. Each
+supported pattern carries its sources, dates, applicable situations, contradictions, and unknowns, and says
+whether it rests on the person's own statement, someone else's report, or the agent's inference. Sparse
+material may support no pattern at all. The workflow writes nothing by default; requested capture uses the
+existing direct-capture path or staging with explicit acceptance, and the synthesized account is never stored.
+Public-web research happens only when the user asks for it separately. No fixtures or recorded evaluation of
+this workflow exist yet, so nothing here claims its effectiveness.
+
 ## Reminders
 
 Reminders are person-linked and come in three kinds:
