@@ -2,7 +2,7 @@
   "format": "people-context.eval-report",
   "version": 1,
   "harness_version": "1.1.0",
-  "generated_at": "2026-09-23T10:04:01Z",
+  "generated_at": "2026-09-23T10:31:35Z",
   "suite": {
     "id": "people-context-core",
     "version": "1.0.0",
@@ -139,7 +139,8 @@
           "min_lines": null
         }
       ],
-      "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews."
+      "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews.",
+      "tool_calls": null
     },
     {
       "task_id": "context-recall",
@@ -210,7 +211,8 @@
           "min_lines": null
         }
       ],
-      "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates."
+      "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates.",
+      "tool_calls": null
     },
     {
       "task_id": "guided-drafting",
@@ -292,7 +294,8 @@
           "min_lines": null
         }
       ],
-      "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works."
+      "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works.",
+      "tool_calls": null
     },
     {
       "task_id": "guided-drafting",
@@ -374,7 +377,8 @@
           "min_lines": null
         }
       ],
-      "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards"
+      "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards",
+      "tool_calls": null
     },
     {
       "task_id": "identity-disambiguation",
@@ -449,7 +453,8 @@
           "min_lines": null
         }
       ],
-      "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership."
+      "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership.",
+      "tool_calls": null
     },
     {
       "task_id": "identity-disambiguation",
@@ -524,7 +529,8 @@
           "min_lines": null
         }
       ],
-      "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics."
+      "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics.",
+      "tool_calls": null
     },
     {
       "task_id": "relationship-path",
@@ -582,7 +588,8 @@
           "min_lines": null
         }
       ],
-      "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman."
+      "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman.",
+      "tool_calls": null
     },
     {
       "task_id": "relationship-path",
@@ -640,7 +647,8 @@
           "min_lines": null
         }
       ],
-      "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman."
+      "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman.",
+      "tool_calls": null
     },
     {
       "task_id": "stale-follow-up",
@@ -687,7 +695,8 @@
           "min_lines": null
         }
       ],
-      "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05."
+      "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05.",
+      "tool_calls": null
     },
     {
       "task_id": "stale-follow-up",
@@ -734,7 +743,8 @@
           "min_lines": null
         }
       ],
-      "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke."
+      "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke.",
+      "tool_calls": null
     }
   ]
 }

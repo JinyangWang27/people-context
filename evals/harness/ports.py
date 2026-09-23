@@ -38,6 +38,9 @@ class AgentResponse:
 
     answer: str
     model_id: str
+    #: Tool calls the agent made, in order, as ``{"name": ..., "input": ...}``; ``None`` when
+    #: the runner cannot observe them, which is different from an agent that called nothing.
+    tool_calls: tuple[dict[str, object], ...] | None = None
 
 
 @runtime_checkable

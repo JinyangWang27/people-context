@@ -193,19 +193,22 @@ def test_the_skills_plugin_placeholder_is_substituted_whole(tmp_path: Path) -> N
         CommandAgentRunner(config).run(unstaged)
 
 
-def test_a_human_report_carries_no_totals_or_scores(tmp_path: Path) -> None:
+def test_a_human_report_carries_no_totals_and_keeps_v1_field_types(tmp_path: Path) -> None:
+    """Regression: v1 run fields stay numeric; `review` and empty totals are what mark a report unscored."""
     from datetime import UTC, datetime
 
     loaded = load_suite(SUITE_PATH)
     world = load_world(loaded.world_path)
     task = loaded.suite.tasks[0]
-    outcome = RunOutcome(task.id, "with_mcp", "m", "answer", TaskScore(earned=0, possible=0, criteria=()))
+    calls = ({"name": "mcp__people-context__resolve_person", "input": {"name": "Dana Whitlock"}},)
+    observed = RunOutcome(task.id, "with_mcp", "m", "answer", TaskScore(earned=0, possible=0, criteria=()), calls)
+    unobserved = RunOutcome(task.id, "without_mcp", "m", "answer", TaskScore(earned=0, possible=0, criteria=()))
 
     report = build_report(
         loaded,
         world,
         (task,),
-        (outcome,),
+        (observed, unobserved),
         runner_name="r",
         runner_kind="command",
         generated_at=datetime(2026, 9, 23, tzinfo=UTC),
@@ -213,6 +216,113 @@ def test_a_human_report_carries_no_totals_or_scores(tmp_path: Path) -> None:
 
     assert report["review"] == "human"
     assert report["totals"] == []
-    assert report["runs"][0]["percent"] is None
-    assert "human review — not scored" in render_summary(report)
-    assert "percent" not in render_summary(report)
+    for run in report["runs"]:
+        assert isinstance(run["earned"], int) and isinstance(run["possible"], int)
+        assert isinstance(run["percent"], float)
+    assert report["runs"][0]["tool_calls"] == [dict(calls[0])]
+    assert report["runs"][1]["tool_calls"] is None
+    summary = render_summary(report)
+    assert "human review — not scored" in summary
+    assert "percent" not in summary
+    assert "| 1 |" in summary and "unobserved" in summary
+
+
+_STREAM_AGENT = """
+import json, sys
+events = [
+    {"type": "system", "subtype": "init", "cwd": "/private/path/never/recorded"},
+    {"type": "assistant", "message": {"content": [
+        {"type": "thinking", "thinking": "private reasoning"},
+        {"type": "tool_use", "id": "a", "name": "Skill", "input": {"skill": "people-context:person-perspective"}},
+    ]}},
+    {"type": "user", "message": {"content": [{"type": "tool_result", "content": "skill body"}]}},
+    {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "id": "b", "name": "mcp__people-context__resolve_person", "input": {"name": "Sam"}},
+    ]}},
+    {"type": "result", "subtype": "success", "is_error": False, "result": "  Which Sam do you mean?  "},
+]
+mode = sys.argv[-1]
+if mode == "error":
+    events[-1] = {"type": "result", "subtype": "error_during_execution", "is_error": True, "result": ""}
+if mode == "truncated":
+    events = events[:-1]
+if mode == "garbage":
+    print("not json")
+for event in events:
+    print(json.dumps(event))
+"""
+
+
+def _stream_runner(tmp_path: Path) -> CommandAgentRunner:
+    script = tmp_path / "stream.py"
+    script.write_text(_STREAM_AGENT, encoding="utf-8")
+    config = CommandRunnerConfig.model_validate(
+        {
+            "kind": "command",
+            "model_id": "fake/stream-1",
+            "argv": [sys.executable, str(script), "{system_prompt}", "{prompt}"],
+            "output_format": "stream-json",
+            "timeout_seconds": 30,
+            "max_output_bytes": 65536,
+        }
+    )
+    return CommandAgentRunner(config)
+
+
+def _stream_request(tmp_path: Path, prompt: str) -> AgentRequest:
+    return AgentRequest(
+        task_id="ambiguous-sam-en",
+        condition="without_mcp",
+        system_prompt="s",
+        prompt=prompt,
+        mcp_config_path=None,
+        working_directory=tmp_path,
+    )
+
+
+def test_a_stream_json_runner_records_every_tool_call_and_only_the_final_answer(tmp_path: Path) -> None:
+    """Regression: a guessed read or a write must be visible to the reviewer even when the answer hides it."""
+    response = _stream_runner(tmp_path).run(_stream_request(tmp_path, "ok"))
+
+    assert response.answer == "Which Sam do you mean?"
+    assert response.tool_calls == (
+        {"name": "Skill", "input": {"skill": "people-context:person-perspective"}},
+        {"name": "mcp__people-context__resolve_person", "input": {"name": "Sam"}},
+    )
+    assert "private" not in json.dumps(response.tool_calls)
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    [("error", "error result"), ("truncated", "without a result"), ("garbage", "not JSON lines")],
+)
+def test_an_unreadable_event_stream_is_refused(tmp_path: Path, mode: str, message: str) -> None:
+    with pytest.raises(EvalHarnessError, match=message):
+        _stream_runner(tmp_path).run(_stream_request(tmp_path, mode))
+
+
+def test_a_text_runner_reports_tool_use_as_unobserved(tmp_path: Path) -> None:
+    script = tmp_path / "echo.py"
+    script.write_text("print('plain answer')\n", encoding="utf-8")
+    config = CommandRunnerConfig.model_validate(
+        {
+            "kind": "command",
+            "model_id": "fake/text-1",
+            "argv": [sys.executable, str(script), "{system_prompt}", "{prompt}"],
+            "timeout_seconds": 30,
+            "max_output_bytes": 4096,
+        }
+    )
+
+    response = CommandAgentRunner(config).run(_stream_request(tmp_path, "p"))
+
+    assert response.answer == "plain answer"
+    assert response.tool_calls is None
+
+
+def test_the_perspective_runner_observes_tool_use() -> None:
+    runner = load_suite(SUITE_PATH).runner_config("claude-cli")
+
+    assert isinstance(runner, CommandRunnerConfig)
+    assert runner.output_format == "stream-json"
+    assert runner.argv[runner.argv.index("--output-format") + 1] == "stream-json"

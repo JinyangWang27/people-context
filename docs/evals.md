@@ -263,8 +263,16 @@ left unanswered. No phrase list can tell a qualified account from a confident on
 ### The suite
 
 [`evals/perspective/`](../evals/perspective/suite.json) is a second suite for the same harness, declared
-`"review": "human"`. Its tasks carry no rubric, and its reports publish every answer in full with **no totals and
-no per-run score**, so they cannot be read as a grade. The fictional world,
+`"review": "human"`. Its tasks carry no rubric, and its reports publish every answer in full with **no totals**, so
+they cannot be read as a grade. Each run's v1 score fields keep their types and read 0 of 0 only because there is
+no rubric; `"review": "human"` is what says no score exists.
+
+Each run also records `tool_calls`: every tool the agent called, in order, with its input — which skill it
+selected, which identity it resolved, what it read, and any write it attempted. The runner parses them from the
+client's `stream-json` event stream and keeps only the tool name, its input, and the final answer; thinking and
+tool results are not recorded. A guessed read or an unrequested write is therefore visible even when the answer
+never mentions it. `tool_calls` is `null` for a runner that cannot observe tool use, which is not the same as an
+empty list. The fictional world,
 [`world.json`](../evals/perspective/world.json) (`lantern-2026-09`), extends the fixture schema with observations
 and evidence-linked traits so that a stored account can distinguish the person's own words (`stated_by` names them),
 other people's reports, and a trait inferred from both. Everything in it is invented.
@@ -300,7 +308,8 @@ under a manifest that declares **no MCP server**. The shipped plugin manifest wo
 workflow is chosen is itself observable. The vector also passes `--setting-sources ""` and `--strict-mcp-config`,
 so the operator's own plugins, hooks, settings, and MCP servers are not loaded, and `--tools Skill`, so the agent has
 no built-in file, shell, or web tools. The report records the exact vector, the client version, and the checkout
-revision.
+revision. Because pull requests are squash-merged, the evaluated commit is not on `main` afterwards; each recorded
+baseline therefore names a durable tag pointing at the exact evaluated checkout.
 
 The frozen baseline is the checkout at the recorded revision, whose skills are unchanged from these commits:
 
@@ -333,8 +342,8 @@ without its aggregate grade: imitating a person's style is not evidence of under
 - **Contradictions.** Passes when disagreeing or outdated evidence is shown with its dates. Catches a stored trait
   repeated over a newer direct statement, and a disagreement smoothed into one confident pattern.
 - **Triggering.** Passes when lookup, perspective, and coaching requests reach their own workflows and an ambiguous
-  name stops at a question. Catches a guessed identity, a lookup turned into analysis, and an unrequested write or
-  research claim.
+  name stops at a question. Read the recorded `tool_calls` alongside the answer. Catches a guessed identity, a
+  lookup turned into analysis, and an unrequested write or research claim.
 - **Voice.** Passes when a draft matches the user's language, register, and length. Catches corporate neutrality,
   unrequested apology, and details the user did not supply.
 

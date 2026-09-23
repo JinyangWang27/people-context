@@ -162,7 +162,7 @@ def test_every_human_review_report_is_labelled_unscored_and_unreviewed() -> None
         if report.get("review") != "human":
             continue
         assert report["totals"] == [], path.name
-        assert all(run["percent"] is None for run in report["runs"]), path.name
+        assert all(run["criteria"] == [] for run in report["runs"]), path.name
         assert "(model-backed, unreviewed)" in document
         assert "**No human review is recorded yet**" in document
 

@@ -42,7 +42,6 @@ def build_report(
 ) -> dict[str, Any]:
     """Assemble the deterministic report document for one run."""
     ordered = sorted(outcomes, key=lambda outcome: (outcome.task_id, outcome.condition))
-    scored = loaded.suite.review == "rubric"
     return {
         "format": REPORT_FORMAT,
         "version": REPORT_VERSION,
@@ -75,15 +74,18 @@ def build_report(
             "system": loaded.suite.system_prompt,
             "tasks": [{"id": task.id, "title": task.title, "prompt": task.prompt} for task in tasks],
         },
-        "totals": _totals(ordered) if scored else [],
+        # A human-review suite has no rubric, so it has no totals: printing 0/0 per condition
+        # would read as a failing grade. Per-run fields keep their v1 types; `review` says
+        # that no score exists.
+        "totals": _totals(ordered) if loaded.suite.review == "rubric" else [],
         "runs": [
             {
                 "task_id": outcome.task_id,
                 "condition": outcome.condition,
                 "model_id": outcome.model_id,
-                "earned": outcome.score.earned if scored else None,
-                "possible": outcome.score.possible if scored else None,
-                "percent": outcome.score.percent if scored else None,
+                "earned": outcome.score.earned,
+                "possible": outcome.score.possible,
+                "percent": outcome.score.percent,
                 "criteria": [
                     {
                         "id": criterion.id,
@@ -98,6 +100,8 @@ def build_report(
                     for criterion in outcome.score.criteria
                 ],
                 "answer": outcome.answer,
+                # Null when the runner could not observe tool use; a list, possibly empty, otherwise.
+                "tool_calls": [dict(call) for call in outcome.tool_calls] if outcome.tool_calls is not None else None,
             }
             for outcome in ordered
         ],
@@ -136,9 +140,11 @@ def render_summary(report: dict[str, Any]) -> str:
     ]
     if report.get("review") == "human":
         lines.extend(("", "human review — not scored", ""))
-        lines.extend(("| task | condition | answer chars |", "| --- | --- | ---: |"))
+        lines.extend(("| task | condition | answer chars | tool calls |", "| --- | --- | ---: | ---: |"))
         for run in report["runs"]:
-            lines.append(f"| {run['task_id']} | {run['condition']} | {len(run['answer'])} |")
+            calls = run.get("tool_calls")
+            count = "unobserved" if calls is None else len(calls)
+            lines.append(f"| {run['task_id']} | {run['condition']} | {len(run['answer'])} | {count} |")
         return "\n".join(lines) + "\n"
     lines += [
         "",

@@ -159,6 +159,10 @@ class CommandRunnerConfig(_StrictModel):
     timeout_seconds: float = Field(gt=0, le=3600)
     max_output_bytes: int = Field(ge=1024, le=8_388_608)
     env_passthrough: tuple[str, ...] = Field(default=(), max_length=32)
+    #: ``text`` records only the final answer. ``stream-json`` parses the client's event
+    #: stream, so a report also records every tool the agent called — which is how a
+    #: reviewer sees a guessed read or a write that the final answer never mentions.
+    output_format: Literal["text", "stream-json"] = "text"
 
     @field_validator("env_passthrough")
     @classmethod

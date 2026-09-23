@@ -72,7 +72,8 @@
         "--append-system-prompt",
         "{system_prompt}",
         "--output-format",
-        "text",
+        "stream-json",
+        "--verbose",
         "{prompt}"
       ],
       "mcp_argv": [
@@ -93,8 +94,9 @@
         "--as-of",
         "{world_as_of}"
       ],
+      "output_format": "stream-json",
       "timeout_seconds": 600,
-      "max_output_bytes": 262144,
+      "max_output_bytes": 4194304,
       "env_passthrough": [
         "PATH",
         "HOME",

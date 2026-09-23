@@ -46,6 +46,7 @@ class RunOutcome:
     model_id: str
     answer: str
     score: TaskScore
+    tool_calls: tuple[dict[str, object], ...] | None = None
 
 
 def stage_skills_plugin(directory: Path) -> Path:
@@ -246,6 +247,7 @@ def run_suite(
                     model_id=response.model_id,
                     answer=response.answer,
                     score=score_task(task, response.answer),
+                    tool_calls=response.tool_calls,
                 )
             )
     return tuple(outcomes)
