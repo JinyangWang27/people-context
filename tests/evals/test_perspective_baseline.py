@@ -30,3 +30,5 @@ def test_the_baseline_records_every_scenario_under_both_conditions() -> None:
     recorded = {(run["task_id"], run["condition"]) for run in report["runs"]}
     assert recorded == {(task.id, condition) for task in suite.tasks for condition in ("with_mcp", "without_mcp")}
     assert all(run["answer"].strip() and run["model_id"] == "claude-sonnet-5" for run in report["runs"])
+    # Tool use is what shows a guessed read or an unrequested write the answer never mentions.
+    assert all(isinstance(run["tool_calls"], list) for run in report["runs"])

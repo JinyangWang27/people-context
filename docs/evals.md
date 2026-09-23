@@ -383,9 +383,10 @@ but the report is a local export like any other.
 
 Report: [`evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json`](../evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json).
 Harness 1.1.0, suite `people-context-perspective` v1.0.0, world `lantern-2026-09`, runner `claude-cli`, model id
-`claude-sonnet-5`, client `2.1.280 (Claude Code)`, checkout `edecce0` (clean). Tools: `Skill` plus, under
-`with_mcp`, the fictional store's `mcp__people-context` tools; no file, shell, or web tools under either condition.
-One run per scenario and condition, default sampling settings.
+`claude-sonnet-5`, client `2.1.280 (Claude Code)`, checkout `ae2c606` (clean), preserved by the tag
+`evals/perspective-baseline-2026-09-23`. Tools: `Skill` plus, under `with_mcp`, the fictional store's
+`mcp__people-context` tools; no file, shell, or web tools under either condition. One run per scenario and
+condition, default sampling settings. Every run records its tool calls.
 
 Every scenario was executed once under each condition, and every answer is recorded in full.
 **No human review is recorded yet**, so nothing here claims the workflow is effective. This report is the frozen
