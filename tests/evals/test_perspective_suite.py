@@ -111,6 +111,32 @@ def test_a_trait_citing_an_unknown_observation_is_refused() -> None:
         World.model_validate(document)
 
 
+def test_a_trait_citing_another_persons_observation_is_refused() -> None:
+    """Regression: the schema refuses cross-subject evidence instead of the build crashing mid-materialization."""
+    document = _world_document()
+    document["traits"][0]["evidence_keys"].append("jiahe-plans-ahead")
+
+    with pytest.raises(ValueError, match="traits cite observations about another person: jiahe-plans-ahead"):
+        World.model_validate(document)
+
+
+def test_a_world_with_cross_subject_evidence_is_refused_through_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from evals.harness.__main__ import main
+
+    world = _world_document()
+    world["traits"][0]["evidence_keys"].append("jiahe-plans-ahead")
+    _write(tmp_path / "world.json", world)
+    _write(tmp_path / "suite.json", _suite_document())
+
+    code = main(["--suite", str(tmp_path / "suite.json"), "--runner", "claude-cli", "--workdir", str(tmp_path / "w")])
+
+    assert code == 1
+    assert "invalid evaluation world" in capsys.readouterr().err
+    assert not (tmp_path / "w").exists()
+
+
 def test_duplicate_observation_keys_are_refused() -> None:
     document = _world_document()
     document["observations"].append(dict(document["observations"][0]))

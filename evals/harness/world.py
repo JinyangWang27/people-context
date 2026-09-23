@@ -181,6 +181,14 @@ class World(_StrictModel):
         missing = sorted(cited - set(observation_keys))
         if missing:
             raise ValueError("traits cite unknown observation keys: " + ", ".join(missing))
+        # A trait may only rest on observations about its own subject; the audited use case
+        # refuses anything else, and the schema must refuse it first rather than mid-build.
+        subjects = {observation.key: observation.person_key for observation in self.observations}
+        foreign = sorted(
+            {key for trait in self.traits for key in trait.evidence_keys if subjects[key] != trait.person_key}
+        )
+        if foreign:
+            raise ValueError("traits cite observations about another person: " + ", ".join(foreign))
         return self
 
     @property
