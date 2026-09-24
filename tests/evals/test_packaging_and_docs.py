@@ -177,10 +177,15 @@ def test_every_human_review_report_is_unscored_and_reviewed_only_when_every_run_
             continue
         assert re.search(r"\(model-backed, reviewed \d{4}-\d{2}-\d{2}\)", heading), heading
         assert f"Review of `{path.name}`" in body
+        starts = list(re.finditer(r"^`([a-z0-9-]+)`\n", body, re.M))
+        blocks = {
+            match.group(1): body[match.end() : starts[i + 1].start() if i + 1 < len(starts) else len(body)]
+            for i, match in enumerate(starts)
+        }
         for run in report["runs"]:
-            block = body.split(f"`{run['task_id']}`\n", 1)
-            assert len(block) == 2, f"{run['task_id']} has no recorded review"
-            assert f"- `{run['condition']}`\n  - " in block[1], f"{run['task_id']} {run['condition']} unreviewed"
+            assert run["task_id"] in blocks, f"{run['task_id']} has no recorded review"
+            block = blocks[run["task_id"]]
+            assert f"- `{run['condition']}`\n  - " in block, f"{run['task_id']} {run['condition']} unreviewed"
 
 
 def test_the_docs_state_the_key_handling_the_suite_actually_enforces() -> None:
