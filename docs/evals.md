@@ -405,16 +405,19 @@ How the reasoning was written: Claude (Opus 5.5, not the model under review) dra
 reasoning for each applicable criterion, and the maintainer confirmed every run. An automated PR review then challenged
 ten verdicts; revised drafts for those ten runs were shown run by run and the maintainer accepted all of them in one
 reply. A second round challenged five more verdicts on unchanged answers; the maintainer accepted one
-(`conflicting-plans-zh` · `without_mcp`, Uncertainty) and kept the rest. The verdicts are the maintainer's; the
-reasoning is adopted assistant wording, as [Recording a review](#recording-a-review-3) allows. In the reasoning, "you"
-is the scenario's user, Wen. Criteria marked n/a have nothing to assess under that condition; criteria not listed were
-not central to the scenario.
+(`conflicting-plans-zh` · `without_mcp`, Uncertainty) and kept the rest. A third round showed that `who` cannot be
+invoked by the model, so both `lookup-trigger-en` runs returned to a Triggering pass; the maintainer kept the other
+third-round verdicts. The verdicts are the maintainer's; the reasoning is adopted assistant wording, as [Recording a
+review](#recording-a-review-3) allows. In the reasoning, "you" is the scenario's user, Wen. Criteria marked n/a have
+nothing to assess under that condition; criteria not listed were not central to the scenario.
 
-Triggering is strict here: a run fails it when the intended skill did not run, even if the answer behaved
-correctly, because an answer no skill produced says nothing about the skill. An unprompted offer to save something
-also fails it, because the workflow writes nothing by default and capture is a separate request.
+Triggering is strict here: a run fails it when the intended skill did not run, even if the answer behaved correctly,
+because an answer no skill produced says nothing about the skill. The rule applies only to skills the model can invoke:
+`who` sets `disable-model-invocation`, so a plain-language lookup is judged on whether it stayed a lookup through the
+available paths. An unprompted offer to save something also fails triggering, because the workflow writes nothing by
+default and capture is a separate request.
 
-12 of 18 runs fail at least one criterion. One run per condition is a single sample, so a pass shows the
+10 of 18 runs fail at least one criterion. One run per condition is a single sample, so a pass shows the
 behaviour is possible, not that it is reliable. This review does not claim the workflow is effective; it records
 where the baseline falls short, which is what M31.3 targets. The main patterns are routing (the intended skill often
 does not run), unsupported or misattributed claims presented as fact, and coaching drafts that add content the user
@@ -432,8 +435,6 @@ did not supply.
 | `public-figure-packet-en` · `with_mcp` | Triggering |
 | `coaching-pushback-en` · `with_mcp` | Voice |
 | `coaching-pushback-en` · `without_mcp` | Voice |
-| `lookup-trigger-en` · `with_mcp` | Triggering |
-| `lookup-trigger-en` · `without_mcp` | Triggering |
 
 Per-run reasoning:
 
@@ -567,10 +568,12 @@ Per-run reasoning:
 
 - `with_mcp`
   - Usefulness: pass. One line: role, organisation, and relationship to you.
-  - Triggering: **fail**. Stayed a plain lookup, but the who skill never ran; the model called resolve_person directly.
+  - Triggering: pass. Stayed a plain lookup through resolve_person, with no perspective analysis. The who skill cannot
+    be invoked by the model (disable-model-invocation), so a plain-language prompt cannot reach it.
 - `without_mcp`
   - Usefulness: pass. Says it can't look her up and asks how you know her.
-  - Triggering: **fail**. No invented profile or analysis, but routed to people-context-usage instead of who.
+  - Triggering: pass. No invented profile or analysis. Routed to people-context-usage, which is the available lookup
+    path: the who skill cannot be invoked by the model.
 
 ## Running it
 
