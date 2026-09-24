@@ -52,7 +52,7 @@ No new profile store, server API, or server-side LLM is planned.
 
 M31.1 delivered the `person-perspective` skill and mirrored its essential workflow into the shared usage guidance
 and the packaged `people-context://guide`. M31.2 delivered the human-review perspective suite, its fictional store,
-and a recorded model-backed baseline awaiting human review; M31.3 refines skills
+and a recorded model-backed baseline, human-reviewed on 2026-09-24; M31.3 refines skills
 with recorded comparisons; M31.4 adds reviewed client-side export; M31.5 verifies portability and documents examples.
 The five PRs are sequential. A narrow CLI publisher writes reviewed snapshots privately and atomically; corrections
 or forget operations cannot revoke copies.

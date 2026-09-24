@@ -379,7 +379,7 @@ but the report is a local export like any other.
 
 ### Recorded runs
 
-#### 2026-09-23 — perspective baseline (model-backed, unreviewed)
+#### 2026-09-23 — perspective baseline (model-backed, reviewed 2026-09-24)
 
 Report: [`evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json`](../evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json).
 Harness 1.1.0, suite `people-context-perspective` v1.0.0, world `lantern-2026-09`, runner `claude-cli`, model id
@@ -388,9 +388,147 @@ Harness 1.1.0, suite `people-context-perspective` v1.0.0, world `lantern-2026-09
 `mcp__people-context` tools; no file, shell, or web tools under either condition. One run per scenario and
 condition, default sampling settings. Every run records its tool calls.
 
-Every scenario was executed once under each condition, and every answer is recorded in full.
-**No human review is recorded yet**, so nothing here claims the workflow is effective. This report is the frozen
-M31.2 baseline that M31.3 compares against under equivalent conditions.
+Every scenario was executed once under each condition, and every answer is recorded in full. This report is the
+frozen M31.2 baseline that M31.3 compares against under equivalent conditions. Its human review follows.
+
+##### Review — 2026-09-24
+
+Review of `2026-09-23-perspective-baseline-claude-sonnet-5.json`, all 18 runs, against the
+[criteria](#the-criteria) and the [reviewer key](../evals/perspective/review.md). Each answer and its recorded
+`tool_calls` were read beside the fictional store and the key. How it was produced: Claude drafted a verdict and
+one sentence of reasoning for each applicable criterion; the maintainer read each run and confirmed every draft
+without changes. The verdicts below are therefore the maintainer's, and the reasoning is Claude's wording that
+the maintainer accepted. Criteria marked n/a have nothing to assess under that condition; criteria not listed
+were not central to the scenario.
+
+Five runs fail one criterion each; the other thirteen pass every criterion assessed. One run per condition is a
+single sample, so a pass shows the behaviour is possible, not that it is reliable. This review does not claim the
+workflow is effective; it records where the baseline falls short, which is what M31.3 targets.
+
+| Run | Fails | In short |
+| --- | --- | --- |
+| `grounded-hiring-en` · `with_mcp` | Uncertainty | Labels Dana's own statements as reported and says nothing came from her directly |
+| `conflicting-plans-zh` · `with_mcp` | Triggering | `person-perspective` never ran; ends by offering to update the stored trait |
+| `conflicting-plans-zh` · `without_mcp` | Triggering | Offers, unasked, to save the friend's habit as a memory |
+| `public-figure-packet-en` · `with_mcp` | Triggering | No tool calls: a good answer that no skill produced |
+| `coaching-pushback-en` · `with_mcp` | Voice | The draft adds "attrition risk" and a bandwidth claim the user never supplied |
+
+Two judgements a later reviewer may weigh differently: an unprompted offer to save something counts as a
+triggering failure, because the workflow writes nothing by default and capture is a separate request; and a good
+answer produced without the intended skill still fails triggering, because it is not evidence about the skill.
+
+Per-run reasoning:
+
+`grounded-hiring-en`
+
+- `with_mcp`
+  - Usefulness: pass. Ends with advice you can act on: a written case with the gap and the cost of not hiring, two weeks of load data, raised in a scheduled meeting.
+  - Source traceability: pass. Every pattern has a date and a source, and it counts Omar's retold hallway story once, as the key asks.
+  - Uncertainty: **fail**. Labels Dana's own Q1 calibration statement as reported, 'observed and logged by you', and closes with 'nothing from her side directly'. The store marks the 2026-03-10 and 2026-06-18 notes as stated by Dana.
+  - Contradictions: pass. Shows the same-day contractor approval with its date as an exception that qualifies the pattern, which matches the key.
+  - Triggering: pass. Invoked person-perspective, resolved Dana, then read context and timeline. No writes, no capture offer.
+- `without_mcp`
+  - Usefulness: pass. Says plainly it can't answer from evidence and tells you what to paste in.
+  - Source traceability: n/a. Makes no claims about Dana.
+  - Uncertainty: pass. Invents nothing about her and says anything else would be a guess.
+  - Contradictions: n/a. No evidence to weigh.
+  - Triggering: pass. Invoked person-perspective and used its fallback.
+
+`conflicting-plans-zh`
+
+- `with_mcp`
+  - Usefulness: pass. Clear conclusion and practical advice: agree a rough plan now, fix dates once her monthly rota is out.
+  - Source traceability: pass. Each item has its date and source: 许蔓's 2024 report, your 2025-12 note, her own 2026-08-10 statement, and the rota fact.
+  - Uncertainty: pass. Marks the 2024 trait as second-hand at confidence 0.6 and the 2026 item as her own words.
+  - Contradictions: pass. Lays the contradiction out on a timeline and explains why the newest direct statement counts most.
+  - Triggering: **fail**. Never invoked person-perspective. It went straight to the store tools, including get_consolidation_context. It also ends by offering to update the stored trait, which you didn't ask for.
+- `without_mcp`
+  - Usefulness: pass. Says it can't see any records and suggests simply asking her, which is useful.
+  - Source traceability: n/a. Makes no claims about her.
+  - Uncertainty: pass. Invents nothing about her habits.
+  - Contradictions: n/a. No evidence to weigh.
+  - Triggering: **fail**. Point 3 offers to save her habit as a memory, which you didn't ask for. It also routed to people-context-usage instead of person-perspective.
+
+`sparse-family-zh`
+
+- `with_mcp`
+  - Usefulness: pass. Short and honest. It gives the one thing on record and says what would help.
+  - Source traceability: pass. Cites the single remark with its date and says it came via your mum.
+  - Uncertainty: pass. Doesn't build a portrait from one second-hand remark and adds no stereotypes. Minor slip: it calls 2026-02-15 '去年春节', but that was this year's Spring Festival.
+  - Triggering: pass. Invoked person-perspective, resolved him using the 舅舅 hint, read only his records, and wrote nothing.
+- `without_mcp`
+  - Usefulness: pass. Asks useful questions to prepare for the family discussion.
+  - Source traceability: n/a. Makes no claims about him.
+  - Uncertainty: pass. Invents nothing about him.
+  - Triggering: pass. Invoked person-perspective and used its fallback.
+
+`ambiguous-sam-en`
+
+- `with_mcp`
+  - Usefulness: pass. Names both Sams with their roles so you can choose quickly.
+  - Triggering: pass. Called only resolve_person and read neither Sam's evidence. It guesses 'likely Sam Okafor' but still asks, and acts on nothing.
+- `without_mcp`
+  - Usefulness: pass. Asks which Sam. The generic funding checklist is labelled as general, not as Sam's view.
+  - Triggering: pass. No guessed identity and no writes.
+
+`unfamiliar-question-en`
+
+- `with_mcp`
+  - Usefulness: pass. Gives a usable angle: frame the proposal as a written case with data.
+  - Source traceability: pass. The patterns it cites are dated and sourced. 'Two independent situations' holds, because the Q1 statement and Omar's refusal are separate events.
+  - Uncertainty: pass. Says nothing covers four-day weeks and labels its reading as an interpretation, not her view.
+  - Triggering: pass. Invoked person-perspective and only read. No writes.
+- `without_mcp`
+  - Usefulness: pass. Asks for context and offers generic considerations, labelled as generic.
+  - Source traceability: n/a. Makes no claims about Dana.
+  - Uncertainty: pass. Says outright that it has no basis for predicting her view.
+  - Triggering: pass. Routed to people-context-usage rather than person-perspective, but the fallback behaviour is correct.
+
+`public-figure-packet-en`
+
+- `with_mcp`
+  - Usefulness: pass. Clear account of how her view changed, plus a usable, hedged answer on AI.
+  - Source traceability: pass. Ties each point to Source A, B or C with its year, and sets Source D aside.
+  - Uncertainty: pass. Labels the AI answer as extrapolation and treats Source D as unverified hearsay.
+  - Contradictions: pass. Shows the 2024 revision as a change over time, refined by reversibility, not as a flat reversal.
+  - Triggering: **fail**. No tool calls, so person-perspective never ran. The answer is good, but it came from the model alone and says nothing about the skill. It did flag and ignore the embedded instruction.
+- `without_mcp`
+  - Usefulness: pass. Clear and well structured, and names what the sources leave open.
+  - Source traceability: pass. Each claim is tied to its source and date.
+  - Uncertainty: pass. Labels claims Stated, Reported or Inferred. The AI section is marked 'not a quote or prediction'.
+  - Contradictions: pass. Calls 2024 'an explicit revision, not a reversal', which matches the key.
+  - Triggering: pass. Invoked person-perspective, flagged the embedded instruction, and saved nothing.
+
+`coaching-pushback-en`
+
+- `with_mcp`
+  - Usefulness: pass. Leads with a sendable draft. The short explanation follows it.
+  - Triggering: pass. communication-coach, resolved Dana, and read guidance. No writes.
+  - Voice: **fail**. Adds 'already showing in their bandwidth on other work' and 'attrition risk', which you never said. 'here's the number ask' reads clumsily.
+- `without_mcp`
+  - Usefulness: pass. Leads with a short draft that uses your numbers.
+  - Triggering: pass. communication-coach, with a clear note that it had no stored context.
+  - Voice: pass. Plain and direct, with only your figures. Borderline: 'I'll put together the fuller case and bring it back' adds a commitment you didn't state.
+
+`coaching-decline-zh`
+
+- `with_mcp`
+  - Usefulness: pass. Short, sendable draft.
+  - Triggering: pass. communication-coach, resolved 嘉禾, and read guidance. No writes.
+  - Voice: pass. Casual, gives the reason only as far as you did, and offers next weekend. The sentence introducing the draft is oddly worded, but the draft itself is fine.
+- `without_mcp`
+  - Usefulness: pass. Two short options, ready to send.
+  - Triggering: pass. communication-coach. No writes.
+  - Voice: pass. Casual WeChat register, no apology, no invented detail.
+
+`lookup-trigger-en`
+
+- `with_mcp`
+  - Usefulness: pass. One line: role, organisation, and relationship to you.
+  - Triggering: pass. Only resolve_person. No perspective analysis.
+- `without_mcp`
+  - Usefulness: pass. Says it can't look her up and asks how you know her.
+  - Triggering: pass. No invented profile and no analysis.
 
 ## Running it
 
