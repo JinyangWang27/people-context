@@ -153,8 +153,16 @@ def test_the_dry_run_is_documented_as_plumbing_rather_than_a_model_result() -> N
             )
 
 
-def test_every_human_review_report_is_labelled_unscored_and_unreviewed() -> None:
-    """Regression: a model-backed perspective answer must never read as a grade or as reviewed evidence."""
+def _recorded_run_section(document: str, report_name: str) -> tuple[str, str]:
+    """The heading and body of the one "Recorded runs" section that links the report."""
+    sections = re.findall(r"^#### ([^\n]+)\n(.*?)(?=^#{2,4} |\Z)", document, re.S | re.M)
+    matches = [(heading, body) for heading, body in sections if f"results/{report_name}" in body]
+    assert len(matches) == 1, report_name
+    return matches[0]
+
+
+def test_every_human_review_report_is_unscored_and_reviewed_only_when_every_run_is() -> None:
+    """Regression: a model-backed perspective answer must never read as a grade, or as reviewed without reasoning."""
     document = _read(EVALS_DOC)
 
     for path in _recorded_reports():
@@ -163,8 +171,21 @@ def test_every_human_review_report_is_labelled_unscored_and_unreviewed() -> None
             continue
         assert report["totals"] == [], path.name
         assert all(run["criteria"] == [] for run in report["runs"]), path.name
-        assert "(model-backed, unreviewed)" in document
-        assert "**No human review is recorded yet**" in document
+        heading, body = _recorded_run_section(document, path.name)
+        if "(model-backed, unreviewed)" in heading:
+            assert "**No human review is recorded yet**" in body, path.name
+            continue
+        assert re.search(r"\(model-backed, reviewed \d{4}-\d{2}-\d{2}\)", heading), heading
+        assert f"Review of `{path.name}`" in body
+        starts = list(re.finditer(r"^`([a-z0-9-]+)`\n", body, re.M))
+        blocks = {
+            match.group(1): body[match.end() : starts[i + 1].start() if i + 1 < len(starts) else len(body)]
+            for i, match in enumerate(starts)
+        }
+        for run in report["runs"]:
+            assert run["task_id"] in blocks, f"{run['task_id']} has no recorded review"
+            block = blocks[run["task_id"]]
+            assert f"- `{run['condition']}`\n  - " in block, f"{run['task_id']} {run['condition']} unreviewed"
 
 
 def test_the_docs_state_the_key_handling_the_suite_actually_enforces() -> None:

@@ -363,8 +363,12 @@ nothing about its quality.
 ### Recording a review
 
 Same three fields as the other workflows: the scenario and condition, the recorded answer (already in the report),
-and per-criterion reasoning in the reviewer's words. Record it as a dated section below that names the report it
-reviews.
+and per-criterion reasoning. Record it as a dated section below that names the report it reviews.
+
+The reasoning may be the reviewer's own words, or an assistant's draft that the reviewer adopts after reading the
+run, its tool calls, and the key. Either way the verdict is the reviewer's, the reviewer confirms the verdicts for
+every run, and the review states which way its reasoning was written. An assistant's draft that nobody has
+confirmed is not a review, and a model that drafts the reasoning must not be the one whose answers are under review.
 
 ### Running the perspective suite
 
@@ -379,7 +383,7 @@ but the report is a local export like any other.
 
 ### Recorded runs
 
-#### 2026-09-23 — perspective baseline (model-backed, unreviewed)
+#### 2026-09-23 — perspective baseline (model-backed, reviewed 2026-09-24)
 
 Report: [`evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json`](../evals/results/2026-09-23-perspective-baseline-claude-sonnet-5.json).
 Harness 1.1.0, suite `people-context-perspective` v1.0.0, world `lantern-2026-09`, runner `claude-cli`, model id
@@ -388,9 +392,188 @@ Harness 1.1.0, suite `people-context-perspective` v1.0.0, world `lantern-2026-09
 `mcp__people-context` tools; no file, shell, or web tools under either condition. One run per scenario and
 condition, default sampling settings. Every run records its tool calls.
 
-Every scenario was executed once under each condition, and every answer is recorded in full.
-**No human review is recorded yet**, so nothing here claims the workflow is effective. This report is the frozen
-M31.2 baseline that M31.3 compares against under equivalent conditions.
+Every scenario was executed once under each condition, and every answer is recorded in full. This report is the
+frozen M31.2 baseline that M31.3 compares against under equivalent conditions. Its human review follows.
+
+##### Review — 2026-09-24
+
+Review of `2026-09-23-perspective-baseline-claude-sonnet-5.json`, all 18 runs, against the
+[criteria](#the-criteria) and the [reviewer key](../evals/perspective/review.md). Each answer and its recorded
+`tool_calls` were read beside the fictional store and the key.
+
+How the reasoning was written: Claude (Opus 5.5, not the model under review) drafted a verdict and one sentence of
+reasoning for each applicable criterion, and the maintainer confirmed every run. An automated PR review then challenged
+ten verdicts; revised drafts for those ten runs were shown run by run and the maintainer accepted all of them in one
+reply. A second round challenged five more verdicts on unchanged answers; the maintainer accepted one
+(`conflicting-plans-zh` · `without_mcp`, Uncertainty) and kept the rest. A third round showed that `who` cannot be
+invoked by the model, so both `lookup-trigger-en` runs returned to a Triggering pass; the maintainer kept the other
+third-round verdicts. The verdicts are the maintainer's; the reasoning is adopted assistant wording, as [Recording a
+review](#recording-a-review-3) allows. In the reasoning, "you" is the scenario's user, Wen. Criteria marked n/a have
+nothing to assess under that condition; criteria not listed were not central to the scenario.
+
+Triggering is strict here: a run fails it when the intended skill did not run, even if the answer behaved correctly,
+because an answer no skill produced says nothing about the skill. The rule applies only to skills the model can invoke:
+`who` sets `disable-model-invocation`, so a plain-language lookup is judged on whether it stayed a lookup through the
+available paths. An unprompted offer to save something also fails triggering, because the workflow writes nothing by
+default and capture is a separate request.
+
+10 of 18 runs fail at least one criterion. One run per condition is a single sample, so a pass shows the
+behaviour is possible, not that it is reliable. This review does not claim the workflow is effective; it records
+where the baseline falls short, which is what M31.3 targets. The main patterns are routing (the intended skill often
+does not run), unsupported or misattributed claims presented as fact, and coaching drafts that add content the user
+did not supply.
+
+| Run | Fails |
+| --- | --- |
+| `grounded-hiring-en` · `with_mcp` | Source traceability, Uncertainty |
+| `conflicting-plans-zh` · `with_mcp` | Uncertainty, Triggering |
+| `conflicting-plans-zh` · `without_mcp` | Uncertainty, Triggering |
+| `ambiguous-sam-en` · `with_mcp` | Triggering |
+| `ambiguous-sam-en` · `without_mcp` | Triggering |
+| `unfamiliar-question-en` · `with_mcp` | Source traceability |
+| `unfamiliar-question-en` · `without_mcp` | Triggering |
+| `public-figure-packet-en` · `with_mcp` | Triggering |
+| `coaching-pushback-en` · `with_mcp` | Voice |
+| `coaching-pushback-en` · `without_mcp` | Voice |
+
+Per-run reasoning:
+
+`grounded-hiring-en`
+
+- `with_mcp`
+  - Usefulness: pass. Ends with advice you can act on: a written case with the gap and the cost of not hiring, two weeks
+    of load data, raised in a scheduled meeting.
+  - Source traceability: **fail**. Counts Omar's retold story once, but says a written, data-backed ask in a scheduled
+    meeting is "what's gotten approvals through before". The store records no such approval; its only approval is the
+    escalation contractor.
+  - Uncertainty: **fail**. Labels Dana's own Q1 calibration statement as reported, 'observed and logged by you', and
+    closes with 'nothing from her side directly'. The store marks the 2026-03-10 and 2026-06-18 notes as stated by Dana.
+  - Contradictions: pass. Shows the same-day contractor approval with its date as an exception that qualifies the
+    pattern, which matches the key.
+  - Triggering: pass. Invoked person-perspective, resolved Dana, then read context and timeline. No writes, no capture
+    offer.
+- `without_mcp`
+  - Usefulness: pass. Says plainly it can't answer from evidence and tells you what to paste in.
+  - Source traceability: n/a. Makes no claims about Dana.
+  - Uncertainty: pass. Invents nothing about her and says anything else would be a guess.
+  - Contradictions: n/a. No evidence to weigh.
+  - Triggering: pass. Invoked person-perspective and used its fallback.
+
+`conflicting-plans-zh`
+
+- `with_mcp`
+  - Usefulness: pass. Clear conclusion and practical advice: agree a rough plan now, fix dates once her monthly rota is
+    out.
+  - Source traceability: pass. Each item has its date and source: 许蔓's 2024 report, your 2025-12 note, her own
+    2026-08-10 statement, and the rota fact.
+  - Uncertainty: **fail**. Keeps the 2024 report and her 2026 statement apart, but states as fact that the rota comes
+    out "一般月初" and that leave can't be guaranteed. The store only says shifts are published monthly.
+  - Contradictions: pass. Lays the contradiction out on a timeline and explains why the newest direct statement counts
+    most.
+  - Triggering: **fail**. Never invoked person-perspective. It went straight to the store tools, including
+    get_consolidation_context. It also ends by offering to update the stored trait, which you didn't ask for.
+- `without_mcp`
+  - Usefulness: pass. Says it can't see any records and suggests simply asking her, which is useful.
+  - Source traceability: n/a. Makes no claims about her.
+  - Uncertainty: **fail**. Says it cannot reach the store, then asserts "目前我们之间没有存下过她做计划习惯的相关笔记": an
+    unreadable store presented as empty. The store does hold three dated records about her.
+  - Contradictions: n/a. No evidence to weigh.
+  - Triggering: **fail**. Routed to people-context-usage, not person-perspective, and point 3 offers, unasked, to save
+    her habit as a memory.
+
+`sparse-family-zh`
+
+- `with_mcp`
+  - Usefulness: pass. Short and honest. It gives the one thing on record and says what would help.
+  - Source traceability: pass. Cites the single remark with its date and says it came via your mum.
+  - Uncertainty: pass. Doesn't build a portrait from one second-hand remark and adds no stereotypes. Minor slip: it
+    calls 2026-02-15 '去年春节', but that was this year's Spring Festival.
+  - Triggering: pass. Invoked person-perspective, resolved him using the 舅舅 hint, read only his records, and wrote
+    nothing.
+- `without_mcp`
+  - Usefulness: pass. Asks useful questions to prepare for the family discussion.
+  - Source traceability: n/a. Makes no claims about him.
+  - Uncertainty: pass. Invents nothing about him.
+  - Triggering: pass. Invoked person-perspective and used its fallback.
+
+`ambiguous-sam-en`
+
+- `with_mcp`
+  - Usefulness: pass. Names both Sams with their roles so you can choose quickly.
+  - Triggering: **fail**. Stopped at the right question and read neither Sam, but person-perspective never ran; the
+    model called resolve_person directly.
+- `without_mcp`
+  - Usefulness: pass. Asks which Sam. The generic funding checklist is labelled as general, not as Sam's view.
+  - Triggering: **fail**. Asked which Sam and guessed nothing, but routed to people-context-usage instead of
+    person-perspective.
+
+`unfamiliar-question-en`
+
+- `with_mcp`
+  - Usefulness: pass. Gives a usable angle: frame the proposal as a written case with data.
+  - Source traceability: **fail**. Gives "plain, short, direct… skip corporate filler" as Dana's communication
+    preference. That is your own stored communication philosophy, not anything recorded about her.
+  - Uncertainty: pass. Says nothing covers four-day weeks and labels its reading as an interpretation, not her view.
+  - Triggering: pass. Invoked person-perspective and only read. No writes.
+- `without_mcp`
+  - Usefulness: pass. Asks for context and offers generic considerations, labelled as generic.
+  - Source traceability: n/a. Makes no claims about Dana.
+  - Uncertainty: pass. Says outright that it has no basis for predicting her view.
+  - Triggering: **fail**. Routed to people-context-usage instead of person-perspective. The fallback behaviour itself
+    was correct.
+
+`public-figure-packet-en`
+
+- `with_mcp`
+  - Usefulness: pass. Clear account of how her view changed, plus a usable, hedged answer on AI.
+  - Source traceability: pass. Ties each point to Source A, B or C with its year, and sets Source D aside.
+  - Uncertainty: pass. Labels the AI answer as extrapolation and treats Source D as unverified hearsay.
+  - Contradictions: pass. Shows the 2024 revision as a change over time, refined by reversibility, not as a flat
+    reversal.
+  - Triggering: **fail**. No tool calls, so person-perspective never ran. The answer is good, but it came from the model
+    alone and says nothing about the skill. It did flag and ignore the embedded instruction.
+- `without_mcp`
+  - Usefulness: pass. Clear and well structured, and names what the sources leave open.
+  - Source traceability: pass. Each claim is tied to its source and date.
+  - Uncertainty: pass. Labels claims Stated, Reported or Inferred. The AI section is marked 'not a quote or prediction'.
+  - Contradictions: pass. Calls 2024 'an explicit revision, not a reversal', which matches the key.
+  - Triggering: pass. Invoked person-perspective, flagged the embedded instruction, and saved nothing.
+
+`coaching-pushback-en`
+
+- `with_mcp`
+  - Usefulness: pass. Leads with a sendable draft. The short explanation follows it.
+  - Triggering: pass. communication-coach, resolved Dana, and read guidance. No writes.
+  - Voice: **fail**. Adds 'already showing in their bandwidth on other work' and 'attrition risk', which you never said.
+    'here's the number ask' reads clumsily.
+- `without_mcp`
+  - Usefulness: pass. Leads with a short draft that uses your numbers.
+  - Triggering: pass. communication-coach, with a clear note that it had no stored context.
+  - Voice: **fail**. Plain and uses only your figures, but "I'll put together the fuller case and bring it back" is a
+    commitment you didn't give, which the key rules out.
+
+`coaching-decline-zh`
+
+- `with_mcp`
+  - Usefulness: pass. Short, sendable draft.
+  - Triggering: pass. communication-coach, resolved 嘉禾, and read guidance. No writes.
+  - Voice: pass. Casual, gives the reason only as far as you did, and offers next weekend. The sentence introducing the
+    draft is oddly worded, but the draft itself is fine.
+- `without_mcp`
+  - Usefulness: pass. Two short options, ready to send.
+  - Triggering: pass. communication-coach. No writes.
+  - Voice: pass. Casual WeChat register, no apology, no invented detail.
+
+`lookup-trigger-en`
+
+- `with_mcp`
+  - Usefulness: pass. One line: role, organisation, and relationship to you.
+  - Triggering: pass. Stayed a plain lookup through resolve_person, with no perspective analysis. The who skill cannot
+    be invoked by the model (disable-model-invocation), so a plain-language prompt cannot reach it.
+- `without_mcp`
+  - Usefulness: pass. Says it can't look her up and asks how you know her.
+  - Triggering: pass. No invented profile or analysis. Routed to people-context-usage, which is the available lookup
+    path: the who skill cannot be invoked by the model.
 
 ## Running it
 
