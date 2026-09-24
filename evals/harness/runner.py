@@ -28,6 +28,7 @@ ARTIFACTS_DIRNAME = "artifacts"
 INVOCATIONS_DIRNAME = "invocations"
 WORLD_DB_FILENAME = "world.db"
 MCP_CONFIG_FILENAME = "mcp.json"
+PLUGIN_DIRNAME = "plugin"
 
 #: The checkout this harness belongs to, substituted into a server command vector.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +46,21 @@ class RunOutcome:
     model_id: str
     answer: str
     score: TaskScore
+    tool_calls: tuple[dict[str, object], ...] | None = None
+
+
+def stage_skills_plugin(directory: Path) -> Path:
+    """Copy the checkout's client skills into a plugin that declares no MCP server.
+
+    The shipped plugin manifest wires `people-context-mcp` to the operator's configured
+    database. Loading it as-is would put a real store in front of the evaluated agent, so
+    the harness stages the skills under a bare manifest and leaves MCP to ``--mcp-config``.
+    """
+    manifest = directory / ".claude-plugin" / "plugin.json"
+    manifest.parent.mkdir(parents=True, exist_ok=False)
+    manifest.write_text(json.dumps({"name": "people-context"}, indent=2) + "\n", encoding="utf-8")
+    shutil.copytree(PROJECT_ROOT / "skills", directory / "skills")
+    return directory
 
 
 def write_mcp_config(path: Path, server_argv: Sequence[str], db_path: Path) -> Path:
@@ -143,8 +159,10 @@ class FixtureWorkspace:
         artifacts: Path,
         server_argv: tuple[str, ...],
         world_as_of: datetime,
+        skills_plugin: Path | None = None,
     ) -> None:
         self.pristine = pristine
+        self.skills_plugin = skills_plugin
         self._artifacts = artifacts
         self._server_argv = server_argv
         self._world_as_of = world_as_of
@@ -181,7 +199,8 @@ def prepare_workspace(
     artifacts = workdir / ARTIFACTS_DIRNAME
     artifacts.mkdir(parents=True, exist_ok=True)
     pristine = build_world_database(world, artifacts / WORLD_DB_FILENAME)
-    return FixtureWorkspace(pristine, artifacts, server_argv, world.as_of)
+    plugin = stage_skills_plugin(artifacts / PLUGIN_DIRNAME)
+    return FixtureWorkspace(pristine, artifacts, server_argv, world.as_of, plugin)
 
 
 def run_suite(
@@ -218,6 +237,7 @@ def run_suite(
                 prompt=task.prompt,
                 mcp_config_path=workspace.configuration_for(task.id, condition),
                 working_directory=directory,
+                skills_plugin=workspace.skills_plugin,
             )
             response = runner.run(request)
             outcomes.append(
@@ -227,6 +247,7 @@ def run_suite(
                     model_id=response.model_id,
                     answer=response.answer,
                     score=score_task(task, response.answer),
+                    tool_calls=response.tool_calls,
                 )
             )
     return tuple(outcomes)

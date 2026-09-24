@@ -102,12 +102,15 @@ Criterion = Annotated[
 
 
 class Task(_StrictModel):
-    """One fixed question plus the rubric that scores an answer to it."""
+    """One fixed question plus the rubric that scores an answer to it.
+
+    The rubric is empty exactly when the suite is reviewed by a person; `Suite` enforces that.
+    """
 
     id: str = Field(min_length=1, max_length=64)
     title: str = Field(min_length=1, max_length=200)
-    prompt: str = Field(min_length=1, max_length=4000)
-    rubric: tuple[Criterion, ...] = Field(min_length=1, max_length=20)
+    prompt: str = Field(min_length=1, max_length=8000)
+    rubric: tuple[Criterion, ...] = Field(default=(), max_length=20)
 
     @field_validator("id")
     @classmethod
@@ -156,6 +159,10 @@ class CommandRunnerConfig(_StrictModel):
     timeout_seconds: float = Field(gt=0, le=3600)
     max_output_bytes: int = Field(ge=1024, le=8_388_608)
     env_passthrough: tuple[str, ...] = Field(default=(), max_length=32)
+    #: ``text`` records only the final answer. ``stream-json`` parses the client's event
+    #: stream, so a report also records every tool the agent called — which is how a
+    #: reviewer sees a guessed read or a write that the final answer never mentions.
+    output_format: Literal["text", "stream-json"] = "text"
 
     @field_validator("env_passthrough")
     @classmethod
@@ -205,6 +212,9 @@ class Suite(_StrictModel):
     version: Literal[1]
     suite_id: str = Field(min_length=1, max_length=64)
     suite_version: str = Field(min_length=1, max_length=32)
+    #: ``rubric`` suites are scored textually; ``human`` suites record answers for a person to
+    #: review and carry no rubric at all, so no report can present them as a grade.
+    review: Literal["rubric", "human"] = "rubric"
     world: str = Field(min_length=1, max_length=200)
     system_prompt: str = Field(min_length=1, max_length=4000)
     tasks: tuple[Task, ...] = Field(min_length=1, max_length=50)
@@ -215,6 +225,18 @@ class Suite(_StrictModel):
         ids = [task.id for task in self.tasks]
         if len(set(ids)) != len(ids):
             raise ValueError("task ids must be unique within a suite")
+        return self
+
+    @model_validator(mode="after")
+    def _rubrics_match_review(self) -> Suite:
+        if self.review == "human":
+            scored = sorted(task.id for task in self.tasks if task.rubric)
+            if scored:
+                raise ValueError("a human-review suite must not carry rubrics: " + ", ".join(scored))
+        else:
+            unscored = sorted(task.id for task in self.tasks if not task.rubric)
+            if unscored:
+                raise ValueError("every task in a rubric suite needs a rubric: " + ", ".join(unscored))
         return self
 
 

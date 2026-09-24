@@ -53,6 +53,9 @@ def build_report(
             "world_id": world.world_id,
             "world_as_of": _instant(world.as_of),
         },
+        # "human" reports carry answers for a person to review and no totals: an empty
+        # rubric earns nothing, and printing that as a score would be a false grade.
+        "review": loaded.suite.review,
         "runner": {
             "name": runner_name,
             "kind": runner_kind,
@@ -71,7 +74,10 @@ def build_report(
             "system": loaded.suite.system_prompt,
             "tasks": [{"id": task.id, "title": task.title, "prompt": task.prompt} for task in tasks],
         },
-        "totals": _totals(ordered),
+        # A human-review suite has no rubric, so it has no totals: printing 0/0 per condition
+        # would read as a failing grade. Per-run fields keep their v1 types; `review` says
+        # that no score exists.
+        "totals": _totals(ordered) if loaded.suite.review == "rubric" else [],
         "runs": [
             {
                 "task_id": outcome.task_id,
@@ -94,6 +100,8 @@ def build_report(
                     for criterion in outcome.score.criteria
                 ],
                 "answer": outcome.answer,
+                # Null when the runner could not observe tool use; a list, possibly empty, otherwise.
+                "tool_calls": [dict(call) for call in outcome.tool_calls] if outcome.tool_calls is not None else None,
             }
             for outcome in ordered
         ],
@@ -129,6 +137,16 @@ def render_summary(report: dict[str, Any]) -> str:
         f"suite {report['suite']['id']} v{report['suite']['version']} "
         f"(world {report['suite']['world_id']}, harness {report['harness_version']})",
         f"runner {report['runner']['name']} ({report['runner']['kind']})",
+    ]
+    if report.get("review") == "human":
+        lines.extend(("", "human review — not scored", ""))
+        lines.extend(("| task | condition | answer chars | tool calls |", "| --- | --- | ---: | ---: |"))
+        for run in report["runs"]:
+            calls = run.get("tool_calls")
+            count = "unobserved" if calls is None else len(calls)
+            lines.append(f"| {run['task_id']} | {run['condition']} | {len(run['answer'])} | {count} |")
+        return "\n".join(lines) + "\n"
+    lines += [
         "",
         "| condition | tasks | earned | possible | percent |",
         "| --- | ---: | ---: | ---: | ---: |",

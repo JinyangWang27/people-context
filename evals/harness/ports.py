@@ -27,6 +27,9 @@ class AgentRequest:
     #: never the checkout, so an agent CLI cannot pick up repository-level
     #: configuration such as a project ``.mcp.json`` and quietly change conditions.
     working_directory: Path
+    #: Directory holding the checkout's skills as a plugin with no MCP server, for a
+    #: runner whose vector passes ``{skills_plugin}``. Never under the working directory.
+    skills_plugin: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -35,6 +38,9 @@ class AgentResponse:
 
     answer: str
     model_id: str
+    #: Tool calls the agent made, in order, as ``{"name": ..., "input": ...}``; ``None`` when
+    #: the runner cannot observe them, which is different from an agent that called nothing.
+    tool_calls: tuple[dict[str, object], ...] | None = None
 
 
 @runtime_checkable

@@ -15,6 +15,7 @@ the harness starts a process:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -27,7 +28,7 @@ from evals.harness.ports import AgentRequest, AgentResponse
 from evals.harness.suite import CommandRunnerConfig
 
 #: Placeholders substituted as whole arguments, and where each one is allowed.
-_BASE_PLACEHOLDERS = frozenset({"{system_prompt}", "{prompt}", "{model}"})
+_BASE_PLACEHOLDERS = frozenset({"{system_prompt}", "{prompt}", "{model}", "{skills_plugin}"})
 _MCP_PLACEHOLDERS = frozenset({"{mcp_config}"})
 
 #: Bytes of child stderr kept for a failure message. Enough to identify the
@@ -89,12 +90,16 @@ class CommandAgentRunner:
                     f"agent command failed with exit code {returncode} "
                     f"on task {request.task_id} ({request.condition}): {excerpt}"
                 )
-        answer = stdout.strip()
+        tool_calls: tuple[dict[str, object], ...] | None = None
+        if self._config.output_format == "stream-json":
+            answer, tool_calls = _parse_event_stream(stdout, request)
+        else:
+            answer = stdout.strip()
         if not answer:
             raise EvalHarnessError(
                 f"agent command produced no answer on task {request.task_id} ({request.condition})"
             )
-        return AgentResponse(answer=answer, model_id=self.model_id)
+        return AgentResponse(answer=answer, model_id=self.model_id, tool_calls=tool_calls)
 
     def probe_client_version(self) -> str | None:
         """Return the agent client's own version string, or ``None``.
@@ -164,6 +169,10 @@ class CommandAgentRunner:
             "{prompt}": request.prompt,
             "{model}": self._config.model_id,
         }
+        if "{skills_plugin}" in self._config.argv or "{skills_plugin}" in self._config.mcp_argv:
+            if request.skills_plugin is None:
+                raise EvalHarnessError("the runner passes {skills_plugin} but no skills plugin was staged")
+            substitutions["{skills_plugin}"] = str(request.skills_plugin)
         argv = [substitutions.get(argument, argument) for argument in self._config.argv]
         if request.condition != "with_mcp":
             return argv
@@ -175,6 +184,41 @@ class CommandAgentRunner:
         substitutions["{mcp_config}"] = str(request.mcp_config_path)
         argv.extend(substitutions.get(argument, argument) for argument in self._config.mcp_argv)
         return argv
+
+
+def _parse_event_stream(stdout: str, request: AgentRequest) -> tuple[str, tuple[dict[str, object], ...]]:
+    """Return the final answer and every tool call from a ``stream-json`` event stream.
+
+    Fails closed: a line that is not JSON, a missing ``result`` event, or an error result is
+    a refusal rather than an answer, because a transcript the harness could not read is not
+    one a reviewer should be asked to judge.
+    """
+    where = f"task {request.task_id} ({request.condition})"
+    tool_calls: list[dict[str, object]] = []
+    result: dict[str, object] | None = None
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise EvalHarnessError(f"agent event stream is not JSON lines on {where}: {exc}") from None
+        if not isinstance(event, dict):
+            raise EvalHarnessError(f"agent event stream holds a non-object event on {where}")
+        if event.get("type") == "assistant":
+            message = event.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            for block in content if isinstance(content, list) else ():
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    tool_calls.append({"name": block.get("name"), "input": block.get("input")})
+        elif event.get("type") == "result":
+            result = event
+    if result is None:
+        raise EvalHarnessError(f"agent event stream ended without a result on {where}")
+    answer = result.get("result")
+    if result.get("is_error") or not isinstance(answer, str):
+        raise EvalHarnessError(f"agent event stream reported an error result on {where}")
+    return answer.strip(), tuple(tool_calls)
 
 
 def _reject_unknown_placeholders(argv: tuple[str, ...], allowed: frozenset[str]) -> None:

@@ -32,7 +32,7 @@ from evals.harness.world import (
 ROOT = Path(__file__).parents[2]
 SUITE_PATH = ROOT / "evals" / "suite" / "suite.json"
 WORLD_PATH = ROOT / "evals" / "suite" / "world.json"
-RECORDED_REPORT = ROOT / "evals" / "results" / "2026-08-15-stub-dry-run.json"
+RECORDED_REPORT = ROOT / "evals" / "results" / "2026-09-23-stub-dry-run.json"
 
 
 class _FixedClock:

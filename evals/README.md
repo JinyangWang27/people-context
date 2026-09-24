@@ -22,6 +22,10 @@ export ANTHROPIC_API_KEY=...        # environment only; never a flag, a file, or
 uv run python -m evals.harness --runner claude-cli --out evals/results/<date>-<model>.json
 ```
 
+The perspective suite is reviewed by a person rather than scored; run it with
+`--suite evals/perspective/suite.json --runner claude-cli` and see
+[Human review of grounded perspectives](../docs/evals.md#human-review-of-grounded-perspectives).
+
 Read [docs/evals.md](../docs/evals.md) before recording a result: it documents the conditions, the model ids, what
 each rubric measures, and what a published number may and may not claim.
 
@@ -32,6 +36,7 @@ each rubric measures, and what a published number may and may not claim.
 | `suite/world.json` | The fictional world, as data a reviewer can read in full |
 | `suite/suite.json` | System prompt, the fixed tasks, their rubrics, and runner wiring |
 | `suite/stub-transcripts.json` | Hand-written answers for the offline dry run; not model output |
+| `perspective/` | The human-review perspective suite, its fictional world, and the reviewer key the agent never sees |
 | `harness/` | Loading, world materialization, runners, scoring, and the report |
 | `results/` | Dated report documents, one file per recorded run |
 
