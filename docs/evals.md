@@ -402,11 +402,13 @@ Review of `2026-09-23-perspective-baseline-claude-sonnet-5.json`, all 18 runs, a
 `tool_calls` were read beside the fictional store and the key.
 
 How the reasoning was written: Claude (Opus 5.5, not the model under review) drafted a verdict and one sentence of
-reasoning for each applicable criterion, and the maintainer confirmed every run. An automated PR review then
-challenged ten verdicts; revised drafts for those ten runs were shown run by run and the maintainer accepted all of
-them in one reply. The verdicts are the maintainer's; the reasoning is adopted assistant wording, as
-[Recording a review](#recording-a-review-3) allows. In the reasoning, "you" is the scenario's user, Wen. Criteria
-marked n/a have nothing to assess under that condition; criteria not listed were not central to the scenario.
+reasoning for each applicable criterion, and the maintainer confirmed every run. An automated PR review then challenged
+ten verdicts; revised drafts for those ten runs were shown run by run and the maintainer accepted all of them in one
+reply. A second round challenged five more verdicts on unchanged answers; the maintainer accepted one
+(`conflicting-plans-zh` · `without_mcp`, Uncertainty) and kept the rest. The verdicts are the maintainer's; the
+reasoning is adopted assistant wording, as [Recording a review](#recording-a-review-3) allows. In the reasoning, "you"
+is the scenario's user, Wen. Criteria marked n/a have nothing to assess under that condition; criteria not listed were
+not central to the scenario.
 
 Triggering is strict here: a run fails it when the intended skill did not run, even if the answer behaved
 correctly, because an answer no skill produced says nothing about the skill. An unprompted offer to save something
@@ -422,7 +424,7 @@ did not supply.
 | --- | --- |
 | `grounded-hiring-en` · `with_mcp` | Source traceability, Uncertainty |
 | `conflicting-plans-zh` · `with_mcp` | Uncertainty, Triggering |
-| `conflicting-plans-zh` · `without_mcp` | Triggering |
+| `conflicting-plans-zh` · `without_mcp` | Uncertainty, Triggering |
 | `ambiguous-sam-en` · `with_mcp` | Triggering |
 | `ambiguous-sam-en` · `without_mcp` | Triggering |
 | `unfamiliar-question-en` · `with_mcp` | Source traceability |
@@ -472,7 +474,8 @@ Per-run reasoning:
 - `without_mcp`
   - Usefulness: pass. Says it can't see any records and suggests simply asking her, which is useful.
   - Source traceability: n/a. Makes no claims about her.
-  - Uncertainty: pass. Invents nothing about her habits.
+  - Uncertainty: **fail**. Says it cannot reach the store, then asserts "目前我们之间没有存下过她做计划习惯的相关笔记": an
+    unreadable store presented as empty. The store does hold three dated records about her.
   - Contradictions: n/a. No evidence to weigh.
   - Triggering: **fail**. Routed to people-context-usage, not person-perspective, and point 3 offers, unasked, to save
     her habit as a memory.
