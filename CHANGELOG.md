@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0](https://github.com/JinyangWang27/people-context/compare/v1.3.0...v1.4.0) (2026-09-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove legacy compatibility code and refresh stale docs ([#169](https://github.com/JinyangWang27/people-context/issues/169))
+
+### Features
+
+* **evals:** add M31.2 perspective evaluation fixtures and baseline ([#171](https://github.com/JinyangWang27/people-context/issues/171)) ([41f2978](https://github.com/JinyangWang27/people-context/commit/41f2978fd355bca13bf11905d508c24ea4e5d0b7))
+* **skills:** add grounded person-perspective workflow (M31.1) ([#170](https://github.com/JinyangWang27/people-context/issues/170)) ([915855a](https://github.com/JinyangWang27/people-context/commit/915855a7c43ad7f05d750640ed693759d89ebea1))
+
+
+### Documentation
+
+* plan M31 grounded perspectives and skill refinement ([#167](https://github.com/JinyangWang27/people-context/issues/167)) ([4eeb967](https://github.com/JinyangWang27/people-context/commit/4eeb967c78368533058b726e606763e6ce08914e))
+* record human review of the M31.2 perspective baseline ([#172](https://github.com/JinyangWang27/people-context/issues/172)) ([fb5cba6](https://github.com/JinyangWang27/people-context/commit/fb5cba60a2c288f177ad985840daaa9d108f00f4))
+
+
+### Miscellaneous Chores
+
+* request the 1.4.0 release ([f95b3ed](https://github.com/JinyangWang27/people-context/commit/f95b3edce8b9b160fa4db2b7428edde58d556411))
+
+
+### Code Refactoring
+
+* remove legacy compatibility code and refresh stale docs ([#169](https://github.com/JinyangWang27/people-context/issues/169)) ([1b0a195](https://github.com/JinyangWang27/people-context/commit/1b0a195cd75cbe39893df9ad1ce2c9223e5ee8af))
+
 ## [1.3.0](https://github.com/JinyangWang27/people-context/compare/v1.2.1...v1.3.0) (2026-09-22)
 
 
