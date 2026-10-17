@@ -133,6 +133,70 @@ def test_organization_preferences_and_reminder_filters() -> None:
     assert isinstance(preferences_port, PreferencesStore)
 
 
+def _save_follow_ups(store: SqliteRecordStore, *due_values: datetime) -> list[str]:
+    ids: list[str] = []
+    for due_at in due_values:
+        reminder = Reminder(
+            person_id="p2", text="Follow up", kind=ReminderKind.FOLLOW_UP, due_at=due_at, created_at=_NOW
+        )
+        store.save_reminder(reminder)
+        ids.append(reminder.id)
+    return ids
+
+
+def test_reminders_compare_due_at_by_instant_across_offsets() -> None:
+    conn = open_db(":memory:")
+    _seed_people(conn)
+    store = SqliteRecordStore(conn)
+    thirteen, ten, fourteen = _save_follow_ups(
+        store,
+        datetime.fromisoformat("2026-10-25T09:00:00-04:00"),
+        datetime.fromisoformat("2026-10-25T10:00:00+00:00"),
+        datetime.fromisoformat("2026-10-25T23:00:00+09:00"),
+    )
+
+    noon = datetime.fromisoformat("2026-10-25T12:00:00Z")
+    evening = datetime.fromisoformat("2026-10-25T20:00:00+00:00")
+    assert [item.id for item in store.list_reminders(due_before=noon)] == [ten]
+    assert [item.id for item in store.list_reminders(due_before=evening)] == [ten, thirteen, fourteen]
+    assert [item.id for item in store.list_reminders()] == [ten, thirteen, fourteen]
+
+
+def test_reminders_read_naive_due_at_as_utc() -> None:
+    conn = open_db(":memory:")
+    _seed_people(conn)
+    store = SqliteRecordStore(conn)
+    naive_eleven, aware_ten, aware_seventeen = _save_follow_ups(
+        store,
+        datetime.fromisoformat("2026-10-25T11:00:00"),
+        datetime.fromisoformat("2026-10-25T12:00:00+02:00"),
+        datetime.fromisoformat("2026-10-25T13:00:00-04:00"),
+    )
+
+    assert [item.id for item in store.list_reminders()] == [aware_ten, naive_eleven, aware_seventeen]
+    naive_cutoff = datetime.fromisoformat("2026-10-25T10:30:00")
+    assert [item.id for item in store.list_reminders(due_before=naive_cutoff)] == [aware_ten]
+    aware_cutoff = datetime.fromisoformat("2026-10-25T07:00:00-04:00")
+    assert [item.id for item in store.list_reminders(due_before=aware_cutoff)] == [aware_ten, naive_eleven]
+
+
+def test_reminder_due_before_cutoff_keeps_microsecond_precision() -> None:
+    conn = open_db(":memory:")
+    _seed_people(conn)
+    store = SqliteRecordStore(conn)
+    at_cutoff, just_after = _save_follow_ups(
+        store,
+        datetime.fromisoformat("2026-10-25T14:00:00+02:00"),
+        datetime.fromisoformat("2026-10-25T08:00:00.000001-04:00"),
+    )
+
+    cutoff = datetime.fromisoformat("2026-10-25T12:00:00+00:00")
+    assert [item.id for item in store.list_reminders(due_before=cutoff)] == [at_cutoff]
+    one_microsecond_later = datetime.fromisoformat("2026-10-25T21:00:00.000001+09:00")
+    assert [item.id for item in store.list_reminders(due_before=one_microsecond_later)] == [at_cutoff, just_after]
+    assert [item.id for item in store.list_reminders()] == [at_cutoff, just_after]
+
+
 def test_update_serializes_dates_and_enums() -> None:
     conn = open_db(":memory:")
     _seed_people(conn)

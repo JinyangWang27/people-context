@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import date, datetime
 from typing import Any
 
+from people_context.adapters.sqlite._projection import sort_key
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.fact import Fact
 from people_context.domain.group import Group, GroupKind, GroupMembership, MembershipRole, TemporalBasis
@@ -190,21 +191,26 @@ class SqliteRecordStore:
         due_before: datetime | None = None,
         status: ReminderStatus | None = ReminderStatus.ACTIVE,
     ) -> list[Reminder]:
+        # Stored `due_at` values keep the writer's offset and some are naive, so both the cutoff and
+        # the order compare the exact UTC key rather than the text.
         clauses: list[str] = []
-        params: list[str] = []
+        params: dict[str, str] = {}
         if person_id is not None:
-            clauses.append("person_id = ?")
-            params.append(person_id)
+            clauses.append("person_id = :person_id")
+            params["person_id"] = person_id
         if due_before is not None:
-            clauses.append("((due_at IS NOT NULL AND due_at <= ?) OR (due_at IS NULL AND kind = 'communication_note'))")
-            params.append(due_before.isoformat())
+            clauses.append(
+                f"((due_at IS NOT NULL AND {sort_key('due_at')} <= {sort_key(':due_before')}) "
+                "OR (due_at IS NULL AND kind = 'communication_note'))"
+            )
+            params["due_before"] = due_before.isoformat()
         if status is not None:
-            clauses.append("status = ?")
-            params.append(status.value)
+            clauses.append("status = :status")
+            params["status"] = status.value
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self._conn.execute(
             f"""SELECT * FROM reminders {where}
-                ORDER BY due_at IS NULL, due_at ASC, created_at DESC, id""",
+                ORDER BY due_at IS NULL, {sort_key('due_at')} ASC, created_at DESC, id""",
             params,
         ).fetchall()
         return [_reminder(row) for row in rows]
