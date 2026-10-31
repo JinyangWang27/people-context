@@ -1,7 +1,5 @@
 # people-context
 
-[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fplugin%3Fslug%3Djinyangwang27%252Fpeople-context%26metric%3Drelease)](https://hol.org/registry/plugins/jinyangwang27%2Fpeople-context?utm_source=hol_marketplace&utm_medium=plugins_badge&utm_campaign=plugins&utm_content=jinyangwang27%2Fpeople-context)
-
 <!-- mcp-name: io.github.JinyangWang27/people-context -->
 
 English | [简体中文](README.zh-CN.md)
@@ -20,6 +18,7 @@ they like to be talked to. One SQLite file on your machine. No account, no cloud
 [![PyPI downloads](https://img.shields.io/pypi/dm/people-context)](https://pypi.org/project/people-context/)
 [![Python](https://img.shields.io/pypi/pyversions/people-context)](https://pypi.org/project/people-context/)
 [![License](https://img.shields.io/github/license/JinyangWang27/people-context)](https://github.com/JinyangWang27/people-context/blob/main/LICENSE)
+[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fplugin%3Fslug%3Djinyangwang27%252Fpeople-context%26metric%3Drelease)](https://hol.org/registry/plugins/jinyangwang27%2Fpeople-context?utm_source=hol_marketplace&utm_medium=plugins_badge&utm_campaign=plugins&utm_content=jinyangwang27%2Fpeople-context)
 
 ![pctx demo: seed a fictional dataset, list people, and print a brief](docs/assets/demo.gif)
 
