@@ -1,5 +1,7 @@
 # people-context
 
+[![HOL Guard](https://img.shields.io/endpoint?url=https%3A%2F%2Fhol.org%2Fapi%2Fregistry%2Fbadges%2Fplugin%3Fslug%3Djinyangwang27%252Fpeople-context%26metric%3Drelease)](https://hol.org/registry/plugins/jinyangwang27%2Fpeople-context?utm_source=hol_marketplace&utm_medium=plugins_badge&utm_campaign=plugins&utm_content=jinyangwang27%2Fpeople-context)
+
 <!-- mcp-name: io.github.JinyangWang27/people-context -->
 
 English | [简体中文](README.zh-CN.md)
