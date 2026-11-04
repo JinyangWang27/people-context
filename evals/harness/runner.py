@@ -47,6 +47,7 @@ class RunOutcome:
     answer: str
     score: TaskScore
     tool_calls: tuple[dict[str, object], ...] | None = None
+    usage: dict[str, object] | None = None
 
 
 def stage_skills_plugin(directory: Path) -> Path:
@@ -166,6 +167,11 @@ class FixtureWorkspace:
         self._artifacts = artifacts
         self._server_argv = server_argv
         self._world_as_of = world_as_of
+        self._databases: dict[tuple[str, str], Path] = {}
+
+    def database_for(self, task_id: str, condition: str) -> Path | None:
+        """Return the store copy one invocation was given, or ``None`` when it had none."""
+        return self._databases.get((task_id, condition))
 
     def configuration_for(self, task_id: str, condition: str) -> Path | None:
         """Return a client configuration bound to a fresh copy, or ``None``."""
@@ -179,6 +185,7 @@ class FixtureWorkspace:
             companion = Path(f"{self.pristine}{suffix}")
             if companion.is_file():
                 shutil.copyfile(companion, Path(f"{database}{suffix}"))
+        self._databases[(task_id, condition)] = database
         return write_mcp_config(
             directory / MCP_CONFIG_FILENAME,
             resolve_server_argv(self._server_argv, self._world_as_of),
@@ -246,8 +253,9 @@ def run_suite(
                     condition=condition,
                     model_id=response.model_id,
                     answer=response.answer,
-                    score=score_task(task, response.answer),
+                    score=score_task(task, response.answer, workspace.database_for(task.id, condition)),
                     tool_calls=response.tool_calls,
+                    usage=response.usage,
                 )
             )
     return tuple(outcomes)

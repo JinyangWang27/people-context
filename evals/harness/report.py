@@ -96,12 +96,16 @@ def build_report(
                         "values": list(criterion.values) if criterion.values is not None else None,
                         "pattern": criterion.pattern,
                         "min_lines": criterion.min_lines,
+                        "sql": criterion.sql,
+                        "equals": criterion.equals,
                     }
                     for criterion in outcome.score.criteria
                 ],
                 "answer": outcome.answer,
                 # Null when the runner could not observe tool use; a list, possibly empty, otherwise.
                 "tool_calls": [dict(call) for call in outcome.tool_calls] if outcome.tool_calls is not None else None,
+                # Null when the runner could not observe token and turn accounting.
+                "usage": outcome.usage,
             }
             for outcome in ordered
         ],
@@ -159,4 +163,26 @@ def render_summary(report: dict[str, Any]) -> str:
     lines.extend(("", "| task | condition | score |", "| --- | --- | ---: |"))
     for run in report["runs"]:
         lines.append(f"| {run['task_id']} | {run['condition']} | {run['earned']}/{run['possible']} |")
+    measured = [run for run in report["runs"] if run.get("usage")]
+    if measured:
+        lines.extend(
+            (
+                "",
+                "| task | condition | tool calls | API requests | first prompt | input | output "
+                "| MCP result chars | skill result chars | cost USD |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+            )
+        )
+        for run in measured:
+            usage = run["usage"]
+            chars = usage["tool_result_chars"]
+            total_input = sum(
+                usage.get(key) or 0
+                for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+            )
+            lines.append(
+                f"| {run['task_id']} | {run['condition']} | {len(run['tool_calls'] or ())} "
+                f"| {usage['api_requests']} | {usage['first_request_input_tokens']} | {total_input} "
+                f"| {usage['output_tokens']} | {chars['mcp']} | {chars['skill']} | {usage['total_cost_usd']} |"
+            )
     return "\n".join(lines) + "\n"

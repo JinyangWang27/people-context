@@ -95,8 +95,29 @@ class LineMatchesCriterion(_CriterionBase):
         return _require_compilable(value)
 
 
+class StoreCountCriterion(_CriterionBase):
+    """Passes when a read-only count over the run's own fictional store equals ``equals``.
+
+    Workflow tasks are judged by what the agent wrote, not by what it says it wrote. The
+    query runs against the invocation's private copy of the store on a read-only
+    connection, after the agent has exited; a run with no store, such as ``without_mcp``,
+    fails the criterion.
+    """
+
+    kind: Literal["store_count"]
+    sql: str = Field(min_length=1, max_length=2000)
+    equals: int = Field(ge=0)
+
+    @field_validator("sql")
+    @classmethod
+    def _single_select(cls, value: str) -> str:
+        if not value.lstrip().casefold().startswith("select") or ";" in value:
+            raise ValueError("store_count sql must be one SELECT statement")
+        return value
+
+
 Criterion = Annotated[
-    ContainsAllCriterion | ContainsNoneCriterion | MatchesCriterion | LineMatchesCriterion,
+    ContainsAllCriterion | ContainsNoneCriterion | MatchesCriterion | LineMatchesCriterion | StoreCountCriterion,
     Field(discriminator="kind"),
 ]
 

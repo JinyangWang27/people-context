@@ -1,0 +1,154 @@
+{
+  "format": "people-context.eval-suite",
+  "version": 1,
+  "suite_id": "people-context-workflow",
+  "suite_version": "1.0.0",
+  "world": "world.json",
+  "system_prompt": "You are helping the user keep their people-context store up to date. Complete the request with the tools available, then reply with a short receipt of what changed.",
+  "tasks": [
+    {
+      "id": "add-two-aliases",
+      "title": "Add two aliases to one existing person",
+      "prompt": "Mei Tanaka goes by Mimi with friends, and her name in Japanese is 田中芽衣. Add both as aliases on her record.",
+      "rubric": [
+        {
+          "id": "both-aliases-on-mei-tanaka",
+          "kind": "store_count",
+          "weight": 3,
+          "description": "Both aliases are stored on Mei Tanaka.",
+          "sql": "SELECT COUNT(DISTINCT a.value) FROM aliases a JOIN persons p ON p.id = a.person_id WHERE p.canonical_name = 'Mei Tanaka' AND p.deleted_at IS NULL AND a.value IN ('Mimi', '田中芽衣')",
+          "equals": 2
+        },
+        {
+          "id": "nothing-on-mei-takahashi",
+          "kind": "store_count",
+          "weight": 2,
+          "description": "Neither alias lands on the similarly named Mei Takahashi.",
+          "sql": "SELECT COUNT(*) FROM aliases a JOIN persons p ON p.id = a.person_id WHERE p.canonical_name = 'Mei Takahashi' AND a.value IN ('Mimi', '田中芽衣')",
+          "equals": 0
+        },
+        {
+          "id": "no-duplicate-person",
+          "kind": "store_count",
+          "weight": 1,
+          "description": "No new person is created.",
+          "sql": "SELECT COUNT(*) FROM persons WHERE deleted_at IS NULL",
+          "equals": 3
+        },
+        {
+          "id": "receipt-names-both",
+          "kind": "answer_contains_all",
+          "weight": 1,
+          "description": "The receipt names both aliases.",
+          "values": [
+            "Mimi",
+            "田中芽衣"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stage-commit-seven",
+      "title": "Stage, review, commit, and verify seven people from tracker notes",
+      "prompt": "Excerpts from the Larkspur Freight routing-replatform tracker (all people below work at Larkspur Freight):\n\nRRP-12 Migrate depot geocoder - assignee Tomasz Wierzbicki (Platform Engineer). Blocked on schema review.\nRRP-15 Define v2 route-quote API - owner Adaeze Nwosu, Product Manager; reviewers Tomasz Wierzbicki, Henrik Aalto.\nRRP-18 Backfill shipment history into the lakehouse - Lucía Ferreyra (Data Engineer).\nRRP-21 Pager rotation for the new routing service - Henrik Aalto, Site Reliability Engineer.\nRRP-22 Load-test plan for quote API - Priyanka Desai (QA Lead); depends on RRP-15.\nRRP-27 Staffing for Q1 milestones - Owen Marchetti, Engineering Manager; cc Adaeze Nwosu.\nRRP-30 Threat model for partner webhooks - Sun-hee Park (Security Engineer); reviewer Henrik Aalto.\nRRP-31 Flaky geocoder integration test - Priyanka Desai reopened; Tomasz Wierzbicki investigating.\nRRP-34 Rotate webhook signing keys - Sun-hee Park; approved by Owen Marchetti.\n\nCapture the seven people above with their organisation and role. This is extracted material, so use the staged import flow. I have already read this list and I approve committing every candidate you stage, so commit them without asking me again, then verify they are stored.",
+      "rubric": [
+        {
+          "id": "seven-people-stored",
+          "kind": "store_count",
+          "weight": 3,
+          "description": "All seven people exist exactly once.",
+          "sql": "SELECT COUNT(DISTINCT canonical_name) * (COUNT(*) = COUNT(DISTINCT canonical_name)) FROM persons WHERE deleted_at IS NULL AND canonical_name IN ('Tomasz Wierzbicki', 'Adaeze Nwosu', 'Lucía Ferreyra', 'Henrik Aalto', 'Priyanka Desai', 'Owen Marchetti', 'Sun-hee Park')",
+          "equals": 7
+        },
+        {
+          "id": "seven-roles-stored",
+          "kind": "store_count",
+          "weight": 2,
+          "description": "Each of the seven has an affiliation with Larkspur Freight in the stated role.",
+          "sql": "SELECT COUNT(DISTINCT p.canonical_name) FROM affiliations f JOIN persons p ON p.id = f.person_id JOIN organizations o ON o.id = f.org_id WHERE o.name = 'Larkspur Freight' AND ((p.canonical_name = 'Tomasz Wierzbicki' AND f.role = 'Platform Engineer') OR (p.canonical_name = 'Adaeze Nwosu' AND f.role = 'Product Manager') OR (p.canonical_name = 'Lucía Ferreyra' AND f.role = 'Data Engineer') OR (p.canonical_name = 'Henrik Aalto' AND f.role = 'Site Reliability Engineer') OR (p.canonical_name = 'Priyanka Desai' AND f.role = 'QA Lead') OR (p.canonical_name = 'Owen Marchetti' AND f.role = 'Engineering Manager') OR (p.canonical_name = 'Sun-hee Park' AND f.role = 'Security Engineer'))",
+          "equals": 7
+        },
+        {
+          "id": "went-through-staging",
+          "kind": "store_count",
+          "weight": 2,
+          "description": "The people were committed from a staged batch rather than written directly.",
+          "sql": "SELECT COUNT(*) >= 7 FROM import_staging WHERE status = 'committed'",
+          "equals": 1
+        },
+        {
+          "id": "nobody-left-pending",
+          "kind": "store_count",
+          "weight": 1,
+          "description": "No staged candidate is left pending.",
+          "sql": "SELECT COUNT(*) FROM import_staging WHERE status = 'pending'",
+          "equals": 0
+        },
+        {
+          "id": "no-extra-people",
+          "kind": "store_count",
+          "weight": 1,
+          "description": "Nobody beyond the seven is created.",
+          "sql": "SELECT COUNT(*) FROM persons WHERE deleted_at IS NULL",
+          "equals": 10
+        }
+      ]
+    }
+  ],
+  "runners": {
+    "claude-cli": {
+      "kind": "command",
+      "model_id": "claude-sonnet-5-5",
+      "argv": [
+        "claude",
+        "--print",
+        "--setting-sources",
+        "",
+        "--strict-mcp-config",
+        "--plugin-dir",
+        "{skills_plugin}",
+        "--tools",
+        "Skill",
+        "--model",
+        "{model}",
+        "--append-system-prompt",
+        "{system_prompt}",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "{prompt}"
+      ],
+      "mcp_argv": [
+        "--mcp-config",
+        "{mcp_config}",
+        "--allowedTools",
+        "mcp__people-context"
+      ],
+      "mcp_server_argv": [
+        "uv",
+        "run",
+        "--directory",
+        "{project_root}",
+        "--locked",
+        "python",
+        "-m",
+        "evals.harness.server",
+        "--as-of",
+        "{world_as_of}"
+      ],
+      "output_format": "stream-json",
+      "timeout_seconds": 900,
+      "max_output_bytes": 4194304,
+      "env_passthrough": [
+        "PATH",
+        "HOME",
+        "USER",
+        "ANTHROPIC_API_KEY"
+      ],
+      "version_argv": [
+        "claude",
+        "--version"
+      ]
+    }
+  }
+}

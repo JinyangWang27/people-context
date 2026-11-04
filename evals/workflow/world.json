@@ -1,0 +1,32 @@
+{
+  "format": "people-context.eval-world",
+  "version": 1,
+  "world_id": "larkspur-2026-11",
+  "as_of": "2026-11-02T09:00:00Z",
+  "communication_philosophy": "Short and concrete. Lead with the decision, then the detail.",
+  "people": [
+    {
+      "key": "rhea",
+      "name": "Rhea Castellano",
+      "summary": "Delivery lead at Larkspur Freight who runs the routing replatform project.",
+      "handles": ["rhea.castellano@example.test"],
+      "is_self": true
+    },
+    {
+      "key": "mei-tanaka",
+      "name": "Mei Tanaka",
+      "summary": "University friend of Rhea's; now an architect in Osaka.",
+      "handles": ["mei.tanaka@example.test"]
+    },
+    {
+      "key": "mei-takahashi",
+      "name": "Mei Takahashi",
+      "summary": "Procurement contact at a Larkspur Freight supplier.",
+      "handles": ["mei.takahashi@example.test"]
+    }
+  ],
+  "affiliations": [
+    {"person_key": "rhea", "organization": "Larkspur Freight", "role": "Delivery Lead"},
+    {"person_key": "mei-takahashi", "organization": "Quillon Parts", "role": "Procurement Manager"}
+  ]
+}
