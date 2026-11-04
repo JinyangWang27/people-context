@@ -62,6 +62,7 @@ from people_context.app.imports.limits import (
     CANDIDATE_STRING_TOO_LONG,
     CLI_IMPORT_BUDGET,
     INVALID_CANDIDATE_JSON,
+    MAX_CANDIDATE_NESTING_DEPTH,
     MAX_CLI_CANDIDATE_JSON_BYTES,
     MAX_CLI_RETAINED_PARSE_RECORDS,
     MAX_CLI_SOURCE_BYTES,
@@ -78,6 +79,7 @@ from people_context.app.imports.limits import (
     UNBOUNDED_IMPORT_BUDGET,
     ImportBudget,
     enforce_extraction_request_limits,
+    exceeds_nesting_depth,
 )
 from people_context.app.imports.models import (
     CANDIDATE_MODELS,
@@ -157,10 +159,12 @@ __all__ = [
     "IMPORT_SOURCES_VERSION",
     "IMPORT_SOURCE_FORMAT",
     "IMPORT_SOURCE_VERSION",
+    "exceeds_nesting_depth",
     "INVALID_CANDIDATE_JSON",
     "INVALID_SOURCE_CURSOR",
     "INVALID_SOURCE_METADATA",
     "INVALID_SOURCE_PAGE_LIMIT",
+    "MAX_CANDIDATE_NESTING_DEPTH",
     "MAX_CANDIDATE_REF_CHARS",
     "MAX_CONTRACT_REVISION_CHARS",
     "MAX_CLI_CANDIDATE_JSON_BYTES",

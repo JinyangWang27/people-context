@@ -49,6 +49,7 @@ from people_context.app.imports import (
     ImportReviewRow,
     edited_document_read_bound,
     enforce_extraction_request_limits,
+    exceeds_nesting_depth,
     import_batch_document,
     import_commit_document,
     import_review_document,
@@ -473,6 +474,10 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
     except ValueError:
         return _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is not valid JSON")
     except RecursionError:
+        too_deep = True
+    else:
+        too_deep = exceeds_nesting_depth(edited)
+    if too_deep:
         return _refuse(f"{INVALID_REVIEW_DOCUMENT}: the edited review document is nested too deeply")
     try:
         rendered = document.model_dump(mode="json")
@@ -838,9 +843,13 @@ def _read_candidate_json(raw_input: str) -> list[Any] | None:
     except ValueError:
         return _refuse_candidates(f"{INVALID_CANDIDATE_JSON}: candidate input is not valid JSON")
     except RecursionError:
-        # The decoder recurses per nesting level, so a few tens of kilobytes of nested arrays
-        # exhaust the stack long before the input ceiling is near. Depth is a property of the
-        # document, so the refusal is the same one any other unparseable input gets.
+        too_deep = True
+    else:
+        too_deep = exceeds_nesting_depth(parsed)
+    # A few tens of kilobytes of nested arrays reach any depth long before the input ceiling. Before
+    # Python 3.14 the decoder raised `RecursionError`; from 3.14 it decodes, so depth is checked
+    # explicitly. Either way it is the refusal any other unparseable input gets.
+    if too_deep:
         return _refuse_candidates(f"{INVALID_CANDIDATE_JSON}: candidate input is nested too deeply")
     if not isinstance(parsed, list) or not all(isinstance(entry, dict) for entry in parsed):
         return _refuse_candidates(
@@ -877,6 +886,10 @@ def _read_patch_json(raw_input: str) -> dict[str, Any] | None:
         _refuse(f"{INVALID_CANDIDATE_JSON}: patch is not valid JSON")
         return None
     except RecursionError:
+        too_deep = True
+    else:
+        too_deep = exceeds_nesting_depth(parsed)
+    if too_deep:
         _refuse(f"{INVALID_CANDIDATE_JSON}: patch is nested too deeply")
         return None
     if not isinstance(parsed, dict):
