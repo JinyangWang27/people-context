@@ -221,3 +221,34 @@ def test_omitting_the_reprocessing_flag_keeps_the_released_call_shape(tmp_path: 
 
     assert payload["batch_id"]
     assert payload["duplicate"] is False
+
+
+def test_a_person_candidate_may_omit_an_empty_alias_list(tmp_path: Path) -> None:
+    """Regression (#223): omitting `aliases` was refused, costing a retry; it now stages as `[]`."""
+    db_path = tmp_path / "t.db"
+    server = build_server(db_path=db_path)
+
+    payload = _call(server, {"source": "notes", "candidates": [{"type": "person", "ref": "a", "name": "Ada Obi"}]})
+
+    assert payload["candidate_count"] == 1
+    conn = open_db(db_path)
+    try:
+        (stored,) = conn.execute("SELECT candidate_json FROM import_staging").fetchone()
+    finally:
+        conn.close()
+    assert '"aliases": []' in stored or '"aliases":[]' in stored
+
+
+def test_the_tool_description_names_every_required_candidate_field(tmp_path: Path) -> None:
+    """`candidates` is untyped in the schema, so the description is the agent's only field list (#223)."""
+    from people_context.app.imports.models import CANDIDATE_MODELS
+
+    server = build_server(db_path=tmp_path / "t.db")
+    tools = anyio.run(server.list_tools)
+    description = next(tool.description for tool in tools if tool.name == "stage_candidates") or ""
+    field_list = " ".join(description.split("Required fields", 1)[1].split("Only `person`", 1)[0].split())
+
+    for kind, model in CANDIDATE_MODELS.items():
+        required = [name for name, field in model.model_fields.items() if field.is_required() and name != "type"]
+        listed = field_list.split(f"; `{kind}` " if kind != "person" else ": `person` ", 1)[1].split(";", 1)[0]
+        assert all(f"`{name}`" in listed for name in required), (kind, required, listed)

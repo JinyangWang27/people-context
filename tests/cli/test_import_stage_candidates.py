@@ -555,11 +555,11 @@ def test_a_refused_batch_reports_where_it_failed_but_not_what_was_in_it(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     db_file = tmp_path / "people.db"
-    payload = [{"type": "person", "ref": "sarah", "name": _TRANSCRIPT_SENTINEL}]
+    payload = [{"type": "person", "ref": _TRANSCRIPT_SENTINEL}]
 
     message = _refusal(db_file, ["--source", "sync", "--input", str(_input_file(tmp_path, payload))], capsys)
 
-    assert "aliases" in message
+    assert "person.name" in message
     assert _TRANSCRIPT_SENTINEL not in message
 
 

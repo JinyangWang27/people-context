@@ -277,7 +277,7 @@ class PersonCandidateInput(BaseModel):
     type: Literal["person"]
     ref: NonBlank
     name: NonBlank
-    aliases: list[CandidateAlias]
+    aliases: list[CandidateAlias] = Field(default_factory=list)
     summary: str | None = None
     message_id: str | None = None
     date: datetime | None = None

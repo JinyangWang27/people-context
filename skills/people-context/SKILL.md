@@ -13,6 +13,30 @@ For agent-facing usage patterns see `skills/people-context-usage/`, `skills/reme
 
 ---
 
+## Shortest working path
+
+Pick the first route that works and stay on it for the whole session:
+
+1. **Native MCP tools.** If `people-context` tools are already listed in your client, call them directly.
+   Their schemas are in context: do not re-list tools, read server source, or restart the connection to
+   rediscover them.
+2. **The installed CLI.** Otherwise use `pctx`, which opens the same store with no bridge:
+
+   | Task | Command |
+   |---|---|
+   | Add an alias | `pctx add-alias "Mei Tanaka" Mimi --kind nickname` |
+   | One direct statement | `pctx remember "Dana" "prefers short emails"` |
+   | Staged import | `pctx import stage-candidates --source <label> --input candidates.json --json` → `pctx import review <batch> --json` → `pctx import commit <batch> --accept 1-7 --json` (or `--all`) |
+
+3. **Raw HTTP.** Only when neither exists; see the appendix.
+
+Every route keeps the same safeguards: resolve before writing, surface ambiguity, and commit extracted
+material only after the user accepts it. Report a compact receipt — changed ids, statuses, unresolved
+items, errors — rather than the full response, and read one representation of each result, never both
+the text and the structured copy.
+
+---
+
 ## 1. Install / Upgrade
 
 ```bash
@@ -50,7 +74,179 @@ Wait for `Application startup complete` in the log before any tool call.
 
 ---
 
-## 4. MCP session init — Python helper (HTTP only)
+## 4. Resolve identity first — always (for write tools)
+
+Examples from here on write `call(name, args)` for one tool call, whichever route makes it.
+
+Write tools require `person_id` (ULID), never a name. Branch on `ambiguous`:
+
+```python
+r = call("resolve_person", {"query": "Alice Ng", "hints": {"org": "Acme"}})
+if not r.get("ambiguous") and r.get("candidates"):
+    c = r["candidates"][0]
+    if not c.get("match_reason", "").startswith("fuzzy"):  # fuzzy = treat as ambiguous
+        pid = c["person_id"]
+```
+
+When `ambiguous=true` or `match_reason` starts with `"fuzzy"`: surface candidates, confirm — never guess.
+
+---
+
+## 5. `remember` — single-call capture (new in M21)
+
+Resolves, optionally creates, and records one statement in one audited transaction. Use for direct
+statements in conversation. **Not for extracted/inferred material from transcripts** — use staged capture.
+
+```python
+call("remember", {"person": "Alice Ng", "note": "prefers short emails", "org": "Acme", "role": "CTO"})
+call("remember", {"person": "Bob",      "kind": "affiliation", "org": "Etihad", "role": "Fleet Manager"})
+call("remember", {"person": "Jiaxin",   "relationship": "spouse"})
+```
+
+Check `status` — **nothing is written when status ≠ `recorded`**:
+
+| `status` | Meaning |
+|---|---|
+| `recorded` | `r["recorded"]` lists `{kind, id, summary}` |
+| `ambiguous` | Several close candidates — `r["candidates"]` |
+| `unconfirmed` | One fuzzy-only match — confirm before retrying |
+| `no_self` | Relationship needs a self record (none exists) |
+| `nothing_to_record` | Bare name, no note/org/relationship |
+| `invalid_request` | Structural mismatch — checked before any write |
+
+`kind: auto` classifies `note` by a fixed keyword table. `org` and `relationship` record their own rows
+whatever `kind` says. All rows share one `transaction_id`; any failure rolls back everything.
+
+---
+
+## 6. remember_person + add_alias
+
+```python
+call("remember_person", {"name": "Jinyang Wang", "is_self": True,
+    "summary": "PhD physicist, AI engineer."})
+# Do NOT fold affiliations/facts into summary. Do NOT pass aliases here.
+```
+
+`add_alias` — `kind` is a lowercase enum published in the tool schema; an unlisted value (`"OTHER"`) is refused, not recorded:
+
+`kind` values: `native_script` (CJK; add `"script":"Hans"/"Hant"`) · `transliteration` · `nickname` · `handle` · `former_name` · `other`
+
+---
+
+## 7. set_relationship / set_affiliation
+
+```python
+call("set_relationship", {"subject_id": pid_a, "object_id": pid_b, "type": "spouse"})
+call("set_affiliation",  {"person_id": pid, "org": "Etihad Airways",  # "org", NOT "org_name"
+    "role": "Employee", "valid_from": "2026-09-01"})
+```
+
+---
+
+## 8. `person` name shortcut on read tools
+
+`get_person_context`, `get_communication_guidance`, `list_reminders`, `get_relationship_graph`,
+`get_person_timeline`, `get_consolidation_context`, and `upcoming_dates` accept `person` (name string)
+alongside `person_id`. Saves the resolve round-trip when the name is unambiguous.
+
+On error, returns a structured payload (not an exception):
+`{"error": "ambiguous_person"|"unconfirmed_person"|"person_not_found"|"missing_person", "candidates": [...]}`
+
+### get_person_context
+
+```python
+r = call("get_person_context", {"person_id": pid, "include_communication": True})
+person = r["***"]           # ← "***", not "person"
+# r["truncated"] == True means facts/interactions budget was hit
+```
+
+---
+
+## 9. Staged capture: propose → review → commit
+
+For extracted/inferred content from transcripts, emails, or external sources. **Never auto-commit.**
+
+Put every candidate from one source in one `stage_candidates` call. `aliases` on a `person` is optional;
+when present, entries are objects, not strings: `{"value": "Al", "kind": "nickname"}`. `label` needs `source_kind`.
+
+```python
+bid = call("stage_candidates", {
+    "source": "levey-2026-09-03",
+    "candidates": [
+        {"type": "person", "ref": "jiaxin", "name": "Jiaxin",
+         "aliases": [{"value": "Jiaxin Wang", "kind": "other"}]},
+        {"type": "affiliation", "person_ref": "jiaxin",
+         "org": "Etihad Airways", "role": "Flight Attendant", "valid_from": "2026-08-01"},
+    ],
+})["batch_id"]
+
+call("review_import", {"batch_id": bid})            # read-only, no approval needed
+r = call("commit_import", {"batch_id": bid, "accepted_ids": [cid, ...]})  # user-approved only
+```
+
+The commit receipt is the verification: ids in `committed_ids` are stored. Read records back only for ids
+in `unresolved_ids` or `skipped_ids`, or when the user asks to see them.
+
+---
+
+## 10. Record maintenance: correction vs. supersession
+
+| Scenario | Tool |
+|---|---|
+| Stored value was **wrong** (typo, misheard) | `correct_record` — updates in-place |
+| Stored value was **right, world changed** | `supersede_fact` — closes old row, opens replacement atomically |
+
+`supersede_fact` requires `effective_from` within the old fact's validity window. Report the `reason` if refused.
+
+---
+
+## 11. Available tools (post-M21)
+
+**Read-only** (`readOnlyHint=true`):
+`resolve_person` · `get_person_context` · `search_people` · `semantic_search` ·
+`get_communication_guidance` · `list_reminders` · `get_relationship_graph` ·
+`find_connection` · `get_stale_relationships` · `upcoming_dates` · `review_import` ·
+`get_person_timeline` · `get_consolidation_context`
+
+**Write**: `remember` · `remember_person` · `add_alias` · `set_relationship` · `set_affiliation` ·
+`record_fact` · `record_observation` · `record_trait` · `record_interaction` ·
+`set_reminder` · `complete_reminder` · `correct_record` · `supersede_fact` ·
+`merge_people` · `forget` · `stage_candidates` · `import_content` · `commit_import` · `set_communication_philosophy`
+
+**Gated** (never suggest enabling to work around a boundary): `get_sensitive_person_context` · `export_data`
+
+---
+
+## 12. Prompts and resources (new in M21)
+
+| Kind | Name / URI | Purpose |
+|---|---|---|
+| resource | `people-context://guide` | Full usage skill body |
+| resource | `people-context://self` | User's own record, or `{"found": false}` |
+| prompt | `who(name)` | Resolve, then read context on confident match |
+| prompt | `remember(statement)` | `remember` for direct statements; `stage_candidates` for extracted |
+| prompt | `meeting_prep(attendees)` | Context + guidance per attendee; read-only |
+| prompt | `end_of_session_capture()` | Propose via `stage_candidates`; never commit |
+| prompt | `maintenance_review(name)` | Timeline + consolidation signals |
+
+---
+
+## 13. OpenClaw plugin
+
+```bash
+openclaw plugins install clawhub:openclaw-plugin-people-context
+```
+
+Connects to the opt-in loopback HTTP server (must be running; see §3).
+See `docs/openclaw-plugin.md` in the upstream repo for config and security details.
+
+---
+
+## Appendix: raw HTTP bridge (last resort)
+
+Only when neither native tools nor `pctx` exist. Open one session and reuse it for every call;
+`call` returns one representation (`structuredContent`, else the parsed text) — print a receipt, not
+the envelope.
 
 ```python
 import urllib.request, json
@@ -82,165 +278,3 @@ def call(name, args):
         raise RuntimeError(f"{name} refused: {parsed.get('message', parsed['error'])}")
     return res.get("structuredContent") or parsed
 ```
-
----
-
-## 5. Resolve identity first — always (for write tools)
-
-Write tools require `person_id` (ULID), never a name. Branch on `ambiguous`:
-
-```python
-r = call("resolve_person", {"query": "Alice Ng", "hints": {"org": "Acme"}})
-if not r.get("ambiguous") and r.get("candidates"):
-    c = r["candidates"][0]
-    if not c.get("match_reason", "").startswith("fuzzy"):  # fuzzy = treat as ambiguous
-        pid = c["person_id"]
-```
-
-When `ambiguous=true` or `match_reason` starts with `"fuzzy"`: surface candidates, confirm — never guess.
-
----
-
-## 6. `remember` — single-call capture (new in M21)
-
-Resolves, optionally creates, and records one statement in one audited transaction. Use for direct
-statements in conversation. **Not for extracted/inferred material from transcripts** — use staged capture.
-
-```python
-call("remember", {"person": "Alice Ng", "note": "prefers short emails", "org": "Acme", "role": "CTO"})
-call("remember", {"person": "Bob",      "kind": "affiliation", "org": "Etihad", "role": "Fleet Manager"})
-call("remember", {"person": "Jiaxin",   "relationship": "spouse"})
-```
-
-Check `status` — **nothing is written when status ≠ `recorded`**:
-
-| `status` | Meaning |
-|---|---|
-| `recorded` | `r["recorded"]` lists `{kind, id, summary}` |
-| `ambiguous` | Several close candidates — `r["candidates"]` |
-| `unconfirmed` | One fuzzy-only match — confirm before retrying |
-| `no_self` | Relationship needs a self record (none exists) |
-| `nothing_to_record` | Bare name, no note/org/relationship |
-| `invalid_request` | Structural mismatch — checked before any write |
-
-`kind: auto` classifies `note` by a fixed keyword table. `org` and `relationship` record their own rows
-whatever `kind` says. All rows share one `transaction_id`; any failure rolls back everything.
-
----
-
-## 7. remember_person + add_alias
-
-```python
-call("remember_person", {"name": "Jinyang Wang", "is_self": True,
-    "summary": "PhD physicist, AI engineer."})
-# Do NOT fold affiliations/facts into summary. Do NOT pass aliases here.
-```
-
-`add_alias` — `kind` is a lowercase enum published in the tool schema; an unlisted value (`"OTHER"`) is refused, not recorded:
-
-`kind` values: `native_script` (CJK; add `"script":"Hans"/"Hant"`) · `transliteration` · `nickname` · `handle` · `former_name` · `other`
-
----
-
-## 8. set_relationship / set_affiliation
-
-```python
-call("set_relationship", {"subject_id": pid_a, "object_id": pid_b, "type": "spouse"})
-call("set_affiliation",  {"person_id": pid, "org": "Etihad Airways",  # "org", NOT "org_name"
-    "role": "Employee", "valid_from": "2026-09-01"})
-```
-
----
-
-## 9. `person` name shortcut on read tools
-
-`get_person_context`, `get_communication_guidance`, `list_reminders`, `get_relationship_graph`,
-`get_person_timeline`, `get_consolidation_context`, and `upcoming_dates` accept `person` (name string)
-alongside `person_id`. Saves the resolve round-trip when the name is unambiguous.
-
-On error, returns a structured payload (not an exception):
-`{"error": "ambiguous_person"|"unconfirmed_person"|"person_not_found"|"missing_person", "candidates": [...]}`
-
-### get_person_context
-
-```python
-r = call("get_person_context", {"person_id": pid, "include_communication": True})
-person = r["***"]           # ← "***", not "person"
-# r["truncated"] == True means facts/interactions budget was hit
-```
-
----
-
-## 10. Staged capture: propose → review → commit
-
-For extracted/inferred content from transcripts, emails, or external sources. **Never auto-commit.**
-
-`aliases` in a `person` candidate are objects, not strings: `{"value": "Al", "kind": "nickname"}`.
-
-```python
-bid = call("stage_candidates", {
-    "source": "levey-2026-09-03",
-    "candidates": [
-        {"type": "person", "ref": "jiaxin", "name": "Jiaxin",
-         "aliases": [{"value": "Jiaxin Wang", "kind": "other"}]},
-        {"type": "affiliation", "person_ref": "jiaxin",
-         "org": "Etihad Airways", "role": "Flight Attendant", "valid_from": "2026-08-01"},
-    ],
-})["batch_id"]
-
-call("review_import", {"batch_id": bid})            # read-only, no approval needed
-call("commit_import", {"batch_id": bid, "accept": [cid, ...]})  # user-approved only
-```
-
----
-
-## 11. Record maintenance: correction vs. supersession
-
-| Scenario | Tool |
-|---|---|
-| Stored value was **wrong** (typo, misheard) | `correct_record` — updates in-place |
-| Stored value was **right, world changed** | `supersede_fact` — closes old row, opens replacement atomically |
-
-`supersede_fact` requires `effective_from` within the old fact's validity window. Report the `reason` if refused.
-
----
-
-## 12. Available tools (post-M21)
-
-**Read-only** (`readOnlyHint=true`):
-`resolve_person` · `get_person_context` · `search_people` · `semantic_search` ·
-`get_communication_guidance` · `list_reminders` · `get_relationship_graph` ·
-`find_connection` · `get_stale_relationships` · `upcoming_dates` · `review_import` ·
-`get_person_timeline` · `get_consolidation_context`
-
-**Write**: `remember` · `remember_person` · `add_alias` · `set_relationship` · `set_affiliation` ·
-`record_fact` · `record_observation` · `record_trait` · `record_interaction` ·
-`set_reminder` · `complete_reminder` · `correct_record` · `supersede_fact` ·
-`merge_people` · `forget` · `stage_candidates` · `import_content` · `commit_import` · `set_communication_philosophy`
-
-**Gated** (never suggest enabling to work around a boundary): `get_sensitive_person_context` · `export_data`
-
----
-
-## 13. Prompts and resources (new in M21)
-
-| Kind | Name / URI | Purpose |
-|---|---|---|
-| resource | `people-context://guide` | Full usage skill body |
-| resource | `people-context://self` | User's own record, or `{"found": false}` |
-| prompt | `who(name)` | Resolve, then read context on confident match |
-| prompt | `remember(statement)` | `remember` for direct statements; `stage_candidates` for extracted |
-| prompt | `meeting_prep(attendees)` | Context + guidance per attendee; read-only |
-| prompt | `end_of_session_capture()` | Propose via `stage_candidates`; never commit |
-| prompt | `maintenance_review(name)` | Timeline + consolidation signals |
-
----
-
-## 14. OpenClaw plugin
-
-```bash
-openclaw plugins install clawhub:openclaw-plugin-people-context
-```
-
-Connects to the opt-in loopback HTTP server (must be running; see §3).
-See `docs/openclaw-plugin.md` in the upstream repo for config and security details.
