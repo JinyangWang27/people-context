@@ -8,8 +8,10 @@ and a published number can be re-derived from the recorded answer.
 from __future__ import annotations
 
 import re
+import sqlite3
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 
 from evals.harness.errors import EvalHarnessError
 from evals.harness.suite import (
@@ -18,6 +20,7 @@ from evals.harness.suite import (
     Criterion,
     LineMatchesCriterion,
     MatchesCriterion,
+    StoreCountCriterion,
     Task,
 )
 
@@ -63,6 +66,8 @@ class CriterionOutcome:
     values: tuple[str, ...] | None
     pattern: str | None
     min_lines: int | None
+    sql: str | None = None
+    equals: int | None = None
 
 
 @dataclass(frozen=True)
@@ -81,8 +86,10 @@ class TaskScore:
         return round(self.earned * 100 / self.possible, 1)
 
 
-def evaluate_criterion(criterion: Criterion, answer: str) -> bool:
-    """Return whether one criterion holds for ``answer``."""
+def evaluate_criterion(criterion: Criterion, answer: str, database: Path | None = None) -> bool:
+    """Return whether one criterion holds for ``answer`` and, for store criteria, ``database``."""
+    if isinstance(criterion, StoreCountCriterion):
+        return database is not None and _store_count(database, criterion.sql) == criterion.equals
     folded = normalize(answer)
     if isinstance(criterion, ContainsAllCriterion):
         return all(normalize(value) in folded for value in criterion.values)
@@ -98,18 +105,32 @@ def evaluate_criterion(criterion: Criterion, answer: str) -> bool:
     raise EvalHarnessError(f"unsupported criterion kind: {type(criterion).__name__}")
 
 
-def score_task(task: Task, answer: str) -> TaskScore:
-    """Score one answer against one task's rubric, in rubric order."""
+def _store_count(database: Path, sql: str) -> object:
+    """Run one count on a read-only connection, so scoring can never change what it scores."""
+    connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        row = connection.execute(sql).fetchone()
+    except sqlite3.Error as exc:
+        raise EvalHarnessError(f"store_count query failed: {exc}") from exc
+    finally:
+        connection.close()
+    return row[0] if row else None
+
+
+def score_task(task: Task, answer: str, database: Path | None = None) -> TaskScore:
+    """Score one answer, and the store the run left behind, against one task's rubric."""
     outcomes = tuple(
         CriterionOutcome(
             id=criterion.id,
             description=criterion.description,
             kind=criterion.kind,
             weight=criterion.weight,
-            passed=evaluate_criterion(criterion, answer),
+            passed=evaluate_criterion(criterion, answer, database),
             values=getattr(criterion, "values", None),
             pattern=getattr(criterion, "pattern", None),
             min_lines=getattr(criterion, "min_lines", None),
+            sql=getattr(criterion, "sql", None),
+            equals=getattr(criterion, "equals", None),
         )
         for criterion in task.rubric
     )

@@ -3,7 +3,7 @@
 This page documents how `people-context` is measured, what has actually been measured so far, and what a number
 produced by the harness may and may not be used to claim.
 
-Harness version: **1.1.0**. Suite: **`people-context-core` v1.0.0**. World fixture: **`tidepool-2026-08`**.
+Harness version: **1.2.0**. Suite: **`people-context-core` v1.0.0**. World fixture: **`tidepool-2026-08`**.
 Source: [`evals/`](../evals/README.md).
 
 ## What the harness measures
@@ -632,7 +632,7 @@ between versions, and a wrong flag would produce a confident but meaningless num
 ### 2026-09-23 — offline dry run (plumbing only)
 
 Report: [`evals/results/2026-09-23-stub-dry-run.json`](../evals/results/2026-09-23-stub-dry-run.json).
-Harness 1.1.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub/recorded-answers`.
+Harness 1.2.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub/recorded-answers`.
 
 | Condition | Tasks | Earned | Possible | Percent |
 | --- | ---: | ---: | ---: | ---: |

@@ -41,6 +41,9 @@ class AgentResponse:
     #: Tool calls the agent made, in order, as ``{"name": ..., "input": ...}``; ``None`` when
     #: the runner cannot observe them, which is different from an agent that called nothing.
     tool_calls: tuple[dict[str, object], ...] | None = None
+    #: Token, turn, and tool-result size accounting from the client's event stream; ``None``
+    #: when the runner cannot observe it. See ``docs/evals.md`` for how to read each field.
+    usage: dict[str, object] | None = None
 
 
 @runtime_checkable

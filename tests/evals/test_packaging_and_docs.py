@@ -102,7 +102,10 @@ def test_every_recorded_report_is_a_current_report_document() -> None:
         report = json.loads(_read(path))
         assert report["format"] == REPORT_FORMAT, path.name
         assert report["version"] == REPORT_VERSION, path.name
-        assert report["harness_version"] == HARNESS_VERSION, path.name
+        # A recorded model run keeps the harness version that produced it; relabelling it on a
+        # later bump would misstate its provenance. It may be older than the code, never newer.
+        recorded = tuple(int(part) for part in report["harness_version"].split("."))
+        assert recorded <= tuple(int(part) for part in HARNESS_VERSION.split(".")), path.name
 
 
 def test_every_recorded_report_matches_the_current_rubrics() -> None:

@@ -1,7 +1,7 @@
 {
   "format": "people-context.eval-report",
   "version": 1,
-  "harness_version": "1.1.0",
+  "harness_version": "1.2.0",
   "generated_at": "2026-09-23T10:31:35Z",
   "suite": {
     "id": "people-context-core",
@@ -88,7 +88,9 @@
             "Tidepool Collective"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-role",
@@ -100,7 +102,9 @@
             "Operations Manager"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-update-preference",
@@ -112,7 +116,9 @@
             "bullet points"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-the-no-preamble-half",
@@ -122,7 +128,9 @@
           "passed": false,
           "values": null,
           "pattern": "no preamble|without (?:a |any )?preamble|no pleasantries|skips? the preamble",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-invent-an-employer",
@@ -136,11 +144,14 @@
             "Harbourline Trust"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "Tomas Brandt is the Operations Manager at Tidepool Collective, where he runs the recurring programme reviews.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "context-recall",
@@ -160,7 +171,9 @@
             "Tidepool Collective"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-role",
@@ -172,7 +185,9 @@
             "Operations Manager"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-update-preference",
@@ -184,7 +199,9 @@
             "bullet points"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-the-no-preamble-half",
@@ -194,7 +211,9 @@
           "passed": false,
           "values": null,
           "pattern": "no preamble|without (?:a |any )?preamble|no pleasantries|skips? the preamble",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-invent-an-employer",
@@ -208,11 +227,14 @@
             "Harbourline Trust"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "I have no record of Tomas Brandt, so I cannot say where he works, what his role is, or how he prefers to receive updates.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "guided-drafting",
@@ -232,7 +254,9 @@
             "Tomas"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-the-subject",
@@ -245,7 +269,9 @@
             "operations review"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "omits-filler-openings",
@@ -261,7 +287,9 @@
             "Trust you are well"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "uses-the-recipients-bullet-format",
@@ -271,7 +299,9 @@
           "passed": true,
           "values": null,
           "pattern": "^[-*•] \\S",
-          "min_lines": 2
+          "min_lines": 2,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "asks-for-a-decision",
@@ -281,7 +311,9 @@
           "passed": true,
           "values": null,
           "pattern": "confirm|which date|can you (?:pick|choose)",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "names-a-concrete-date",
@@ -291,11 +323,14 @@
           "passed": true,
           "values": null,
           "pattern": "\\b(?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b|september (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)?\\b|\\b2026-09-(?:0[1-9]|[12][0-9]|30)\\b|week of (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "Tomas - please confirm a date for the September operations review.\n- Proposed: week of 14 September\n- Decision needed by: 5 September\nReply with the date that works.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "guided-drafting",
@@ -315,7 +350,9 @@
             "Tomas"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-the-subject",
@@ -328,7 +365,9 @@
             "operations review"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "omits-filler-openings",
@@ -344,7 +383,9 @@
             "Trust you are well"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "uses-the-recipients-bullet-format",
@@ -354,7 +395,9 @@
           "passed": false,
           "values": null,
           "pattern": "^[-*•] \\S",
-          "min_lines": 2
+          "min_lines": 2,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "asks-for-a-decision",
@@ -364,7 +407,9 @@
           "passed": false,
           "values": null,
           "pattern": "confirm|which date|can you (?:pick|choose)",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "names-a-concrete-date",
@@ -374,11 +419,14 @@
           "passed": false,
           "values": null,
           "pattern": "\\b(?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b|september (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)?\\b|\\b2026-09-(?:0[1-9]|[12][0-9]|30)\\b|week of (?:0?[1-9]|[12][0-9]|30)(?:st|nd|rd|th)? september\\b",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "Hi Tomas,\n\nI hope this email finds you well. I wanted to reach out about scheduling the September operations review at some point soon. Could you let me know your general availability when you get a chance?\n\nBest regards",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "identity-disambiguation",
@@ -396,7 +444,9 @@
           "passed": true,
           "values": null,
           "pattern": "\\bpriya raman\\b",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-employer-and-role",
@@ -409,7 +459,9 @@
             "Data Lead"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-attribute-the-other-priya",
@@ -422,7 +474,9 @@
             "Grants Officer"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "asserts-rather-than-hedges",
@@ -450,11 +504,14 @@
             "no way to tell which"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "Priya Raman is the Data Lead at Kestrel Analytics, based in Bengaluru. She owns the quarterly restoration metrics for the partnership.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "identity-disambiguation",
@@ -472,7 +529,9 @@
           "passed": false,
           "values": null,
           "pattern": "\\bpriya raman\\b",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-employer-and-role",
@@ -485,7 +544,9 @@
             "Data Lead"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-attribute-the-other-priya",
@@ -498,7 +559,9 @@
             "Grants Officer"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "asserts-rather-than-hedges",
@@ -526,11 +589,14 @@
             "no way to tell which"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "I do not have any stored information about your contacts, so I cannot tell you which of the two people called Priya works at Kestrel Analytics.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "relationship-path",
@@ -551,7 +617,9 @@
             "Kofi Mensah"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "orders-the-path-correctly",
@@ -561,7 +629,9 @@
           "passed": true,
           "values": null,
           "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman(?!\\s*(?:->|-->|→|,|then|and then)\\s*(?:noor|tomas|kofi|ingrid|priya))",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "names-the-target",
@@ -571,7 +641,9 @@
           "passed": true,
           "values": null,
           "pattern": "\\bpriya raman\\b",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-add-people-outside-the-path",
@@ -585,11 +657,14 @@
             "Harbourline Trust"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "You reach Priya Raman in three steps: you -> Tomas Brandt (colleague) -> Kofi Mensah (colleague) -> Priya Raman.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "relationship-path",
@@ -610,7 +685,9 @@
             "Kofi Mensah"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "orders-the-path-correctly",
@@ -620,7 +697,9 @@
           "passed": false,
           "values": null,
           "pattern": "tomas brandt.{0,120}kofi mensah.{0,120}priya raman(?!\\s*(?:->|-->|→|,|then|and then)\\s*(?:noor|tomas|kofi|ingrid|priya))",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "names-the-target",
@@ -630,7 +709,9 @@
           "passed": true,
           "values": null,
           "pattern": "\\bpriya raman\\b",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-add-people-outside-the-path",
@@ -644,11 +725,14 @@
             "Harbourline Trust"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "I do not have access to your relationship graph, so I cannot trace how you are connected to Priya Raman.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "stale-follow-up",
@@ -668,7 +752,9 @@
             "Ingrid Solberg"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-the-last-interaction-date",
@@ -678,7 +764,9 @@
           "passed": true,
           "values": null,
           "pattern": "2026-03-05|\\b5(?:th)?(?: of)? march,? 2026|march 5(?:th)?,? 2026",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-name-another-contact",
@@ -692,11 +780,14 @@
             "Priya Raman"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "Ingrid Solberg is the most overdue contact. Your last recorded interaction with her was the documentary pilot conversation on 2026-03-05.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     },
     {
       "task_id": "stale-follow-up",
@@ -716,7 +807,9 @@
             "Ingrid Solberg"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "states-the-last-interaction-date",
@@ -726,7 +819,9 @@
           "passed": false,
           "values": null,
           "pattern": "2026-03-05|\\b5(?:th)?(?: of)? march,? 2026|march 5(?:th)?,? 2026",
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         },
         {
           "id": "does-not-name-another-contact",
@@ -740,11 +835,14 @@
             "Priya Raman"
           ],
           "pattern": null,
-          "min_lines": null
+          "min_lines": null,
+          "sql": null,
+          "equals": null
         }
       ],
       "answer": "I have no interaction history for you, so I cannot say which contact is most overdue or when you last spoke.",
-      "tool_calls": null
+      "tool_calls": null,
+      "usage": null
     }
   ]
 }
