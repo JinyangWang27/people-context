@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 
 import pytest
 
@@ -20,6 +21,8 @@ from people_context.domain.person import Alias, Person
 from people_context.ports.semantic import SemanticDocument, SemanticIndexMetadata, VectorSearchHit
 
 sqlite_vec = pytest.importorskip("sqlite_vec")
+if not hasattr(sqlite3.Connection, "enable_load_extension"):
+    pytest.skip("this Python's sqlite3 cannot load extensions", allow_module_level=True)
 
 
 def _vector(value: float) -> list[float]:

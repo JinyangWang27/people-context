@@ -74,6 +74,11 @@ MAX_EXTRACTION_STRING_BYTES: Final = 8 * 1024
 #: an oversized file or a stdin stream that never ends is refused instead of being buffered whole.
 MAX_CLI_CANDIDATE_JSON_BYTES: Final = 1024 * 1024
 
+#: Nested containers one candidate, patch, or review document may carry. Real candidates sit a few
+#: levels deep; the bound exists because Python 3.14 no longer turns deep nesting into a
+#: `RecursionError`, so depth must be refused explicitly rather than left to the interpreter's stack.
+MAX_CANDIDATE_NESTING_DEPTH: Final = 64
+
 SOURCE_TOO_LARGE = "source_too_large"
 TOO_MANY_CANDIDATES = "too_many_candidates"
 STAGED_PAYLOAD_TOO_LARGE = "staged_payload_too_large"
@@ -178,10 +183,26 @@ def _canonical_payload(candidates: list[Any]) -> str:
     try:
         return json.dumps(candidates, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
     except RecursionError:
-        raise resource_limit_error(
-            CANDIDATE_NESTING_TOO_DEEP,
-            "an extraction candidate is nested too deeply to measure",
-        ) from None
+        raise nesting_too_deep_error() from None
+
+
+def nesting_too_deep_error() -> ImportPipelineError:
+    """The refusal for a candidate nested beyond what the limits can measure."""
+    return resource_limit_error(CANDIDATE_NESTING_TOO_DEEP, "an extraction candidate is nested too deeply to measure")
+
+
+def exceeds_nesting_depth(value: Any, limit: int = MAX_CANDIDATE_NESTING_DEPTH) -> bool:
+    """Report whether decoded JSON nests containers deeper than `limit`, walking iteratively."""
+    pending: list[tuple[Any, int]] = [(value, 0)]
+    while pending:
+        current, depth = pending.pop()
+        if depth > limit:
+            return True
+        if isinstance(current, dict):
+            pending.extend((child, depth + 1) for child in current.values())
+        elif isinstance(current, list):
+            pending.extend((child, depth + 1) for child in current)
+    return False
 
 
 def _reject_oversized_strings(candidate: Any) -> None:
@@ -192,9 +213,11 @@ def _reject_oversized_strings(candidate: Any) -> None:
     would otherwise reach validation only to be refused there, having already been measured
     into the payload.
     """
-    pending: list[Any] = [candidate]
+    pending: list[tuple[Any, int]] = [(candidate, 0)]
     while pending:
-        current = pending.pop()
+        current, depth = pending.pop()
+        if depth > MAX_CANDIDATE_NESTING_DEPTH:
+            raise nesting_too_deep_error()
         if isinstance(current, str):
             # A JSON escape may decode to an unpaired surrogate, which is a `str` that has no
             # UTF-8 encoding at all. Measuring it would raise where a refusal belongs: the value
@@ -213,7 +236,7 @@ def _reject_oversized_strings(candidate: Any) -> None:
                     limit=MAX_EXTRACTION_STRING_BYTES,
                 )
         elif isinstance(current, dict):
-            pending.extend(current.keys())
-            pending.extend(current.values())
+            pending.extend((key, depth + 1) for key in current)
+            pending.extend((value, depth + 1) for value in current.values())
         elif isinstance(current, (list, tuple)):
-            pending.extend(current)
+            pending.extend((item, depth + 1) for item in current)

@@ -407,6 +407,18 @@ def build_parser() -> argparse.ArgumentParser:
     add_alias.add_argument("--lang", default=None)
     add_alias.add_argument("--script", default=None)
 
+    remove_alias = subparsers.add_parser("remove-alias", help="Remove an alias from a person.")
+    remove_alias.add_argument("person", help="An active person id, or a name to resolve.")
+    remove_alias.add_argument("value", help="The alias to remove, matched by normalized value.")
+
+    update_alias = subparsers.add_parser("update-alias", help="Correct an alias of a person in place.")
+    update_alias.add_argument("person", help="An active person id, or a name to resolve.")
+    update_alias.add_argument("value", help="The alias to change, matched by normalized value.")
+    update_alias.add_argument("--to", default=None, help="New alias value.")
+    update_alias.add_argument("--kind", choices=[kind.value for kind in AliasKind], default=None)
+    update_alias.add_argument("--lang", default=None)
+    update_alias.add_argument("--script", default=None)
+
     set_cmd = subparsers.add_parser("set", help="Set a supported user preference.")
     set_cmd.add_argument("key")
     set_cmd.add_argument("value")

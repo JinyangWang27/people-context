@@ -1,6 +1,17 @@
 """Identity resolution and person lifecycle use cases."""
 
-from people_context.app.people.aliases import AddAlias, AddAliasInput
+from people_context.app.people.aliases import (
+    AddAlias,
+    AddAliasInput,
+    AliasConflictError,
+    AliasNotFoundError,
+    RemoveAlias,
+    RemoveAliasInput,
+    RemoveAliasResult,
+    UpdateAlias,
+    UpdateAliasInput,
+    UpdateAliasResult,
+)
 from people_context.app.people.edit import EditPerson, EditPersonInput, PersonNameCollisionError
 from people_context.app.people.forget import Forget, ForgetError, ForgetPreview, ForgetResult, PreviewForget
 from people_context.app.people.merge import MergeMovedCounts, MergePeople, MergePeopleError, MergePeopleResult
@@ -26,7 +37,9 @@ from people_context.app.people.search import SearchPeople
 __all__ = [
     "AddAlias",
     "AddAliasInput",
+    "AliasConflictError",
     "AliasInput",
+    "AliasNotFoundError",
     "AmbiguousPersonError",
     "base_match_reason",
     "EditPerson",
@@ -43,6 +56,9 @@ __all__ = [
     "MergePeopleResult",
     "PersonNameCollisionError",
     "PreviewForget",
+    "RemoveAlias",
+    "RemoveAliasInput",
+    "RemoveAliasResult",
     "RememberPerson",
     "RememberPersonInput",
     "RememberPersonResult",
@@ -52,4 +68,7 @@ __all__ = [
     "ResolvePerson",
     "SearchPeople",
     "SelfAlreadyExistsError",
+    "UpdateAlias",
+    "UpdateAliasInput",
+    "UpdateAliasResult",
 ]

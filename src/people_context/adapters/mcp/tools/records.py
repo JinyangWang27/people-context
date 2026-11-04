@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refusals
-from people_context.app.people import AddAliasInput
+from people_context.app.people import AddAliasInput, RemoveAliasInput, UpdateAliasInput
 from people_context.app.records import (
     CorrectRecordInput,
     RecordFactInput,
@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     from people_context.adapters.runtime import RuntimeUseCases
 
 _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False)
+_REMOVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=True)
+_CORRECT = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False)
 
 
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
@@ -56,6 +58,41 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                     kind=kind if kind is not None else AliasKind.OTHER,
                     lang=lang,
                     script=script,
+                )
+            )
+        )
+
+    @mcp.tool(annotations=_REMOVE)
+    @flag_refusals
+    async def remove_alias(person_id: str, value: str) -> dict[str, Any]:
+        """Remove one alias, matched by normalized value, from an existing person.
+
+        Use this to undo a wrong alias, such as an email address stored as a name. The person and all of
+        their other names and records stay intact. An alias that is not present returns `removed: false`
+        and changes nothing; the canonical name is refused with `alias_conflict` (rename via edit instead).
+        """
+        return call_action(lambda: deps.remove_alias.execute(RemoveAliasInput(person_id=person_id, value=value)))
+
+    @mcp.tool(annotations=_CORRECT)
+    @flag_refusals
+    async def update_alias(
+        person_id: str,
+        value: str,
+        new_value: str | None = None,
+        kind: AliasKind | None = None,
+        lang: str | None = None,
+        script: str | None = None,
+    ) -> dict[str, Any]:
+        """Correct one alias in place, matched by normalized value; omitted fields stay unchanged.
+
+        Keeps the alias's id. A `new_value` that normalizes to the canonical name or to another alias is
+        refused with `alias_conflict`; an unknown alias is refused with `alias_not_found`. The result lists
+        which of `value`, `kind`, `lang`, and `script` actually changed.
+        """
+        return call_action(
+            lambda: deps.update_alias.execute(
+                UpdateAliasInput(
+                    person_id=person_id, value=value, new_value=new_value, kind=kind, lang=lang, script=script
                 )
             )
         )

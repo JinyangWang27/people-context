@@ -579,6 +579,12 @@ held — after its `valid_from` and not after its `valid_to`. A refusal comes ba
 `reason`; report it and ask the user for the right date rather than nudging the date
 until it is accepted.
 
+Aliases are names, not records, so `correct_record` does not reach them. A wrong alias —
+an email address stored as a name, a misspelt nickname — is fixed with
+`update_alias(person_id, value, new_value?, kind?, lang?, script?)` or dropped with
+`remove_alias(person_id, value)`. Both match `value` by its normalized form and leave the
+person and every other record intact; neither touches the canonical name, which is a rename.
+
 ### Redundant representation is not the same as multiple evidence
 
 Three observations that each support one trait are three pieces of evidence, not two

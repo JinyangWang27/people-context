@@ -10,7 +10,15 @@ from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.capture import QuickCaptureInput
 from people_context.app.context import SetCommunicationPhilosophyInput
 from people_context.app.exports import render_person_index_json
-from people_context.app.people import AddAliasInput, EditPersonInput, PersonNameCollisionError
+from people_context.app.people import (
+    AddAliasInput,
+    AliasConflictError,
+    AliasNotFoundError,
+    EditPersonInput,
+    PersonNameCollisionError,
+    RemoveAliasInput,
+    UpdateAliasInput,
+)
 from people_context.cli.rendering import print_context, print_table, truncate
 from people_context.domain.person import AliasKind, Person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
@@ -118,6 +126,50 @@ def cmd_add_alias(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         )
     )
     print(f"Alias recorded for {updated.canonical_name} ({updated.id}).")
+    return 0
+
+
+def cmd_remove_alias(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Remove one alias from an active person."""
+    person, exit_code = resolve_person(runtime, args.person)
+    if person is None:
+        return exit_code
+    try:
+        result = runtime.use_cases.remove_alias.execute(
+            RemoveAliasInput(person_id=person.id, value=args.value, source="cli")
+        )
+    except AliasConflictError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if not result.removed:
+        print(f"{args.value!r} is not an alias of {person.canonical_name} ({person.id}).", file=sys.stderr)
+        return 1
+    print(f"Alias {result.alias!r} removed from {person.canonical_name} ({person.id}).")
+    return 0
+
+
+def cmd_update_alias(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Correct one alias of an active person in place."""
+    person, exit_code = resolve_person(runtime, args.person)
+    if person is None:
+        return exit_code
+    try:
+        result = runtime.use_cases.update_alias.execute(
+            UpdateAliasInput(
+                person_id=person.id,
+                value=args.value,
+                new_value=args.to,
+                kind=AliasKind(args.kind) if args.kind else None,
+                lang=args.lang,
+                script=args.script,
+                source="cli",
+            )
+        )
+    except (AliasNotFoundError, AliasConflictError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    changed = ", ".join(result.changed) or "nothing"
+    print(f"Alias {result.alias.value!r} of {person.canonical_name} ({person.id}) updated: {changed}.")
     return 0
 
 

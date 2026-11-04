@@ -92,7 +92,7 @@ The pipeline deliberately does **not** attempt algorithmic transliteration (e.g.
 "Wang" from "王" or vice versa) in v1. Instead, transliterations, native-script names, and nicknames are all
 stored as `aliases` rows with an explicit `kind` (`native_script`, `transliteration`, `nickname`, …), written
 whenever an agent or the user learns a new name variant for a person (via `remember_person`, `add_alias`, or
-`pctx add-alias`). Reasons for this choice:
+`pctx add-alias`, and corrected with `update_alias`/`remove_alias`). Reasons for this choice:
 
 - Algorithmic transliteration is inherently ambiguous and script/locale-dependent (a single Chinese surname
   can map to multiple romanizations depending on dialect and personal preference; a nickname is not

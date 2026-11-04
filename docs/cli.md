@@ -43,6 +43,8 @@ browser batch review, and M30.3 browser inline edit.
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. |
+| `remove-alias PERSON VALUE` | Remove one alias, matched by normalized value; exits 1 when it is not an alias. |
+| `update-alias PERSON VALUE [--to NEW] [--kind KIND] [--lang LANG] [--script SCRIPT]` | Correct one alias in place; exits 1 on an unknown alias or a clashing new value. |
 | `set communication_philosophy VALUE` | Set the supported user preference. |
 | `delete PERSON [--yes]` | Preview and permanently forget a person graph. |
 | `sync push --output DIR` | Write one complete plaintext bootstrap bundle as an owner-only file. |
@@ -75,7 +77,7 @@ browser batch review, and M30.3 browser inline edit.
 | `group memberships PERSON [--limit N] [--include-sensitive] [--json]` | List one person's memberships with each group. |
 | `group shared PERSON_A PERSON_B [--limit N] [--include-sensitive] [--json]` | Explain how two people share identified groups, and when. |
 
-`show`, `brief`, `timeline`, `edit`, `add-alias`, and `delete` try an active id first and then
+`show`, `brief`, `timeline`, `edit`, `add-alias`, `remove-alias`, `update-alias`, and `delete` try an active id first and then
 `ResolvePerson`. Unknown references exit 1; ambiguous names exit 2 and print candidates rather than
 guessing.
 

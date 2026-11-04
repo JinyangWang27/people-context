@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,10 @@ from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepositor
 from people_context.adapters.sqlite.semantic import create_sqlite_vector_index
 from people_context.domain.person import Person
 from people_context.ports.semantic import SemanticDocument, SemanticIndexMetadata
+
+_needs_sqlite_extensions = pytest.mark.skipif(
+    not hasattr(sqlite3.Connection, "enable_load_extension"), reason="this Python's sqlite3 cannot load extensions"
+)
 
 EXPECTED_SERVER_INSTRUCTIONS = (
     "people-context stores durable, local-first knowledge about the people in the user's life: "
@@ -52,6 +57,8 @@ EXPECTED_TOOLS = {
     "list_reminders",
     # write stubs
     "add_alias",
+    "remove_alias",
+    "update_alias",
     "set_relationship",
     "set_affiliation",
     "record_fact",
@@ -315,6 +322,7 @@ def test_semantic_search_before_reindex_is_not_available_without_network(
     assert network_calls == []
 
 
+@_needs_sqlite_extensions
 def test_semantic_search_refuses_model_mismatch(tmp_path: Path) -> None:
     pytest.importorskip("sqlite_vec")
     db_path = tmp_path / "semantic-mismatch.db"
@@ -339,6 +347,7 @@ def test_semantic_search_refuses_model_mismatch(tmp_path: Path) -> None:
     assert payload["current_model_id"] == MODEL_ID
 
 
+@_needs_sqlite_extensions
 def test_semantic_search_hydrates_active_person_and_exposes_cosine_similarity(
     tmp_path: Path,
     monkeypatch: Any,
