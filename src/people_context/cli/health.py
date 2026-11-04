@@ -30,6 +30,8 @@ from people_context.adapters.sqlite.db import (
     UnsupportedSchemaError,
     inspect_schema,
     latest_schema_version,
+    require_sqlcipher,
+    require_supported_schema,
 )
 from people_context.config import MissingDatabaseKeyError, resolve_db_key, resolve_db_path
 
@@ -115,14 +117,23 @@ def check_database(db: str | None, *, encrypted: bool) -> Check:
     """Inspect the selected database without creating, migrating, or writing to it."""
     name = "your database"
     try:
+        # Before any early return: encrypted mode refuses to start without these even for a
+        # database that does not exist yet, and the handshake below never uses encrypted mode.
+        key = resolve_db_key() if encrypted else None
+        if encrypted:
+            require_sqlcipher()
         path = resolve_db_path(db)
         if str(path) == ":memory:":
             return Check(name, "ok", ":memory: (nothing stored between launches).")
         if not path.exists():
             return _check_future_database(path)
-        stored = inspect_schema(path, resolve_db_key() if encrypted else None)
-    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError, UnsupportedSchemaError) as exc:
-        return Check(name, "fail", _short(str(exc)), "Fix the database settings shown by `pctx db-path -v`.")
+        stored = inspect_schema(path, key)
+        if stored is not None:
+            require_supported_schema(stored.version)
+    except UnsupportedSchemaError as exc:
+        return Check(name, "fail", _short(str(exc)))  # The message already says how to upgrade.
+    except (MissingDatabaseKeyError, EncryptedDatabaseError, UnsafeDatabasePathError) as exc:
+        return Check(name, "fail", _short(str(exc)), "Fix this, then rerun. `pctx db-path -v` shows the selected path.")
     if stored is None:
         return Check(
             name,

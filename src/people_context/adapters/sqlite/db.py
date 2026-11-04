@@ -151,6 +151,11 @@ def _load_sqlcipher() -> Any:
         ) from exc
 
 
+def require_sqlcipher() -> None:
+    """Refuse when encrypted mode could not start because its binding is unavailable."""
+    _load_sqlcipher()
+
+
 def _quote_key(key: str) -> str:
     """Return `key` as a SQL string literal for the `PRAGMA key` statement.
 
@@ -349,9 +354,7 @@ def _precreate_owner_private_db(db_path: Path) -> tuple[int, int] | None:
     """
     for _ in range(_PRECREATE_ATTEMPTS):
         try:
-            handle = os.open(
-                db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, PRIVATE_FILE_MODE
-            )
+            handle = os.open(db_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | _O_NOFOLLOW, PRIVATE_FILE_MODE)
         except FileExistsError:
             # `db_path` is `realpath` output, so it cannot legitimately be a symlink:
             # resolution follows every link and returns the final name. A symlink here
@@ -429,12 +432,20 @@ def latest_schema_version() -> int:
     return migrations[-1][0] if migrations else 0
 
 
+def require_supported_schema(version: int) -> None:
+    """Refuse a stored schema older than the baseline, which no shipped migration can upgrade."""
+    baseline = _discover_migrations()[0][0]
+    if 0 < version < baseline:
+        raise UnsupportedSchemaError(
+            f"This database is at schema version {version}, older than the version-{baseline} baseline this "
+            "release can open. Open it once with people-context 1.3.0 to upgrade it, then retry."
+        )
+
+
 #: Tables that identify a database as this project's rather than some other application's.
 _IDENTIFYING_TABLES = ("persons", "devices")
 
-_IDENTITY_SQL = (
-    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)"
-)
+_IDENTITY_SQL = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN (?, ?)"
 
 
 @dataclass(frozen=True)
@@ -507,14 +518,8 @@ def _read_only_uri(path: str | Path) -> str:
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
     current = conn.execute("PRAGMA user_version").fetchone()[0]
-    migrations = _discover_migrations()
-    baseline = migrations[0][0]
-    if 0 < current < baseline:
-        raise UnsupportedSchemaError(
-            f"This database is at schema version {current}, older than the version-{baseline} baseline this "
-            "release can open. Open it once with people-context 1.3.0 to upgrade it, then retry."
-        )
-    for version, sql in migrations:
+    require_supported_schema(current)
+    for version, sql in _discover_migrations():
         if version <= current:
             continue
         try:
