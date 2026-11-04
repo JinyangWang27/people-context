@@ -196,6 +196,12 @@ The staged flow has three distinct steps. Keep them distinct:
    reviewed a batch and explicitly accepted specific candidates. Never call
    `commit_import` automatically, speculatively, or in the same breath as staging.
 
+Keep the round trips few. Stage everything one source yields in a single
+`stage_candidates` call, and commit an accepted batch in a single `commit_import`. Its
+receipt is the verification: report what was committed, anything in `unresolved_ids` or
+`skipped_ids`, and any refusal. Read records back only for those ids, or when the user asks
+to see them.
+
 ### The chat review loop: number it, correct it, then ask
 
 A batch of ULIDs is not a review. Present the staged batch as a **numbered list**, one
@@ -219,8 +225,8 @@ changed after they saw it.
 
 `stage_candidates` accepts exactly nine candidate `type`s. Nothing else validates:
 
-- `person` — `ref`, `name`, and strict `aliases`; optional `summary`, `message_id`,
-  `date`.
+- `person` — `ref`, `name`; optional strict `aliases` (objects such as
+  `{"value": "Al", "kind": "nickname"}`, never bare strings), `summary`, `message_id`, `date`.
 - `interaction` — `summary`, `participant_refs` (batch-local person `ref`s), `date`;
   optional `channel`, `message_id`, `sensitivity`, `evidence_ref`.
 - `affiliation` — `person_ref`, `org`, `role`; optional `valid_from`, `valid_to`,

@@ -76,7 +76,15 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         """Stage agent-extracted people, interactions, records, relationships, groups, and memberships.
 
         Candidate types are `person`, `interaction`, `affiliation`, `fact`, `observation`, `trait`,
-        `relationship`, `group`, and `group_membership`.
+        `relationship`, `group`, and `group_membership`. Stage every candidate from one source in a single
+        call. Required fields, beyond `type`; any key the type does not declare is refused:
+        `person` `ref`, `name` (optional `aliases`); `affiliation` `person_ref`, `org`, `role`; `fact` `person_ref`,
+        `predicate`, `value`; `observation` `person_ref`, `text`; `trait` `person_ref`, `category`, `value`,
+        `evidence_note`, `confidence`; `interaction` `summary`, `participant_refs`, `date`; `relationship`
+        `from_ref`, `to_ref`, `relationship_type`; `group` `ref`, `name`, `kind`; `group_membership` `person_ref`,
+        `group_ref`. Only `person` and `group` carry a `ref`; the rest point at one.
+        Staging matches each `person` against stored people and review shows the outcome, so do not resolve
+        names first.
 
         Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
         agent-visible text. Distinguish what was stated (`fact`), what happened in this source (`observation`),
@@ -113,12 +121,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         identified group is a `relationship`, not an invented group.
 
         `source_kind` optionally records an import receipt for this batch. It is a machine category such as
-        `meeting_transcript`, at most 128 characters of letters, digits, `.`, `_`, `-`, or `/` — never a person,
-        a title, or a description; put any human wording in `label` instead. If you can compute a SHA-256 over
-        the exact source artifact, pass it as `content_digest` (64 lowercase hex characters) so re-importing that
-        same source can be detected; without one, no duplicate detection is promised. `extraction_fingerprint`
-        is optional and should be omitted unless you have explicit, bounded configuration semantics for it.
-        None of these fields may carry source text.
+        `meeting_transcript`, at most 128 characters of letters, digits, `.`, `_`, `-`, or `/` — never a person, a
+        title, or a description; put any human wording in `label` instead. `label`, `content_digest`,
+        `extraction_fingerprint`, and `external_source_id` are refused without `source_kind`. If you can compute a
+        SHA-256 over the exact source artifact, pass it as `content_digest` (64 lowercase hex characters) so
+        re-importing that same source can be detected; without one, no duplicate detection is promised.
+        `extraction_fingerprint` is optional and should be omitted unless you have explicit, bounded configuration
+        semantics for it. None of these fields may carry source text.
         """
         try:
             return deps.stage_candidates.execute(
@@ -200,7 +209,9 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     ) -> dict[str, Any]:
         """Commit accepted people and resolvable interactions idempotently.
 
-        Accepting a withdrawn candidate refuses the whole commit. Supplying the
+        The receipt is the verification: an id in `committed_ids` is stored. Read records back only for ids
+        in `unresolved_ids` or `skipped_ids`, or when the user asks to see them. Accepting a withdrawn
+        candidate refuses the whole commit. Supplying the
         `expected_batch_digest` from the review the user approved refuses it if the batch moved
         after they saw it.
         """
