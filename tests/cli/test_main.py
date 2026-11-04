@@ -331,6 +331,33 @@ def test_add_alias_and_set_preference_use_application_writes(
     assert philosophy == "Prefer concise updates"
 
 
+def test_remove_and_update_alias_report_outcomes_and_exit_codes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Alice", aliases=[AliasInput(value="alice@example.com"), AliasInput(value="Ally")])
+    base = ["--db", str(db_file)]
+
+    assert cli.main([*base, "remove-alias", person.id, "alice@example.com"]) == 0
+    assert "removed" in capsys.readouterr().out
+    assert cli.main([*base, "remove-alias", person.id, "alice@example.com"]) == 1
+    assert "is not an alias" in capsys.readouterr().err
+    assert cli.main([*base, "remove-alias", person.id, "Alice"]) == 1
+    assert "canonical_name" in capsys.readouterr().err
+    assert cli.main([*base, "update-alias", person.id, "ally", "--to", "Al", "--kind", "nickname"]) == 0
+    assert "value, kind" in capsys.readouterr().out
+    assert cli.main([*base, "update-alias", person.id, "Nobody", "--kind", "handle"]) == 1
+    assert "alias not found" in capsys.readouterr().err
+
+    conn = open_db(db_file)
+    try:
+        updated = SqlitePeopleRepository(conn).get(person.id)
+    finally:
+        conn.close()
+    assert updated is not None
+    assert [(alias.value, alias.kind.value) for alias in updated.aliases] == [("Al", "nickname")]
+
+
 def test_delete_abort_is_non_mutating_and_confirmation_forgets_person(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

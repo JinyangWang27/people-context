@@ -57,6 +57,8 @@ EXPECTED_TOOLS = {
     "list_reminders",
     # write stubs
     "add_alias",
+    "remove_alias",
+    "update_alias",
     "set_relationship",
     "set_affiliation",
     "record_fact",

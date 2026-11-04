@@ -101,8 +101,10 @@ from people_context.app.people import (
     MergePeople,
     PreviewForget,
     RememberPerson,
+    RemoveAlias,
     ResolvePerson,
     SearchPeople,
+    UpdateAlias,
 )
 from people_context.app.records import (
     CompleteReminder,
@@ -154,6 +156,8 @@ class RuntimeUseCases:
     quick_capture: QuickCapture
     edit_person: EditPerson
     add_alias: AddAlias
+    remove_alias: RemoveAlias
+    update_alias: UpdateAlias
     set_relationship: SetRelationship
     add_relationship_type: AddRelationshipType
     normalize_relationships: NormalizeRelationships
@@ -357,6 +361,8 @@ def build_runtime(
         remember_person=remember_person,
         edit_person=EditPerson(repo, repo, audit, runtime_clock),
         add_alias=AddAlias(repo, repo, audit, runtime_clock),
+        remove_alias=RemoveAlias(repo, repo, audit, runtime_clock),
+        update_alias=UpdateAlias(repo, repo, audit, runtime_clock),
         set_relationship=set_relationship,
         add_relationship_type=AddRelationshipType(
             relationship_vocabulary,

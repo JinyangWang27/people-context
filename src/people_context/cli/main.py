@@ -29,9 +29,11 @@ from people_context.cli.people import (
     cmd_edit,
     cmd_list,
     cmd_remember,
+    cmd_remove_alias,
     cmd_search,
     cmd_set,
     cmd_show,
+    cmd_update_alias,
 )
 from people_context.cli.portability import (
     cmd_brief,
@@ -81,6 +83,8 @@ _COMMANDS: dict[str, CommandHandler] = {
     "reminders-ics": cmd_reminders_ics,
     "edit": cmd_edit,
     "add-alias": cmd_add_alias,
+    "remove-alias": cmd_remove_alias,
+    "update-alias": cmd_update_alias,
     "set": cmd_set,
     "delete": cmd_delete,
     "relationship-types": cmd_relationship_types,

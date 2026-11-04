@@ -25,6 +25,7 @@ Pick the first route that works and stay on it for the whole session:
    | Task | Command |
    |---|---|
    | Add an alias | `pctx add-alias "Mei Tanaka" Mimi --kind nickname` |
+   | Fix or drop a wrong alias | `pctx update-alias "Mei Tanaka" mimi --kind nickname` · `pctx remove-alias "Mei Tanaka" mei@example.com` |
    | One direct statement | `pctx remember "Dana" "prefers short emails"` |
    | Staged import | `pctx import stage-candidates --source <label> --input candidates.json --json` → `pctx import review <batch> --json` → `pctx import commit <batch> --accept 1-7 --json` (or `--all`) |
 
@@ -131,6 +132,8 @@ call("remember_person", {"name": "Jinyang Wang", "is_self": True,
 
 `kind` values: `native_script` (CJK; add `"script":"Hans"/"Hant"`) · `transliteration` · `nickname` · `handle` · `former_name` · `other`
 
+A wrong alias is fixed with `update_alias` (any of `new_value`, `kind`, `lang`, `script`) or dropped with `remove_alias`; both name the alias by value. Never `forget` or `merge_people` to fix a name.
+
 ---
 
 ## 7. set_relationship / set_affiliation
@@ -208,7 +211,7 @@ in `unresolved_ids` or `skipped_ids`, or when the user asks to see them.
 `find_connection` · `get_stale_relationships` · `upcoming_dates` · `review_import` ·
 `get_person_timeline` · `get_consolidation_context`
 
-**Write**: `remember` · `remember_person` · `add_alias` · `set_relationship` · `set_affiliation` ·
+**Write**: `remember` · `remember_person` · `add_alias` · `update_alias` · `remove_alias` · `set_relationship` · `set_affiliation` ·
 `record_fact` · `record_observation` · `record_trait` · `record_interaction` ·
 `set_reminder` · `complete_reminder` · `correct_record` · `supersede_fact` ·
 `merge_people` · `forget` · `stage_candidates` · `import_content` · `commit_import` · `set_communication_philosophy`

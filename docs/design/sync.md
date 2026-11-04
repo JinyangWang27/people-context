@@ -226,7 +226,7 @@ and user review override that default.
 | Person non-identity scalars | Field-level LWW. | Edit racing with merge or forget. |
 | Person `canonical_name` | Keep both candidates. | Any divergent concurrent values. |
 | Person `is_self` | No automatic resolution. | Any conflict or two self rows per owner. |
-| Alias set | Union by normalized value; metadata uses LWW. | One alias resolves to different people. |
+| Alias set | Union by normalized value; metadata uses LWW. An explicit `remove_alias` must win over a concurrent re-add of the same value, or replay resurrects it. | One alias resolves to different people. |
 | Organization | Kind uses LWW. | Divergent normalized names. |
 | Affiliation/relationship | Distinct fields merge; same fields use LWW. | Endpoint changes or semantic corrections. |
 | Facts/observations/traits | Distinct fields merge; same fields use LWW. | Competing corrections or person changes. |
