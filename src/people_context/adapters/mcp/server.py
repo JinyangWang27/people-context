@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -53,6 +54,7 @@ SERVER_INSTRUCTIONS = (
 )
 
 _LOG_LOGGER_NAME = "people_context"
+_NEXT_ACTION = "Run `pctx health` for a read-only startup check."
 
 
 def _configure_logging() -> logging.Logger:
@@ -154,7 +156,11 @@ def main(argv: list[str] | None = None) -> None:
     ) as exc:
         # Refuse with the reason only; the message never carries key material. The log handler
         # writes to stderr, so a refusal never reaches the stdio protocol stream.
-        _configure_logging().error("%s", exc)
+        _configure_logging().error("%s %s", exc, _NEXT_ACTION)
+        raise SystemExit(2) from None
+    except (OSError, sqlite3.Error) as exc:
+        # An unusable path is an operator problem: a traceback here only buries the reason.
+        _configure_logging().error("Could not open the database: %s. %s", exc, _NEXT_ACTION)
         raise SystemExit(2) from None
     if not args.http:
         server.run()

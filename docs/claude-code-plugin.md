@@ -36,10 +36,20 @@ Inside an interactive Claude Code session, the equivalent commands are:
 When the plugin is enabled, Claude Code starts this command automatically:
 
 ```bash
-uv run --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
+uv run --no-dev --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
 ```
 
-`CLAUDE_PLUGIN_ROOT` points to Claude Code's installed copy of this repository.
+`CLAUDE_PLUGIN_ROOT` points to Claude Code's installed copy of this repository. The command comes from
+[`.claude-plugin/mcp.json`](../.claude-plugin/mcp.json), and it has to use exactly that variable: the plugin loader
+does not substitute a form with a default such as `${CLAUDE_PLUGIN_ROOT:-.}`.
+
+The separate root [`.mcp.json`](../.mcp.json) is for working in a checkout, where the plugin variable is unset. It
+runs the server from that checkout with `--project .`, once you approve it, and uses your normal database unless
+`PEOPLE_CONTEXT_DB` says otherwise.
+
+`--no-dev` installs only the runtime dependencies: on an empty uv cache that is 31 packages and about 7 seconds,
+against 59 packages and about 25 seconds with development tools. Semantic search is not installed by the plugin;
+without it the server warns and ordinary lexical search keeps working.
 
 The server resolves its database path with the standard chain documented in [cli.md](cli.md#database-location-resolution):
 the `--db` flag, then `PEOPLE_CONTEXT_DB`, then a config file, and finally the shared per-user default
@@ -51,6 +61,33 @@ extra configuration. To isolate or relocate the store, set `PEOPLE_CONTEXT_DB` i
 launches Claude Code.
 
 The MCP server uses stdio. It does not listen on a TCP port and is available only to the local Claude Code process that launched it.
+
+## Troubleshooting
+
+Three things can be true separately, so check them in order:
+
+| State | What proves it |
+|---|---|
+| Skill installed | The `/people-context:*` skills appear. This says nothing about the server. |
+| Server starts | `pctx health` passes (command below). It uses a temporary database for the handshake and only reads yours. |
+| Tools connected | `/mcp` shows `people-context` connected. Run `/reload-plugins` or start a new session after any change. |
+
+Run the health check from the installed copy, replacing `<version>`:
+
+```bash
+uv run --no-dev --project ~/.claude/plugins/cache/people-context-plugins/people-context/<version> pctx health
+```
+
+| Symptom | Next action |
+|---|---|
+| `Project directory ${CLAUDE_PLUGIN_ROOT} does not exist` | You have a release from before this was fixed: update the plugin. |
+| `Failed to download` or `Network connectivity is disabled` | The first launch needs network access to install dependencies. Connect, then run `/reload-plugins`. |
+| `uv` not found | Install [`uv`](https://docs.astral.sh/uv/), then restart Claude Code so it sees the new `PATH`. |
+| The server reports a database error | Run `pctx db-path -v` to see which path was selected and why. |
+| `/mcp` shows nothing, or a failure, under a custom `CLAUDE_CONFIG_DIR` | Plugins install per configuration directory: install it under that directory too. |
+
+If the tools still do not connect, every operation has a CLI equivalent: run the same `uv run` command with
+`pctx --help` in place of `pctx health`. See [cli.md](cli.md).
 
 ## Bundled usage skills
 

@@ -17,6 +17,7 @@ from people_context.adapters.sqlite.db import (
 )
 from people_context.cli.browse import cmd_browse
 from people_context.cli.groups import cmd_group
+from people_context.cli.health import cmd_health
 from people_context.cli.imports import cmd_import
 from people_context.cli.insights import cmd_stale, cmd_timeline, cmd_upcoming
 from people_context.cli.maintenance import cmd_doctor, cmd_reindex, cmd_stats, cmd_sync_log, cmd_watch
@@ -140,6 +141,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_demo(args)
     if args.command == "setup":
         return cmd_setup(args)
+    if args.command == "health":
+        return cmd_health(args)
     if args.command == "stats":
         try:
             refusal = _unreadable_stats_target(args)
