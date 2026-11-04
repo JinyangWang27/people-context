@@ -686,7 +686,7 @@ materializes, the prompts load, the rubrics discriminate, and the report is well
 
 Report: [`evals/results/2026-11-04-workflow-baseline-claude-sonnet-5-5.json`](../evals/results/2026-11-04-workflow-baseline-claude-sonnet-5-5.json).
 Harness 1.2.0, suite `people-context-workflow` v1.0.0, runner `claude-cli`, model id `claude-sonnet-5-5`, source
-`8d1137e`.
+`8d1137e` (recorded in the report before #229 was squash-merged; its code is unchanged in `7e35507`).
 
 | Condition | Tasks | Earned | Possible | Percent |
 | --- | ---: | ---: | ---: | ---: |
@@ -709,6 +709,38 @@ Both workflows complete correctly through native MCP, and no skill was loaded in
   `aliases` list; in an earlier run a `label` without `source_kind` was refused as well. After the commit, the agent
   read all seven people back one at a time to verify, although `commit_import` already returns `committed_ids`,
   `unresolved_ids`, and `skipped_ids`. Those reads were about half of the MCP result characters.
+
+### 2026-11-04 — workflow cost after the #223 fixes
+
+Three `with_mcp` replicates per side, run concurrently: baseline at source `7e35507` ([r1](../evals/results/2026-11-04-workflow-baseline-r1-claude-sonnet-5-5.json) · [r2](../evals/results/2026-11-04-workflow-baseline-r2-claude-sonnet-5-5.json) · [r3](../evals/results/2026-11-04-workflow-baseline-r3-claude-sonnet-5-5.json)) and
+fixed at `22507b2` ([r1](../evals/results/2026-11-04-workflow-fixed-r1-claude-sonnet-5-5.json) · [r2](../evals/results/2026-11-04-workflow-fixed-r2-claude-sonnet-5-5.json) · [r3](../evals/results/2026-11-04-workflow-fixed-r3-claude-sonnet-5-5.json)). Harness 1.2.0, suite `people-context-workflow` v1.0.0, model id
+`claude-sonnet-5-5`. The reports record the pre-rebase hashes `1646411` and `f3dbf61`, whose trees are
+identical to these. Every run scored 16 of 16:
+
+| Condition | Tasks | Earned | Possible | Percent |
+| --- | ---: | ---: | ---: | ---: |
+| `with_mcp` | 2 | 16 | 16 | 100.0 |
+
+`stage-commit-seven`, per replicate:
+
+| Side | Refused stage calls | API requests | Input tokens (sum) | Output tokens | MCP result chars |
+| --- | --- | --- | --- | --- | --- |
+| Baseline | 2 / 1 / 1 | 8 / 6 / 6 | 241,774 / 178,943 / 179,065 | 4,267 / 3,051 / 3,026 | 13,220 / 12,656 / 12,633 |
+| Fixed | 0 / 0 / 0 | 6 / 6 / 6 | 175,619 / 173,636 / 175,020 | 2,269 / 2,284 / 2,426 | 9,902 / 9,884 / 9,902 |
+
+`add-two-aliases` was three calls and three requests in every run on both sides. Its first prompt grew from
+about 25,140 to 25,250 tokens, which is the cost of the longer `stage_candidates` description.
+
+What changed and what did not:
+
+- **Retries are gone.** A `person` candidate may now omit an empty `aliases` list, and the tool description lists
+  each candidate type's required fields. That removed every refused call, and with it the worst case (the
+  242k-token run, which also resolved all seven names before staging).
+- **Output fell by about a quarter, and MCP results by about a fifth**, mostly from the dropped retries and their
+  error payloads.
+- **The median input total barely moved** (179.1k to 175.0k). Each request re-sends a prompt of about 25,000
+  tokens, and the agent still read the seven people back after committing, because the task asks it to verify.
+  The tool schemas, at about 17,600 tokens per request, are now the largest cost the agent does not control.
 
 ### Model-backed runs of the core suite
 
