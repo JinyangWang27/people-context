@@ -507,6 +507,9 @@ def test_occupied_optional_vector_storage_refuses_the_restore(
     conn.close()
 
 
+@pytest.mark.skipif(
+    not hasattr(sqlite3.Connection, "enable_load_extension"), reason="this Python's sqlite3 cannot load extensions"
+)
 def test_unreadable_vector_storage_refuses_rather_than_assuming_it_is_empty(
     tmp_path: Path,
     bundle: SyncBundleDocument,

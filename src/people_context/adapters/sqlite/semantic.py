@@ -244,6 +244,9 @@ def _load_sqlite_vec(conn: sqlite3.Connection) -> ModuleType:
         import sqlite_vec
     except ImportError as exc:
         raise SqliteVecNotAvailableError("install the semantic optional dependencies") from exc
+    if not hasattr(conn, "enable_load_extension"):
+        # Some Python builds (e.g. the python.org macOS installer) compile sqlite3 without it.
+        raise SqliteVecNotAvailableError("this Python's sqlite3 cannot load extensions; use a uv-managed Python")
     try:
         conn.enable_load_extension(True)
         sqlite_vec.load(conn)
