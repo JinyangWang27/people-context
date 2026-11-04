@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -617,3 +618,20 @@ def test_staged_extraction_candidates_carry_only_distilled_values() -> None:
     assert "Asked for concrete metrics" in staged
     for sentinel in ("TRANSCRIPT", "verbatim", "[00:0", "Speaker 1:"):
         assert sentinel not in staged
+
+
+def test_a_batch_staged_before_the_handle_rule_still_commits_its_email_alias_as_a_handle() -> None:
+    conn = open_db(":memory:")
+    people, stage, review, commit, _remember = _use_cases(conn)
+    batch = stage.execute("notes", [_person("ann", "Ann Lee", "ann@example.com")])
+    row = review.execute(batch.batch_id).candidates[0]
+    # Rewrite the persisted row as an earlier release could have stored it: the email with kind `other`.
+    stored = json.loads(conn.execute("SELECT candidate_json FROM import_staging WHERE id = ?", (row.id,)).fetchone()[0])
+    stored["aliases"] = [{"value": "ann@example.com", "kind": "other"}]
+    conn.execute("UPDATE import_staging SET candidate_json = ? WHERE id = ?", (json.dumps(stored), row.id))
+
+    result = commit.execute(batch.batch_id, [row.id])
+
+    assert result.committed_ids == [row.id]
+    kinds = conn.execute("SELECT value, kind FROM aliases").fetchall()
+    assert [(alias["value"], alias["kind"]) for alias in kinds] == [("ann@example.com", "handle")]

@@ -216,6 +216,8 @@ const ALIAS_CONTROLS = "button, input, select";
 // person so the page shows what is stored rather than what it sent.
 async function aliasWrite(path, body, message, reopen) {
   for (const control of view.querySelectorAll(ALIAS_CONTROLS)) control.disabled = true;
+  // As for batch actions: a reply that lands after the user moved on must not repaint the old view.
+  const at = navigate();
   try {
     await api(path, {
       method: "POST",
@@ -223,10 +225,12 @@ async function aliasWrite(path, body, message, reopen) {
       body: JSON.stringify(body),
     });
   } catch (error) {
+    if (at !== navigation) return;
     message.textContent = aliasRefusal(error);
     for (const control of view.querySelectorAll(ALIAS_CONTROLS)) control.disabled = false;
     return;
   }
+  if (at !== navigation) return;
   reopen();
 }
 

@@ -1205,7 +1205,14 @@ class CommitImport:
                 return None
             matched_id = match.person_id
         matched = self._people.get(matched_id) if matched_id else None
-        aliases = [AliasInput.model_validate(alias) for alias in candidate["aliases"]]
+        # A batch staged before emails had to be handles may still carry one as `other`; it was
+        # accepted then, so commit files it as the handle it is rather than refusing the batch.
+        aliases = [
+            AliasInput.model_validate(
+                {**alias, "kind": kind_for_name(str(alias["value"]), AliasKind(alias.get("kind", AliasKind.OTHER)))}
+            )
+            for alias in candidate["aliases"]
+        ]
         if matched is not None:
             name = candidate["name"]
             aliases.insert(0, AliasInput(value=name, kind=kind_for_name(name, AliasKind.OTHER)))
