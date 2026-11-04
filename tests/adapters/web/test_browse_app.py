@@ -29,7 +29,7 @@ from people_context.app.records import RecordFact, RecordFactInput
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
 from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
-from people_context.domain.person import Person
+from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import Sensitivity
 
 _PORT = 8123
@@ -300,8 +300,10 @@ def test_the_person_view_carries_the_brief_truncation_flag(
     assert under["truncated"] is False
     assert missing.status_code == 404 and missing.json() == {"error": "unknown_person"}
     cli_brief = _cli_json(capsys, "--db", str(db_file), "brief", ids["toma"], "--json")
+    # The page's view is the brief exactly, plus the two alias-editor keys that ride beside it.
+    page_only = {"generated_at", "alias_details", "alias_kinds"}
     assert {k: v for k, v in cli_brief.items() if k != "generated_at"} == {
-        k: v for k, v in over.items() if k != "generated_at"
+        k: v for k, v in over.items() if k not in page_only
     }
 
 
@@ -1554,3 +1556,110 @@ def test_accepting_rows_does_not_discard_an_open_form_s_unsaved_edits(
     assert outcome["kept"] == "Elena Marshe"
     assert outcome["enabled"] is True
     assert outcome["patch"] == {"name": "Elena Marshe"}
+
+
+def _person_with_aliases(db_file: Path) -> str:
+    conn = open_db(db_file)
+    try:
+        person = Person(
+            canonical_name="Priya Sharma",
+            aliases=[Alias(value="priya@example.com"), Alias(value="Pri", kind=AliasKind.NICKNAME, lang="en")],
+        )
+        SqlitePeopleRepository(conn).save_person(person)
+        return person.id
+    finally:
+        conn.close()
+
+
+def test_the_person_view_carries_alias_details_beside_the_brief(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        body = client.get("/api/person", params={"id": person_id}).json()
+
+    assert body["format"] == "people-context-brief"
+    assert body["person"]["aliases"] == ["priya@example.com", "Pri"]
+    assert body["alias_details"] == [
+        {"value": "priya@example.com", "kind": "other", "lang": None, "script": None},
+        {"value": "Pri", "kind": "nickname", "lang": "en", "script": None},
+    ]
+    assert body["alias_kinds"] == [kind.value for kind in AliasKind]
+
+
+def test_the_person_page_removes_and_corrects_aliases_through_the_use_cases(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        removed = client.post("/api/person/alias/remove", json={"person_id": person_id, "value": "PRIYA@example.com"})
+        updated = client.post(
+            "/api/person/alias/update", json={"person_id": person_id, "value": "pri", "new_value": "Priyu"}
+        )
+        after = client.get("/api/person", params={"id": person_id}).json()
+
+    assert removed.status_code == 200
+    assert removed.json() == {"person_id": person_id, "alias": "priya@example.com", "removed": True}
+    assert updated.json()["changed"] == ["value"]
+    assert [alias["value"] for alias in after["alias_details"]] == ["Priyu"]
+    conn = open_db(db_file)
+    try:
+        sources = [row[0] for row in conn.execute("SELECT source FROM audit_log WHERE entity_id = ?", (person_id,))]
+    finally:
+        conn.close()
+    assert sources.count("browser") == 2
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "status", "expected"),
+    [
+        (
+            "/api/person/alias/remove",
+            {"value": "Priya Sharma"},
+            409,
+            {"error": "alias_conflict", "reason": "canonical_name"},
+        ),
+        (
+            "/api/person/alias/update",
+            {"value": "Pri", "new_value": "PRIYA SHARMA"},
+            409,
+            {"error": "alias_conflict", "reason": "duplicate_name"},
+        ),
+        ("/api/person/alias/update", {"value": "Nobody", "kind": "handle"}, 404, {"error": "alias_not_found"}),
+        (
+            "/api/person/alias/update",
+            {"value": "Pri", "new_value": "pri@example.com"},
+            409,
+            {"error": "alias_conflict", "reason": "alias_email_not_handle"},
+        ),
+        ("/api/person/alias/update", {"value": "Pri", "kind": "OTHER"}, 400, {"error": "invalid_request"}),
+        ("/api/person/alias/remove", {"value": "Pri", "extra": _SENTINEL}, 400, {"error": "invalid_request"}),
+    ],
+)
+def test_alias_refusals_name_a_code_and_never_the_value(
+    db_file: Path, path: str, body: dict[str, Any], status: int, expected: dict[str, str]
+) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post(path, json={"person_id": person_id, **body})
+    assert response.status_code == status
+    assert response.json() == expected
+    assert _SENTINEL not in response.text
+
+
+def test_an_alias_write_for_an_unknown_person_is_refused(db_file: Path) -> None:
+    with _client(db_file) as client:
+        response = client.post("/api/person/alias/remove", json={"person_id": "missing", "value": "x"})
+    assert (response.status_code, response.json()) == (404, {"error": "unknown_person"})
+
+
+def test_a_cross_origin_alias_removal_is_not_acted_on(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        refused = client.post(
+            "/api/person/alias/remove",
+            json={"person_id": person_id, "value": "Pri"},
+            headers={"origin": "http://evil.example"},
+        )
+        untokened = client.post(
+            "/api/person/alias/remove", json={"person_id": person_id, "value": "Pri"}, headers={TOKEN_HEADER: ""}
+        )
+        after = client.get("/api/person", params={"id": person_id}).json()
+    assert (refused.status_code, untokened.status_code) == (403, 403)
+    assert [alias["value"] for alias in after["alias_details"]] == ["priya@example.com", "Pri"]

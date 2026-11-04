@@ -14,7 +14,7 @@ from people_context import cli
 from people_context.adapters.sqlite import SqliteAuditLog, SqlitePeopleRepository, SqlitePreferencesStore, open_db
 from people_context.app.people import AliasInput, RememberPerson, RememberPersonInput
 from people_context.cli import maintenance as maintenance_module
-from people_context.domain.person import Person
+from people_context.domain.person import AliasKind, Person
 from people_context.domain.preferences import PREF_COMMUNICATION_PHILOSOPHY
 from people_context.ports.clock import SystemClock
 
@@ -335,7 +335,8 @@ def test_remove_and_update_alias_report_outcomes_and_exit_codes(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     db_file = tmp_path / "people.db"
-    person = _seed(db_file, "Alice", aliases=[AliasInput(value="alice@example.com"), AliasInput(value="Ally")])
+    aliases = [AliasInput(value="alice@example.com", kind=AliasKind.HANDLE), AliasInput(value="Ally")]
+    person = _seed(db_file, "Alice", aliases=aliases)
     base = ["--db", str(db_file)]
 
     assert cli.main([*base, "remove-alias", person.id, "alice@example.com"]) == 0
@@ -462,3 +463,13 @@ def test_a_database_older_than_the_schema_baseline_is_refused_by_name(
     err = capsys.readouterr().err
     assert "schema version 3" in err
     assert "people-context 1.3.0" in err
+
+
+def test_add_alias_refuses_an_email_unless_it_is_a_handle(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Ann Lee")
+    base = ["--db", str(db_file)]
+
+    assert cli.main([*base, "add-alias", person.id, "ann@example.com"]) == 1
+    assert "--kind handle" in capsys.readouterr().err
+    assert cli.main([*base, "add-alias", person.id, "ann@example.com", "--kind", "handle"]) == 0

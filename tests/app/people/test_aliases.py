@@ -118,3 +118,39 @@ def test_update_alias_may_recase_its_own_value_and_reports_an_unknown_alias(deps
 
     assert recased.changed == ["value"]
     assert unchanged.changed == []
+
+
+def test_an_email_is_an_alias_only_as_a_handle_on_every_input_path() -> None:
+    from pydantic import ValidationError
+
+    from people_context.app.imports.models import CandidateAlias
+    from people_context.app.people import AddAliasInput, AliasInput
+
+    for build in (
+        lambda kind: AddAliasInput(person_id="p", value="ann@example.com", kind=kind),
+        lambda kind: AliasInput(value=" ann@example.com ", kind=kind),
+        lambda kind: CandidateAlias(value="ann@example.com", kind=kind),
+    ):
+        with pytest.raises(ValidationError, match="alias_email_not_handle"):
+            build(AliasKind.OTHER)
+        assert build(AliasKind.HANDLE).kind is AliasKind.HANDLE
+    # `@handle` and names that merely contain `@` are not email addresses.
+    assert AddAliasInput(person_id="p", value="@ann", kind=AliasKind.NICKNAME).value == "@ann"
+
+
+def test_update_alias_checks_the_resulting_alias_and_fixes_a_stored_email_by_making_it_a_handle(deps: tuple) -> None:
+    people, audit, clock, person = deps
+    use_case = UpdateAlias(people, people, audit, clock)
+
+    with pytest.raises(AliasConflictError) as kept_as_other:
+        use_case.execute(UpdateAliasInput(person_id=person.id, value="priya@example.com", lang="en"))
+    with pytest.raises(AliasConflictError):
+        use_case.execute(UpdateAliasInput(person_id=person.id, value="Pri", new_value="pri@example.com"))
+    fixed = use_case.execute(UpdateAliasInput(person_id=person.id, value="priya@example.com", kind=AliasKind.HANDLE))
+
+    assert kept_as_other.value.reason == "alias_email_not_handle"
+    assert fixed.changed == ["kind"]
+    assert [(a.value, a.kind) for a in people.get(person.id).aliases] == [
+        ("priya@example.com", AliasKind.HANDLE),
+        ("Pri", AliasKind.NICKNAME),
+    ]

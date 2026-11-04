@@ -575,9 +575,11 @@ held — after its `valid_from` and not after its `valid_to`. A refusal comes ba
 until it is accepted.
 
 Aliases are names, not records, so `correct_record` does not reach them. A wrong alias —
-an email address stored as a name, a misspelt nickname — is fixed with
+a misspelt nickname, a former name filed as a nickname — is fixed with
 `update_alias(person_id, value, new_value?, kind?, lang?, script?)` or dropped with
-`remove_alias(person_id, value)`. Both match `value` by its normalized form and leave the
+`remove_alias(person_id, value)`. An email address is an alias only as a `handle`, which is
+what identity matching reads; one stored with another kind is reported by `pctx doctor` as
+`email_alias_not_handle`, and the fix is `update_alias` with `kind: "handle"`. Both match `value` by its normalized form and leave the
 person and every other record intact; neither touches the canonical name, which is a rename.
 
 ### Redundant representation is not the same as multiple evidence

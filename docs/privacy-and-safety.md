@@ -27,7 +27,9 @@ verbatim under the review disclosure warning, as `pctx import review` shows them
 withdrawal and commit through the existing use cases, each carrying the displayed `batch_digest` so a stale view
 is refused with `batch_changed`. M30.3 adds inline editing of a staged candidate on the same terms: the same
 `AmendStagedCandidate` the CLI calls, the same digest, and a refusal that names the field and never the value
-submitted. It edits staged candidates only — no durable person, fact, or reminder is editable from the page.
+submitted. It edits staged candidates only. The one durable edit is a person's aliases: the person view can correct or
+remove an alias through the same `UpdateAlias` and `RemoveAlias` use cases as `pctx update-alias` and
+`pctx remove-alias`, audited with source `browser`; no fact, reminder, or other record is editable from the page.
 
 ## Minimal disclosure
 

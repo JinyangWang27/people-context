@@ -132,7 +132,7 @@ call("remember_person", {"name": "Jinyang Wang", "is_self": True,
 
 `kind` values: `native_script` (CJK; add `"script":"Hans"/"Hant"`) · `transliteration` · `nickname` · `handle` · `former_name` · `other`
 
-A wrong alias is fixed with `update_alias` (any of `new_value`, `kind`, `lang`, `script`) or dropped with `remove_alias`; both name the alias by value. Never `forget` or `merge_people` to fix a name.
+An email address is an alias only with `kind: "handle"`; any other kind is refused. A wrong alias is fixed with `update_alias` (any of `new_value`, `kind`, `lang`, `script`) or dropped with `remove_alias`; both name the alias by value. Never `forget` or `merge_people` to fix a name.
 
 ---
 

@@ -16,7 +16,7 @@ from people_context.domain.group import (
     check_temporal_basis,
     resolve_temporal_basis,
 )
-from people_context.domain.person import AliasKind
+from people_context.domain.person import AliasKind, check_alias_kind
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
@@ -267,6 +267,11 @@ class CandidateAlias(BaseModel):
     kind: AliasKind = AliasKind.OTHER
     lang: str | None = None
     script: str | None = None
+
+    @model_validator(mode="after")
+    def _email_is_a_handle(self) -> CandidateAlias:
+        check_alias_kind(self.value, self.kind)
+        return self
 
 
 class PersonCandidateInput(BaseModel):

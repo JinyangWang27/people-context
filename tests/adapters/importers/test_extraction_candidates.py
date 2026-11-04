@@ -482,6 +482,9 @@ def test_an_ambiguous_candidate_resolves_once_the_conflict_is_externally_correct
     # Resolution merges into the surviving person rather than minting a second identity.
     assert remember.calls == [keep.canonical_name]
     assert conn.execute("SELECT person_id FROM observations").fetchone()["person_id"] == keep.id
+    # The candidate's email-shaped name joins the survivor as a handle, never as an `other` alias.
+    kinds = conn.execute("SELECT kind FROM aliases WHERE person_id = ? AND value = ?", (keep.id, "shared@example.com"))
+    assert [row["kind"] for row in kinds] == ["handle"]
 
 
 def test_accepted_dependants_of_an_unaccepted_ambiguous_person_stay_unresolved() -> None:

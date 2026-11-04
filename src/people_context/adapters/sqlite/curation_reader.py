@@ -77,6 +77,17 @@ WHERE n.normalized IN (
 ORDER BY n.normalized, n.person_id, n.source, n.alias_id
 """
 
+# Candidate email aliases: any non-handle alias of an active person containing `@`. The reader does
+# not decide what an email address looks like; the application does.
+_NON_HANDLE_AT_ALIASES_SQL = f"""
+SELECT a.person_id, a.value, a.value_normalized AS normalized, '{ALIAS_SOURCE_PREFIX}' || a.kind AS source,
+       p.canonical_name, p.is_self
+FROM aliases a
+JOIN persons p ON p.id = a.person_id AND p.deleted_at IS NULL
+WHERE a.kind <> '{HANDLE_KIND}' AND instr(a.value, '@') > 0
+ORDER BY a.person_id, a.id
+"""
+
 # Candidate contradictions: an active person holding more than one distinct value for the same
 # predicate. Values are compared exactly as stored — the reader invents no case or whitespace
 # folding of its own — and whether the periods actually overlap is decided by the application.
@@ -152,6 +163,13 @@ class SqliteCurationReader:
                 source=row["source"],
             )
             for row in self._conn.execute(_SHARED_NAMES_SQL).fetchall()
+        ]
+
+    def list_non_handle_at_aliases(self) -> list[NameUsage]:
+        """Return every non-handle alias of an active person whose value contains `@`."""
+        return [
+            NameUsage(person=_person(row), value=row["value"], normalized=row["normalized"], source=row["source"])
+            for row in self._conn.execute(_NON_HANDLE_AT_ALIASES_SQL).fetchall()
         ]
 
     def list_conflicting_facts(self) -> list[FactAssertion]:
