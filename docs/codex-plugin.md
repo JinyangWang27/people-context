@@ -24,16 +24,23 @@ adding a separate MCP server to `config.toml`.
 ## Local runtime
 
 Codex reads [`.codex-plugin/plugin.json`](../.codex-plugin/plugin.json), then starts the MCP server described by
-the root [`.mcp.json`](../.mcp.json):
+[`.codex-plugin/mcp.json`](../.codex-plugin/mcp.json), with its working directory set to Codex's installed copy
+of this repository:
 
 ```bash
-uv run --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
+uv run --no-dev --project . people-context-mcp
 ```
 
-Codex provides `CLAUDE_PLUGIN_ROOT` for plugin compatibility. It points to Codex's installed copy of this
-repository. The server runs over stdio and does not listen on a TCP port.
+Codex has its own file because it does not expand `${...}` in `args` or set a plugin-root variable (checked on
+Codex 0.166). It resolves a relative `cwd` against the plugin root instead. `--no-dev` installs only the runtime
+dependencies: on an empty uv cache that is 31 packages and about 7 seconds, against 59 packages and about 25
+seconds with development tools. `startup_timeout_sec` allows for slower networks on that first launch. Semantic
+search is not installed by the plugin; without it, ordinary lexical search keeps working.
 
-The plugin passes no `--db` option, so plugin launches use the first matching database location below:
+The server runs over stdio and does not listen on a TCP port.
+
+The plugin passes no `--db` option and forwards `PEOPLE_CONTEXT_DB` and `PEOPLE_CONTEXT_DB_KEY` through `env_vars`,
+so plugin launches use the first matching database location below:
 
 1. `PEOPLE_CONTEXT_DB`;
 2. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`; or
@@ -42,6 +49,32 @@ The plugin passes no `--db` option, so plugin launches use the first matching da
 The selected path is outside the installed plugin copy, survives upgrades and uninstallations, and is shared
 with the `pctx` CLI. Run `pctx db-path -v` to inspect the active path and its resolution
 trace.
+
+## Troubleshooting
+
+Three things can be true separately, so check them in order:
+
+| State | What proves it |
+|---|---|
+| Skill installed | The people-context skills appear in Codex. This says nothing about the server. |
+| Server starts | `pctx health` passes (command below). It uses a temporary database for the handshake and only reads yours. |
+| Tools connected | A **new** Codex session can list the `people-context` tools. `codex mcp list` shows configuration only. |
+
+Run the health check from the installed copy, replacing `<version>`:
+
+```bash
+uv run --no-dev --project ~/.codex/plugins/cache/people-context-plugins/people-context/<version> pctx health
+```
+
+| Symptom | Next action |
+|---|---|
+| `Project directory ${CLAUDE_PLUGIN_ROOT} does not exist` | You have a release from before this was fixed: update and reinstall the plugin. |
+| `Failed to download` or `Network connectivity is disabled` | The first launch needs network access to install dependencies. Connect, then start a new session. |
+| `uv` not found | Install [`uv`](https://docs.astral.sh/uv/), then restart Codex so it sees the new `PATH`. |
+| The server reports a database error | Run `pctx db-path -v` to see which path was selected and why. |
+
+If the tools still do not connect, every operation has a CLI equivalent: run the same `uv run` command with
+`pctx --help` in place of `pctx health`. See [cli.md](cli.md).
 
 ## Security model
 

@@ -193,6 +193,11 @@ def build_parser() -> argparse.ArgumentParser:
     db_path = subparsers.add_parser("db-path", help="Print the resolved database path.")
     db_path.add_argument("-v", "--verbose", action="store_true", help="Show the full resolution trace.")
 
+    subparsers.add_parser(
+        "health",
+        help="Check uv, dependencies, your database (read-only), and an MCP handshake on a temporary database.",
+    )
+
     list_cmd = subparsers.add_parser("list", help="List known people.")
     list_cmd.add_argument("--all", action="store_true", help="Include soft-deleted people.")
     list_cmd.add_argument("--limit", type=int, default=None, help="Maximum number of people to list.")

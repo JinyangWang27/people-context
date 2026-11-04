@@ -17,7 +17,7 @@
     "memory",
     "local-first"
   ],
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./.codex-plugin/mcp.json",
   "interface": {
     "displayName": "People Context",
     "shortDescription": "Private, local context about people in your life",

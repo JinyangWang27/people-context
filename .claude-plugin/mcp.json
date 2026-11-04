@@ -5,6 +5,7 @@
       "command": "uv",
       "args": [
         "run",
+        "--no-dev",
         "--project",
         "${CLAUDE_PLUGIN_ROOT}",
         "people-context-mcp"

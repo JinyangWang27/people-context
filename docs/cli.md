@@ -38,6 +38,7 @@ browser batch review, and M30.3 browser inline edit.
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `browse [--open] [--port N]` | Serve a local page of people, one person's brief, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
+| `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
 | `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
