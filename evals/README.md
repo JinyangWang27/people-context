@@ -36,6 +36,7 @@ each rubric measures, and what a published number may and may not claim.
 | `suite/world.json` | The fictional world, as data a reviewer can read in full |
 | `suite/suite.json` | System prompt, the fixed tasks, their rubrics, and runner wiring |
 | `suite/stub-transcripts.json` | Hand-written answers for the offline dry run; not model output |
+| `workflow/` | The workflow-cost suite: two capture tasks scored by stored state, with token and call accounting |
 | `perspective/` | The human-review perspective suite, its fictional world, and the reviewer key the agent never sees |
 | `harness/` | Loading, world materialization, runners, scoring, and the report |
 | `results/` | Dated report documents, one file per recorded run |

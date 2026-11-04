@@ -575,6 +575,45 @@ Per-run reasoning:
   - Triggering: pass. No invented profile or analysis. Routed to people-context-usage, which is the available lookup
     path: the who skill cannot be invoked by the model.
 
+## Workflow cost
+
+[`evals/workflow/`](../evals/workflow/suite.json) measures what a routine capture costs rather than whether an
+answer is right. Its two tasks are the paths reported in
+[#223](https://github.com/JinyangWang27/people-context/issues/223): adding two aliases to an existing person, and
+staging, reviewing, committing, and verifying seven people extracted from tracker notes. The world
+([`world.json`](../evals/workflow/world.json), `larkspur-2026-11`) holds a near-namesake, Mei Takahashi, so a
+cheaper path cannot win by skipping identity resolution.
+
+These tasks are scored by what the run left in its own copy of the store, not by what the receipt claims. A
+`store_count` criterion runs one `SELECT` on a read-only connection after the agent exits and compares the count
+to `equals`. A run with no store, such as `without_mcp`, fails every `store_count` criterion, so the control
+scores near zero by construction; it exists to measure the prompt floor, not to compete.
+
+Every `stream-json` run also records `usage`, read from the client's event stream:
+
+| Field | Meaning |
+| --- | --- |
+| `api_requests` | Model requests in the run; the events of one streamed response count once |
+| `first_request_input_tokens` | The whole first prompt: system prompt, tool schemas, server instructions, and task |
+| `input_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `output_tokens` | Totals over every request, as the client reports them |
+| `total_cost_usd` | The client's own cost estimate |
+| `tool_result_chars` | Characters tool results put back into context, split into `mcp`, `skill` (the `Skill` tool), and `other` |
+
+The three overheads #223 asks to separate read off these fields:
+
+- **Skill and schema overhead** is `first_request_input_tokens` under `with_mcp` minus the same field under
+  `without_mcp` (the MCP tool schemas and server instructions), plus `tool_result_chars.skill` when a skill loads.
+- **Response overhead** is `tool_result_chars.mcp`.
+- **Orchestration overhead** is the number of tool calls and `api_requests`. Each request re-sends the whole
+  prompt so far, so the sum of the three input-token fields grows with every extra round trip.
+
+Compare token sums and call counts between runs, not `total_cost_usd`: the client's prompt cache can stay warm
+from one run to the next, so the same transcript can be priced several times apart.
+
+```bash
+uv run python -m evals.harness --suite evals/workflow/suite.json --runner claude-cli --out evals/results/<date>-workflow-<label>.json
+```
+
 ## Running it
 
 ### Offline dry run — no key, no network
@@ -642,6 +681,34 @@ Harness 1.2.0, suite `people-context-core` v1.0.0, runner `stub`, model id `stub
 **This is not a measurement of any model.** The answers are hand-written illustrations chosen to exercise every
 scoring path, including partial credit in both conditions. The run establishes only that the fixture
 materializes, the prompts load, the rubrics discriminate, and the report is well formed.
+
+### 2026-11-04 — workflow cost baseline
+
+Report: [`evals/results/2026-11-04-workflow-baseline-claude-sonnet-5-5.json`](../evals/results/2026-11-04-workflow-baseline-claude-sonnet-5-5.json).
+Harness 1.2.0, suite `people-context-workflow` v1.0.0, runner `claude-cli`, model id `claude-sonnet-5-5`, source
+`8d1137e`.
+
+| Condition | Tasks | Earned | Possible | Percent |
+| --- | ---: | ---: | ---: | ---: |
+| `with_mcp` | 2 | 16 | 16 | 100.0 |
+| `without_mcp` | 2 | 1 | 16 | 6.2 |
+
+| Task | Condition | Score | Tool calls | API requests | First prompt | Input tokens (sum) | Output | MCP result chars |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `add-two-aliases` | `with_mcp` | 7/7 | 3 | 3 | 24,975 | 76,316 | 469 | 1,317 |
+| `add-two-aliases` | `without_mcp` | 1/7 | 1 | 2 | 7,370 | 30,958 | 440 | 0 |
+| `stage-commit-seven` | `with_mcp` | 9/9 | 11 | 6 | 25,462 | 177,887 | 2,991 | 12,426 |
+| `stage-commit-seven` | `without_mcp` | 0/9 | 1 | 2 | 7,857 | 31,932 | 1,208 | 0 |
+
+Both workflows complete correctly through native MCP, and no skill was loaded in either. What the numbers show:
+
+- **Schema:** the 41 tool schemas and server instructions add about 17,600 tokens to every request. That is the
+  largest fixed share, and it is paid again, from cache, on every round trip.
+- **Aliases:** resolve, then one `add_alias` per alias. Three calls is the minimum the current tools allow.
+- **Seven people:** the first `stage_candidates` call was refused because a `person` candidate omitted an empty
+  `aliases` list; in an earlier run a `label` without `source_kind` was refused as well. After the commit, the agent
+  read all seven people back one at a time to verify, although `commit_import` already returns `committed_ids`,
+  `unresolved_ids`, and `skipped_ids`. Those reads were about half of the MCP result characters.
 
 ### Model-backed runs of the core suite
 
