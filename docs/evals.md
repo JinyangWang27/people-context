@@ -742,6 +742,50 @@ What changed and what did not:
   tokens, and the agent still read the seven people back after committing, because the task asks it to verify.
   The tool schemas, at about 17,600 tokens per request, are now the largest cost the agent does not control.
 
+### 2026-11-05 — workflow cost with `--tools core`
+
+Three `with_mcp` replicates per side, run concurrently from one clean tree at source `282d1f8`: all 43 tools
+through runner `claude-cli` ([r1](../evals/results/2026-11-05-workflow-all-r1-claude-sonnet-5-5.json) · [r2](../evals/results/2026-11-05-workflow-all-r2-claude-sonnet-5-5.json) · [r3](../evals/results/2026-11-05-workflow-all-r3-claude-sonnet-5-5.json)) and the 23-tool core set
+through `claude-cli-core`, which only adds `--tools core` to the server
+([r1](../evals/results/2026-11-05-workflow-core-r1-claude-sonnet-5-5.json) · [r2](../evals/results/2026-11-05-workflow-core-r2-claude-sonnet-5-5.json) · [r3](../evals/results/2026-11-05-workflow-core-r3-claude-sonnet-5-5.json)). Harness 1.2.0, suite
+`people-context-workflow` v1.0.0, model id `claude-sonnet-5-5`, client `2.1.318 (Claude Code)`. Every run scored
+16 of 16:
+
+| Side | Condition | Tasks | Earned | Possible | Percent |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `all` | `with_mcp` | 2 | 16 | 16 | 100.0 |
+| `core` | `with_mcp` | 2 | 16 | 16 | 100.0 |
+
+`stage-commit-seven`, per replicate (medians 6 / 26,493 / 177,969 / 2,261 / 9,902 for `all`, and
+6 / 18,168 / 128,042 / 2,214 / 9,902 for `core`):
+
+| Side | Tool calls | API requests | First prompt | Input tokens (sum) | Output tokens | MCP result chars |
+| --- | --- | --- | --- | --- | --- | --- |
+| `all` | 11 / 10 / 11 | 6 / 5 / 6 | 26,493 / 26,491 / 26,493 | 178,328 / 147,170 / 177,969 | 2,351 / 2,057 / 2,261 | 9,902 / 9,861 / 9,902 |
+| `core` | 6 / 11 / 11 | 6 / 6 / 6 | 18,171 / 18,168 / 18,168 | 126,312 / 128,126 / 128,042 | 2,091 / 2,310 / 2,214 | 5,850 / 9,902 / 9,902 |
+
+`add-two-aliases` was three calls and three requests in every run on both sides; its first prompt fell from
+26,006 to 17,681 tokens and its input total from 79,391 to 54,400 (medians, −31%).
+
+What changed and what did not:
+
+- **The first prompt fell by 8,325 tokens**, against the projected ~8.3k. The 24,056 fewer schema characters
+  work out to 2.89 characters per token, the same ratio #230 measured. The `all` first prompt is about 1,000
+  tokens above the 2026-11-04 fixed runs because of description changes merged since `22507b2`; the comparison
+  here is within one commit.
+- **The median input total fell by 49,927 tokens (−28.1%)**, against the projected ~50k (~28%). Six requests
+  each re-send the smaller prompt, so the saving scales with round trips.
+- **Requests and MCP results did not move.** The median is six requests and 9,902 MCP result characters on both
+  sides, and every call in the `core` runs used a core tool, so no agent worked around a missing tool. The two
+  outliers are read-back variance, one on each side: `all` r2 skipped one `search_people` call (five requests),
+  and `core` r1 read back two of the seven people instead of all seven (six calls, 5,850 characters). The
+  `store_count` criteria still scored that run 9 of 9, because they check the store, not the read-back.
+- **Almost all of the saving is cache reads.** The median `cache_read_input_tokens` fell from 163,818 to 113,961
+  (−49,857), while `cache_creation_input_tokens` stayed at about 14,100 and uncached `input_tokens` at 12. The
+  schemas were already in the client's cache, warmed by the concurrent runs, so these runs saved at the
+  cache-read price. In a cold session the first request writes the prompt to the cache, so there the 8.3k is
+  also saved once at the cache-write price.
+
 ### Model-backed runs of the core suite
 
 **None recorded yet.** No scored result in this repository was produced by a language model. When a model-backed run

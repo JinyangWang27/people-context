@@ -1,0 +1,411 @@
+{
+  "format": "people-context.eval-report",
+  "version": 1,
+  "harness_version": "1.2.0",
+  "generated_at": "2026-11-05T06:07:33Z",
+  "suite": {
+    "id": "people-context-workflow",
+    "version": "1.0.0",
+    "world_id": "larkspur-2026-11",
+    "world_as_of": "2026-11-02T09:00:00Z"
+  },
+  "review": "rubric",
+  "runner": {
+    "name": "claude-cli",
+    "kind": "command",
+    "mcp_server_argv": [
+      "uv",
+      "run",
+      "--directory",
+      "{project_root}",
+      "--locked",
+      "python",
+      "-m",
+      "evals.harness.server",
+      "--as-of",
+      "{world_as_of}"
+    ],
+    "client_version": "2.1.318 (Claude Code)"
+  },
+  "source": {
+    "revision": "282d1f80e9222dde26ae31831697f3b0cd79c43f",
+    "dirty": false
+  },
+  "prompts": {
+    "system": "You are helping the user keep their people-context store up to date. Complete the request with the tools available, then reply with a short receipt of what changed.",
+    "tasks": [
+      {
+        "id": "add-two-aliases",
+        "title": "Add two aliases to one existing person",
+        "prompt": "Mei Tanaka goes by Mimi with friends, and her name in Japanese is 田中芽衣. Add both as aliases on her record."
+      },
+      {
+        "id": "stage-commit-seven",
+        "title": "Stage, review, commit, and verify seven people from tracker notes",
+        "prompt": "Excerpts from the Larkspur Freight routing-replatform tracker (all people below work at Larkspur Freight):\n\nRRP-12 Migrate depot geocoder - assignee Tomasz Wierzbicki (Platform Engineer). Blocked on schema review.\nRRP-15 Define v2 route-quote API - owner Adaeze Nwosu, Product Manager; reviewers Tomasz Wierzbicki, Henrik Aalto.\nRRP-18 Backfill shipment history into the lakehouse - Lucía Ferreyra (Data Engineer).\nRRP-21 Pager rotation for the new routing service - Henrik Aalto, Site Reliability Engineer.\nRRP-22 Load-test plan for quote API - Priyanka Desai (QA Lead); depends on RRP-15.\nRRP-27 Staffing for Q1 milestones - Owen Marchetti, Engineering Manager; cc Adaeze Nwosu.\nRRP-30 Threat model for partner webhooks - Sun-hee Park (Security Engineer); reviewer Henrik Aalto.\nRRP-31 Flaky geocoder integration test - Priyanka Desai reopened; Tomasz Wierzbicki investigating.\nRRP-34 Rotate webhook signing keys - Sun-hee Park; approved by Owen Marchetti.\n\nCapture the seven people above with their organisation and role. This is extracted material, so use the staged import flow. I have already read this list and I approve committing every candidate you stage, so commit them without asking me again, then verify they are stored."
+      }
+    ]
+  },
+  "totals": [
+    {
+      "condition": "with_mcp",
+      "tasks": 2,
+      "earned": 16,
+      "possible": 16,
+      "percent": 100.0,
+      "model_ids": [
+        "claude-sonnet-5-5"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "task_id": "add-two-aliases",
+      "condition": "with_mcp",
+      "model_id": "claude-sonnet-5-5",
+      "earned": 7,
+      "possible": 7,
+      "percent": 100.0,
+      "criteria": [
+        {
+          "id": "both-aliases-on-mei-tanaka",
+          "kind": "store_count",
+          "description": "Both aliases are stored on Mei Tanaka.",
+          "weight": 3,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(DISTINCT a.value) FROM aliases a JOIN persons p ON p.id = a.person_id WHERE p.canonical_name = 'Mei Tanaka' AND p.deleted_at IS NULL AND a.value IN ('Mimi', '田中芽衣')",
+          "equals": 2
+        },
+        {
+          "id": "nothing-on-mei-takahashi",
+          "kind": "store_count",
+          "description": "Neither alias lands on the similarly named Mei Takahashi.",
+          "weight": 2,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(*) FROM aliases a JOIN persons p ON p.id = a.person_id WHERE p.canonical_name = 'Mei Takahashi' AND a.value IN ('Mimi', '田中芽衣')",
+          "equals": 0
+        },
+        {
+          "id": "no-duplicate-person",
+          "kind": "store_count",
+          "description": "No new person is created.",
+          "weight": 1,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(*) FROM persons WHERE deleted_at IS NULL",
+          "equals": 3
+        },
+        {
+          "id": "receipt-names-both",
+          "kind": "answer_contains_all",
+          "description": "The receipt names both aliases.",
+          "weight": 1,
+          "passed": true,
+          "values": [
+            "Mimi",
+            "田中芽衣"
+          ],
+          "pattern": null,
+          "min_lines": null,
+          "sql": null,
+          "equals": null
+        }
+      ],
+      "answer": "I added two aliases to Mei Tanaka's record:\n- **Mimi** (nickname)\n- **田中芽衣** (native script, Japanese)\n\nHer existing email handle is still on the record.",
+      "tool_calls": [
+        {
+          "name": "mcp__people-context__resolve_person",
+          "input": {
+            "query": "Mei Tanaka"
+          }
+        },
+        {
+          "name": "mcp__people-context__add_alias",
+          "input": {
+            "person_id": "01M6N52KY1QHRNRTNKRT1Q03V9",
+            "value": "Mimi",
+            "kind": "nickname"
+          }
+        },
+        {
+          "name": "mcp__people-context__add_alias",
+          "input": {
+            "person_id": "01M6N52KY1QHRNRTNKRT1Q03V9",
+            "value": "田中芽衣",
+            "kind": "native_script",
+            "lang": "ja",
+            "script": "Jpan"
+          }
+        }
+      ],
+      "usage": {
+        "api_requests": 3,
+        "num_turns": 4,
+        "first_request_input_tokens": 26004,
+        "input_tokens": 6,
+        "cache_creation_input_tokens": 27164,
+        "cache_read_input_tokens": 52220,
+        "output_tokens": 434,
+        "total_cost_usd": 0.11823000000000002,
+        "tool_result_chars": {
+          "mcp": 1317,
+          "skill": 0,
+          "other": 0
+        }
+      }
+    },
+    {
+      "task_id": "stage-commit-seven",
+      "condition": "with_mcp",
+      "model_id": "claude-sonnet-5-5",
+      "earned": 9,
+      "possible": 9,
+      "percent": 100.0,
+      "criteria": [
+        {
+          "id": "seven-people-stored",
+          "kind": "store_count",
+          "description": "All seven people exist exactly once.",
+          "weight": 3,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(DISTINCT canonical_name) * (COUNT(*) = COUNT(DISTINCT canonical_name)) FROM persons WHERE deleted_at IS NULL AND canonical_name IN ('Tomasz Wierzbicki', 'Adaeze Nwosu', 'Lucía Ferreyra', 'Henrik Aalto', 'Priyanka Desai', 'Owen Marchetti', 'Sun-hee Park')",
+          "equals": 7
+        },
+        {
+          "id": "seven-roles-stored",
+          "kind": "store_count",
+          "description": "Each of the seven has an affiliation with Larkspur Freight in the stated role.",
+          "weight": 2,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(DISTINCT p.canonical_name) FROM affiliations f JOIN persons p ON p.id = f.person_id JOIN organizations o ON o.id = f.org_id WHERE o.name = 'Larkspur Freight' AND ((p.canonical_name = 'Tomasz Wierzbicki' AND f.role = 'Platform Engineer') OR (p.canonical_name = 'Adaeze Nwosu' AND f.role = 'Product Manager') OR (p.canonical_name = 'Lucía Ferreyra' AND f.role = 'Data Engineer') OR (p.canonical_name = 'Henrik Aalto' AND f.role = 'Site Reliability Engineer') OR (p.canonical_name = 'Priyanka Desai' AND f.role = 'QA Lead') OR (p.canonical_name = 'Owen Marchetti' AND f.role = 'Engineering Manager') OR (p.canonical_name = 'Sun-hee Park' AND f.role = 'Security Engineer'))",
+          "equals": 7
+        },
+        {
+          "id": "went-through-staging",
+          "kind": "store_count",
+          "description": "The people were committed from a staged batch rather than written directly.",
+          "weight": 2,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(*) >= 7 FROM import_staging WHERE status = 'committed'",
+          "equals": 1
+        },
+        {
+          "id": "nobody-left-pending",
+          "kind": "store_count",
+          "description": "No staged candidate is left pending.",
+          "weight": 1,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(*) FROM import_staging WHERE status = 'pending'",
+          "equals": 0
+        },
+        {
+          "id": "no-extra-people",
+          "kind": "store_count",
+          "description": "Nobody beyond the seven is created.",
+          "weight": 1,
+          "passed": true,
+          "values": null,
+          "pattern": null,
+          "min_lines": null,
+          "sql": "SELECT COUNT(*) FROM persons WHERE deleted_at IS NULL",
+          "equals": 10
+        }
+      ],
+      "answer": "I staged 14 candidates in one batch, committed them as you approved, and read all seven people back from the store. Each one shows up with the right role at Larkspur Freight.\n\nNone of the seven matched anyone already stored, so all are new records. Each has one affiliation, and the dates are left blank because the tracker doesn't give any.\n\n| Person | Role |\n|---|---|\n| Tomasz Wierzbicki | Platform Engineer |\n| Adaeze Nwosu | Product Manager |\n| Henrik Aalto | Site Reliability Engineer |\n| Lucía Ferreyra | Data Engineer |\n| Priyanka Desai | QA Lead |\n| Owen Marchetti | Engineering Manager |\n| Sun-hee Park | Security Engineer |\n\nI didn't store the ticket content (assignees, reviewers, blockers) or any relationships between them. The tracker excerpt doesn't describe how any of them relate to you.",
+      "tool_calls": [
+        {
+          "name": "mcp__people-context__stage_candidates",
+          "input": {
+            "source": "larkspur-rrp-tracker",
+            "source_kind": "tracker_excerpt",
+            "candidates": [
+              {
+                "type": "person",
+                "ref": "tomasz",
+                "name": "Tomasz Wierzbicki"
+              },
+              {
+                "type": "person",
+                "ref": "adaeze",
+                "name": "Adaeze Nwosu"
+              },
+              {
+                "type": "person",
+                "ref": "henrik",
+                "name": "Henrik Aalto"
+              },
+              {
+                "type": "person",
+                "ref": "lucia",
+                "name": "Lucía Ferreyra"
+              },
+              {
+                "type": "person",
+                "ref": "priyanka",
+                "name": "Priyanka Desai"
+              },
+              {
+                "type": "person",
+                "ref": "owen",
+                "name": "Owen Marchetti"
+              },
+              {
+                "type": "person",
+                "ref": "sunhee",
+                "name": "Sun-hee Park"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "tomasz",
+                "org": "Larkspur Freight",
+                "role": "Platform Engineer"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "adaeze",
+                "org": "Larkspur Freight",
+                "role": "Product Manager"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "henrik",
+                "org": "Larkspur Freight",
+                "role": "Site Reliability Engineer"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "lucia",
+                "org": "Larkspur Freight",
+                "role": "Data Engineer"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "priyanka",
+                "org": "Larkspur Freight",
+                "role": "QA Lead"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "owen",
+                "org": "Larkspur Freight",
+                "role": "Engineering Manager"
+              },
+              {
+                "type": "affiliation",
+                "person_ref": "sunhee",
+                "org": "Larkspur Freight",
+                "role": "Security Engineer"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mcp__people-context__review_import",
+          "input": {
+            "batch_id": "01M6N537T0DSVTEE0KPFBVQ5FH"
+          }
+        },
+        {
+          "name": "mcp__people-context__commit_import",
+          "input": {
+            "batch_id": "01M6N537T0DSVTEE0KPFBVQ5FH",
+            "accepted_ids": [
+              "01M6N537T0DSVTEE0KPFBVQ5FJ",
+              "01M6N537T0DSVTEE0KPFBVQ5FK",
+              "01M6N537T0DSVTEE0KPFBVQ5FM",
+              "01M6N537T0DSVTEE0KPFBVQ5FN",
+              "01M6N537T0DSVTEE0KPFBVQ5FP",
+              "01M6N537T15F4S7653G607HG51",
+              "01M6N537T15F4S7653G607HG52",
+              "01M6N537T15F4S7653G607HG53",
+              "01M6N537T15F4S7653G607HG54",
+              "01M6N537T15F4S7653G607HG55",
+              "01M6N537T15F4S7653G607HG56",
+              "01M6N537T15F4S7653G607HG57",
+              "01M6N537T15F4S7653G607HG58",
+              "01M6N537T15F4S7653G607HG59"
+            ],
+            "expected_batch_digest": "24502677ba90555e6ef3ed908fbd1903242a56577770a1275a64fc6b38590ffa"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Tomasz Wierzbicki"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Adaeze Nwosu"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Henrik Aalto"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Lucía Ferreyra"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Priyanka Desai"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Owen Marchetti"
+          }
+        },
+        {
+          "name": "mcp__people-context__get_person_context",
+          "input": {
+            "person": "Sun-hee Park"
+          }
+        }
+      ],
+      "usage": {
+        "api_requests": 5,
+        "num_turns": 11,
+        "first_request_input_tokens": 26491,
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 13937,
+        "cache_read_input_tokens": 133223,
+        "output_tokens": 2057,
+        "total_cost_usd": 0.08966030000000001,
+        "tool_result_chars": {
+          "mcp": 9861,
+          "skill": 0,
+          "other": 0
+        }
+      }
+    }
+  ]
+}
