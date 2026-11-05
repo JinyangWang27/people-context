@@ -41,7 +41,7 @@ def test_remove_and_update_alias_keep_the_person_and_maintain_resolution(tmp_pat
     async def flow(client: Client) -> dict[str, Any]:
         created = await client.call_tool(
             "remember_person",
-            {"name": "Priya Sharma", "aliases": [{"value": "priya@example.com"}, {"value": "Pri"}]},
+            {"name": "Priya Sharma", "aliases": [{"value": "priya@example.com", "kind": "handle"}, {"value": "Pri"}]},
         )
         person_id = created.structured_content["person"]["id"]
         await client.call_tool("record_fact", {"person_id": person_id, "predicate": "city", "value": "Pune"})
@@ -57,6 +57,7 @@ def test_remove_and_update_alias_keep_the_person_and_maintain_resolution(tmp_pat
             "context": await client.call_tool("get_person_context", {"person_id": person_id}),
             "missing": await client.call_tool("update_alias", {"person_id": person_id, "value": "Nobody"}),
             "canonical": await client.call_tool("remove_alias", {"person_id": person_id, "value": "Priya Sharma"}),
+            "email": await client.call_tool("add_alias", {"person_id": person_id, "value": "p.s@example.com"}),
         }
 
     out = _run(server, flow)
@@ -73,6 +74,8 @@ def test_remove_and_update_alias_keep_the_person_and_maintain_resolution(tmp_pat
     assert out["missing"].structured_content["error"] == "alias_not_found"
     assert out["canonical"].is_error is True
     assert out["canonical"].structured_content["reason"] == "canonical_name"
+    assert out["email"].is_error is True
+    assert out["email"].structured_content["details"][0]["type"] == "alias_email_not_handle"
 
     conn = sqlite3.connect(db_path)
     try:

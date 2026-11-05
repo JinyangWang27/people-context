@@ -806,3 +806,17 @@ def test_a_group_row_names_the_existing_group_it_would_record_into(
     assert cli.main(["--db", str(db_file), "import", "review", str(document["batch_id"])]) == 0
 
     assert "records into existing group grp-existing" in capsys.readouterr().out
+
+
+def test_an_email_alias_is_staged_only_as_a_handle(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db_file = tmp_path / "people.db"
+    path = tmp_path / "email.json"
+    path.write_text(
+        '[{"type":"person","ref":"a","name":"Ann Lee","aliases":[{"value":"ann@example.com"}]}]', encoding="utf-8"
+    )
+
+    message = _refusal(db_file, ["--source", "notes", "--input", str(path)], capsys)
+
+    assert "alias_email_not_handle" in message
+    assert "ann@example.com" not in message
+    assert _staging_rows(db_file) == []

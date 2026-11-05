@@ -22,6 +22,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from people_context.app.exports._document import render_json_document
+from people_context.domain.person import AliasKind, is_email_shaped
 from people_context.domain.shared import ValidityPeriod
 from people_context.ports.clock import Clock
 from people_context.ports.curation import (
@@ -46,6 +47,7 @@ class FindingCode(StrEnum):
     DUPLICATE_ALIAS = "duplicate_alias"
     CONTRADICTORY_FACT = "contradictory_fact"
     DANGLING_REFERENCE = "dangling_reference"
+    EMAIL_ALIAS_NOT_HANDLE = "email_alias_not_handle"
 
 
 #: Every known code in report order, for `--only` validation and deterministic ordering.
@@ -188,6 +190,8 @@ class ReportDoctorFindings:
             findings.extend(_fact_findings(self._curation.list_conflicting_facts()))
         if FindingCode.DANGLING_REFERENCE in codes:
             findings.extend(_reference_findings(self._curation.list_deleted_person_references()))
+        if FindingCode.EMAIL_ALIAS_NOT_HANDLE in codes:
+            findings.extend(_email_alias_findings(self._curation.list_non_handle_at_aliases()))
 
         findings.sort(key=_finding_sort_key)
         return DoctorReport(
@@ -372,6 +376,35 @@ def _reference_findings(references: Iterable[DeletedPersonReference]) -> list[Do
                 # soft-deleted person is the operator-gated forget tool rather than a command.
                 actions=[
                     McpAction(tool="forget", arguments={"target": person_id, "scope": "person"}),
+                ],
+            )
+        )
+    return findings
+
+
+def _email_alias_findings(usages: Iterable[NameUsage]) -> list[DoctorFinding]:
+    """Report each email address stored as a name rather than a handle, with both repairs.
+
+    An address is an alias only as a `handle`, which is what import identity matching reads, so
+    the suggested fixes are to make it one or to drop it. The alias tools name an alias by its
+    value; it travels as an argument mapping, never interpolated into a command string.
+    """
+    findings: list[DoctorFinding] = []
+    for usage in usages:
+        if not is_email_shaped(usage.value):
+            continue
+        target = {"person_id": usage.person.person_id, "value": usage.value}
+        findings.append(
+            DoctorFinding(
+                code=FindingCode.EMAIL_ALIAS_NOT_HANDLE.value,
+                message="An email address is stored as an alias that is not a handle.",
+                people=[_finding_person(usage.person)],
+                normalized_name=usage.normalized,
+                names=[NameEvidence(person_id=usage.person.person_id, value=usage.value, source=usage.source)],
+                actions=[
+                    CliAction(argv=["pctx", "show", usage.person.person_id]),
+                    McpAction(tool="update_alias", arguments={**target, "kind": AliasKind.HANDLE.value}),
+                    McpAction(tool="remove_alias", arguments=target),
                 ],
             )
         )

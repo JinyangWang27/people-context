@@ -389,7 +389,29 @@ def test_the_declared_codes_are_the_ones_the_report_can_emit() -> None:
         "duplicate_alias",
         "contradictory_fact",
         "dangling_reference",
+        "email_alias_not_handle",
     )
+
+
+def test_an_email_stored_as_a_non_handle_alias_is_reported_with_both_repairs() -> None:
+    usages = [
+        NameUsage(person=ALICE, value="alice@example.com", normalized="alice@example.com", source="alias:other"),
+        # `@handle` and a bare `at` sign are not email addresses, so the policy, not the reader, drops them.
+        NameUsage(person=ALICE, value="@alicez", normalized="@alicez", source="alias:nickname"),
+        NameUsage(person=ALEX, value="R&D @ Acme", normalized="r&d @ acme", source="alias:other"),
+    ]
+
+    report = _report(at_aliases=usages)
+
+    assert _codes(report) == ["email_alias_not_handle"]
+    finding = report.findings[0]
+    assert [person.person_id for person in finding.people] == [ALICE.person_id]
+    assert [(name.value, name.source) for name in finding.names] == [("alice@example.com", "alias:other")]
+    target = {"person_id": ALICE.person_id, "value": "alice@example.com"}
+    assert [action.model_dump() for action in finding.actions if isinstance(action, McpAction)] == [
+        {"surface": "mcp", "tool": "update_alias", "arguments": {**target, "kind": "handle"}, "requires": []},
+        {"surface": "mcp", "tool": "remove_alias", "arguments": target, "requires": []},
+    ]
 
 
 def _only_mcp_action(finding: DoctorFinding) -> McpAction:

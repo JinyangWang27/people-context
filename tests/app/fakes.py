@@ -376,7 +376,9 @@ class FakeCurationReader:
         shared_names: list[NameUsage] | None = None,
         conflicting_facts: list[FactAssertion] | None = None,
         deleted_references: list[DeletedPersonReference] | None = None,
+        at_aliases: list[NameUsage] | None = None,
     ) -> None:
+        self.at_aliases = at_aliases or []
         self.shared_handles = shared_handles or []
         self.shared_names = shared_names or []
         self.conflicting_facts = conflicting_facts or []
@@ -390,6 +392,10 @@ class FakeCurationReader:
     def list_shared_names(self) -> list[NameUsage]:
         self.calls.append("list_shared_names")
         return list(self.shared_names)
+
+    def list_non_handle_at_aliases(self) -> list[NameUsage]:
+        self.calls.append("list_non_handle_at_aliases")
+        return list(self.at_aliases)
 
     def list_conflicting_facts(self) -> list[FactAssertion]:
         self.calls.append("list_conflicting_facts")

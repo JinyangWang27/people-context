@@ -101,6 +101,13 @@ projections of `ReviewImport`, `AmendStagedCandidate`, `WithdrawStagedCandidates
 `batch_digest` they carry and the `batch_changed` refusal they can receive are M29.1's, and the CLI and MCP paths
 that omit `expected_batch_digest` behave exactly as before.
 
+Alias correction (#221) adds the MCP tools `remove_alias` and `update_alias`, the CLI commands `remove-alias` and
+`update-alias`, and the doctor code `email_alias_not_handle`; all are additive under the doctor's code contract
+above. The version-1 person brief is unchanged: the browser's person endpoint carries `alias_details` and
+`alias_kinds` beside it for its own editor. One input rule tightens: an email-shaped alias is accepted only with
+kind `handle`, on staging, `remember_person`, `add_alias`, and `update_alias`. Aliases already stored load
+unchanged and are reported by `pctx doctor`.
+
 | Document | `format` | `version` | Produced by |
 |---|---|---:|---|
 | Portable dataset export | `people-context-export` | `1` | `pctx export`, `export_data` |

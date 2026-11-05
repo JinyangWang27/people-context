@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from people_context.app._mutation import (
     audit_mutation,
@@ -11,7 +11,7 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.person import Alias, AliasKind, Person
+from people_context.domain.person import Alias, AliasKind, Person, check_alias_kind
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -43,6 +43,11 @@ class AliasInput(BaseModel):
     kind: AliasKind = AliasKind.OTHER
     lang: str | None = None
     script: str | None = None
+
+    @model_validator(mode="after")
+    def _email_is_a_handle(self) -> AliasInput:
+        check_alias_kind(self.value, self.kind)
+        return self
 
 
 class RememberPersonInput(BaseModel):

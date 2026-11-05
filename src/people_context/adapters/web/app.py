@@ -2,9 +2,10 @@
 
 The browser is a fourth client of the use cases the CLI and MCP already call: every endpoint here
 wraps an existing use case and returns what it returns. No use case, validation, or disclosure rule
-exists only for the page. The only writes are batch withdrawal and commit, through the same use
-cases `pctx import reject` and `pctx import commit` call, always with the digest of the review the
-page displayed.
+exists only for the page. The writes are batch amendment, withdrawal, and commit, through the same
+use cases `pctx import` calls, always with the digest of the review the page displayed; and alias
+removal and correction on a person page, through the same use cases as `pctx remove-alias` and
+`pctx update-alias`.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
@@ -57,6 +58,14 @@ from people_context.app.imports import (
     import_sources_document,
     render_import_json,
 )
+from people_context.app.people import (
+    AliasConflictError,
+    AliasNotFoundError,
+    RemoveAliasInput,
+    UpdateAliasInput,
+)
+from people_context.app.records import PersonNotFoundError
+from people_context.domain.person import AliasKind
 
 LOOPBACK_HOST = "127.0.0.1"
 TOKEN_HEADER = "X-Pctx-Token"
@@ -95,6 +104,28 @@ class _AmendAction(BaseModel):
     candidate_id: _NonBlank
     patch: dict[str, Any]
     expected_batch_digest: _NonBlank
+
+
+class _RemoveAliasAction(BaseModel):
+    """Remove one alias, named by value, from the person the page displayed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    value: _NonBlank
+
+
+class _UpdateAliasAction(BaseModel):
+    """Correct one alias, named by value; an absent field leaves that part unchanged."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    value: _NonBlank
+    new_value: _NonBlank | None = None
+    kind: AliasKind | None = None
+    lang: _NonBlank | None = None
+    script: _NonBlank | None = None
 
 
 class _RequestRefused(Exception):
@@ -211,7 +242,41 @@ def create_browse_app(
         )
         if document is None:
             return _error("unknown_person", 404)
-        return _json(render_brief_json(document))
+        # The brief names aliases by value only, by design; the page's alias editor also needs each
+        # alias's kind, language, and script, so they ride beside the brief rather than inside it.
+        stored = runtime.repo.get(document.person.id)
+        body = json.loads(render_brief_json(document))
+        body["alias_details"] = [
+            alias.model_dump(mode="json", exclude={"id"}) for alias in (stored.aliases if stored else [])
+        ]
+        body["alias_kinds"] = [kind.value for kind in AliasKind]
+        return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
+
+    async def remove_alias(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _RemoveAliasAction)
+            result = runtime.use_cases.remove_alias.execute(
+                RemoveAliasInput(person_id=action.person_id, value=action.value, source="browser")
+            )
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except (PersonNotFoundError, AliasNotFoundError, AliasConflictError) as exc:
+            return _alias_refusal(exc)
+        return _json(result.model_dump_json() + "\n")
+
+    async def update_alias(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _UpdateAliasAction)
+            result = runtime.use_cases.update_alias.execute(
+                UpdateAliasInput(**action.model_dump(), source="browser")
+            )
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except (PersonNotFoundError, AliasNotFoundError, AliasConflictError) as exc:
+            return _alias_refusal(exc)
+        return _json(result.model_dump_json() + "\n")
 
     async def sources(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
@@ -315,6 +380,8 @@ def create_browse_app(
             Route("/", page, methods=["GET"]),
             Route("/api/people", people, methods=["GET"]),
             Route("/api/person", person, methods=["GET"]),
+            Route("/api/person/alias/remove", remove_alias, methods=["POST"]),
+            Route("/api/person/alias/update", update_alias, methods=["POST"]),
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),
             Route("/api/batch", batch, methods=["GET"]),
@@ -379,6 +446,14 @@ def _amend_refusal(exc: ImportPipelineError) -> Response:
     if not fields:
         return _refusal(exc)
     return JSONResponse({"error": exc.code, "fields": fields}, status_code=_refusal_status(exc))
+
+
+def _alias_refusal(exc: PersonNotFoundError | AliasNotFoundError | AliasConflictError) -> Response:
+    """Report an alias refusal by its code and, for a conflict, its fixed reason; never the value."""
+    if isinstance(exc, AliasConflictError):
+        return JSONResponse({"error": "alias_conflict", "reason": exc.reason}, status_code=409)
+    code = "unknown_person" if isinstance(exc, PersonNotFoundError) else "alias_not_found"
+    return _error(code, 404)
 
 
 def _refusal_status(exc: ImportPipelineError) -> int:

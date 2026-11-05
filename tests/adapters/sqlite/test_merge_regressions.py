@@ -147,3 +147,16 @@ def test_merge_recanonicalizes_symmetric_edges_so_reassert_updates_in_place() ->
     assert len(rows) == 1 and updated.id == edge.id and rows[0].label == "close"
 
 
+
+
+def test_merging_a_duplicate_named_by_an_email_keeps_that_address_as_a_handle() -> None:
+    conn = open_db(":memory:")
+    people, audit, clock, remember = _people_fixture(conn)
+    primary = remember.execute(RememberPersonInput(name="Ann Lee")).person
+    duplicate = remember.execute(RememberPersonInput(name="ann@example.com")).person
+
+    MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
+
+    merged = people.get(primary.id)
+    assert merged is not None
+    assert [(alias.value, alias.kind.value) for alias in merged.aliases] == [("ann@example.com", "handle")]

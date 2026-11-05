@@ -6,6 +6,8 @@ import argparse
 import json
 import sys
 
+from pydantic import ValidationError
+
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.capture import QuickCaptureInput
 from people_context.app.context import SetCommunicationPhilosophyInput
@@ -115,8 +117,8 @@ def cmd_add_alias(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     person, exit_code = resolve_person(runtime, args.person)
     if person is None:
         return exit_code
-    updated = runtime.use_cases.add_alias.execute(
-        AddAliasInput(
+    try:
+        data = AddAliasInput(
             person_id=person.id,
             value=args.value,
             kind=AliasKind(args.kind),
@@ -124,7 +126,11 @@ def cmd_add_alias(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             script=args.script,
             source="cli",
         )
-    )
+    except ValidationError:
+        # The only rule beyond argparse's choices is the email one; the message names no value.
+        print("An email address is an alias only with --kind handle.", file=sys.stderr)
+        return 1
+    updated = runtime.use_cases.add_alias.execute(data)
     print(f"Alias recorded for {updated.canonical_name} ({updated.id}).")
     return 0
 

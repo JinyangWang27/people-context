@@ -118,6 +118,8 @@ async function api(path, options) {
     // The use case's own per-field refusals, which carry the field and a fixed message, never a
     // submitted value. Absent on every endpoint but the amendment.
     if (body && Array.isArray(body.fields)) refusal.fields = body.fields;
+    // An alias conflict's fixed reason code (`canonical_name` or `duplicate_name`), never a value.
+    if (body && typeof body.reason === "string") refusal.reason = body.reason;
     throw refusal;
   }
   return body;
@@ -191,6 +193,104 @@ async function showPeople(cursor, back) {
   );
 }
 
+const ALIAS_REFUSALS = {
+  canonical_name: "That is the person's name, not an alias.",
+  duplicate_name: "Another name of this person already has that value.",
+  alias_email_not_handle: "An email address is an alias only with kind handle.",
+  alias_not_found: "That alias is no longer stored.",
+  unknown_person: "This person is no longer stored.",
+};
+
+function aliasRefusal(error) {
+  return "Refused: " + (ALIAS_REFUSALS[error.reason || error.message] || error.message);
+}
+
+function aliasLabel(alias) {
+  const tags = [alias.kind, alias.lang, alias.script].filter((tag) => tag);
+  return alias.value + " (" + tags.join(", ") + ")";
+}
+
+const ALIAS_CONTROLS = "button, input, select";
+
+// One alias write: every control on the view is disabled until it settles, and success reopens the
+// person so the page shows what is stored rather than what it sent.
+async function aliasWrite(path, body, message, reopen) {
+  for (const control of view.querySelectorAll(ALIAS_CONTROLS)) control.disabled = true;
+  // As for batch actions: a reply that lands after the user moved on must not repaint the old view.
+  const at = navigate();
+  try {
+    await api(path, {
+      method: "POST",
+      headers: { "X-Pctx-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (at !== navigation) return;
+    message.textContent = aliasRefusal(error);
+    for (const control of view.querySelectorAll(ALIAS_CONTROLS)) control.disabled = false;
+    return;
+  }
+  if (at !== navigation) return;
+  reopen();
+}
+
+function aliasRow(personId, alias, kinds, reopen) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  const target = { person_id: personId, value: alias.value };
+  const remove = () => aliasWrite("/api/person/alias/remove", target, message, reopen);
+  function idle() {
+    row.replaceChildren(el("span", aliasLabel(alias)), button("Edit", editing), button("Remove", confirming), message);
+  }
+  function confirming() {
+    message.textContent = "";
+    const prompt = el("span", "Remove alias " + alias.value + "?");
+    row.replaceChildren(prompt, button("Remove", remove), button("Cancel", idle), message);
+  }
+  function editing() {
+    message.textContent = "";
+    const input = (seed, label) => {
+      const node = el("input");
+      node.value = seed || "";
+      node.placeholder = label;
+      node.setAttribute("aria-label", "alias " + label);
+      return node;
+    };
+    const value = input(alias.value, "value");
+    const lang = input(alias.lang, "language");
+    const script = input(alias.script, "script");
+    const kind = el("select");
+    for (const option of kinds) {
+      const node = el("option", option);
+      node.value = option;
+      kind.append(node);
+    }
+    kind.value = alias.kind;
+    kind.setAttribute("aria-label", "alias kind");
+    const save = () => {
+      // Only changed, non-blank fields are sent: the update leaves anything absent as it was.
+      const body = { person_id: personId, value: alias.value };
+      if (value.value.trim() && value.value !== alias.value) body.new_value = value.value;
+      if (kind.value !== alias.kind) body.kind = kind.value;
+      if (lang.value.trim() && lang.value !== (alias.lang || "")) body.lang = lang.value;
+      if (script.value.trim() && script.value !== (alias.script || "")) body.script = script.value;
+      if (Object.keys(body).length === 2) return idle();
+      aliasWrite("/api/person/alias/update", body, message, reopen);
+    };
+    row.replaceChildren(value, kind, lang, script, button("Save", save), button("Cancel", idle), message);
+  }
+  idle();
+  return row;
+}
+
+function aliasEditor(personId, doc, reopen) {
+  const details = doc.alias_details || [];
+  if (!details.length) return el("span", "(none)");
+  const box = el("div");
+  for (const alias of details) box.append(aliasRow(personId, alias, doc.alias_kinds || [], reopen));
+  return box;
+}
+
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
 async function showPerson(personId, cursor, back) {
   const at = navigate();
@@ -198,8 +298,10 @@ async function showPerson(personId, cursor, back) {
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const identity = el("dl");
+  const aliases = el("dd");
+  aliases.append(aliasEditor(doc.person.id, doc, () => showPerson(personId, cursor, back)));
+  identity.append(el("dt", "Aliases"), aliases);
   const fields = [
-    ["Aliases", doc.person.aliases.join(", ") || "(none)"],
     ["Summary", doc.person.summary || "(none)"],
     ["Context disclosure", doc.disclosure.context],
   ];

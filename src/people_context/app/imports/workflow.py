@@ -66,7 +66,7 @@ from people_context.domain.import_provenance import (
     STAGING_STATUS_PENDING,
     STAGING_STATUS_REJECTED,
 )
-from people_context.domain.person import AliasKind
+from people_context.domain.person import AliasKind, kind_for_name
 from people_context.domain.shared import new_id, normalize_name
 from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
 from people_context.ports.audit_log import AuditLog
@@ -1205,9 +1205,17 @@ class CommitImport:
                 return None
             matched_id = match.person_id
         matched = self._people.get(matched_id) if matched_id else None
-        aliases = [AliasInput.model_validate(alias) for alias in candidate["aliases"]]
+        # A batch staged before emails had to be handles may still carry one as `other`; it was
+        # accepted then, so commit files it as the handle it is rather than refusing the batch.
+        aliases = [
+            AliasInput.model_validate(
+                {**alias, "kind": kind_for_name(str(alias["value"]), AliasKind(alias.get("kind", AliasKind.OTHER)))}
+            )
+            for alias in candidate["aliases"]
+        ]
         if matched is not None:
-            aliases.insert(0, AliasInput(value=candidate["name"]))
+            name = candidate["name"]
+            aliases.insert(0, AliasInput(value=name, kind=kind_for_name(name, AliasKind.OTHER)))
             name = matched.canonical_name
         else:
             name = candidate["name"]

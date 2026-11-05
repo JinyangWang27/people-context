@@ -11,7 +11,7 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.person import Alias, AliasKind, Person
+from people_context.domain.person import Alias, AliasKind, Person, kind_for_name
 from people_context.domain.shared import new_id, normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -125,7 +125,9 @@ class MergePeople:
     @staticmethod
     def _merge_identity(primary: Person, duplicate: Person) -> list[str]:
         known = {normalize_name(name) for name in primary.all_names()}
-        candidates = [Alias(value=duplicate.canonical_name, kind=AliasKind.FORMER_NAME), *duplicate.aliases]
+        former_name = duplicate.canonical_name
+        former = Alias(value=former_name, kind=kind_for_name(former_name, AliasKind.FORMER_NAME))
+        candidates = [former, *duplicate.aliases]
         aliases_added: list[str] = []
         for alias in candidates:
             normalized = normalize_name(alias.value)

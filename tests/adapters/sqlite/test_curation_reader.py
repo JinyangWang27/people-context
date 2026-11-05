@@ -330,3 +330,18 @@ def test_every_query_returns_rows_in_a_stable_order() -> None:
         assert fixture.reader.list_shared_names() == fixture.reader.list_shared_names()
         assert fixture.reader.list_conflicting_facts() == fixture.reader.list_conflicting_facts()
         assert fixture.reader.list_deleted_person_references() == fixture.reader.list_deleted_person_references()
+
+
+def test_non_handle_at_aliases_are_candidates_and_handles_or_deleted_people_are_not() -> None:
+    fixture = _Fixture()
+    alice = fixture.person(
+        "Alice Zhang",
+        aliases=[Alias(value="alice@example.com"), _handle("alice@work.example"), Alias(value="Ali")],
+    )
+    fixture.soft_delete(fixture.person("Old Alice", aliases=[Alias(value="old@example.com")]))
+
+    usages = fixture.reader.list_non_handle_at_aliases()
+
+    assert [(usage.person.person_id, usage.value, usage.source) for usage in usages] == [
+        (alice.id, "alice@example.com", "alias:other")
+    ]

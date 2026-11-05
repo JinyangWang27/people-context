@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from people_context.app._mutation import (
     audit_mutation,
@@ -11,7 +11,14 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.person import Alias, AliasKind, Person
+from people_context.domain.person import (
+    ALIAS_EMAIL_NOT_HANDLE,
+    Alias,
+    AliasKind,
+    Person,
+    check_alias_kind,
+    is_email_shaped,
+)
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -29,6 +36,11 @@ class AddAliasInput(BaseModel):
     source: str = "agent"
     session: str | None = None
     stated_by: str | None = None
+
+    @model_validator(mode="after")
+    def _email_is_a_handle(self) -> AddAliasInput:
+        check_alias_kind(self.value, self.kind)
+        return self
 
 
 class AddAlias:
@@ -195,11 +207,15 @@ class UpdateAlias:
             others = {normalize_name(name) for name in person.all_names() if name != alias.value}
             if normalize_name(data.new_value) in others:
                 raise AliasConflictError(person.id, data.new_value, "duplicate_name")
-            alias.value = data.new_value
         # shortcut: None means "unchanged", so lang/script cannot be cleared; add a sentinel if that is needed.
-        for field in ("kind", "lang", "script"):
-            if getattr(data, field) is not None:
-                setattr(alias, field, getattr(data, field))
+        requested = {"value": data.new_value, "kind": data.kind, "lang": data.lang, "script": data.script}
+        after = before.model_copy(update={field: v for field, v in requested.items() if v is not None})
+        # The result, not the request, is what must hold: an email kept as `other` is refused even
+        # when only its language changed, and setting `kind` to `handle` is how such an alias is fixed.
+        if after.kind is not AliasKind.HANDLE and is_email_shaped(after.value):
+            raise AliasConflictError(person.id, after.value, ALIAS_EMAIL_NOT_HANDLE)
+        for field in _ALIAS_FIELDS:
+            setattr(alias, field, getattr(after, field))
         changed = [field for field in _ALIAS_FIELDS if getattr(before, field) != getattr(alias, field)]
         if changed:
             person.updated_at = self._clock.now()
