@@ -221,6 +221,8 @@ const ALIAS_REFUSALS = {
   alias_email_not_handle: "An email address is an alias only with kind handle.",
   alias_not_found: "That alias is no longer stored.",
   unknown_person: "This person is no longer stored.",
+  invalid_correction: "That value is not allowed here; nothing was changed.",
+  record_not_found: "This record is no longer stored.",
 };
 
 function aliasRefusal(error) {
@@ -232,7 +234,7 @@ function aliasLabel(alias) {
   return alias.value + " (" + tags.join(", ") + ")";
 }
 
-const ALIAS_CONTROLS = "button, input, select";
+const ALIAS_CONTROLS = "button, input, select, textarea";
 
 // One alias write: every control on the view is disabled until it settles, and success reopens the
 // person so the page shows what is stored rather than what it sent. `notice` may turn a successful
@@ -368,6 +370,54 @@ function aliasEditor(personId, doc, reopen, contact) {
   return box;
 }
 
+// One stored record with an Edit form built from the fields `CorrectRecord` accepts for its type.
+// Saving corrects the record in place — fixing what was recorded wrongly, with the before and after
+// kept in the audit log — and sends only the fields that moved; an emptied field is sent as null.
+function recordRow(type, record, label, descriptors, reopen) {
+  const row = el("li");
+  const message = el("span", null, "error");
+  const seed = (name) => (name === "valid_from" || name === "valid_to" ? (record.period || {})[name] : record[name]);
+  function idle() {
+    message.textContent = "";
+    const edit = button("Edit", editing);
+    edit.setAttribute("aria-label", "Edit " + label);
+    row.replaceChildren(el("span", label), " ", edit, message);
+  }
+  function editing() {
+    message.textContent = "";
+    const grid = el("dl");
+    const controls = [];
+    for (const descriptor of descriptors) {
+      const control = descriptor.control === "select"
+        ? selectControl(descriptor, seed(descriptor.name), descriptor.options.map((value) => ({ value, label: value })))
+        : textControl(descriptor, seed(descriptor.name));
+      controls.push([descriptor.name, control]);
+      const value = el("dd");
+      value.append(control.node);
+      grid.append(el("dt", descriptor.name.split("_").join(" ")), value);
+    }
+    const save = () => {
+      const fields = {};
+      for (const [name, control] of controls) {
+        const value = control.read();
+        if (value !== undefined) fields[name] = value;
+      }
+      if (!Object.keys(fields).length) return idle();
+      aliasWrite("/api/record/correct", { entity_type: type, entity_id: record.id, fields }, message, reopen);
+    };
+    row.replaceChildren(el("span", label), grid, button("Save", save), button("Cancel", idle), message);
+  }
+  idle();
+  return row;
+}
+
+function recordList(type, entries, descriptors, reopen) {
+  if (!entries.length) return el("p", "None recorded.", "notice");
+  const node = el("ul");
+  for (const [record, label] of entries) node.append(recordRow(type, record, label, descriptors, reopen));
+  return node;
+}
+
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
 async function showPerson(personId, cursor, back) {
   const at = navigate();
@@ -391,14 +441,23 @@ async function showPerson(personId, cursor, back) {
   if (doc.truncated) {
     nodes.push(el("p", "Facts and interactions are bounded; more exist beyond this view.", "notice"));
   }
-  const sections = [
-    ["Affiliations", doc.affiliations.map((a) => a.affiliation.role + " at " + a.organization_name)],
-    ["Facts", doc.facts.map((fact) => fact.predicate + ": " + fact.value)],
-    ["Interactions", doc.interactions.map((i) => String(i.occurred_at).slice(0, 10) + ": " + i.summary)],
-    ["Reminders", doc.reminders.map((r) => r.kind + (r.due_at ? " (due " + r.due_at + ")" : "") + ": " + r.text)],
-    ["Traits", doc.traits.map((trait) => trait.category + ": " + trait.value)],
-  ];
-  for (const [title, items] of sections) nodes.push(el("h3", title), list(items));
+  const forms = doc.record_fields || {};
+  const editable = (type, entries) => recordList(type, entries, forms[type] || [], reopen);
+  nodes.push(
+    el("h3", "Affiliations"),
+    editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
+      a.affiliation.role + " at " + a.organization_name])),
+    el("h3", "Facts"),
+    editable("fact", doc.facts.map((fact) => [fact, fact.predicate + ": " + fact.value])),
+    // No use case corrects an interaction in place, so they stay read-only here.
+    el("h3", "Interactions"),
+    list(doc.interactions.map((i) => String(i.occurred_at).slice(0, 10) + ": " + i.summary)),
+    el("h3", "Reminders"),
+    editable("reminder", doc.reminders.map((r) => [r,
+      r.kind + (r.due_at ? " (due " + r.due_at + ")" : "") + ": " + r.text])),
+    el("h3", "Traits"),
+    editable("trait", doc.traits.map((trait) => [trait, trait.category + ": " + trait.value])),
+  );
   nodes.push(button("Back to people", () => showPeople(cursor, back)));
   show(doc.person.canonical_name, ...nodes);
 }
@@ -756,7 +815,8 @@ const CR = String.fromCharCode(13);
 
 function textControl(descriptor, staged) {
   const seed = seedText(staged);
-  const multiline = descriptor.control === "text" && (seed.includes(LF) || seed.includes(CR));
+  // A long value gets a textarea too, so it can be read whole while it is edited.
+  const multiline = descriptor.control === "text" && (seed.includes(LF) || seed.includes(CR) || seed.length > 60);
   const input = el(multiline ? "textarea" : "input");
   if (multiline) {
     input.rows = 4;

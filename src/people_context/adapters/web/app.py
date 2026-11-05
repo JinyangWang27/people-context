@@ -24,7 +24,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractContextManager, asynccontextmanager
-from typing import Annotated, Any, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
 from starlette.applications import Starlette
@@ -35,7 +35,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from people_context.adapters.runtime import ApplicationRuntime
-from people_context.adapters.web.fields import ALIAS_FIELDS, CANDIDATE_FIELDS
+from people_context.adapters.web.fields import ALIAS_FIELDS, CANDIDATE_FIELDS, RECORD_FIELDS
 from people_context.adapters.web.page import render_page
 from people_context.app.exports import (
     DEFAULT_PERSON_PAGE_LIMIT,
@@ -65,8 +65,14 @@ from people_context.app.people import (
     RemoveAliasInput,
     UpdateAliasInput,
 )
-from people_context.app.records import PersonNotFoundError
+from people_context.app.records import (
+    CorrectRecordInput,
+    InvalidCorrectionError,
+    PersonNotFoundError,
+    RecordNotFoundError,
+)
 from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, AliasKind
+from people_context.domain.shared import Sensitivity
 
 LOOPBACK_HOST = "127.0.0.1"
 TOKEN_HEADER = "X-Pctx-Token"
@@ -118,6 +124,16 @@ class _AddAliasAction(BaseModel):
     kind: AliasKind = AliasKind.OTHER
     lang: _NonBlank | None = None
     script: _NonBlank | None = None
+
+
+class _CorrectRecordAction(BaseModel):
+    """Correct fields of one record the person view lists; the use case decides which fields and values hold."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    entity_type: Literal["affiliation", "fact", "trait", "reminder"]
+    entity_id: _NonBlank
+    fields: dict[str, Any]
 
 
 class _RemoveAliasAction(BaseModel):
@@ -264,6 +280,7 @@ def create_browse_app(
             alias.model_dump(mode="json", exclude={"id"}) for alias in (stored.aliases if stored else [])
         ]
         body["alias_kinds"] = [kind.value for kind in AliasKind]
+        body["record_fields"] = RECORD_FIELDS
         return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
 
     async def add_alias(request: Request) -> Response:
@@ -311,6 +328,35 @@ def create_browse_app(
         except (PersonNotFoundError, AliasNotFoundError, AliasConflictError) as exc:
             return _alias_refusal(exc)
         return _json(result.model_dump_json() + "\n")
+
+    async def correct_record(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _CorrectRecordAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        # The page edits only what it can show: a record the view's disclosure hides is refused as
+        # unknown, the same answer as a record that does not exist, so neither is confirmed.
+        current = runtime.records.get_record(action.entity_type, action.entity_id)
+        sensitivity = getattr(current, "sensitivity", Sensitivity.PERSONAL)
+        if current is None or not (include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL)):
+            return _error("record_not_found", 404)
+        try:
+            runtime.use_cases.correct_record.execute(
+                CorrectRecordInput(**action.model_dump(), source="browser")
+            )
+        except InvalidCorrectionError as exc:
+            # Only declared field names, which the page already holds: an unknown key is the caller's
+            # own text, so it is never echoed, and neither is any submitted value.
+            known = {field["name"] for field in RECORD_FIELDS[action.entity_type]}
+            named = [field for field in exc.fields if field in known]
+            return JSONResponse({"error": "invalid_correction", "fields": named}, status_code=400)
+        except RecordNotFoundError:
+            return _error("record_not_found", 404)
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        # The corrected record is not echoed: the page reloads the brief, which applies disclosure.
+        return _json(json.dumps({"corrected": sorted(action.fields)}) + "\n")
 
     async def sources(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
@@ -417,6 +463,7 @@ def create_browse_app(
             Route("/api/person/alias/add", add_alias, methods=["POST"]),
             Route("/api/person/alias/remove", remove_alias, methods=["POST"]),
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
+            Route("/api/record/correct", correct_record, methods=["POST"]),
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),
             Route("/api/batch", batch, methods=["GET"]),

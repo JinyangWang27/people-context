@@ -300,8 +300,8 @@ def test_the_person_view_carries_the_brief_truncation_flag(
     assert under["truncated"] is False
     assert missing.status_code == 404 and missing.json() == {"error": "unknown_person"}
     cli_brief = _cli_json(capsys, "--db", str(db_file), "brief", ids["toma"], "--json")
-    # The page's view is the brief exactly, plus the two alias-editor keys that ride beside it.
-    page_only = {"generated_at", "alias_details", "alias_kinds"}
+    # The page's view is the brief exactly, plus the editor keys that ride beside it.
+    page_only = {"generated_at", "alias_details", "alias_kinds", "record_fields"}
     assert {k: v for k, v in cli_brief.items() if k != "generated_at"} == {
         k: v for k, v in over.items() if k not in page_only
     }
@@ -1874,5 +1874,121 @@ def test_the_add_buttons_post_a_nickname_and_an_email_handle(db_file: Path, tmp_
         "posts": [
             ["/api/person/alias/add", {"person_id": "P", "value": "Jordy", "kind": "nickname"}],
             ["/api/person/alias/add", {"person_id": "P", "value": "jordan@example.com", "kind": "handle"}],
+        ],
+    }
+
+
+# --- Correcting stored records from the person view -------------------------------------------
+
+
+def _person_with_records(db_file: Path) -> dict[str, str]:
+    """Priya with an ordinary fact, a sensitive fact, and an affiliation; returns their ids."""
+    from people_context.app.records import SetAffiliationInput
+
+    person_id = _person_with_aliases(db_file)
+    runtime = build_runtime(db_file)
+    try:
+        cases = runtime.use_cases
+        fact = cases.record_fact.execute(RecordFactInput(person_id=person_id, predicate="role", value="Gardener"))
+        hidden = cases.record_fact.execute(
+            RecordFactInput(
+                person_id=person_id, predicate="health", value=_SENSITIVE_VALUE, sensitivity=Sensitivity.SENSITIVE
+            )
+        )
+        affiliation = cases.set_affiliation.execute(SetAffiliationInput(person_id=person_id, org="Acme", role="Eng"))
+    finally:
+        runtime.close()
+    return {"person": person_id, "fact": fact.id, "hidden": hidden.id, "affiliation": affiliation.id}
+
+
+def _correct(client: TestClient, entity_type: str, entity_id: str, fields: dict[str, Any]) -> Any:
+    return client.post(
+        "/api/record/correct", json={"entity_type": entity_type, "entity_id": entity_id, "fields": fields}
+    )
+
+
+def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path) -> None:
+    ids = _person_with_records(db_file)
+    with _client(db_file) as client:
+        fact = _correct(client, "fact", ids["fact"], {"value": "Head gardener", "valid_from": "2024-03-01"})
+        affiliation = _correct(client, "affiliation", ids["affiliation"], {"role": "Engineer"})
+        after = client.get("/api/person", params={"id": ids["person"]}).json()
+    assert fact.json() == {"corrected": ["valid_from", "value"]}
+    assert affiliation.json() == {"corrected": ["role"]}
+    assert "Head gardener" not in fact.text
+    stored = next(row for row in after["facts"] if row["id"] == ids["fact"])
+    assert (stored["value"], stored["period"]["valid_from"]) == ("Head gardener", "2024-03-01")
+    assert after["affiliations"][0]["affiliation"]["role"] == "Engineer"
+    assert set(after["record_fields"]) == {"affiliation", "fact", "trait", "reminder"}
+    conn = open_db(db_file)
+    try:
+        ops = conn.execute(
+            "SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert sorted(row[0] for row in ops) == sorted([ids["fact"], ids["affiliation"]])
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "target", "fields", "status", "expected"),
+    [
+        # A record the view's disclosure hides is as unknown as one that does not exist.
+        ("fact", "hidden", {"value": _SENTINEL}, 404, {"error": "record_not_found"}),
+        ("fact", "missing", {"value": _SENTINEL}, 404, {"error": "record_not_found"}),
+        ("fact", "fact", {"sensitivity": _SENTINEL}, 400, {"error": "invalid_correction", "fields": ["sensitivity"]}),
+        # An undeclared field is the caller's own text, so it is not named back.
+        ("fact", "fact", {_SENTINEL: "x"}, 400, {"error": "invalid_correction", "fields": []}),
+        ("affiliation", "affiliation", {"org_id": _SENTINEL}, 400, {"error": "invalid_correction", "fields": []}),
+        ("interaction", "fact", {"summary": _SENTINEL}, 400, {"error": "invalid_request"}),
+    ],
+)
+def test_record_corrections_are_refused_by_code_without_echoing_the_value(
+    db_file: Path, entity_type: str, target: str, fields: dict[str, Any], status: int, expected: dict[str, Any]
+) -> None:
+    ids = _person_with_records(db_file)
+    with _client(db_file) as client:
+        response = _correct(client, entity_type, ids.get(target, target), fields)
+        after = client.get("/api/person", params={"id": ids["person"]}).json()
+    assert (response.status_code, response.json()) == (status, expected)
+    assert _SENTINEL not in response.text and _SENSITIVE_VALUE not in response.text
+    assert next(row for row in after["facts"] if row["id"] == ids["fact"])["value"] == "Gardener"
+
+
+_EDIT_A_FACT = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], interactions: [], reminders: [], traits: [],
+    alias_kinds: [], alias_details: [], record_fields: __RECORD_FIELDS__,
+    facts: [{ id: "F1", predicate: "role", value: "Gardener", confidence: 0.9, sensitivity: "personal",
+      period: { valid_from: "2024-01-01", valid_to: null } }] };
+  await showPerson("P", null, []);
+  labelled("Edit role: Gardener").listeners.click();
+  find("Save").listeners.click();
+  const unchanged = posts.length;
+  find("Edit").listeners.click();
+  labelled("value").value = "Head gardener";
+  labelled("valid_from").value = "";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ unchanged, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_editing_a_fact_sends_only_the_fields_that_moved(db_file: Path, tmp_path: Path) -> None:
+    from people_context.adapters.web.fields import RECORD_FIELDS
+
+    outcome = _run_page(db_file, tmp_path, _EDIT_A_FACT.replace("__RECORD_FIELDS__", json.dumps(RECORD_FIELDS)))
+    assert outcome == {
+        "unchanged": 0,
+        "posts": [
+            [
+                "/api/record/correct",
+                {"entity_type": "fact", "entity_id": "F1", "fields": {"value": "Head gardener", "valid_from": None}},
+            ]
         ],
     }
