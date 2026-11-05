@@ -235,13 +235,15 @@ function aliasLabel(alias) {
 const ALIAS_CONTROLS = "button, input, select";
 
 // One alias write: every control on the view is disabled until it settles, and success reopens the
-// person so the page shows what is stored rather than what it sent.
-async function aliasWrite(path, body, message, reopen) {
+// person so the page shows what is stored rather than what it sent. `notice` may turn a successful
+// reply into a message instead, for a write that changed nothing.
+async function aliasWrite(path, body, message, reopen, notice) {
   for (const control of view.querySelectorAll(ALIAS_CONTROLS)) control.disabled = true;
   // As for batch actions: a reply that lands after the user moved on must not repaint the old view.
   const at = navigate();
+  let result;
   try {
-    await api(path, {
+    result = await api(path, {
       method: "POST",
       headers: { "X-Pctx-Token": token, "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -253,7 +255,58 @@ async function aliasWrite(path, body, message, reopen) {
     return;
   }
   if (at !== navigation) return;
+  const said = notice ? notice(result) : null;
+  if (said) {
+    message.textContent = said;
+    for (const control of view.querySelectorAll(ALIAS_CONTROLS)) control.disabled = false;
+    return;
+  }
   reopen();
+}
+
+// A new alias, through the same write and reload as an edit. Under Contact the kind is fixed to
+// `handle`, the only kind an email address may have as an alias.
+function aliasAdder(personId, kinds, reopen, contact) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  function idle() {
+    row.replaceChildren(button(contact ? "Add email" : "Add alias", adding), message);
+  }
+  function adding() {
+    message.textContent = "";
+    const input = (label) => {
+      const node = el("input");
+      node.placeholder = label;
+      node.setAttribute("aria-label", "new alias " + label);
+      return node;
+    };
+    const value = input(contact ? "email address" : "value");
+    const lang = input("language");
+    const script = input("script");
+    const kind = el("select");
+    for (const option of kinds) {
+      const node = el("option", option);
+      node.value = option;
+      kind.append(node);
+    }
+    kind.value = contact ? "handle" : "nickname";
+    kind.setAttribute("aria-label", "new alias kind");
+    const save = () => {
+      if (!value.value.trim()) {
+        message.textContent = "Enter a value.";
+        return;
+      }
+      const body = { person_id: personId, value: value.value, kind: kind.value };
+      if (lang.value.trim()) body.lang = lang.value;
+      if (script.value.trim()) body.script = script.value;
+      aliasWrite("/api/person/alias/add", body, message, reopen,
+        (result) => (result.added ? null : "Already stored as a name of this person."));
+    };
+    const fields = contact ? [value] : [value, kind, lang, script];
+    row.replaceChildren(...fields, button("Add", save), button("Cancel", idle), message);
+  }
+  idle();
+  return row;
 }
 
 function aliasRow(personId, alias, kinds, reopen) {
@@ -324,9 +377,10 @@ async function showPerson(personId, cursor, back) {
   const identity = el("dl");
   const reopen = () => showPerson(personId, cursor, back);
   const aliases = el("dd");
-  aliases.append(aliasEditor(doc.person.id, doc, reopen, false));
+  const kinds = doc.alias_kinds || [];
+  aliases.append(aliasEditor(doc.person.id, doc, reopen, false), aliasAdder(doc.person.id, kinds, reopen, false));
   const contact = el("dd");
-  contact.append(aliasEditor(doc.person.id, doc, reopen, true));
+  contact.append(aliasEditor(doc.person.id, doc, reopen, true), aliasAdder(doc.person.id, kinds, reopen, true));
   identity.append(el("dt", "Aliases"), aliases, el("dt", "Contact"), contact);
   const fields = [
     ["Summary", doc.person.summary || "(none)"],

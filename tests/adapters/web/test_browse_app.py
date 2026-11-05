@@ -1793,3 +1793,86 @@ def test_a_seven_person_import_is_reviewed_and_committed_in_the_browser(
     final = {row["id"]: row for row in _cli_review(capsys, db_file, batch_id)["candidates"]}
     assert final[ids["role3"]]["status"] == "rejected"
     assert final[ids["Cleo Ruiz"]]["candidate"]["name"] == "Cleo Ruiz-Ortega"
+
+
+def test_the_person_page_adds_an_alias_through_the_use_case(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        added = client.post(
+            "/api/person/alias/add",
+            json={"person_id": person_id, "value": "Priyanka", "kind": "former_name", "lang": "en"},
+        )
+        again = client.post("/api/person/alias/add", json={"person_id": person_id, "value": "PRIYANKA"})
+        email = client.post(
+            "/api/person/alias/add", json={"person_id": person_id, "value": "p.sharma@example.com", "kind": "handle"}
+        )
+        after = client.get("/api/person", params={"id": person_id}).json()
+    assert added.json() == {"person_id": person_id, "alias": "Priyanka", "added": True}
+    # The same name again, in any case, changes nothing and says so.
+    assert again.json() == {"person_id": person_id, "alias": "PRIYANKA", "added": False}
+    assert email.json()["added"] is True
+    assert {"value": "Priyanka", "kind": "former_name", "lang": "en", "script": None} in after["alias_details"]
+    assert "p.sharma@example.com" in after["person"]["emails"]
+    conn = open_db(db_file)
+    try:
+        sources = [row[0] for row in conn.execute("SELECT source FROM audit_log WHERE entity_id = ?", (person_id,))]
+    finally:
+        conn.close()
+    assert sources.count("browser") == 3
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "expected"),
+    [
+        ({"value": _SENTINEL + "@example.com"}, 409, {"error": "alias_conflict", "reason": "alias_email_not_handle"}),
+        ({"value": "Pri", "kind": "OTHER"}, 400, {"error": "invalid_request"}),
+        ({"value": "   "}, 400, {"error": "invalid_request"}),
+        ({"value": "Pri", "extra": _SENTINEL}, 400, {"error": "invalid_request"}),
+    ],
+)
+def test_alias_add_refusals_name_a_code_and_never_the_value(
+    db_file: Path, body: dict[str, Any], status: int, expected: dict[str, str]
+) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post("/api/person/alias/add", json={"person_id": person_id, **body})
+        unknown = client.post("/api/person/alias/add", json={"person_id": "missing", "value": "x"})
+    assert (response.status_code, response.json()) == (status, expected)
+    assert _SENTINEL not in response.text
+    assert (unknown.status_code, unknown.json()) == (404, {"error": "unknown_person"})
+
+
+_ADD_ALIAS = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [],
+    traits: [], alias_kinds: ["nickname", "handle", "other"], alias_details: [] };
+  await showPerson("P", null, []);
+  find("Add alias").listeners.click();
+  find("Add").listeners.click();
+  const empty = posts.length;
+  labelled("new alias value").value = "Jordy";
+  find("Add").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  await showPerson("P", null, []);
+  find("Add email").listeners.click();
+  labelled("new alias email address").value = "jordan@example.com";
+  find("Add").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ empty, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_add_buttons_post_a_nickname_and_an_email_handle(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _ADD_ALIAS)
+    assert outcome == {
+        "empty": 0,
+        "posts": [
+            ["/api/person/alias/add", {"person_id": "P", "value": "Jordy", "kind": "nickname"}],
+            ["/api/person/alias/add", {"person_id": "P", "value": "jordan@example.com", "kind": "handle"}],
+        ],
+    }

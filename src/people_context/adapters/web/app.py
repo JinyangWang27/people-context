@@ -59,13 +59,14 @@ from people_context.app.imports import (
     render_import_json,
 )
 from people_context.app.people import (
+    AddAliasInput,
     AliasConflictError,
     AliasNotFoundError,
     RemoveAliasInput,
     UpdateAliasInput,
 )
 from people_context.app.records import PersonNotFoundError
-from people_context.domain.person import AliasKind
+from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, AliasKind
 
 LOOPBACK_HOST = "127.0.0.1"
 TOKEN_HEADER = "X-Pctx-Token"
@@ -104,6 +105,19 @@ class _AmendAction(BaseModel):
     candidate_id: _NonBlank
     patch: dict[str, Any]
     expected_batch_digest: _NonBlank
+
+
+class _AddAliasAction(BaseModel):
+    """Add one alias to the person the page displayed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    # A name needs one visible character; the value itself is stored as typed.
+    value: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
+    kind: AliasKind = AliasKind.OTHER
+    lang: _NonBlank | None = None
+    script: _NonBlank | None = None
 
 
 class _RemoveAliasAction(BaseModel):
@@ -252,6 +266,26 @@ def create_browse_app(
         body["alias_kinds"] = [kind.value for kind in AliasKind]
         return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
 
+    async def add_alias(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AddAliasAction)
+            data = AddAliasInput(**action.model_dump(), source="browser")
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except ValidationError:
+            # The action already passed its strict schema, so the input's one remaining rule failed:
+            # an email address offered with a kind other than `handle`.
+            return JSONResponse({"error": "alias_conflict", "reason": ALIAS_EMAIL_NOT_HANDLE}, status_code=409)
+        before = runtime.repo.get(data.person_id)
+        try:
+            person = runtime.use_cases.add_alias.execute(data)
+        except PersonNotFoundError as exc:
+            return _alias_refusal(exc)
+        # The use case adds nothing for a value the person already carries; the page says so.
+        added = before is not None and len(person.aliases) > len(before.aliases)
+        return _json(json.dumps({"person_id": person.id, "alias": data.value, "added": added}) + "\n")
+
     async def remove_alias(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
@@ -380,6 +414,7 @@ def create_browse_app(
             Route("/", page, methods=["GET"]),
             Route("/api/people", people, methods=["GET"]),
             Route("/api/person", person, methods=["GET"]),
+            Route("/api/person/alias/add", add_alias, methods=["POST"]),
             Route("/api/person/alias/remove", remove_alias, methods=["POST"]),
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
             Route("/api/sources", sources, methods=["GET"]),
