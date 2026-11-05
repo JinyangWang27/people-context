@@ -36,7 +36,7 @@ browser batch review, and M30.3 browser inline edit.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N]` | Serve a local page of people, one person's brief with alias editing (correct or remove), import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N]` | Serve a local page of people, one person's brief with alias editing (add, correct, or remove), import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
@@ -585,9 +585,12 @@ uv run pctx browse --open --port 8766
 Serves one page on `127.0.0.1` for whoever finds a table easier than a terminal: the people list, one person's
 brief, the import sources with each receipt's staged counts, and review and editing of one staged batch. It is a
 fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
-review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx update-alias`, and `pctx remove-alias`
-already call; it writes only through the last five. Each alias on the person view has Edit and Remove; Remove asks
-for confirmation, and a refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or
+review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`, and
+`pctx remove-alias` already call; it writes only through the last six. Each alias on the person view has Edit and
+Remove, and Remove asks for confirmation. **Add alias** adds a name with its kind (default `nickname`), language,
+and script; **Add email** under Contact adds an address as a `handle`, the only kind an email address may have. A
+value the person already carries is reported as already stored and changes nothing. A refusal names a fixed reason,
+never the value. It is not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or
 configuration, and two launches are two unrelated processes.
 
 The bind is loopback only. There is no `--host`; `--port` picks the port (default: an ephemeral one) and a busy
