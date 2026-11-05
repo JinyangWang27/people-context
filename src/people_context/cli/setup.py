@@ -30,6 +30,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from people_context import __version__
 from people_context.config import DB_KEY_ENV
 
 #: The one server name every target registers under, so a re-run replaces rather than duplicates.
@@ -43,6 +44,10 @@ SERVER_COMMAND = "uvx"
 PACKAGE_NAME = "people-context"
 SERVER_ENTRY_POINT = "people-context"
 SERVER_ARGS: tuple[str, ...] = ("--from", PACKAGE_NAME, SERVER_ENTRY_POINT)
+
+#: The server's `--tools` values, default first. Plain strings rather than the server's `ToolSet`: importing it
+#: loads the MCP SDK, which every `pctx` command would then pay for at startup. A test keeps the two in step.
+TOOL_SETS: tuple[str, ...] = ("all", "core")
 
 #: Targets accepted on the command line, in the order they are listed in help output.
 CLIENTS: tuple[str, ...] = (
@@ -146,6 +151,7 @@ def build_entry(
     db_path: str | None,
     *,
     encrypted: bool,
+    tool_set: str = TOOL_SETS[0],
     platform: str | None = None,
     machine: str | None = None,
     libc: str | None = None,
@@ -167,6 +173,10 @@ def build_entry(
       writing one that fails at launch.
 
     The key is never part of the entry either way: it is read from the server's own environment.
+
+    ``tool_set`` adds ``--tools core`` only when the narrower set is chosen, so an entry written without it is
+    byte-identical to one written before the option existed. A narrowed ``uvx`` entry also requires at least
+    the release running setup, so the client never starts a cached server that predates the flag.
     """
     command = SERVER_COMMAND
     args = list(SERVER_ARGS)
@@ -186,6 +196,14 @@ def build_entry(
                 "environment and it will point the client at it."
             )
         args.append("--encrypted")
+    if tool_set not in TOOL_SETS:
+        raise SetupError(f"unknown tool set {tool_set!r}; expected one of: {', '.join(TOOL_SETS)}")
+    if tool_set != TOOL_SETS[0]:
+        if args[0] == "--from":
+            # `uvx` may reuse a cached release from before `--tools` existed, which would refuse the flag and
+            # exit at launch. A floor at the release running setup makes it resolve one that knows the flag.
+            args[1] = f"{args[1]}>={__version__}"
+        args.extend(("--tools", tool_set))
     env: dict[str, str] = {}
     if db_path:
         # The client launches the server later and from its own directory, so a relative
@@ -425,6 +443,7 @@ def run_setup(
     db_path: str | None,
     encrypted: bool,
     dry_run: bool,
+    tool_set: str = TOOL_SETS[0],
     env: Mapping[str, str] | None = None,
     platform: str | None = None,
     cwd: Path | None = None,
@@ -433,7 +452,7 @@ def run_setup(
     env = os.environ if env is None else env
     platform = sys.platform if platform is None else platform
     cwd = Path.cwd() if cwd is None else cwd
-    entry = build_entry(db_path, encrypted=encrypted, platform=platform)
+    entry = build_entry(db_path, encrypted=encrypted, tool_set=tool_set, platform=platform)
     if client == "json":
         lines = generic_json(entry)
     elif client in ("claude-code", "codex"):
@@ -461,6 +480,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
             db_path=db_path_to_pin(args.db),
             encrypted=args.encrypted,
             dry_run=args.dry_run,
+            tool_set=args.tools,
         )
     except SetupError as exc:
         print(f"Error: {exc}", file=sys.stderr)

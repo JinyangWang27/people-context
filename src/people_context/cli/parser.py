@@ -36,7 +36,7 @@ from people_context.app.sync import (
     MAX_INTERVAL_SECONDS,
     MIN_INTERVAL_SECONDS,
 )
-from people_context.cli.setup import CLIENTS, SCOPES
+from people_context.cli.setup import CLIENTS, SCOPES, TOOL_SETS
 from people_context.domain.group import GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import Sensitivity
@@ -723,6 +723,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Where the entry lives: the user's own configuration or the current project's. "
             "Defaults to user, except VS Code, which only exposes a workspace file to write."
+        ),
+    )
+    setup.add_argument(
+        "--tools",
+        choices=TOOL_SETS,
+        default=TOOL_SETS[0],
+        help=(
+            "Tool set the configured server advertises: 'all' (default) or 'core', which leaves out "
+            "specialised tools to cut the schema tokens sent with every model request."
         ),
     )
     setup.add_argument("--dry-run", action="store_true", help="Print what would be written or run; change nothing.")

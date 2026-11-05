@@ -100,6 +100,10 @@ the stdio protocol over the container's standard input and output:
 }
 ```
 
+Arguments after the image name go to `people-context-mcp`. Append `"--tools", "core"` there to advertise only the
+everyday tools and cut the schema tokens sent with every model request; see
+[mcp-interface.md](mcp-interface.md#tool-sets).
+
 ## Building locally
 
 ```bash

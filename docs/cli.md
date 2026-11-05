@@ -100,6 +100,7 @@ one-line communication philosophy is prompted last.
 pctx setup claude-desktop
 pctx setup cursor --scope project --dry-run
 pctx setup json
+pctx setup cursor --tools core
 ```
 
 `setup` writes the canonical `uvx --from people-context people-context` entry into the client's own MCP
@@ -120,6 +121,12 @@ exists. Elsewhere the extra installs nothing, so the entry points at the interpr
 interpreter can already import `sqlcipher3`, and setup refuses rather than writing an entry that cannot start
 when it cannot. The key is never written: the client must launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment, and that reminder
 goes to stderr so `setup json` stays one JSON document on stdout.
+
+`--tools core` writes an entry that starts the server with `--tools core`, which advertises only the everyday tools
+and cuts the schema tokens sent with every model request; see [mcp-interface.md](mcp-interface.md#tool-sets). The
+default `--tools all` writes the same entry as before. A narrowed `uvx` entry also asks for at least the release
+running setup (`--from 'people-context>=<version>'`), because `uvx` may otherwise reuse a cached release from
+before the flag existed, and that server would refuse the flag at launch.
 
 At a terminal, `init` ends by offering the same step, so a fresh install finishes with a client that can already
 call the server.

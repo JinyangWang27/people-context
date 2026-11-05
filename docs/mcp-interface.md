@@ -19,6 +19,15 @@ responses, or annotations, and they never touch the operator-elevated tools, whi
 gates in either set. The Claude Code and Codex plugins start the server with `--tools core`; the default
 command line, the root `.mcp.json`, and `pctx setup` entries keep the full set.
 
+Any other client opts in where it launches the server:
+
+| Client route | How |
+|---|---|
+| `pctx setup <client>` (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, VS Code, `json`) | `pctx setup <client> --tools core` |
+| Docker | append `--tools core` after the image name in `args` |
+| A hand-written client configuration | append `"--tools", "core"` to `args` |
+| OpenClaw | nothing to do: the plugin defines its own four tool schemas and calls only core tools |
+
 ## Annotations
 
 M28.1 added group/membership management and ordinary reads; M28.2

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from people_context import __version__ as package_version
 from people_context import cli
 from people_context.cli import setup
 from people_context.cli.setup import (
@@ -570,3 +571,85 @@ class TestDefaultScope:
     def test_an_explicit_scope_still_wins(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         assert cli.main(["setup", "vscode", "--scope", "user", "--dry-run"]) == 1
         assert "settings UI" in capsys.readouterr().err
+
+
+class TestToolSet:
+    """`--tools core` narrows the configured server; the default leaves the entry exactly as it was."""
+
+    def test_setup_tool_sets_match_the_servers(self) -> None:
+        # The CLI keeps plain strings so `pctx` startup does not import the MCP SDK.
+        from people_context.adapters.mcp.tools import ToolSet
+
+        assert tuple(tool_set.value for tool_set in ToolSet) == setup.TOOL_SETS
+
+    def test_default_tool_set_leaves_the_entry_unchanged(self) -> None:
+        assert build_entry(None, encrypted=False, tool_set="all").as_json(with_type=False) == CANONICAL
+
+    def test_core_appends_the_flag_and_requires_a_release_that_knows_it(self) -> None:
+        entry = build_entry(None, encrypted=False, tool_set="core")
+
+        assert list(entry.args) == [
+            "--from",
+            f"people-context>={package_version}",
+            "people-context",
+            "--tools",
+            "core",
+        ]
+
+    def test_core_composes_with_the_encrypted_extra(self) -> None:
+        entry = build_entry(None, encrypted=True, tool_set="core", platform="linux", machine="x86_64", libc="glibc")
+
+        assert list(entry.args) == [
+            "--from",
+            f"people-context[encrypted]>={package_version}",
+            "people-context",
+            "--encrypted",
+            "--tools",
+            "core",
+        ]
+
+    def test_core_with_a_local_interpreter_needs_no_version_floor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The interpreter running setup is the one the client launches, so it already knows the flag."""
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: True)
+
+        entry = build_entry(
+            None,
+            encrypted=True,
+            tool_set="core",
+            platform="darwin",
+            machine="arm64",
+            libc="",
+            interpreter="/venv/bin/python",
+        )
+
+        assert list(entry.args) == ["-m", "people_context", "--encrypted", "--tools", "core"]
+
+    def test_an_unknown_tool_set_is_refused(self) -> None:
+        with pytest.raises(SetupError, match="unknown tool set"):
+            build_entry(None, encrypted=False, tool_set="minimal")
+
+    def test_parser_defaults_to_every_tool_and_accepts_core(self) -> None:
+        from people_context.cli.parser import build_parser
+
+        parser = build_parser()
+
+        assert parser.parse_args(["setup", "json"]).tools == "all"
+        assert parser.parse_args(["setup", "json", "--tools", "core"]).tools == "core"
+        with pytest.raises(SystemExit):
+            parser.parse_args(["setup", "json", "--tools", "minimal"])
+
+    def test_setup_writes_the_core_entry_into_a_client_file(self, tmp_path: Path) -> None:
+        run_setup(
+            "cursor",
+            scope="user",
+            db_path=None,
+            encrypted=False,
+            dry_run=False,
+            tool_set="core",
+            env=_env(tmp_path),
+            platform="linux",
+            cwd=tmp_path,
+        )
+
+        written = json.loads((tmp_path / ".cursor" / "mcp.json").read_text())
+        assert written["mcpServers"]["people-context"]["args"][-2:] == ["--tools", "core"]
