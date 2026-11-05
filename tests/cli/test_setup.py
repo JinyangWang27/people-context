@@ -8,10 +8,10 @@ import shlex
 import stat
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
-from people_context import __version__ as package_version
 from people_context import cli
 from people_context.cli import setup
 from people_context.cli.setup import (
@@ -585,28 +585,76 @@ class TestToolSet:
     def test_default_tool_set_leaves_the_entry_unchanged(self) -> None:
         assert build_entry(None, encrypted=False, tool_set="all").as_json(with_type=False) == CANONICAL
 
-    def test_core_appends_the_flag_and_requires_a_release_that_knows_it(self) -> None:
+    def test_a_released_core_entry_requires_the_first_release_that_accepts_the_flag(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The floor is the flag's first release, not the running one, so it never admits a server that refuses it."""
+        monkeypatch.setattr(setup, "__version__", "1.6.2")
+
         entry = build_entry(None, encrypted=False, tool_set="core")
 
+        assert entry.command == "uvx"
         assert list(entry.args) == [
             "--from",
-            f"people-context>={package_version}",
+            f"people-context>={setup.TOOLS_FLAG_SINCE}",
             "people-context",
             "--tools",
             "core",
         ]
 
-    def test_core_composes_with_the_encrypted_extra(self) -> None:
+    def test_an_unreleased_checkout_points_the_client_at_its_own_interpreter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression: a checkout still versioned 1.4.0 wrote `>=1.4.0`, which PyPI's flagless 1.4.0 satisfies."""
+        monkeypatch.setattr(setup, "__version__", "1.4.0")
+
+        entry = build_entry(None, encrypted=False, tool_set="core", interpreter="/checkout/.venv/bin/python")
+
+        assert entry.command == "/checkout/.venv/bin/python"
+        assert list(entry.args) == ["-m", "people_context", "--tools", "core"]
+
+    def test_core_composes_with_the_encrypted_extra(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(setup, "__version__", "1.6.2")
+
         entry = build_entry(None, encrypted=True, tool_set="core", platform="linux", machine="x86_64", libc="glibc")
 
         assert list(entry.args) == [
             "--from",
-            f"people-context[encrypted]>={package_version}",
+            f"people-context[encrypted]>={setup.TOOLS_FLAG_SINCE}",
             "people-context",
             "--encrypted",
             "--tools",
             "core",
         ]
+
+    def test_an_unreleased_encrypted_core_entry_uses_the_interpreter_only_if_it_has_sqlcipher(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(setup, "__version__", "1.4.0")
+        options: dict[str, Any] = {
+            "encrypted": True,
+            "tool_set": "core",
+            "platform": "linux",
+            "machine": "x86_64",
+            "libc": "glibc",
+            "interpreter": "/checkout/.venv/bin/python",
+        }
+
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: True)
+        entry = build_entry(None, **options)
+        assert entry.command == "/checkout/.venv/bin/python"
+        assert list(entry.args) == ["-m", "people_context", "--encrypted", "--tools", "core"]
+
+        monkeypatch.setattr(setup, "local_binding_importable", lambda: False)
+        with pytest.raises(SetupError, match="predates that release"):
+            build_entry(None, **options)
+
+    @pytest.mark.parametrize(
+        ("left", "right"),
+        [("1.10.0", "1.9.0"), ("2.0.0", "1.99.99"), ("1.5.0", "1.4.9"), ("1.5.0rc1", "1.4.0")],
+    )
+    def test_release_versions_compare_numerically(self, left: str, right: str) -> None:
+        assert setup._release_tuple(left) > setup._release_tuple(right)
 
     def test_core_with_a_local_interpreter_needs_no_version_floor(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The interpreter running setup is the one the client launches, so it already knows the flag."""

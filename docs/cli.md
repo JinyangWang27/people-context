@@ -124,9 +124,11 @@ goes to stderr so `setup json` stays one JSON document on stdout.
 
 `--tools core` writes an entry that starts the server with `--tools core`, which advertises only the everyday tools
 and cuts the schema tokens sent with every model request; see [mcp-interface.md](mcp-interface.md#tool-sets). The
-default `--tools all` writes the same entry as before. A narrowed `uvx` entry also asks for at least the release
-running setup (`--from 'people-context>=<version>'`), because `uvx` may otherwise reuse a cached release from
-before the flag existed, and that server would refuse the flag at launch.
+default `--tools all` writes the same entry as before. A narrowed `uvx` entry asks for the first release that
+accepts the flag (`--from 'people-context>=1.5.0'`), because `uvx` may otherwise reuse a cached older release, and
+that server would refuse the flag at launch. Run from a checkout that predates that release, setup points the
+client at the interpreter running it instead (`python -m people_context --tools core`), whose server does accept
+the flag.
 
 At a terminal, `init` ends by offering the same step, so a fresh install finishes with a client that can already
 call the server.
