@@ -35,7 +35,7 @@ drove them live in git history. Planned milestones keep their spec in [specs/](s
 | M27 — Shared database | `~/.pctx/people.db` as the one CLI/MCP default. | [CLI](cli.md#database-location-resolution) |
 | M28 — Groups and shared connections | Protected groups and memberships, `pctx group shared` / `explain_shared_connections`, staged group candidates. | [shared connections](shared-connections-examples.md) |
 | M29 — Editable staging | Amend/withdraw staged candidates, numbered and ranged review, `pctx import edit` via `$EDITOR`. | [import](import.md) |
-| M30 — Local web review | `pctx browse`: loopback page to browse people, review batches, and edit candidates inline. | [CLI](cli.md) |
+| M30 — Local web review | `pctx browse`: loopback page to browse people, edit aliases, correct records in place, review batches, and edit candidates inline. | [CLI](cli.md) |
 
 No coaching or transcript review has been recorded against its rubric yet, so nothing here claims either
 workflow's effectiveness. Directory publication and a recorded real-model evaluation remain account-owner steps.

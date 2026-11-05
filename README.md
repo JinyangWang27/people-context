@@ -166,6 +166,19 @@ as candidates, never a guess.
 Or, without an agent: `pctx remember "Amina Hassan" "prefers short emails" --org "Open City Lab"` and
 `pctx brief "Amina Hassan"`. Five worked scenarios live in [docs/use-cases](docs/use-cases/README.md).
 
+### Review and edit in your browser
+
+Prefer a table to a terminal? `pctx browse --open` opens a local page over the same database:
+
+- browse people and open one person's brief;
+- add, correct, or remove a person's aliases and email addresses;
+- correct an affiliation, fact, trait, or reminder in place, with the before and after kept in the audit log;
+- review a staged import batch person by person, edit its candidates, then withdraw or commit them.
+
+It binds `127.0.0.1` only, every request needs the per-launch token printed in its URL, and every write goes
+through the same audited use cases as the CLI and MCP tools. Sensitive records stay hidden unless the operator
+enables them. It runs until you press Done or Ctrl-C. See [docs/cli.md](docs/cli.md#local-browser-viewer).
+
 ## What it remembers, and what it never does
 
 | It remembers | It never does |
@@ -216,8 +229,9 @@ encryption or opt into SQLCipher at-rest encryption (`uv sync --extra encrypted`
 - **Import**: `pctx import stage SOURCE PATH` then `review` and `commit`, over email, mbox, vCard, `.ics`,
   LinkedIn, Outlook, and WhatsApp exports. Agents can stage extracted candidates the same way. See
   [docs/import.md](docs/import.md).
-- **Local browser**: `pctx browse --open` serves a loopback-only, token-guarded page to browse people and review,
-  edit, and commit staged import batches. See [docs/cli.md](docs/cli.md#local-browser-viewer).
+- **Local browser**: `pctx browse --open` serves a loopback-only, token-guarded page to browse people, edit their
+  aliases, correct affiliations, facts, traits, and reminders, and review, edit, and commit staged import batches.
+  See [Review and edit in your browser](#review-and-edit-in-your-browser).
 - **Groups**: record classes, teams, clubs, and households with `pctx group`, then ask how two people know each
   other with `pctx group shared A B`. See [docs/shared-connections-examples.md](docs/shared-connections-examples.md).
 - **Reports and maintenance**: `pctx stale`, `pctx upcoming`, `pctx timeline`, `pctx doctor`, `pctx stats`.

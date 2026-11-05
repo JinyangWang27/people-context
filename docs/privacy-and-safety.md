@@ -27,9 +27,12 @@ verbatim under the review disclosure warning, as `pctx import review` shows them
 withdrawal and commit through the existing use cases, each carrying the displayed `batch_digest` so a stale view
 is refused with `batch_changed`. M30.3 adds inline editing of a staged candidate on the same terms: the same
 `AmendStagedCandidate` the CLI calls, the same digest, and a refusal that names the field and never the value
-submitted. It edits staged candidates only. The one durable edit is a person's aliases: the person view can correct or
-remove an alias through the same `UpdateAlias` and `RemoveAlias` use cases as `pctx update-alias` and
-`pctx remove-alias`, audited with source `browser`; no fact, reminder, or other record is editable from the page.
+submitted. The person view also edits durable records, each audited with source `browser`: it can add, correct, or
+remove an alias through the same `AddAlias`, `UpdateAlias`, and `RemoveAlias` use cases as `pctx add-alias`,
+`pctx update-alias`, and `pctx remove-alias`, and correct an affiliation, fact, trait, or reminder in place through
+the same `CorrectRecord` use case as the `correct_record` MCP tool. A record the view's disclosure hides is refused
+as `record_not_found`, exactly as a missing one is, and the corrected record is not echoed back. Interactions and
+every other record type stay read-only on the page.
 
 ## Minimal disclosure
 
@@ -643,10 +646,13 @@ physical deletion from an unreachable device or third-party backup.
   inline script and stylesheet, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`, and recorded values
   render as text. Sensitive and restricted durable records appear only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`
   is set in the `pctx browse` process environment, never from a page control; a source's committed mappings are
-  never served. Batch withdrawal and commit (M30.2) and amendment of a staged candidate (M30.3) are token-guarded
-  `POST`s through the same use cases and audit seam as the CLI. A refusal returns the use-case error code, plus —
-  for an amendment — the declared field each rule named and the fixed text the use case wrote for it, so a form can
-  point at the control that failed without any of the submitted patch coming back. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
+  never served. Batch withdrawal and commit (M30.2), amendment of a staged candidate (M30.3), alias add, correction,
+  and removal, and in-place correction of an affiliation, fact, trait, or reminder are token-guarded `POST`s through
+  the same use cases and audit seam as the CLI and MCP tools. A correction of a record the view's disclosure hides
+  is refused as `record_not_found`, so the page cannot edit what it cannot show. A refusal returns the use-case
+  error code, plus — for an amendment or correction — the declared field each rule named (and, for an amendment,
+  the fixed text the use case wrote for it), so a form can point at the control that failed without any submitted
+  value or undeclared field name coming back. This defends against a hostile web page in another tab — DNS rebinding and cross-site requests —
   not against another local process running as the same user, which the loopback MCP transport does not
   defend against either.
 - **Semantic vectors are sensitivity-filtered derived data.** Only active people and public/personal
