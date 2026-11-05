@@ -27,8 +27,10 @@ from people_context.app.imports.identity import (
     MatchDisposition,
     candidate_identity_tokens,
     collision_page,
+    is_possible_match,
     match_person_candidate,
     person_candidate_matches,
+    possible_match_page,
 )
 from people_context.app.imports.limits import (
     STAGED_PAYLOAD_TOO_LARGE,
@@ -40,6 +42,7 @@ from people_context.app.imports.models import (
     CANDIDATE_MODELS,
     MAX_MATCH_CANDIDATE_NAME_CHARS,
     MAX_MATCH_CANDIDATES,
+    MAX_POSSIBLE_MATCHES,
     ImportPipelineError,
 )
 from people_context.domain.import_provenance import (
@@ -51,7 +54,7 @@ from people_context.domain.import_provenance import (
 from people_context.domain.shared import normalize_name
 from people_context.domain.staged_candidate import STAGED_CANDIDATE_MODELS, parse_staged_candidate
 from people_context.ports.imports import StagedImportRow
-from people_context.ports.repository import PersonReader
+from people_context.ports.repository import PersonNameMatch, PersonReader
 
 #: Persisted fields an amendment may never set directly.
 #:
@@ -193,14 +196,29 @@ def project_match_candidates(
     """
     tokens = candidate_identity_tokens(str(candidate["name"]), list(candidate.get("aliases", [])))
     # One entry past the cap is all the evidence the truncation flag needs.
-    page = collision_page(people, tokens, MAX_MATCH_CANDIDATES + 1)
-    truncated = len(page) > MAX_MATCH_CANDIDATES
+    return _project_page(collision_page(people, tokens, MAX_MATCH_CANDIDATES + 1), MAX_MATCH_CANDIDATES)
+
+
+def project_possible_matches(
+    people: PersonReader,
+    candidate: dict[str, Any],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Return existing people an unmatched person row may duplicate, and whether more exist.
+
+    Read-time only, like `project_match_candidates`. These are suggestions from a shared given name
+    or a common short form of it, so the row stays unmatched until a reviewer names one of them.
+    """
+    page = possible_match_page(people, str(candidate["name"]), MAX_POSSIBLE_MATCHES + 1)
+    return _project_page(page, MAX_POSSIBLE_MATCHES)
+
+
+def _project_page(page: list[PersonNameMatch], cap: int) -> tuple[list[dict[str, Any]], bool]:
     projected: list[dict[str, Any]] = []
-    for match in page[:MAX_MATCH_CANDIDATES]:
+    for match in page[:cap]:
         name = match.canonical_name
         cut = name[:MAX_MATCH_CANDIDATE_NAME_CHARS]
         projected.append({"id": match.id, "canonical_name": cut, "name_truncated": cut != name})
-    return projected, truncated
+    return projected, len(page) > cap
 
 
 def _identity_locked_candidates(rows: list[StagedImportRow]) -> set[str]:
@@ -306,8 +324,8 @@ def _apply_person_match(
     "It is the Priya Sharma at Acme, not the other one" cannot be said through a name and a
     handle: adding a unique handle while keeping the colliding name still unions both people. So a
     patch may name one person directly — and the choice is accepted only when the matcher itself
-    found that person, which makes it a reviewer's decision recorded on the row rather than a
-    guess written over an ambiguity.
+    found that person, or review offered them as a possible match, which makes it a reviewer's
+    decision recorded on the row rather than a guess written over an ambiguity.
 
     Without an explicit choice the matcher runs again on the amended tokens, and a candidate that
     stays ambiguous stays ambiguous: its dependents remain unresolved at commit, exactly as they
@@ -330,10 +348,16 @@ def _apply_person_match(
     tokens = candidate_identity_tokens(str(merged.get("name", "")), list(merged.get("aliases", [])))
     chosen = patch.get("matched_person_id") if "matched_person_id" in patch else None
     if "matched_person_id" in patch and chosen is not None:
-        if not isinstance(chosen, str) or not person_candidate_matches(people, tokens, chosen):
+        # A possible match is choosable too: naming it here is the reviewer's confirmation that a
+        # shared given name or short form really is the same person, which the matcher never infers.
+        if not isinstance(chosen, str) or not (
+            person_candidate_matches(people, tokens, chosen)
+            or is_possible_match(people, str(merged.get("name", "")), chosen)
+        ):
             raise ImportPipelineError(
                 "person_not_a_match",
-                "the chosen person is not one this candidate's name and handles resolve to",
+                "the chosen person is not one this candidate's name and handles resolve to, "
+                "nor one of its possible matches",
                 candidate_id=row.id,
             )
         _require_unlocked_identity(row, chosen, identity_locked=identity_locked)

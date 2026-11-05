@@ -22,6 +22,7 @@ from people_context.app.imports.amendment import (
     BatchEdit,
     batch_digest,
     project_match_candidates,
+    project_possible_matches,
     require_unchanged_batch,
     validate_batch_edit,
 )
@@ -40,6 +41,7 @@ from people_context.app.imports.limits import (
 from people_context.app.imports.models import (
     MAX_MATCH_CANDIDATE_NAME_CHARS,
     MAX_MATCH_CANDIDATES,
+    MAX_POSSIBLE_MATCHES,
     CommitImportResult,
     ImportBatchResult,
     ImportPipelineError,
@@ -319,6 +321,10 @@ class ReviewImport:
     unbounded read contract, and one instance of this use case serves both the MCP tools and the
     `pctx import` group, so a ceiling wired in here would silently narrow the released one. The
     CLI passes its own budget per call instead, beside the preflight it already runs.
+
+    `possible_matches` is opt-in per call for the same reason: it is an additive MCP field, and the
+    CLI review document, whose edited round trip is byte-bounded against what it rendered, does not
+    carry it.
     """
 
     def __init__(
@@ -331,7 +337,13 @@ class ReviewImport:
         self._people = people
         self._budget = budget
 
-    def execute(self, batch_id: str, *, budget: ImportBudget | None = None) -> ImportReviewResult:
+    def execute(
+        self,
+        batch_id: str,
+        *,
+        budget: ImportBudget | None = None,
+        suggest_possible_matches: bool = False,
+    ) -> ImportReviewResult:
         limits = budget or self._budget
         rows = self._staging.list_batch(batch_id)
         if not rows:
@@ -340,26 +352,35 @@ class ReviewImport:
         # here rather than inherited from whatever order a store happens to return.
         ordered = sorted(rows, key=lambda row: (row.created_at, row.id))
         ambiguous = [row for row in rows if _is_ambiguous_person(row.candidate)]
+        unmatched = [row for row in rows if suggest_possible_matches and _is_unmatched_pending_person(row)]
         stored = _payload_bytes(rows)
-        self._charge_worst_case(batch_id, stored, len(ambiguous), limits)
+        entries = len(ambiguous) * MAX_MATCH_CANDIDATES + len(unmatched) * MAX_POSSIBLE_MATCHES
+        self._charge_worst_case(batch_id, stored, entries, limits)
         people = self._people
         projections = (
             {row.id: project_match_candidates(people, row.candidate) for row in ambiguous}
             if people is not None
             else {}
         )
-        self._charge_projected(batch_id, stored, projections, limits)
+        possible = (
+            {row.id: project_possible_matches(people, row.candidate) for row in unmatched}
+            if people is not None
+            else {}
+        )
+        # Rows with no possible match carry no field at all, so a batch of new people costs nothing.
+        possible = {row_id: page for row_id, page in possible.items() if page[0]}
+        self._charge_projected(batch_id, stored, [*projections.values(), *possible.values()], limits)
         return ImportReviewResult(
             batch_id=batch_id,
             batch_digest=batch_digest(rows),
             candidates=[
-                _review_row(row, ordinal, projections.get(row.id))
+                _review_row(row, ordinal, projections.get(row.id), possible.get(row.id))
                 for ordinal, row in enumerate(ordered, start=1)
             ],
         )
 
     def _charge_worst_case(
-        self, batch_id: str, stored: int, ambiguous: int, limits: ImportBudget
+        self, batch_id: str, stored: int, entries: int, limits: ImportBudget
     ) -> None:
         """Refuse an ambiguous batch too large to render, before reading a single name.
 
@@ -371,7 +392,7 @@ class ReviewImport:
         limit = limits.max_staged_payload_bytes
         if limit is None or self._people is None:
             return
-        projected = ambiguous * MAX_MATCH_CANDIDATES * _MATCH_CANDIDATE_WORST_CASE_BYTES
+        projected = entries * _MATCH_CANDIDATE_WORST_CASE_BYTES
         if stored + projected > limit:
             raise _oversized_review(batch_id, limit)
 
@@ -379,7 +400,7 @@ class ReviewImport:
         self,
         batch_id: str,
         stored: int,
-        projections: dict[str, tuple[list[dict[str, Any]], bool]],
+        projections: list[tuple[list[dict[str, Any]], bool]],
         limits: ImportBudget,
     ) -> None:
         """Refuse the batch again once the projection's real size is known.
@@ -395,7 +416,7 @@ class ReviewImport:
             return
         projected = sum(
             len(json.dumps(entries, ensure_ascii=False).encode("utf-8"))
-            for entries, _truncated in projections.values()
+            for entries, _truncated in projections
         )
         if stored + projected > limit:
             raise _oversized_review(batch_id, limit)
@@ -426,26 +447,35 @@ def _is_ambiguous_person(candidate: dict[str, Any]) -> bool:
     )
 
 
+def _is_unmatched_pending_person(row: StagedImportRow) -> bool:
+    """Whether this row would commit as a new person, so a possible duplicate is worth showing."""
+    return (
+        row.status == STAGING_STATUS_PENDING
+        and row.candidate.get("type") == "person"
+        and not row.candidate.get("matched_person_id")
+        and row.candidate.get("match_disposition") != MatchDisposition.AMBIGUOUS.value
+    )
+
+
 def _review_row(
     row: StagedImportRow,
     ordinal: int,
     projection: tuple[list[dict[str, Any]], bool] | None,
+    possible: tuple[list[dict[str, Any]], bool] | None = None,
 ) -> ImportReviewRow:
     """Project one staging row for review, attaching its match options only where one is owed."""
-    if projection is None:
-        return ImportReviewRow(
-            id=row.id, source=row.source, status=row.status, candidate=row.candidate, ordinal=ordinal
-        )
-    entries, truncated = projection
-    return ImportReviewRow(
-        id=row.id,
-        source=row.source,
-        status=row.status,
-        candidate=row.candidate,
-        ordinal=ordinal,
-        match_candidates=[MatchCandidate.model_validate(entry) for entry in entries],
-        match_candidates_truncated=truncated,
+    review = ImportReviewRow(
+        id=row.id, source=row.source, status=row.status, candidate=row.candidate, ordinal=ordinal
     )
+    if projection is not None:
+        entries, truncated = projection
+        review.match_candidates = [MatchCandidate.model_validate(entry) for entry in entries]
+        review.match_candidates_truncated = truncated
+    if possible is not None:
+        entries, truncated = possible
+        review.possible_matches = [MatchCandidate.model_validate(entry) for entry in entries]
+        review.possible_matches_truncated = truncated
+    return review
 
 
 class _BatchEditor:

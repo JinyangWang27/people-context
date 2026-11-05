@@ -150,9 +150,13 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         The response carries a `batch_digest`. Pass it back to `amend_candidate`,
         `withdraw_candidates`, or `commit_import` to have the action refused if somebody else
         changed the batch after this read.
+
+        A new-person row may carry `possible_matches`: existing people sharing its given name or a
+        short form of it. They are not matches. Ask the user; to reuse one, pass its id as
+        `matched_person_id` to `amend_candidate`, otherwise commit to create a new person.
         """
         try:
-            return deps.review_import.execute(batch_id).model_dump(mode="json")
+            return deps.review_import.execute(batch_id, suggest_possible_matches=True).model_dump(mode="json")
         except ImportPipelineError as exc:
             return _error(exc)
 

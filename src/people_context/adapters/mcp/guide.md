@@ -221,6 +221,17 @@ can still copy one. Then translate what the user says back into the two review v
 
 Both return the revised batch. **Re-present it**, renumbered, and ask again.
 
+**Possible duplicates.** A new-person row may carry `possible_matches`: existing people
+who share its given name or a short form of it ("Alex Morgan" and a stored "Alex",
+"Katherine Bennett" and a stored "Kate"). They are weak suggestions, never matches —
+unrelated people share first names. Show them on that row and ask the user which applies:
+
+- the same person → `amend_candidate` with `{"matched_person_id": "<that id>"}`;
+- a different person → leave the row as is; committing it creates a new person;
+- unsure → `withdraw_candidates`, or leave it out of the commit.
+
+Never choose one yourself on the name alone.
+
 **Confirming an amendment is not acceptance of the batch.** "Yes, Staff Engineer is
 right" approves one correction; it does not approve committing anything. Call
 `commit_import` only when the user accepts the revised batch itself, and pass the

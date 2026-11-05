@@ -39,7 +39,7 @@ types to `stage_candidates`. M29.1 added the `amend_candidate` and `withdraw_can
 `rejected` status, `match_candidates`, `match_candidates_truncated`, and `batch_digest` on `review_import`, and the
 optional `expected_batch_digest` argument on `amend_candidate`, `withdraw_candidates`, and `commit_import`; see the
 [editable staging contract](#m29-editable-staging-contract). M29.2 added the additive `ordinal` field on each
-`review_import` row. Existing tools and
+`review_import` row; `possible_matches` and `possible_matches_truncated` followed on the same rows. Existing tools and
 graph results keep their meanings.
 
 - `readOnlyHint=true`: no state mutation; disclosure risk is still governed by each tool's response contract.
@@ -656,6 +656,16 @@ To make the choice possible, `review_import` lists, for an ambiguous person row 
 then id, with `match_candidates_truncated` when more exist. The cap limits display, not choice: a person past it
 is still a legal `matched_person_id`, found through `resolve_person` or `search_people`.
 
+A pending person row that would commit as a new person may instead carry an additive `possible_matches` array of the
+same `{id, canonical_name, name_truncated}` shape, capped at 3 entries, with `possible_matches_truncated` when more
+exist. It lists existing people stored under the row's given name alone, or under a common short or long form of
+that given name with or without the rest of the name — a stored "Alex" for "Alex Morgan", a stored "Kate" or
+"Kate Bennett" for "Katherine Bennett". These are suggestions, not matches: the row stays unmatched, commits as a new
+person unless amended, and the field is absent when there is nothing to suggest. A listed person is also a legal
+`matched_person_id`, which records the reviewer's confirmation on the row and so falls under `batch_digest`. Matching
+on the given name catches neither a different surname nor a stored full name when the candidate is a lone short
+form, and the short-form table covers common English names only.
+
 `withdraw_candidates(batch_id, candidate_ids, expected_batch_digest?)` moves rows to the additive `rejected`
 status. A withdrawn candidate stays listed by `review_import` so the user can see what was dropped, is skipped
 silently by a "commit everything" selection, and refuses the whole commit with `candidate_withdrawn` when named
@@ -665,7 +675,7 @@ batch, the receipt becomes `committed` if anything was committed and the additiv
 nothing was.
 
 `review_import` returns an additive `batch_digest` over every row's id, status, and stored candidate — read-time
-`match_candidates` are deliberately excluded, so an unrelated merge elsewhere does not invalidate a current
+`match_candidates` and `possible_matches` are deliberately excluded, so an unrelated merge elsewhere does not invalidate a current
 decision. Passing it back as `expected_batch_digest` to `amend_candidate`, `withdraw_candidates`, or
 `commit_import` refuses with `batch_changed`, writing nothing, when another client changed the batch after the
 read. Omitting it keeps the released behaviour exactly.
