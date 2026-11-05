@@ -783,6 +783,7 @@ const posts = []; const releases = []; const heldGets = []; let holdGets = false
 const review = { batch_id: "B", batch_digest: "d1", candidates: [
   { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
 // One row, shaped per scenario; and one POST made to fail, for the refusal paths.
+globalThis.setRows = (rows) => { review.candidates = rows; };
 globalThis.setRow = (row) => {
   review.candidates = [Object.assign({ id: "p1", status: "pending", ordinal: 1 }, row)];
 };
@@ -802,7 +803,8 @@ globalThis.fetch = async (path, options) => {
   gets.push(path);
   if (holdGets) await new Promise((resolve) => heldGets.push(resolve));
   if (path.startsWith("/api/batch")) {
-    return { ok: true, json: async () => ({ review, lines: ["#1"], fields: __FIELDS__,
+    return { ok: true, json: async () => ({ review, lines: review.candidates.map((row) => "#" + row.ordinal),
+      fields: __FIELDS__,
       alias_fields: __ALIAS_FIELDS__ }) };
   }
   if (path.startsWith("/api/person?")) return { ok: true, json: async () => globalThis.personDoc };
@@ -1447,7 +1449,7 @@ def test_saving_one_field_sends_only_that_field_with_the_displayed_digest(
         ],
         # A field the reviewer never touched is not sent, and keeps what was staged.
         "untouched": "",
-        "message": "Amended #1.",
+        "message": "Amended #1. Saved, not accepted.",
         "editing": None,
     }
 
@@ -1691,3 +1693,103 @@ def test_a_cross_origin_alias_removal_is_not_acted_on(db_file: Path) -> None:
         after = client.get("/api/person", params={"id": person_id}).json()
     assert (refused.status_code, untokened.status_code) == (403, 403)
     assert [alias["value"] for alias in after["alias_details"]] == ["priya@example.com", "Pri"]
+
+
+# --- Issue 224: per-person review ---------------------------------------------------------------
+
+# Two staged people, one already known; a fact for each; one row about no staged person.
+_PER_PERSON_REVIEW = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  const texts = (node) => node.all().map((n) => n.textContent || n.text).filter((t) => typeof t === "string" && t);
+  const row = (id, ordinal, candidate, extra) => Object.assign(
+    { id, ordinal, status: "pending", source: "import/agent:https://linear.app/acme/issue/ENG-1", candidate },
+    extra || {});
+  setRows([
+    row("p1", 1, { type: "person", name: "Elena Marsh", aliases: [{ value: "Lena", kind: "nickname" }] }, {
+      possible_matches: [{ id: "x", canonical_name: "Elena", name_truncated: false }] }),
+    row("f1", 2, { type: "fact", person_candidate_id: "p1", predicate: "role", value: "Beekeeper",
+      stated_by: "Jordan" }),
+    row("p2", 3, { type: "person", name: "Sam Hale", matched_person_id: "person-9", match_disposition: "matched",
+      match_count: 1 }),
+    row("f2", 4, { type: "fact", person_candidate_id: "p2", predicate: "link", value: "javascript:alert(1)" }),
+    row("g1", 5, { type: "group", name: "Allotment club", kind: "club" }),
+  ]);
+  await showBatch("B");
+  const sections = view.all().filter((n) => n.tag === "section");
+  const groups = sections.map((s) => [s.attrs["aria-label"], s.all().filter((n) => n.tag === "td"
+    && /^#[0-9]+$/.test(n.children[0] && n.children[0].text)).map((n) => n.children[0].text)]);
+  const badges = sections.map((s) => s.children[0].children.map((n) => n.textContent).filter(Boolean));
+  const links = view.all().filter((n) => n.tag === "a").map((n) => [n.textContent, n.rel, n.target]);
+  const elena = texts(sections[0]);
+  // A validation refusal keeps the reviewer's typing in the open form.
+  find("Edit").listeners.click();
+  labelled("name").value = "Elena Marsh-Ibarra";
+  failNextPost(400, { error: "invalid_amendment", fields: [{ field: "name", message: "too long" }] });
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  const kept = labelled("name").value;
+  find("Close").listeners.click(); await tick();
+  // Rejecting one row withdraws that row only.
+  labelled("Reject #2").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  // Accepting a person's rows accepts that group only, and the confirmation names them.
+  find("Accept 2 for Sam Hale").listeners.click(); await tick();
+  find("Commit accepted").listeners.click();
+  const confirm = view.all().find((n) => n.tag === "ul");
+  console.log(JSON.stringify({ groups, badges, links, elena, kept,
+    withdraw: JSON.parse(posts[1].body).candidate_ids, accepted: Array.from(batchState.accepted),
+    confirm: texts(confirm) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_batch_is_reviewed_person_by_person_with_readable_proposals(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _PER_PERSON_REVIEW)
+    assert outcome["groups"] == [
+        ["Elena Marsh", ["#1", "#2"]],
+        ["Sam Hale", ["#3", "#4"]],
+        ["Not about one staged person", ["#5"]],
+    ]
+    assert outcome["badges"][:2] == [["New person"], ["Existing person"]]
+    # One source for the batch, shown once with its address linked; another scheme stays text.
+    assert outcome["links"] == [["https://linear.app/acme/issue/ENG-1", "noopener noreferrer", "_blank"]]
+    assert "javascript:alert(1)" not in [text for text, _rel, _target in outcome["links"]]
+    assert "Lena (nickname)" in outcome["elena"]
+    assert "Jordan" in outcome["elena"] and "stated by" in outcome["elena"]
+    assert any(text.startswith("Possibly the same as Elena.") for text in outcome["elena"])
+    assert outcome["kept"] == "Elena Marsh-Ibarra"
+    assert outcome["withdraw"] == ["f1"]
+    assert sorted(outcome["accepted"]) == ["f2", "p2"]
+    assert outcome["confirm"] == ["#3 person: Sam Hale", "#4 fact: link = javascript:alert(1)"]
+
+
+def test_a_seven_person_import_is_reviewed_and_committed_in_the_browser(
+    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    names = ["Ada Byrne", "Ben Okafor", "Cleo Ruiz", "Dev Patel", "Eve Lund", "Finn Moss", "Gus Hart"]
+    candidates: list[Any] = []
+    for index, name in enumerate(names):
+        candidates.append({"type": "person", "ref": f"p{index}", "name": name, "aliases": []})
+        candidates.append({"type": "fact", "person_ref": f"p{index}", "predicate": f"role{index}", "value": "Engineer"})
+    batch_id = _stage(db_file, tmp_path, capsys, candidates)
+    with _client(db_file) as client:
+        shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
+        ids = _ids(shown)
+        amended = _amend(client, batch_id, ids["Cleo Ruiz"], {"name": "Cleo Ruiz-Ortega"}, shown["batch_digest"])
+        assert amended.status_code == 200
+        digest = amended.json()["batch_digest"]
+        withdrawn = _action(client, "withdraw", batch_id, [ids["role3"]], digest)
+        assert withdrawn.status_code == 200
+        accept = [row_id for key, row_id in ids.items() if key != "role3"]
+        # A review taken before the amendment no longer matches the batch and is refused.
+        stale = _action(client, "commit", batch_id, accept, digest)
+        assert stale.status_code == 409 and stale.json() == {"error": "batch_changed"}
+        committed = _action(client, "commit", batch_id, accept, withdrawn.json()["batch_digest"])
+    assert committed.status_code == 200
+    assert sorted(committed.json()["committed_ids"]) == sorted(accept)
+    final = {row["id"]: row for row in _cli_review(capsys, db_file, batch_id)["candidates"]}
+    assert final[ids["role3"]]["status"] == "rejected"
+    assert final[ids["Cleo Ruiz"]]["candidate"]["name"] == "Cleo Ruiz-Ortega"
