@@ -138,6 +138,10 @@ An email address is an alias only with `kind: "handle"`; any other kind is refus
 
 ## 7. set_relationship / set_affiliation
 
+Both are deprecated and will be removed in 2.0 ([#234](https://github.com/JinyangWang27/people-context/issues/234)).
+Prefer `remember` with `relationship`, or with `org` and `role`. Use these only for a relationship between two
+other people, or when you need dates, `label`, or `confidence`.
+
 ```python
 call("set_relationship", {"subject_id": pid_a, "object_id": pid_b, "type": "spouse"})
 call("set_affiliation",  {"person_id": pid, "org": "Etihad Airways",  # "org", NOT "org_name"
@@ -217,6 +221,10 @@ in `unresolved_ids` or `skipped_ids`, or when the user asks to see them.
 `merge_people` · `forget` · `stage_candidates` · `import_content` · `commit_import` · `set_communication_philosophy`
 
 **Gated** (never suggest enabling to work around a boundary): `get_sensitive_person_context` · `export_data`
+
+**Deprecated**, removed in 2.0 ([#234](https://github.com/JinyangWang27/people-context/issues/234)); prefer
+`remember` unless you need a field it lacks: `record_fact` · `record_trait` · `record_interaction` ·
+`set_affiliation` · `set_relationship`
 
 ---
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from mcp.types import ToolAnnotations
 
+from people_context.adapters.mcp.tools.deprecation import deprecated_tool
 from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refusals
 from people_context.app.people import AddAliasInput, RemoveAliasInput, UpdateAliasInput
 from people_context.app.records import (
@@ -98,6 +99,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @deprecated_tool(
+        "For how the user relates to someone, use `remember` with `relationship`. Use this tool only for a "
+        "relationship between two other people, or one that needs `label`, dates, or `confidence`."
+    )
     @flag_refusals
     async def set_relationship(
         subject_id: str,
@@ -124,6 +129,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @deprecated_tool(
+        "Use `remember` with `org` and `role`. Use this tool only when the affiliation needs `valid_from`, "
+        "`valid_to`, or `confidence`."
+    )
     @flag_refusals
     async def set_affiliation(
         person_id: str,
@@ -148,6 +157,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @deprecated_tool(
+        'Use `remember` with `kind="fact"`. Use this tool only when the fact needs `valid_from`, `valid_to`, '
+        "or `confidence`."
+    )
     @flag_refusals
     async def record_fact(
         person_id: str,
@@ -198,6 +211,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @deprecated_tool(
+        'Use `remember` with `kind="trait"` and `trait_category`. Use this tool only when the trait needs '
+        "`evidence_note`, `evidence_ids`, or `confidence`."
+    )
     @flag_refusals
     async def record_trait(
         person_id: str,
@@ -229,6 +246,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         )
 
     @mcp.tool(annotations=_WRITE)
+    @deprecated_tool(
+        'Use `remember` with `kind="interaction"` and `occurred_at` for one person. Use this tool only for '
+        "several participants or a `channel`."
+    )
     @flag_refusals
     async def record_interaction(
         summary: str,

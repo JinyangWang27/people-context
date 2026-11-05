@@ -881,6 +881,22 @@ The server also exposes the packaged usage guidance through the protocol, for cl
 | prompt | `end_of_session_capture()` | Propose learnings with `stage_candidates`; never commit. |
 | prompt | `maintenance_review(name)` | Timeline and consolidation signals, then proposals awaiting approval. |
 
+## Deprecated tools
+
+These tools are deprecated and will be removed in 2.0, once `remember` takes the fields that still make them
+necessary. Until then they work unchanged: same parameters, responses, and annotations. Each description starts
+with `Deprecated: removed in 2.0`, and the server logs one stderr warning per process, naming only the tool, the
+first time each is called. The plan is tracked in
+[#234](https://github.com/JinyangWang27/people-context/issues/234).
+
+| Tool | Use instead | Still needed for |
+|---|---|---|
+| `record_fact` | `remember` with `kind="fact"` | `valid_from`, `valid_to`, `confidence` |
+| `record_trait` | `remember` with `kind="trait"` and `trait_category` | `evidence_note`, `evidence_ids`, `confidence` |
+| `record_interaction` | `remember` with `kind="interaction"` and `occurred_at` | several participants, `channel` |
+| `set_affiliation` | `remember` with `org` and `role` | `valid_from`, `valid_to`, `confidence` |
+| `set_relationship` | `remember` with `relationship` | a relationship between two other people, `label`, dates, `confidence` |
+
 ## Destructive tools
 
 `merge_people` atomically re-parents linked rows, removes resulting self-loops, preserves the duplicate name as

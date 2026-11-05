@@ -221,7 +221,9 @@ scraped Markdown or table output.
 
 - **A deprecation window.** The project has not historically operated one, and this document does not invent one.
   Removals and renames are major-version events; there is no promised number of releases during which a removed
-  surface keeps working first.
+  surface keeps working first. A tool marked deprecated in a minor release (see
+  [mcp-interface.md](mcp-interface.md#deprecated-tools)) is a notice, not a removal: it keeps working unchanged
+  until the next major version.
 - **Optional extras.** Behavior that depends on an optional dependency extra (for example semantic retrieval)
   is available only when that extra is installed, and its models and pins may change.
 - **Third-party surfaces.** MCP client behavior, editor configuration formats, registry metadata schemas, and

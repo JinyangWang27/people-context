@@ -137,7 +137,9 @@ def test_flagging_leaves_the_published_tool_definitions_unchanged(tmp_path: Path
 
     record_fact = _tool(tools, "record_fact")
     assert record_fact.description is not None
-    assert record_fact.description.startswith("Record a time-aware fact about an existing person.")
+    # `record_fact` is deprecated (#234): the notice comes first, and the tool's own description follows it.
+    assert record_fact.description.startswith("Deprecated: removed in 2.0")
+    assert "\n\nRecord a time-aware fact about an existing person." in record_fact.description
     assert record_fact.input_schema["required"] == ["person_id", "predicate", "value"]
     assert record_fact.output_schema is not None
 
