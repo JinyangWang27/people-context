@@ -16,17 +16,18 @@ from people_context.adapters.mcp.tools import (
     records,
     reminders,
 )
+from people_context.adapters.mcp.tools.tool_sets import ToolSet, apply_tool_set
 
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
     from people_context.adapters.runtime import RuntimeUseCases
 
-__all__ = ["register_all"]
+__all__ = ["ToolSet", "register_all"]
 
 
-def register_all(mcp: MCPServer, deps: RuntimeUseCases) -> None:
-    """Register every people-context tool (real use cases + typed stubs)."""
+def register_all(mcp: MCPServer, deps: RuntimeUseCases, tool_set: ToolSet = ToolSet.ALL) -> None:
+    """Register the people-context tools that ``tool_set`` advertises (every tool by default)."""
     people.register(mcp, deps)
     guidance.register(mcp, deps)
     reminders.register(mcp, deps)
@@ -37,3 +38,4 @@ def register_all(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     lifecycle.register(mcp, deps)
     portability.register(mcp, deps)
     imports.register(mcp, deps)
+    apply_tool_set(mcp, tool_set)

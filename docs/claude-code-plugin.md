@@ -36,8 +36,14 @@ Inside an interactive Claude Code session, the equivalent commands are:
 When the plugin is enabled, Claude Code starts this command automatically:
 
 ```bash
-uv run --no-dev --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp
+uv run --no-dev --project "${CLAUDE_PLUGIN_ROOT}" people-context-mcp --tools core
 ```
+
+The plugin adds `--tools core`, so the server advertises the everyday tools only and every request carries
+fewer tool-schema tokens. Graph, group, consolidation, semantic-search, `import_content`, `merge_people`, and the
+per-record `record_*`, `set_affiliation`, and `set_relationship` tools are left out; the bundled skills say so
+when a workflow needs one. To use the full set, register the server yourself without `--tools core` (for example
+from `pctx setup`) instead of through the plugin. See [mcp-interface.md](mcp-interface.md#tool-sets).
 
 `CLAUDE_PLUGIN_ROOT` points to Claude Code's installed copy of this repository. The command comes from
 [`.claude-plugin/mcp.json`](../.claude-plugin/mcp.json), and it has to use exactly that variable: the plugin loader

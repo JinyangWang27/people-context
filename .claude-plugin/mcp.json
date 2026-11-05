@@ -8,7 +8,9 @@
         "--no-dev",
         "--project",
         "${CLAUDE_PLUGIN_ROOT}",
-        "people-context-mcp"
+        "people-context-mcp",
+        "--tools",
+        "core"
       ]
     }
   }

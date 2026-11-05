@@ -30,6 +30,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from people_context import __version__
 from people_context.config import DB_KEY_ENV
 
 #: The one server name every target registers under, so a re-run replaces rather than duplicates.
@@ -43,6 +44,15 @@ SERVER_COMMAND = "uvx"
 PACKAGE_NAME = "people-context"
 SERVER_ENTRY_POINT = "people-context"
 SERVER_ARGS: tuple[str, ...] = ("--from", PACKAGE_NAME, SERVER_ENTRY_POINT)
+
+#: The server's `--tools` values, default first. Plain strings rather than the server's `ToolSet`: importing it
+#: loads the MCP SDK, which every `pctx` command would then pay for at startup. A test keeps the two in step.
+TOOL_SETS: tuple[str, ...] = ("all", "core")
+
+#: The first release whose server accepts `--tools`. A narrowed `uvx` entry requires it: without a floor, `uvx` may
+#: reuse a cached older release, and a floor at the running version admits one too when setup runs from an
+#: unreleased checkout, whose version still names the last release. Either server refuses the flag at launch.
+TOOLS_FLAG_SINCE = "1.5.0"
 
 #: Targets accepted on the command line, in the order they are listed in help output.
 CLIENTS: tuple[str, ...] = (
@@ -146,6 +156,7 @@ def build_entry(
     db_path: str | None,
     *,
     encrypted: bool,
+    tool_set: str = TOOL_SETS[0],
     platform: str | None = None,
     machine: str | None = None,
     libc: str | None = None,
@@ -167,6 +178,11 @@ def build_entry(
       writing one that fails at launch.
 
     The key is never part of the entry either way: it is read from the server's own environment.
+
+    ``tool_set`` adds ``--tools core`` only when the narrower set is chosen, so an entry written without it is
+    byte-identical to one written before the option existed. A narrowed ``uvx`` entry requires the first release
+    that accepts the flag. Run from a checkout older than that release, setup points the client at the
+    interpreter running it instead, because that interpreter's server does accept the flag and PyPI's does not.
     """
     command = SERVER_COMMAND
     args = list(SERVER_ARGS)
@@ -186,12 +202,46 @@ def build_entry(
                 "environment and it will point the client at it."
             )
         args.append("--encrypted")
+    if tool_set not in TOOL_SETS:
+        raise SetupError(f"unknown tool set {tool_set!r}; expected one of: {', '.join(TOOL_SETS)}")
+    if tool_set != TOOL_SETS[0]:
+        if args[0] == "--from":
+            if _release_tuple(__version__) >= _release_tuple(TOOLS_FLAG_SINCE):
+                args[1] = f"{args[1]}>={TOOLS_FLAG_SINCE}"
+            elif encrypted and not local_binding_importable():
+                raise SetupError(
+                    f"`--tools core` needs people-context {TOOLS_FLAG_SINCE} or later, and this checkout predates "
+                    "that release, so setup would point the client at this interpreter; it cannot import "
+                    "SQLCipher, so that server could not open an encrypted database. Run setup from an "
+                    "environment that has both, or omit `--tools core`."
+                )
+            else:
+                command = sys.executable if interpreter is None else interpreter
+                args = ["-m", "people_context", *args[3:]]
+        args.extend(("--tools", tool_set))
     env: dict[str, str] = {}
     if db_path:
         # The client launches the server later and from its own directory, so a relative
         # path is anchored to where setup ran rather than persisted as written.
         env["PEOPLE_CONTEXT_DB"] = os.path.abspath(os.path.expanduser(db_path))
     return ServerEntry(command=command, args=tuple(args), env=env)
+
+
+def _release_tuple(version: str) -> tuple[int, ...]:
+    """The numeric release segment of a version, so `1.10.0` sorts after `1.9.0`; a suffix stops it."""
+    parts: list[int] = []
+    for piece in version.split("."):
+        digits = ""
+        for character in piece:
+            if not character.isdigit():
+                break
+            digits += character
+        if not digits:
+            break
+        parts.append(int(digits))
+        if len(digits) < len(piece):
+            break
+    return tuple(parts)
 
 
 def _home(env: Mapping[str, str]) -> Path:
@@ -425,6 +475,7 @@ def run_setup(
     db_path: str | None,
     encrypted: bool,
     dry_run: bool,
+    tool_set: str = TOOL_SETS[0],
     env: Mapping[str, str] | None = None,
     platform: str | None = None,
     cwd: Path | None = None,
@@ -433,7 +484,7 @@ def run_setup(
     env = os.environ if env is None else env
     platform = sys.platform if platform is None else platform
     cwd = Path.cwd() if cwd is None else cwd
-    entry = build_entry(db_path, encrypted=encrypted, platform=platform)
+    entry = build_entry(db_path, encrypted=encrypted, tool_set=tool_set, platform=platform)
     if client == "json":
         lines = generic_json(entry)
     elif client in ("claude-code", "codex"):
@@ -461,6 +512,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
             db_path=db_path_to_pin(args.db),
             encrypted=args.encrypted,
             dry_run=args.dry_run,
+            tool_set=args.tools,
         )
     except SetupError as exc:
         print(f"Error: {exc}", file=sys.stderr)

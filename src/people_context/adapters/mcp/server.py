@@ -20,7 +20,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context import __version__
 from people_context.adapters.mcp.prompts import register_prompts
-from people_context.adapters.mcp.tools import register_all
+from people_context.adapters.mcp.tools import ToolSet, register_all
 from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
@@ -31,6 +31,11 @@ from people_context.config import MissingDatabaseKeyError
 from people_context.ports.clock import Clock
 
 SERVER_NAME = "people-context"
+
+#: Which tools still need an id, as the instructions name them. `find_connection` is outside the `core` set, so a
+#: core server's instructions leave it out rather than name a tool the client cannot see.
+_ID_ONLY_TOOLS = "`find_connection` and the operator-elevated tools"
+_CORE_ID_ONLY_TOOLS = "the operator-elevated tools"
 
 SERVER_INSTRUCTIONS = (
     "people-context stores durable, local-first knowledge about the people in the user's life: "
@@ -47,11 +52,20 @@ SERVER_INSTRUCTIONS = (
     "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
     "later user review and never committed automatically. "
     "Ordinary read tools that take a `person_id` also accept `person` (a name) in its place; "
-    "`find_connection` and the operator-elevated tools take ids only. "
+    + _ID_ONLY_TOOLS
+    + " take ids only. "
     "The full usage guide is the `people-context://guide` resource; `people-context://self` is the user's own record. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
 )
+
+CORE_SERVER_INSTRUCTIONS = SERVER_INSTRUCTIONS.replace(_ID_ONLY_TOOLS, _CORE_ID_ONLY_TOOLS, 1)
+
+
+def server_instructions(tool_set: ToolSet) -> str:
+    """Return the instructions for a server advertising ``tool_set``, naming only tools it lists."""
+    return SERVER_INSTRUCTIONS if tool_set is ToolSet.ALL else CORE_SERVER_INSTRUCTIONS
+
 
 _LOG_LOGGER_NAME = "people_context"
 _NEXT_ACTION = "Run `pctx health` for a read-only startup check."
@@ -79,6 +93,7 @@ def build_server(
     *,
     encrypted: bool = False,
     clock: Clock | None = None,
+    tool_set: ToolSet = ToolSet.ALL,
 ) -> MCPServer:
     """Build a fully wired MCP server backed by the resolved SQLite database.
 
@@ -93,14 +108,17 @@ def build_server(
     ``clock`` is the ordinary dependency-injection seam for time-dependent reads
     such as recency reports. It defaults to the system clock; the entry point
     never overrides it, so shipped behaviour is unchanged.
+
+    ``tool_set`` narrows the advertised tools. The default advertises every tool; ``ToolSet.CORE`` drops the
+    specialised ones to cut the schema tokens re-sent with every model request.
     """
     logger = _configure_logging()
     runtime = build_runtime(db_path, warning=logger.warning, encrypted=encrypted, clock=clock)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
-    mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=SERVER_INSTRUCTIONS)
-    register_all(mcp, runtime.use_cases)
-    register_prompts(mcp, runtime.repo)
+    mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=server_instructions(tool_set))
+    register_all(mcp, runtime.use_cases, tool_set)
+    register_prompts(mcp, runtime.repo, tool_set)
     return mcp
 
 
@@ -121,6 +139,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Open the database with SQLCipher using the PEOPLE_CONTEXT_DB_KEY environment variable; "
             "refuses to start without a non-empty key."
+        ),
+    )
+    parser.add_argument(
+        "--tools",
+        choices=tuple(tool_set.value for tool_set in ToolSet),
+        default=ToolSet.ALL.value,
+        help=(
+            "Advertised tool set: 'all' (default) or 'core', which leaves out specialised graph, group, "
+            "consolidation, semantic, and per-record capture tools to cut per-request schema tokens."
         ),
     )
     parser.add_argument(
@@ -147,7 +174,7 @@ def main(argv: list[str] | None = None) -> None:
     """Select stdio by default or explicitly configured loopback Streamable HTTP."""
     args = _build_parser().parse_args(argv)
     try:
-        server = build_server(args.db, encrypted=args.encrypted)
+        server = build_server(args.db, encrypted=args.encrypted, tool_set=ToolSet(args.tools))
     except (
         MissingDatabaseKeyError,
         EncryptedDatabaseError,

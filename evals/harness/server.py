@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 from evals.harness.world import FixedClock
 from people_context.adapters.mcp.server import build_server
+from people_context.adapters.mcp.tools import ToolSet
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="INSTANT",
         help="The fixture instant the server's clock is frozen at, as ISO-8601 UTC.",
     )
+    parser.add_argument(
+        "--tools",
+        choices=tuple(tool_set.value for tool_set in ToolSet),
+        default=ToolSet.ALL.value,
+        help="Advertised tool set, as for people-context-mcp (default: all).",
+    )
     return parser
 
 
@@ -47,7 +54,7 @@ def parse_instant(value: str) -> datetime:
 def main(argv: list[str] | None = None) -> None:
     """Serve the fictional store over stdio with the fixture's clock."""
     args = build_parser().parse_args(argv)
-    server = build_server(args.db, clock=FixedClock(parse_instant(args.as_of)))
+    server = build_server(args.db, clock=FixedClock(parse_instant(args.as_of)), tool_set=ToolSet(args.tools))
     server.run()
 
 

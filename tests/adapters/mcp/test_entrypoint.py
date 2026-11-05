@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from people_context.adapters.mcp import server as server_module
+from people_context.adapters.mcp.tools import ToolSet
 from people_context.config import DB_KEY_ENV
 
 
@@ -73,7 +74,31 @@ def test_main_passes_the_encrypted_selection_to_the_server_builder(monkeypatch: 
 
     server_module.main(["--encrypted", "--db", "people.db"])
 
-    assert seen == [{"db": "people.db", "encrypted": True}]
+    assert seen == [{"db": "people.db", "encrypted": True, "tool_set": ToolSet.ALL}]
+
+
+def test_parser_defaults_to_every_tool_and_accepts_only_known_tool_sets() -> None:
+    assert server_module._build_parser().parse_args([]).tools == "all"
+    assert server_module._build_parser().parse_args(["--tools", "core"]).tools == "core"
+
+    with pytest.raises(SystemExit) as exc_info:
+        server_module._build_parser().parse_args(["--tools", "minimal"])
+    assert exc_info.value.code == 2
+
+
+def test_main_passes_the_tool_set_selection_to_the_server_builder(monkeypatch: pytest.MonkeyPatch) -> None:
+    spy = _ServerSpy()
+    seen: list[dict[str, Any]] = []
+
+    def _build(db_path: str | None, **options: Any) -> _ServerSpy:
+        seen.append({"db": db_path, **options})
+        return spy
+
+    monkeypatch.setattr(server_module, "build_server", _build)
+
+    server_module.main(["--tools", "core", "--db", "people.db"])
+
+    assert seen == [{"db": "people.db", "encrypted": False, "tool_set": ToolSet.CORE}]
 
 
 def test_main_refuses_encrypted_start_without_a_key(

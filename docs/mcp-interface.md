@@ -3,6 +3,33 @@
 The server uses the official Python MCP SDK and runs over stdio by default. The same `build_server()` can run
 unauthenticated Streamable HTTP on `127.0.0.1`; remote/authenticated transport remains out of scope.
 
+## Tool sets
+
+`people-context-mcp --tools all` (the default) advertises every ordinary tool. `--tools core` advertises only the
+everyday tools and leaves the specialised ones out, because every advertised schema is re-sent to the model with
+every request: on the 43-tool surface the schemas are about 53k characters per request.
+
+| Set | Tools |
+|---|---|
+| core | `resolve_person`, `search_people`, `get_person_context`, `get_person_timeline`, `get_communication_guidance`, `upcoming_dates`, `remember`, `remember_person`, `add_alias`, `update_alias`, `remove_alias`, `supersede_fact`, `correct_record`, `set_communication_philosophy`, `forget`, `stage_candidates`, `review_import`, `amend_candidate`, `withdraw_candidates`, `commit_import`, `set_reminder`, `list_reminders`, `complete_reminder` |
+| all only | `record_fact`, `record_trait`, `record_observation`, `record_interaction`, `set_affiliation`, `set_relationship`, `merge_people`, `import_content`, `get_relationship_graph`, `find_connection`, `explain_shared_connections`, `get_stale_relationships`, `get_consolidation_context`, `semantic_search`, `create_group`, `find_groups`, `get_group`, `add_group_membership`, `close_group_membership`, `list_group_memberships` |
+
+A tool outside the chosen set is neither listed nor callable. Tool sets never change a tool's parameters,
+responses, or annotations, and they never touch the operator-elevated tools, which keep their own environment
+gates in either set. A `core` server's instructions and prompts name only the tools it lists: the instructions
+leave out `find_connection`, and `maintenance_review` reads context and timeline without
+`get_consolidation_context` or `merge_people`, saying that a review needing them needs `--tools all`. The Claude Code and Codex plugins start the server with `--tools core`; the default
+command line, the root `.mcp.json`, and `pctx setup` entries keep the full set.
+
+Any other client opts in where it launches the server:
+
+| Client route | How |
+|---|---|
+| `pctx setup <client>` (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, VS Code, `json`) | `pctx setup <client> --tools core` |
+| Docker | append `--tools core` after the image name in `args` |
+| A hand-written client configuration | append `"--tools", "core"` to `args` |
+| OpenClaw | nothing to do: the plugin defines its own four tool schemas and calls only core tools |
+
 ## Annotations
 
 M28.1 added group/membership management and ordinary reads; M28.2

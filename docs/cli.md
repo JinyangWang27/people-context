@@ -100,6 +100,7 @@ one-line communication philosophy is prompted last.
 pctx setup claude-desktop
 pctx setup cursor --scope project --dry-run
 pctx setup json
+pctx setup cursor --tools core
 ```
 
 `setup` writes the canonical `uvx --from people-context people-context` entry into the client's own MCP
@@ -120,6 +121,14 @@ exists. Elsewhere the extra installs nothing, so the entry points at the interpr
 interpreter can already import `sqlcipher3`, and setup refuses rather than writing an entry that cannot start
 when it cannot. The key is never written: the client must launch the server with `PEOPLE_CONTEXT_DB_KEY` in its environment, and that reminder
 goes to stderr so `setup json` stays one JSON document on stdout.
+
+`--tools core` writes an entry that starts the server with `--tools core`, which advertises only the everyday tools
+and cuts the schema tokens sent with every model request; see [mcp-interface.md](mcp-interface.md#tool-sets). The
+default `--tools all` writes the same entry as before. A narrowed `uvx` entry asks for the first release that
+accepts the flag (`--from 'people-context>=1.5.0'`), because `uvx` may otherwise reuse a cached older release, and
+that server would refuse the flag at launch. Run from a checkout that predates that release, setup points the
+client at the interpreter running it instead (`python -m people_context --tools core`), whose server does accept
+the flag.
 
 At a terminal, `init` ends by offering the same step, so a fresh install finishes with a client that can already
 call the server.
@@ -1084,4 +1093,6 @@ made canonical and replayable with `normalize-relationships --apply`.
 
 `people-context-mcp` is stdio by default. `--http --host 127.0.0.1 --port 8765` selects unauthenticated loopback
 Streamable HTTP at `/mcp`; no other bind host is accepted. `--encrypted` applies the same opt-in SQLCipher
-connection as the CLI flag, refusing to start without `PEOPLE_CONTEXT_DB_KEY`.
+connection as the CLI flag, refusing to start without `PEOPLE_CONTEXT_DB_KEY`. `--tools core` advertises only
+the everyday tools instead of all of them (`--tools all`, the default), cutting the schema tokens re-sent with
+every model request; see [mcp-interface.md](mcp-interface.md#tool-sets).

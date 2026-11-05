@@ -28,8 +28,14 @@ Codex reads [`.codex-plugin/plugin.json`](../.codex-plugin/plugin.json), then st
 of this repository:
 
 ```bash
-uv run --no-dev --project . people-context-mcp
+uv run --no-dev --project . people-context-mcp --tools core
 ```
+
+The plugin adds `--tools core`, so the server advertises the everyday tools only and every request carries
+fewer tool-schema tokens. Graph, group, consolidation, semantic-search, `import_content`, `merge_people`, and the
+per-record `record_*`, `set_affiliation`, and `set_relationship` tools are left out; the bundled skills say so
+when a workflow needs one. To use the full set, register the server yourself without `--tools core` (for example
+from `pctx setup`) instead of through the plugin. See [mcp-interface.md](mcp-interface.md#tool-sets).
 
 Codex has its own file because it does not expand `${...}` in `args` or set a plugin-root variable (checked on
 Codex 0.166). It resolves a relative `cwd` against the plugin root instead. `--no-dev` installs only the runtime
