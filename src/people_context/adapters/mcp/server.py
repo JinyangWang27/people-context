@@ -32,6 +32,11 @@ from people_context.ports.clock import Clock
 
 SERVER_NAME = "people-context"
 
+#: Which tools still need an id, as the instructions name them. `find_connection` is outside the `core` set, so a
+#: core server's instructions leave it out rather than name a tool the client cannot see.
+_ID_ONLY_TOOLS = "`find_connection` and the operator-elevated tools"
+_CORE_ID_ONLY_TOOLS = "the operator-elevated tools"
+
 SERVER_INSTRUCTIONS = (
     "people-context stores durable, local-first knowledge about the people in the user's life: "
     "their names and aliases, how they relate to the user, their organisations and roles, and "
@@ -47,11 +52,20 @@ SERVER_INSTRUCTIONS = (
     "Use `stage_candidates` only for concise structured proposals — not raw source text — that are left for "
     "later user review and never committed automatically. "
     "Ordinary read tools that take a `person_id` also accept `person` (a name) in its place; "
-    "`find_connection` and the operator-elevated tools take ids only. "
+    + _ID_ONLY_TOOLS
+    + " take ids only. "
     "The full usage guide is the `people-context://guide` resource; `people-context://self` is the user's own record. "
     "Read-only tools are safe to call freely; write and destructive tools are annotated so the client "
     "can gate them behind its normal approval flow."
 )
+
+CORE_SERVER_INSTRUCTIONS = SERVER_INSTRUCTIONS.replace(_ID_ONLY_TOOLS, _CORE_ID_ONLY_TOOLS, 1)
+
+
+def server_instructions(tool_set: ToolSet) -> str:
+    """Return the instructions for a server advertising ``tool_set``, naming only tools it lists."""
+    return SERVER_INSTRUCTIONS if tool_set is ToolSet.ALL else CORE_SERVER_INSTRUCTIONS
+
 
 _LOG_LOGGER_NAME = "people_context"
 _NEXT_ACTION = "Run `pctx health` for a read-only startup check."
@@ -102,9 +116,9 @@ def build_server(
     runtime = build_runtime(db_path, warning=logger.warning, encrypted=encrypted, clock=clock)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
-    mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=SERVER_INSTRUCTIONS)
+    mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=server_instructions(tool_set))
     register_all(mcp, runtime.use_cases, tool_set)
-    register_prompts(mcp, runtime.repo)
+    register_prompts(mcp, runtime.repo, tool_set)
     return mcp
 
 

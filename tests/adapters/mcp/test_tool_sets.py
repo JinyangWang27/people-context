@@ -103,3 +103,50 @@ def test_reference_skill_lists_the_same_tool_sets_as_the_server() -> None:
 
     assert listed["**Core**"] == CORE_TOOLS
     assert listed["**Full set only**"] == EXTENDED_TOOLS
+
+
+def _named_tools(text: str) -> set[str]:
+    known = CORE_TOOLS | EXTENDED_TOOLS | OPERATOR_ELEVATED_TOOLS
+    return {token for token in re.findall(r"[a-z]+(?:_[a-z]+)+", text) if token in known}
+
+
+def test_a_core_server_names_only_tools_it_lists(tmp_path: Path) -> None:
+    """Instructions and prompts are read by the model, so a core server must not direct it to hidden tools."""
+    server = build_server(db_path=tmp_path / "t.db", tool_set=ToolSet.CORE)
+
+    async def main() -> tuple[str, list[str]]:
+        async with Client(server) as client:
+            instructions = client.instructions or ""
+            texts = []
+            for prompt in (await client.list_prompts()).prompts:
+                arguments = {argument.name: "Alice" for argument in prompt.arguments or []}
+                result = await client.get_prompt(prompt.name, arguments)
+                texts.append(prompt.description or "")
+                texts.extend(message.content.text for message in result.messages)  # type: ignore[union-attr]
+            return instructions, texts
+
+    instructions, prompt_texts = anyio.run(main)
+
+    assert _named_tools(instructions) <= CORE_TOOLS
+    for text in prompt_texts:
+        hidden = _named_tools(text) - CORE_TOOLS
+        # Naming a hidden tool is allowed only to say it is unavailable in this tool set.
+        assert not hidden or "--tools all" in text, hidden
+
+
+def test_the_full_server_keeps_its_instructions_and_maintenance_prompt(tmp_path: Path) -> None:
+    from people_context.adapters.mcp.server import SERVER_INSTRUCTIONS
+
+    server = build_server(db_path=tmp_path / "t.db")
+
+    async def main() -> tuple[str, str]:
+        async with Client(server) as client:
+            result = await client.get_prompt("maintenance_review", {"name": "Alice"})
+            return client.instructions or "", result.messages[0].content.text  # type: ignore[union-attr]
+
+    instructions, maintenance = anyio.run(main)
+
+    assert instructions == SERVER_INSTRUCTIONS
+    assert "`find_connection`" in instructions
+    assert "`get_consolidation_context`" in maintenance
+    assert "`merge_people` only when identity is independently established" in maintenance

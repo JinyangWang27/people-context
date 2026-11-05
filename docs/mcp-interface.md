@@ -16,7 +16,9 @@ every request: on the 43-tool surface the schemas are about 53k characters per r
 
 A tool outside the chosen set is neither listed nor callable. Tool sets never change a tool's parameters,
 responses, or annotations, and they never touch the operator-elevated tools, which keep their own environment
-gates in either set. The Claude Code and Codex plugins start the server with `--tools core`; the default
+gates in either set. A `core` server's instructions and prompts name only the tools it lists: the instructions
+leave out `find_connection`, and `maintenance_review` reads context and timeline without
+`get_consolidation_context` or `merge_people`, saying that a review needing them needs `--tools all`. The Claude Code and Codex plugins start the server with `--tools core`; the default
 command line, the root `.mcp.json`, and `pctx setup` entries keep the full set.
 
 Any other client opts in where it launches the server:

@@ -10,6 +10,8 @@ from tests.test_registry_metadata import registry_package
 
 ROOT = Path(__file__).parents[1]
 PRIMARY_RELEASE_VERSION = "1.4.0"  # x-release-please-version
+#: The Claude Code and OpenClaw packages version independently (docs/compatibility.md), so each has its own.
+CLAUDE_PLUGIN_RELEASE_VERSION = "0.3.0"
 INTEGRATION_RELEASE_VERSION = "0.2.0"
 #: The MCPB manifest schema version is tooling metadata, never the application release.
 MCPB_MANIFEST_SCHEMA_VERSION = "0.4"
@@ -88,7 +90,7 @@ def test_reviewed_release_versions_are_synchronized() -> None:
 
     assert primary_version == PRIMARY_RELEASE_VERSION
     assert package_version == primary_version
-    assert claude_plugin_version == claude_marketplace_version == INTEGRATION_RELEASE_VERSION
+    assert claude_plugin_version == claude_marketplace_version == CLAUDE_PLUGIN_RELEASE_VERSION
     assert openclaw_package_version == openclaw_manifest_version == INTEGRATION_RELEASE_VERSION
     assert openclaw_lock["version"] == INTEGRATION_RELEASE_VERSION
     assert openclaw_lock["packages"][""]["version"] == INTEGRATION_RELEASE_VERSION

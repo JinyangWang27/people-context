@@ -15,6 +15,8 @@ import json
 from importlib import resources
 from typing import TYPE_CHECKING, Any
 
+from people_context.adapters.mcp.tools.tool_sets import ToolSet
+
 if TYPE_CHECKING:
     from mcp.server.mcpserver import MCPServer
 
@@ -31,8 +33,13 @@ def load_guide() -> str:
     return resources.files("people_context.adapters.mcp").joinpath(_GUIDE_RESOURCE).read_text(encoding="utf-8")
 
 
-def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
-    """Register the guide and self resources plus the workflow prompts."""
+def register_prompts(mcp: MCPServer, people: PersonReader, tool_set: ToolSet = ToolSet.ALL) -> None:
+    """Register the guide and self resources plus the workflow prompts.
+
+    Under ``ToolSet.CORE`` the maintenance prompt drops the consolidation and merge tools that set does not
+    list, and says so, rather than direct the agent to tools it cannot call.
+    """
+    full_surface = tool_set is ToolSet.ALL
 
     @mcp.resource(
         GUIDE_URI,
@@ -156,19 +163,37 @@ def register_prompts(mcp: MCPServer, people: PersonReader) -> None:
     @mcp.prompt(
         name="maintenance_review",
         title="Review what is stored about someone",
-        description="Read timeline and consolidation signals, then propose corrections and wait for approval.",
+        description=(
+            "Read timeline and consolidation signals, then propose corrections and wait for approval."
+            if full_surface
+            else "Read context and timeline, then propose corrections and wait for approval."
+        ),
     )
     def maintenance_review(name: str) -> str:
+        if full_surface:
+            reads = (
+                "2. Read `get_person_context`, `get_person_timeline`, and `get_consolidation_context`.\n"
+                "3. Read the `signals` (duplicate, restated, contradictory, succeeding facts; duplicate or "
+                "divergent traits). They are evidence for your judgement, not a verdict.\n"
+            )
+            merge = ", `merge_people` only when identity is independently established"
+        else:
+            reads = (
+                "2. Read `get_person_context` and `get_person_timeline`.\n"
+                "3. Compare the records yourself for duplicates, restatements, and contradictions. This "
+                "server runs the core tool set, so `get_consolidation_context` and `merge_people` are not "
+                "available; if a review needs them, say it needs the server started with `--tools all`.\n"
+            )
+            merge = ""
         return (
             f"The user wants to review what is stored about {name!r}.\n\n"
             "1. `resolve_person`; an `ambiguous` result stops the review, and so does a lone candidate whose "
             "`match_reason` starts with `fuzzy` — maintaining the wrong person's records is worse than none.\n"
-            "2. Read `get_person_context`, `get_person_timeline`, and `get_consolidation_context`.\n"
-            "3. Read the `signals` (duplicate, restated, contradictory, succeeding facts; duplicate or "
-            "divergent traits). They are evidence for your judgement, not a verdict.\n"
-            "4. Propose structured actions by id: `correct_record` for a value that was wrong, "
-            "`supersede_fact` for a value that was right and then changed, `merge_people` only when identity "
-            "is independently established.\n"
+            + reads
+            + "4. Propose structured actions by id: `correct_record` for a value that was wrong, "
+            "`supersede_fact` for a value that was right and then changed"
+            + merge
+            + ".\n"
             "5. Wait for explicit approval per proposal before calling any mutation tool; then re-read and "
             "report the resulting state.\n"
         )
