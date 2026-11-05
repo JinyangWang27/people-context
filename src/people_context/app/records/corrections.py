@@ -29,17 +29,18 @@ from people_context.ports.clock import Clock
 from people_context.ports.records import Record, RecordReader, RecordWriter
 from people_context.ports.repository import PersonReader
 
-_CORRECTABLE_FIELDS: dict[str, set[str]] = {
-    "fact": {"predicate", "value", "valid_from", "valid_to", "confidence", "sensitivity"},
-    "observation": {"text", "observed_at", "sensitivity"},
-    "trait": {"category", "value", "evidence_note", "confidence", "sensitivity"},
-    "relationship": {"type", "label", "valid_from", "valid_to", "confidence"},
-    "affiliation": {"role", "valid_from", "valid_to", "confidence"},
-    "reminder": {"text", "kind", "due_at", "recurrence"},
+#: The fields each record type may be corrected in place, which every correction surface offers.
+CORRECTABLE_FIELDS: dict[str, frozenset[str]] = {
+    "fact": frozenset({"predicate", "value", "valid_from", "valid_to", "confidence", "sensitivity"}),
+    "observation": frozenset({"text", "observed_at", "sensitivity"}),
+    "trait": frozenset({"category", "value", "evidence_note", "confidence", "sensitivity"}),
+    "relationship": frozenset({"type", "label", "valid_from", "valid_to", "confidence"}),
+    "affiliation": frozenset({"role", "valid_from", "valid_to", "confidence"}),
+    "reminder": frozenset({"text", "kind", "due_at", "recurrence"}),
     # Placement is not correctable here: pointing a group at another organization needs that
     # organization to exist, which this generic path cannot check.
-    "group": {"name", "kind", "sensitivity"},
-    "group_membership": {"role", "valid_from", "valid_to", "temporal_basis", "confidence", "sensitivity"},
+    "group": frozenset({"name", "kind", "sensitivity"}),
+    "group_membership": frozenset({"role", "valid_from", "valid_to", "temporal_basis", "confidence", "sensitivity"}),
 }
 _PERIOD_TYPES = (Fact, Relationship, Affiliation, GroupMembership)
 
@@ -77,7 +78,7 @@ class CorrectRecord:
     @transactional
     def execute(self, data: CorrectRecordInput) -> Record:
         """Correct one record in place with a lossless audit snapshot."""
-        allowed = _CORRECTABLE_FIELDS.get(data.entity_type)
+        allowed = CORRECTABLE_FIELDS.get(data.entity_type)
         invalid = sorted(data.fields.keys() - (allowed or set()))
         if allowed is None or not data.fields or invalid:
             raise InvalidCorrectionError(data.entity_type, invalid or sorted(data.fields), sorted(allowed or set()))

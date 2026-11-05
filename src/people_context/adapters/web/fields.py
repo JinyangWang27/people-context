@@ -21,6 +21,8 @@ from datetime import date
 from typing import Any
 
 from people_context.app.imports.amendment import IMMUTABLE_PATCH_FIELDS
+from people_context.app.records import CORRECTABLE_FIELDS
+from people_context.domain.fact import Fact
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
     GROUP_CAPABLE_STAGED_TYPES,
@@ -30,7 +32,10 @@ from people_context.domain.import_provenance import (
     STAGED_REFERENCE_FIELDS,
     STAGED_REFERENCE_LIST_FIELDS,
 )
+from people_context.domain.organization import Affiliation
+from people_context.domain.reminder import Reminder
 from people_context.domain.staged_candidate import STAGED_CANDIDATE_MODELS, StagedAlias
+from people_context.domain.trait import Trait
 
 #: The one person-candidate field the generic form never offers.
 #:
@@ -120,3 +125,25 @@ CANDIDATE_FIELDS: dict[str, list[dict[str, Any]]] = {
 
 #: The fields of one alias row inside a person candidate's `aliases` list.
 ALIAS_FIELDS: list[dict[str, Any]] = _fields(StagedAlias, skip=frozenset())
+
+
+#: The stored record types the person view lists and lets a reviewer correct in place.
+_RECORD_MODELS: dict[str, Any] = {"affiliation": Affiliation, "fact": Fact, "trait": Trait, "reminder": Reminder}
+
+
+def _record_fields(entity_type: str, model: Any) -> list[dict[str, Any]]:
+    """Return the correctable fields of one record type, in model order, with a validity period's two dates."""
+    allowed = CORRECTABLE_FIELDS[entity_type]
+    fields: list[dict[str, Any]] = []
+    for field_name, field in model.model_fields.items():
+        if field_name == "period":
+            fields.extend(_descriptor(name, date) for name in ("valid_from", "valid_to") if name in allowed)
+        elif field_name in allowed:
+            fields.append(_descriptor(field_name, field.annotation))
+    return fields
+
+
+#: The correction form of each record type the person view shows: exactly what `CorrectRecord` accepts.
+RECORD_FIELDS: dict[str, list[dict[str, Any]]] = {
+    entity_type: _record_fields(entity_type, model) for entity_type, model in _RECORD_MODELS.items()
+}

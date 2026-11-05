@@ -9,7 +9,7 @@ from people_context.app._mutation import (
     ReminderNotActiveError,
 )
 from people_context.app.records.affiliations import SetAffiliation, SetAffiliationInput
-from people_context.app.records.corrections import CorrectRecord, CorrectRecordInput
+from people_context.app.records.corrections import CORRECTABLE_FIELDS, CorrectRecord, CorrectRecordInput
 from people_context.app.records.doctor import (
     DOCTOR_FORMAT,
     DOCTOR_VERSION,
@@ -53,6 +53,7 @@ from people_context.app.records.supersession import (
 from people_context.app.records.traits import RecordTrait, RecordTraitInput
 
 __all__ = [
+    "CORRECTABLE_FIELDS",
     "DOCTOR_FORMAT",
     "DOCTOR_VERSION",
     "FACT_ENTITY_TYPE",

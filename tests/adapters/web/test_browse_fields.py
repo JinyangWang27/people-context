@@ -122,3 +122,11 @@ def test_a_datetime_field_keeps_its_stored_string_rather_than_a_local_picker() -
     assert observation["observed_at"]["control"] == "text"
     fact = {field["name"]: field for field in CANDIDATE_FIELDS["fact"]}
     assert fact["valid_from"]["control"] == "date" and fact["valid_to"]["control"] == "date"
+
+
+def test_each_record_form_offers_exactly_what_a_correction_accepts() -> None:
+    from people_context.adapters.web.fields import RECORD_FIELDS
+    from people_context.app.records import CORRECTABLE_FIELDS
+
+    for entity_type, descriptors in RECORD_FIELDS.items():
+        assert {descriptor["name"] for descriptor in descriptors} == CORRECTABLE_FIELDS[entity_type]
