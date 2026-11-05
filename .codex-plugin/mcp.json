@@ -9,7 +9,9 @@
         "--no-dev",
         "--project",
         ".",
-        "people-context-mcp"
+        "people-context-mcp",
+        "--tools",
+        "core"
       ],
       "env_vars": [
         "PEOPLE_CONTEXT_DB",

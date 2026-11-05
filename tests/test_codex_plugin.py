@@ -37,7 +37,7 @@ class TestCodexPluginPackage:
             "type": "stdio",
             "command": "uv",
             "cwd": ".",
-            "args": ["run", "--no-dev", "--project", ".", "people-context-mcp"],
+            "args": ["run", "--no-dev", "--project", ".", "people-context-mcp", "--tools", "core"],
             "env_vars": ["PEOPLE_CONTEXT_DB", "PEOPLE_CONTEXT_DB_KEY"],
             "startup_timeout_sec": 120,
         }
@@ -52,7 +52,7 @@ class TestCodexPluginPackage:
         assert server == {
             "type": "stdio",
             "command": "uv",
-            "args": ["run", "--no-dev", "--project", "${CLAUDE_PLUGIN_ROOT}", "people-context-mcp"],
+            "args": ["run", "--no-dev", "--project", "${CLAUDE_PLUGIN_ROOT}", "people-context-mcp", "--tools", "core"],
         }
 
     def test_root_config_starts_from_a_plain_checkout(self) -> None:

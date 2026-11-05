@@ -1084,4 +1084,6 @@ made canonical and replayable with `normalize-relationships --apply`.
 
 `people-context-mcp` is stdio by default. `--http --host 127.0.0.1 --port 8765` selects unauthenticated loopback
 Streamable HTTP at `/mcp`; no other bind host is accepted. `--encrypted` applies the same opt-in SQLCipher
-connection as the CLI flag, refusing to start without `PEOPLE_CONTEXT_DB_KEY`.
+connection as the CLI flag, refusing to start without `PEOPLE_CONTEXT_DB_KEY`. `--tools core` advertises only
+the everyday tools instead of all of them (`--tools all`, the default), cutting the schema tokens re-sent with
+every model request; see [mcp-interface.md](mcp-interface.md#tool-sets).

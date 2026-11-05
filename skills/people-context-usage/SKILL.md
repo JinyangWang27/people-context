@@ -10,6 +10,17 @@ user's life: their names and aliases, how they relate to the user, their
 organisations and roles, and relevant past interactions. These tools compose into a
 few reliable patterns. Follow them instead of guessing.
 
+## When a tool is not advertised
+
+A server started with `--tools core` advertises only the everyday tools: identity,
+context and guidance, `remember` capture, aliases, correction and supersession,
+`forget`, the staged-import review gate, and reminders. Graph, group, consolidation,
+semantic search, `import_content`, `merge_people`, and the per-record `record_*`,
+`set_affiliation`, and `set_relationship` writes need the full set. If a workflow
+below names a tool you cannot see, do not imitate it with other tools: say it needs
+the server started with `--tools all`, and use `remember` for a single direct fact,
+affiliation, or relationship.
+
 ## Resolve identity first
 
 When the user names, nicknames, or partially references a person, call

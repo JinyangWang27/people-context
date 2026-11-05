@@ -20,7 +20,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from people_context import __version__
 from people_context.adapters.mcp.prompts import register_prompts
-from people_context.adapters.mcp.tools import register_all
+from people_context.adapters.mcp.tools import ToolSet, register_all
 from people_context.adapters.runtime import build_runtime
 from people_context.adapters.sqlite.db import (
     EncryptedDatabaseError,
@@ -79,6 +79,7 @@ def build_server(
     *,
     encrypted: bool = False,
     clock: Clock | None = None,
+    tool_set: ToolSet = ToolSet.ALL,
 ) -> MCPServer:
     """Build a fully wired MCP server backed by the resolved SQLite database.
 
@@ -93,13 +94,16 @@ def build_server(
     ``clock`` is the ordinary dependency-injection seam for time-dependent reads
     such as recency reports. It defaults to the system clock; the entry point
     never overrides it, so shipped behaviour is unchanged.
+
+    ``tool_set`` narrows the advertised tools. The default advertises every tool; ``ToolSet.CORE`` drops the
+    specialised ones to cut the schema tokens re-sent with every model request.
     """
     logger = _configure_logging()
     runtime = build_runtime(db_path, warning=logger.warning, encrypted=encrypted, clock=clock)
     logger.info("people-context MCP server using database at %s", runtime.path)
 
     mcp = MCPServer(name=SERVER_NAME, version=__version__, instructions=SERVER_INSTRUCTIONS)
-    register_all(mcp, runtime.use_cases)
+    register_all(mcp, runtime.use_cases, tool_set)
     register_prompts(mcp, runtime.repo)
     return mcp
 
@@ -121,6 +125,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Open the database with SQLCipher using the PEOPLE_CONTEXT_DB_KEY environment variable; "
             "refuses to start without a non-empty key."
+        ),
+    )
+    parser.add_argument(
+        "--tools",
+        choices=tuple(tool_set.value for tool_set in ToolSet),
+        default=ToolSet.ALL.value,
+        help=(
+            "Advertised tool set: 'all' (default) or 'core', which leaves out specialised graph, group, "
+            "consolidation, semantic, and per-record capture tools to cut per-request schema tokens."
         ),
     )
     parser.add_argument(
@@ -147,7 +160,7 @@ def main(argv: list[str] | None = None) -> None:
     """Select stdio by default or explicitly configured loopback Streamable HTTP."""
     args = _build_parser().parse_args(argv)
     try:
-        server = build_server(args.db, encrypted=args.encrypted)
+        server = build_server(args.db, encrypted=args.encrypted, tool_set=ToolSet(args.tools))
     except (
         MissingDatabaseKeyError,
         EncryptedDatabaseError,

@@ -205,16 +205,23 @@ in `unresolved_ids` or `skipped_ids`, or when the user asks to see them.
 
 ## 11. Available tools (post-M21)
 
-**Read-only** (`readOnlyHint=true`):
-`resolve_person` · `get_person_context` · `search_people` · `semantic_search` ·
-`get_communication_guidance` · `list_reminders` · `get_relationship_graph` ·
-`find_connection` · `get_stale_relationships` · `upcoming_dates` · `review_import` ·
-`get_person_timeline` · `get_consolidation_context`
+The server advertises every tool by default. Started with `--tools core` (the Claude Code and Codex
+plugins do this), it advertises only the **core** tools below; the rest need `--tools all`.
 
-**Write**: `remember` · `remember_person` · `add_alias` · `update_alias` · `remove_alias` · `set_relationship` · `set_affiliation` ·
-`record_fact` · `record_observation` · `record_trait` · `record_interaction` ·
-`set_reminder` · `complete_reminder` · `correct_record` · `supersede_fact` ·
-`merge_people` · `forget` · `stage_candidates` · `import_content` · `commit_import` · `set_communication_philosophy`
+**Core**, read-only: `resolve_person` · `search_people` · `get_person_context` · `get_person_timeline` ·
+`get_communication_guidance` · `upcoming_dates` · `review_import` · `list_reminders`
+
+**Core**, write: `remember` · `remember_person` · `add_alias` · `update_alias` · `remove_alias` ·
+`supersede_fact` · `correct_record` · `set_communication_philosophy` · `forget` · `stage_candidates` ·
+`amend_candidate` · `withdraw_candidates` · `commit_import` · `set_reminder` · `complete_reminder`
+
+**Full set only**, read-only: `semantic_search` · `get_relationship_graph` · `find_connection` ·
+`explain_shared_connections` · `get_stale_relationships` · `get_consolidation_context` · `find_groups` ·
+`get_group` · `list_group_memberships`
+
+**Full set only**, write: `set_relationship` · `set_affiliation` · `record_fact` · `record_observation` ·
+`record_trait` · `record_interaction` · `merge_people` · `import_content` · `create_group` ·
+`add_group_membership` · `close_group_membership`
 
 **Gated** (never suggest enabling to work around a boundary): `get_sensitive_person_context` · `export_data`
 

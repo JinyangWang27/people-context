@@ -30,6 +30,11 @@ Within a major version:
 - an existing response field is not removed and its meaning is not repurposed;
 - a new response field is additive, and a client that ignores unknown fields keeps working.
 
+The default `--tools all` surface is the one these guarantees cover. `--tools core` is an opt-in narrowing: it
+removes whole tools from discovery and never changes the parameters, responses, or annotations of the tools it
+keeps. Which tools are in `core` may change in a minor release, so an integration that depends on a specialised
+tool runs the default set.
+
 Tool annotations describe behavior rather than disclosure. `readOnlyHint=true` tools stay read-only, and a tool
 does not gain `destructiveHint=true` behavior without a major version. Operator-elevated tools
 (`get_sensitive_person_context`, `export_data`) stay gated behind their process environment flags and stay absent

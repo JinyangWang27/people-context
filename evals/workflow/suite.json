@@ -149,6 +149,62 @@
         "claude",
         "--version"
       ]
+    },
+    "claude-cli-core": {
+      "kind": "command",
+      "model_id": "claude-sonnet-5-5",
+      "argv": [
+        "claude",
+        "--print",
+        "--setting-sources",
+        "",
+        "--strict-mcp-config",
+        "--plugin-dir",
+        "{skills_plugin}",
+        "--tools",
+        "Skill",
+        "--model",
+        "{model}",
+        "--append-system-prompt",
+        "{system_prompt}",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "{prompt}"
+      ],
+      "mcp_argv": [
+        "--mcp-config",
+        "{mcp_config}",
+        "--allowedTools",
+        "mcp__people-context"
+      ],
+      "mcp_server_argv": [
+        "uv",
+        "run",
+        "--directory",
+        "{project_root}",
+        "--locked",
+        "python",
+        "-m",
+        "evals.harness.server",
+        "--as-of",
+        "{world_as_of}",
+        "--tools",
+        "core"
+      ],
+      "output_format": "stream-json",
+      "timeout_seconds": 900,
+      "max_output_bytes": 4194304,
+      "env_passthrough": [
+        "PATH",
+        "HOME",
+        "USER",
+        "ANTHROPIC_API_KEY"
+      ],
+      "version_argv": [
+        "claude",
+        "--version"
+      ]
     }
   }
 }
