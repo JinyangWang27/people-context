@@ -1,11 +1,12 @@
-"""The loopback Starlette application behind `pctx browse` (M30.1, M30.2).
+"""The loopback Starlette application behind `pctx browse` (M30).
 
 The browser is a fourth client of the use cases the CLI and MCP already call: every endpoint here
 wraps an existing use case and returns what it returns. No use case, validation, or disclosure rule
 exists only for the page. The writes are batch amendment, withdrawal, and commit, through the same
-use cases `pctx import` calls, always with the digest of the review the page displayed; and alias
-removal and correction on a person page, through the same use cases as `pctx remove-alias` and
-`pctx update-alias`.
+use cases `pctx import` calls, always with the digest of the review the page displayed; alias addition,
+correction, and removal on a person page, through the same use cases as `pctx add-alias`,
+`pctx update-alias`, and `pctx remove-alias`; and in-place correction of an affiliation, fact, trait, or
+reminder the page displays, through the same `CorrectRecord` as the `correct_record` MCP tool.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
