@@ -364,3 +364,20 @@ def test_a_card_whose_fn_is_an_address_stages_a_name_and_keeps_the_address_as_a_
     (person,) = [row.candidate for row in review.execute(batch.batch_id).candidates]
     assert person["name"] == expected_name
     assert {"value": "jordan@example.com", "kind": "handle"} in person["aliases"]
+
+
+def test_a_card_repeating_its_address_in_n_and_nickname_still_imports_beside_a_valid_card() -> None:
+    conn = open_db(":memory:")
+    _, import_content, review, _ = _use_cases(conn)
+    cards = (
+        "BEGIN:VCARD\nVERSION:4.0\nFN:jordan@example.com\nN:jordan@example.com;;;;\n"
+        "NICKNAME:jl@example.com\nEND:VCARD\n"
+        "BEGIN:VCARD\nVERSION:4.0\nFN:Sam Park\nEND:VCARD\n"
+    )
+
+    batch = import_content.execute("vcard", content=cards)
+
+    people = [row.candidate for row in review.execute(batch.batch_id).candidates]
+    assert [person["name"] for person in people] == ["jordan", "Sam Park"]
+    assert {alias["kind"] for alias in people[0]["aliases"]} == {"handle"}
+    assert {alias["value"] for alias in people[0]["aliases"]} == {"jordan@example.com", "jl@example.com"}

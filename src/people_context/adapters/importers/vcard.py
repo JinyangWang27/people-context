@@ -15,7 +15,7 @@ from people_context.adapters.importers.bounded_source import (
 )
 from people_context.adapters.importers.errors import ImportExtractionError
 from people_context.adapters.importers.normalization import person_name
-from people_context.domain.person import AliasKind, is_email_shaped
+from people_context.domain.person import AliasKind, is_email_shaped, kind_for_name
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
 
@@ -148,16 +148,17 @@ def _card_candidates(index: int, name: str, properties: dict[str, list[_Property
         family, given, additional, prefix, suffix = parts[:5]
         structured_name = " ".join(part.strip() for part in (prefix, given, additional, family, suffix) if part.strip())
     if is_email_shaped(name):
-        # Some clients fill FN with the address; it is kept as contact information, not as the name.
+        # Some clients fill FN (and even N) with the address; it is kept as contact information, not as the name.
         aliases.append({"value": name, "kind": AliasKind.HANDLE.value})
-        name = structured_name or person_name(name)
+        name = person_name(structured_name or name)
+    # Any address among the other names is a handle, the only kind an email alias may have.
     if structured_name and normalize_name(structured_name) != normalize_name(name):
-        aliases.append({"value": structured_name, "kind": AliasKind.OTHER.value})
+        aliases.append({"value": structured_name, "kind": kind_for_name(structured_name, AliasKind.OTHER).value})
     for prop in properties.get("NICKNAME", []):
         for nickname in _split_escaped(_decode_raw(prop), ","):
             value = nickname.strip()
             if value and normalize_name(value) != normalize_name(name):
-                aliases.append({"value": value, "kind": AliasKind.NICKNAME.value})
+                aliases.append({"value": value, "kind": kind_for_name(value, AliasKind.NICKNAME).value})
     for prop in properties.get("EMAIL", []):
         value = _decode_text(prop).strip()
         if value:
