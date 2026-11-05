@@ -47,6 +47,7 @@ from people_context.app.records import (
 )
 from people_context.app.relationships import SetRelationship, SetRelationshipInput
 from people_context.app.relationships.policy import relationship_display_type
+from people_context.domain.person import is_email_shaped
 from people_context.domain.shared import Sensitivity, new_id
 from people_context.domain.trait import TraitCategory
 from people_context.ports.audit_log import AuditLog
@@ -332,6 +333,12 @@ class QuickCapture:
                     "Confirm with the user, then call again with that exact name — or a new one to create.",
                 )
             return top.person_id, top.canonical_name, False
+        if is_email_shaped(data.person):
+            return QuickCaptureResult(
+                status="invalid_request",
+                message=f"No one is stored with {data.person!r}, and an email address is not a name; nothing "
+                "was recorded. Ask the user who this is, then call again with their name.",
+            )
         result = self._remember.execute(
             RememberPersonInput(name=data.person, source=data.source, session=data.session),
             transaction_id=transaction_id,

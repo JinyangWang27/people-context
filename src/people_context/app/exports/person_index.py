@@ -15,7 +15,7 @@ from typing import Final
 from pydantic import BaseModel, Field
 
 from people_context.app.exports._document import render_json_document
-from people_context.domain.person import Person
+from people_context.domain.person import Person, contact_emails
 from people_context.domain.shared import normalize_name
 from people_context.domain.source_cursor import decode_cursor, encode_cursor
 from people_context.ports.clock import Clock
@@ -54,6 +54,8 @@ class PersonIndexEntry(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
     is_self: bool = False
+    # Additive: the email addresses among `aliases`, which are contact information rather than names.
+    emails: list[str] = Field(default_factory=list)
     # Lifecycle state is explicit rather than inferred from the entry's presence, because the
     # index only contains soft-deleted people when they were asked for.
     deleted: bool = False
@@ -167,5 +169,6 @@ def _entry(person: Person) -> PersonIndexEntry:
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,
         is_self=person.is_self,
+        emails=contact_emails(person.aliases),
         deleted=person.deleted_at is not None,
     )

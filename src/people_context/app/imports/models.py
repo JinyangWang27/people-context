@@ -6,7 +6,7 @@ from collections.abc import Callable
 from datetime import date, datetime
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from people_context.domain.group import (
     GroupKind,
@@ -16,7 +16,7 @@ from people_context.domain.group import (
     check_temporal_basis,
     resolve_temporal_basis,
 )
-from people_context.domain.person import AliasKind, check_alias_kind
+from people_context.domain.person import AliasKind, check_alias_kind, check_person_name
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
@@ -104,6 +104,10 @@ class ImportReviewRow(BaseModel):
     "Katherine Bennett" and a stored "Kate". They are suggestions, not matches — the row stays
     unmatched and commits as a new person unless a reviewer names one through `matched_person_id`.
 
+    `name_is_email` is `true` only on a pending, unmatched person row whose name is an email address,
+    which only a batch staged before such names were refused can hold. Commit leaves that row
+    unresolved until a reviewer amends `name` to the person's name; the server guesses no name.
+
     `ordinal` is the row's 1-based position in the batch's staging order — `created_at`, then id.
     It is derived at read time and never stored. Withdrawn and committed rows keep theirs, so an
     amendment or withdrawal never renumbers the rows after it and a number a reviewer read before
@@ -119,6 +123,7 @@ class ImportReviewRow(BaseModel):
     match_candidates_truncated: bool = False
     possible_matches: list[MatchCandidate] | None = None
     possible_matches_truncated: bool = False
+    name_is_email: bool | None = None
 
 
 class ImportReviewResult(BaseModel):
@@ -297,6 +302,12 @@ class PersonCandidateInput(BaseModel):
     summary: str | None = None
     message_id: str | None = None
     date: datetime | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_not_an_email(cls, value: str) -> str:
+        check_person_name(value)
+        return value
 
 
 class InteractionCandidateInput(BaseModel):

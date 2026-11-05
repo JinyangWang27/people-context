@@ -242,3 +242,15 @@ def test_marked_vault_regeneration_preserves_obsidian_and_user_paths(tmp_path: P
     assert user_note.read_text(encoding="utf-8") == "# Keep me\n"
     assert scratch.read_text(encoding="utf-8") == "user root note\n"
     assert not stale_generated.exists()
+
+
+def test_email_addresses_are_listed_as_emails_rather_than_obsidian_aliases(tmp_path: Path) -> None:
+    person = VaultPerson(id="p1", name="Jordan Lee", aliases=["Jordy"], emails=["jordan@example.com"])
+    output = tmp_path / "vault"
+
+    FileSystemVaultWriter().write_vault(output, VaultSnapshot(people=[person], organizations=[]))
+
+    note = (output / "People" / "Jordan Lee.md").read_text(encoding="utf-8")
+    front = note.split("---")[1]
+    assert front.index("aliases:") < front.index('  - "Jordy"') < front.index("emails:")
+    assert front.index("emails:") < front.index('  - "jordan@example.com"')

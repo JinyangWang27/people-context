@@ -78,11 +78,18 @@ describe("parsePersonIndex", () => {
         id: "01KZQXWK571FJAF03F6H63A85Z",
         canonicalName: "Amina Hassan",
         aliases: ["amina.hassan@example.test"],
+        emails: [],
         summary: "Research partner.",
         isSelf: false,
         deleted: false,
       },
     ]);
+  });
+
+  it("reads the email addresses a newer server lists apart from names", () => {
+    const people = [{ ...INDEX.people[0], emails: ["amina.hassan@example.test"] }];
+
+    expect(parsePersonIndex(indexText({ people })).people[0]?.emails).toEqual(["amina.hassan@example.test"]);
   });
 
   it("ignores fields added by a newer server, as the compatibility promise allows", () => {

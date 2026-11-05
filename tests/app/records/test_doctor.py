@@ -390,6 +390,8 @@ def test_the_declared_codes_are_the_ones_the_report_can_emit() -> None:
         "contradictory_fact",
         "dangling_reference",
         "email_alias_not_handle",
+        "email_canonical_name",
+        "email_fact",
     )
 
 
@@ -418,3 +420,38 @@ def _only_mcp_action(finding: DoctorFinding) -> McpAction:
     actions = [action for action in finding.actions if isinstance(action, McpAction)]
     assert len(actions) == 1
     return actions[0]
+
+
+def test_a_canonical_name_that_is_an_email_is_reported_with_a_rename_left_to_the_operator() -> None:
+    usages = [
+        NameUsage(person=ALICE, value="alice@example.com", normalized="alice@example.com", source="canonical_name"),
+        NameUsage(person=ALEX, value="R&D @ Acme", normalized="r&d @ acme", source="canonical_name"),
+    ]
+
+    report = _report(at_canonical_names=usages)
+
+    assert _codes(report) == ["email_canonical_name"]
+    action = _only_mcp_action(report.findings[0])
+    assert action.model_dump() == {
+        "surface": "mcp",
+        "tool": "rename_person",
+        "arguments": {"person_id": ALICE.person_id},
+        "requires": ["name"],
+    }
+
+
+def test_an_email_stored_only_as_a_fact_is_reported_with_the_handle_that_makes_it_count() -> None:
+    facts = [
+        _fact("f1", " alice@example.com ", predicate="email"),
+        _fact("f2", "R&D @ Acme", predicate="team"),
+    ]
+
+    report = _report(at_facts=facts)
+
+    assert _codes(report) == ["email_fact"]
+    assert [fact.fact_id for fact in report.findings[0].facts] == ["f1"]
+    assert _only_mcp_action(report.findings[0]).arguments == {
+        "person_id": ALICE.person_id,
+        "value": "alice@example.com",
+        "kind": "handle",
+    }

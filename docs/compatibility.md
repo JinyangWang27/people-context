@@ -113,6 +113,14 @@ above. The version-1 person brief is unchanged: the browser's person endpoint ca
 kind `handle`, on staging, `remember_person`, `add_alias`, and `update_alias`. Aliases already stored load
 unchanged and are reported by `pctx doctor`.
 
+Email as contact information (#225) adds the MCP tool `rename_person` (core set), the doctor codes
+`email_canonical_name` and `email_fact`, the review row field `name_is_email`, and an `emails` list on the person
+brief identity and the person index; all are additive. `pctx edit --name` now keeps the replaced name as an alias.
+One input rule tightens: a new person may not be named by an email address, on staging, `remember_person`,
+`remember`, and `pctx init`, nor renamed to one. People already stored under an address load unchanged and are
+reported by `pctx doctor`. The vault export lists a person's addresses under an `emails` frontmatter key instead of
+`aliases`.
+
 Possible existing people (#222) adds `possible_matches` and `possible_matches_truncated` to `review_import` rows only;
 the version-1 import review document is unchanged. One input rule widens: an amended `matched_person_id`, on every
 amendment surface, also accepts a person the possible-match rule lists.

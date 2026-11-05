@@ -805,7 +805,8 @@ globalThis.fetch = async (path, options) => {
     return { ok: true, json: async () => ({ review, lines: ["#1"], fields: __FIELDS__,
       alias_fields: __ALIAS_FIELDS__ }) };
   }
-  return { ok: true, json: async () => ({ people: [], next_cursor: null }) };
+  if (path.startsWith("/api/person?")) return { ok: true, json: async () => globalThis.personDoc };
+  return { ok: true, json: async () => globalThis.peopleDoc || { people: [], next_cursor: null } };
 };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 """
@@ -1005,6 +1006,33 @@ _SHELL_COMMAND = r"""
   console.log(JSON.stringify({ command: shown[0].textContent.slice("Change with: ".length) }));
 })();
 """
+
+
+_CONTACT_IS_NOT_A_NAME = r"""
+(async () => {
+  const texts = (node) => node.all().map((n) => n.textContent || n.text).filter((t) => typeof t === "string" && t);
+  const person = { id: "P", canonical_name: "Jordan Lee", aliases: ["Jordy", "jordan@example.com"],
+    emails: ["jordan@example.com"], summary: null, is_self: false };
+  globalThis.peopleDoc = { people: [person], next_cursor: null };
+  await showPeople(null, []);
+  const row = view.all().find((n) => n.tag === "tr" && texts(n).includes("Jordan Lee"));
+  globalThis.personDoc = { person, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: ["nickname", "handle"],
+    alias_details: [{ value: "Jordy", kind: "nickname" }, { value: "jordan@example.com", kind: "handle" }] };
+  await showPerson("P", null, []);
+  const terms = view.all().filter((n) => n.tag === "dd");
+  console.log(JSON.stringify({ row: texts(row), aliases: texts(terms[0]), contact: texts(terms[1]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_email_addresses_are_shown_as_contact_rather_than_aliases(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _CONTACT_IS_NOT_A_NAME)
+    assert "jordan@example.com" not in " ".join(outcome["aliases"])
+    assert "Jordy" in " ".join(outcome["aliases"])
+    assert "jordan@example.com" in " ".join(outcome["contact"])
+    assert outcome["row"] == ["Jordan Lee", "Jordy", "jordan@example.com"]
 
 
 def _run_page(db_file: Path, tmp_path: Path, scenario: str) -> Any:

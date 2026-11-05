@@ -51,6 +51,7 @@ CORE_TOOLS: frozenset[str] = frozenset(
         "add_alias",
         "update_alias",
         "remove_alias",
+        "rename_person",
         "supersede_fact",
         "correct_record",
         "set_communication_philosophy",

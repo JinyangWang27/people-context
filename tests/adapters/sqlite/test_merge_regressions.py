@@ -153,7 +153,9 @@ def test_merging_a_duplicate_named_by_an_email_keeps_that_address_as_a_handle() 
     conn = open_db(":memory:")
     people, audit, clock, remember = _people_fixture(conn)
     primary = remember.execute(RememberPersonInput(name="Ann Lee")).person
-    duplicate = remember.execute(RememberPersonInput(name="ann@example.com")).person
+    # Stored before email names were refused; such a person still loads and can be merged.
+    duplicate = Person(canonical_name="ann@example.com")
+    people.save_person(duplicate)
 
     MergePeople(people, SqliteMergeStore(conn), clock, audit).execute(primary.id, duplicate.id)
 

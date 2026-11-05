@@ -952,6 +952,7 @@ def test_resolve_hints_are_validated_and_real_context_payload_is_returned(tmp_pa
         "aliases": [],
         "summary": "Colleague",
         "is_self": False,
+        "emails": [],
     }
     assert [fact["id"] for fact in payload["facts"]] == ["fact-1"]
     assert payload["observations"] == []

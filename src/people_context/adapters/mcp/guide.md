@@ -232,6 +232,23 @@ unrelated people share first names. Show them on that row and ask the user which
 
 Never choose one yourself on the name alone.
 
+**Email addresses are contact information, never names.** A person's `name` is what
+people call them; their address goes in `aliases` as a `handle`, which is also what
+identity matching and vCard export read. From a contact or tracker export (Linear,
+a CRM, an address book) that lists `Jordan Lee <jordan@example.com>`, stage:
+
+```json
+{"type": "person", "ref": "p1", "name": "Jordan Lee",
+ "aliases": [{"value": "jordan@example.com", "kind": "handle"}]}
+```
+
+When a source gives only an address, ask the user who it is rather than staging the
+address as the name; staging, `remember_person`, and `remember` refuse a new person
+named by an email (`name_is_email`). Looking someone up by their address is fine:
+`resolve_person` and `remember` find the person who holds it as a handle. Do not store
+an address as a fact either. A row from an older batch that still carries
+`name_is_email: true` stays unresolved at commit until `name` is amended.
+
 **Confirming an amendment is not acceptance of the batch.** "Yes, Staff Engineer is
 right" approves one correction; it does not approve committing anything. Call
 `commit_import` only when the user accepts the revised batch itself, and pass the
@@ -603,6 +620,12 @@ a misspelt nickname, a former name filed as a nickname — is fixed with
 what identity matching reads; one stored with another kind is reported by `pctx doctor` as
 `email_alias_not_handle`, and the fix is `update_alias` with `kind: "handle"`. Both match `value` by its normalized form and leave the
 person and every other record intact; neither touches the canonical name, which is a rename.
+
+A wrong canonical name is fixed with `rename_person(person_id, name)`. The old name stays
+on as a `former_name` alias, or as a `handle` when it is an email address, so a person
+stored as `contact@example.com` becomes "Jordan Lee" without losing the address. `pctx
+doctor` reports such people as `email_canonical_name`, and addresses stored only as facts
+as `email_fact`; for those, `add_alias` with `kind: "handle"` makes the address count.
 
 ### Redundant representation is not the same as multiple evidence
 

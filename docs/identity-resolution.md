@@ -94,7 +94,10 @@ stored as `aliases` rows with an explicit `kind` (`native_script`, `transliterat
 whenever an agent or the user learns a new name variant for a person (via `remember_person`, `add_alias`, or
 `pctx add-alias`, and corrected with `update_alias`/`remove_alias`). An email address is an alias only as a
 `handle`: that is the material import identity matching reads first, so every input path refuses an email of any
-other kind, and a name that becomes an alias on commit or merge is stored as a handle when it is an address. Reasons for this choice:
+other kind, and a name that becomes an alias on commit or merge is stored as a handle when it is an address. An
+address is never a canonical name either: new people named by one are refused, importers fall back to the structured
+name or the address's local part, and a rename (`rename_person`, `pctx edit --name`) keeps the replaced name as an
+alias, as a handle when it is an address. Reasons for this choice:
 
 - Algorithmic transliteration is inherently ambiguous and script/locale-dependent (a single Chinese surname
   can map to multiple romanizations depending on dialect and personal preference; a nickname is not

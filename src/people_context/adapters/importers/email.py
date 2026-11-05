@@ -21,6 +21,7 @@ from people_context.adapters.importers.bounded_source import (
     refuse_oversized_file,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
+from people_context.adapters.importers.normalization import person_name
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import (
     ExtractedImport,
@@ -255,7 +256,7 @@ class EmailImportExtractor:
                 normalized_address = normalize_name(address.strip())
                 if not normalized_address or "@" not in normalized_address or normalized_address in self_addresses:
                     continue
-                name = _normalize_text(display_name) or normalized_address.split("@", maxsplit=1)[0]
+                name = person_name(_normalize_text(display_name)) or normalized_address.split("@", maxsplit=1)[0]
                 correspondents.append((name, normalized_address))
                 work.account(len(correspondents) + 1)
         return correspondents

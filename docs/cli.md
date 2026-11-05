@@ -41,7 +41,7 @@ browser batch review, and M30.3 browser inline edit.
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
-| `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. |
+| `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. An email address is accepted only with `--kind handle`. |
 | `remove-alias PERSON VALUE` | Remove one alias, matched by normalized value; exits 1 when it is not an alias. |
 | `update-alias PERSON VALUE [--to NEW] [--kind KIND] [--lang LANG] [--script SCRIPT]` | Correct one alias in place; exits 1 on an unknown alias or a clashing new value. |
@@ -721,6 +721,8 @@ exits `2` before printing a partial report.
 | `contradictory_fact` | One person holds two facts with the same predicate, different values, and overlapping validity periods. |
 | `dangling_reference` | Relationships, affiliations, or interactions still point at a soft-deleted person. |
 | `email_alias_not_handle` | An email address is stored as an alias whose kind is not `handle`. Suggests `update_alias` with `kind: handle`, or `remove_alias`; both name the alias by its value. |
+| `email_canonical_name` | A person's canonical name is an email address. Suggests `rename_person`, with `name` left for the operator; the address is kept as a handle. |
+| `email_fact` | A fact's value is an email address that is not a handle alias of the same person, so matching and vCard export miss it. Suggests `add_alias` with `kind: handle`. |
 
 Handle collisions take precedence: a pair reported as `duplicate_handle` is not reported again as
 `duplicate_alias`, and that suppression applies even when `--only duplicate_alias` hides the handle finding

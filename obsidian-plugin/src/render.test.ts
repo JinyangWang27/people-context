@@ -8,6 +8,7 @@ function entry(overrides: Partial<PersonIndexEntry> = {}): PersonIndexEntry {
     id: "01KZQXWK571FJAF03F6H63A85Z",
     canonicalName: "Amina Hassan",
     aliases: ["amina.hassan@example.test"],
+    emails: [],
     summary: "Research partner.",
     isSelf: false,
     deleted: false,
@@ -92,6 +93,16 @@ describe("buildIndexRows", () => {
     const rows = buildIndexRows(index([entry({ summary: null })]));
 
     expect(rows[0]?.subtitle).toBe("amina.hassan@example.test");
+  });
+
+  it("prefers name aliases over email addresses for the subtitle", () => {
+    const rows = buildIndexRows(
+      index([
+        entry({ summary: null, aliases: ["amina.hassan@example.test", "Mina"], emails: ["amina.hassan@example.test"] }),
+      ]),
+    );
+
+    expect(rows[0]?.subtitle).toBe("Mina");
   });
 
   it("treats a hostile name as inert display text and still routes by id", () => {
@@ -225,6 +236,14 @@ describe("buildBriefView", () => {
     expect(view.headerLines).toContain("Context disclosure: ordinary");
     expect(view.headerLines).toContain("Guidance disclosure: ordinary (never widened)");
     expect(view.notice).toBe("This brief is a local export.");
+  });
+
+  it("lists email addresses as contact information, not aliases", () => {
+    const person = entry({ aliases: ["Mina", "amina.hassan@example.test"], emails: ["amina.hassan@example.test"] });
+    const view = buildBriefView(brief({ person }));
+
+    expect(view.headerLines).toContain("Aliases: Mina");
+    expect(view.headerLines).toContain("Contact: amina.hassan@example.test");
   });
 
   it("emits every section, keeping an empty one visible", () => {

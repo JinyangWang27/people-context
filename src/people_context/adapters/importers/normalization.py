@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from people_context.domain.person import is_email_shaped
+
 # An unquoted local part is dot-atom: non-empty atoms joined by single dots, so it can neither
 # start nor end with a dot nor carry consecutive dots.
 _EMAIL_RE = re.compile(
@@ -34,3 +36,12 @@ def clean_text(value: object | None) -> str:
     if not isinstance(value, str):
         return ""
     return " ".join(value.split())
+
+
+def person_name(value: str) -> str:
+    """Return an extracted name, or the local part when the source put an email address there.
+
+    Calendars and mail clients often repeat the address as the display name. An address is contact
+    information, refused as a person's name, so one such field must not refuse the whole import.
+    """
+    return value.split("@", maxsplit=1)[0] if is_email_shaped(value) else value

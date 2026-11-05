@@ -32,6 +32,29 @@ def check_alias_kind(value: str, kind: AliasKind) -> None:
         raise PydanticCustomError(ALIAS_EMAIL_NOT_HANDLE, "an email address is an alias only with kind `handle`")
 
 
+#: Refusal code for an email address offered as a person's canonical name.
+NAME_IS_EMAIL = "name_is_email"
+NAME_IS_EMAIL_MESSAGE = (
+    "an email address is contact information, not a name: use the person's name and add the address "
+    "as an alias with kind `handle`"
+)
+
+
+def check_person_name(value: str) -> None:
+    """Refuse an email address as a canonical name; it belongs in a `handle` alias.
+
+    Applied where a name is offered for a new person or a rename, never to a stored `Person`, so
+    people saved before this rule still load and can be renamed.
+    """
+    if is_email_shaped(value):
+        raise PydanticCustomError(NAME_IS_EMAIL, NAME_IS_EMAIL_MESSAGE)
+
+
+def contact_emails(aliases: list[Alias]) -> list[str]:
+    """Return the email addresses among a person's aliases: their contact information, not names."""
+    return [alias.value for alias in aliases if alias.kind is AliasKind.HANDLE and is_email_shaped(alias.value)]
+
+
 def kind_for_name(name: str, default: AliasKind) -> AliasKind:
     """The kind a name gets when it becomes an alias: an email address is always a `handle`."""
     return AliasKind.HANDLE if is_email_shaped(name) else default

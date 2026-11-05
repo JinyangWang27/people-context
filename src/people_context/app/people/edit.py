@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from people_context.app._mutation import (
     audit_mutation,
@@ -11,7 +11,7 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.person import Person
+from people_context.domain.person import Alias, AliasKind, Person, check_person_name, kind_for_name
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -34,6 +34,13 @@ class EditPersonInput(BaseModel):
     name: str | None = None
     summary: str | None = None
     source: str = "cli"
+
+    @field_validator("name")
+    @classmethod
+    def _name_is_not_an_email(cls, value: str | None) -> str | None:
+        if value is not None:
+            check_person_name(value)
+        return value
 
 
 class EditPerson:
@@ -70,9 +77,12 @@ class EditPerson:
             )
             if collision is not None:
                 raise PersonNameCollisionError(data.name, collision.id)
+            _keep_former_name(person, normalized)
             person.canonical_name = data.name
         if data.summary is not None:
             person.summary = data.summary
+        if before["aliases"] != snapshot(person)["aliases"]:
+            fields.append("aliases")
         person.updated_at = self._clock.now()
         self._writer.save_person(person)
         audit_mutation(
@@ -87,3 +97,17 @@ class EditPerson:
             source=data.source,
         )
         return person
+
+
+def _keep_former_name(person: Person, new_normalized: str) -> None:
+    """Keep the name being replaced as an alias, so a rename never loses how someone was known.
+
+    An email address stored as a name before that was refused becomes a `handle`, which keeps it as
+    contact information and keeps import matching on it. The new name stops being an alias.
+    """
+    old = person.canonical_name
+    person.aliases = [alias for alias in person.aliases if normalize_name(alias.value) != new_normalized]
+    old_normalized = normalize_name(old)
+    if old_normalized == new_normalized or any(normalize_name(a.value) == old_normalized for a in person.aliases):
+        return
+    person.aliases.append(Alias(value=old, kind=kind_for_name(old, AliasKind.FORMER_NAME)))

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from people_context.adapters.importers.normalization import clean_text, normalize_email
+from people_context.adapters.importers.normalization import clean_text, normalize_email, person_name
 
 
 @pytest.mark.parametrize(
@@ -52,3 +52,11 @@ def test_clean_text_collapses_whitespace_and_treats_non_strings_as_empty() -> No
     assert clean_text("  Alice   Q  Example ") == "Alice Q Example"
     assert clean_text(None) == ""
     assert clean_text(["extra", "columns"]) == ""
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("jordan.lee@example.com", "jordan.lee"), ("Jordan Lee", "Jordan Lee"), ("@jordan", "@jordan"), ("", "")],
+)
+def test_person_name_replaces_an_address_with_its_local_part(value: str, expected: str) -> None:
+    assert person_name(value) == expected

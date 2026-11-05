@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from mcp.types import ToolAnnotations
 
 from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refusals
-from people_context.app.people import AddAliasInput, RemoveAliasInput, UpdateAliasInput
+from people_context.app.people import AddAliasInput, EditPersonInput, RemoveAliasInput, UpdateAliasInput
 from people_context.app.records import (
     CorrectRecordInput,
     RecordFactInput,
@@ -69,7 +69,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
         Use this to undo a wrong alias, such as an email address stored as a name. The person and all of
         their other names and records stay intact. An alias that is not present returns `removed: false`
-        and changes nothing; the canonical name is refused with `alias_conflict` (rename via edit instead).
+        and changes nothing; the canonical name is refused with `alias_conflict` (use `rename_person` instead).
         """
         return call_action(lambda: deps.remove_alias.execute(RemoveAliasInput(person_id=person_id, value=value)))
 
@@ -95,6 +95,20 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                     person_id=person_id, value=value, new_value=new_value, kind=kind, lang=lang, script=script
                 )
             )
+        )
+
+    @mcp.tool(annotations=_CORRECT)
+    @flag_refusals
+    async def rename_person(person_id: str, name: str) -> dict[str, Any]:
+        """Replace a person's canonical name; the old name stays on as an alias.
+
+        Use this to correct a wrong name, such as an email address stored as the name: the old name is kept
+        as a `former_name` alias, or as a `handle` when it is an email address, so it is still contact
+        information and imports still match on it. An email address as the new name is refused with
+        `name_is_email`; a name that already belongs to another person is refused with `name_conflict`.
+        """
+        return call_action(
+            lambda: deps.edit_person.execute(EditPersonInput(person_id=person_id, name=name, source="agent"))
         )
 
     @mcp.tool(annotations=_WRITE)

@@ -49,6 +49,8 @@ class VaultPerson(BaseModel):
     is_self: bool = False
     summary: str | None = None
     aliases: list[str] = Field(default_factory=list)
+    # Email addresses are contact information, kept out of `aliases`, which Obsidian links by.
+    emails: list[str] = Field(default_factory=list)
     relationships: list[VaultRelationship] = Field(default_factory=list)
     affiliations: list[VaultAffiliation] = Field(default_factory=list)
     facts: list[VaultFact] = Field(default_factory=list)

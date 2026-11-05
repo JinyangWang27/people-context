@@ -18,6 +18,7 @@ from people_context.app.people.merge import MergeMovedCounts, MergePeople, Merge
 from people_context.app.people.remember import (
     AliasInput,
     AmbiguousPersonError,
+    EmailNameError,
     RememberPerson,
     RememberPersonInput,
     RememberPersonResult,
@@ -44,6 +45,7 @@ __all__ = [
     "base_match_reason",
     "EditPerson",
     "EditPersonInput",
+    "EmailNameError",
     "EXACT_MATCH_REASON",
     "Forget",
     "ForgetError",

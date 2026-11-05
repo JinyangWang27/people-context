@@ -114,6 +114,7 @@ def test_identity_is_narrow_and_active_context_is_outside_zero_budget() -> None:
         "aliases": ["Ally"],
         "summary": "A trusted colleague",
         "is_self": False,
+        "emails": [],
     }
     assert [record.relationship.type for record in result.relationships] == ["friend_of"]
     assert [record.organization_name for record in result.affiliations] == ["Acme"]

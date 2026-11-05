@@ -17,7 +17,7 @@ from people_context.app.context.models import (
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
-from people_context.domain.person import Person
+from people_context.domain.person import Person, contact_emails
 from people_context.domain.reminder import Reminder, ReminderKind
 from people_context.domain.shared import Sensitivity, as_utc
 from people_context.domain.trait import Trait
@@ -34,6 +34,8 @@ class PersonIdentity(BaseModel):
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
     is_self: bool
+    # Additive: the email addresses among `aliases`, which are contact information rather than names.
+    emails: list[str] = Field(default_factory=list)
 
 
 class TraitEvidenceLink(BaseModel):
@@ -226,6 +228,7 @@ def _identity(person: Person) -> PersonIdentity:
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,
         is_self=person.is_self,
+        emails=contact_emails(person.aliases),
     )
 
 

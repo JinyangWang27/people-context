@@ -464,7 +464,7 @@ def test_an_ambiguous_candidate_resolves_once_the_conflict_is_externally_correct
     batch = stage.execute(
         "notes",
         [
-            _person("alice", "shared@example.com", "shared@example.com"),
+            _person("alice", "A. Rivera", "shared@example.com"),
             {"type": "observation", "person_ref": "alice", "text": "Asked for metrics"},
         ],
     )
@@ -635,3 +635,45 @@ def test_a_batch_staged_before_the_handle_rule_still_commits_its_email_alias_as_
     assert result.committed_ids == [row.id]
     kinds = conn.execute("SELECT value, kind FROM aliases").fetchall()
     assert [(alias["value"], alias["kind"]) for alias in kinds] == [("ann@example.com", "handle")]
+
+
+def test_staging_refuses_an_email_address_as_a_person_name() -> None:
+    conn = open_db(":memory:")
+    _, stage, _, _, _ = _use_cases(conn)
+
+    with pytest.raises(ImportPipelineError) as exc_info:
+        stage.execute("linear", [_person("p1", "jordan@example.com")])
+
+    assert [detail["type"] for detail in exc_info.value.details["details"]] == ["name_is_email"]
+    # The address belongs among the aliases, as a handle; the same person stages under their name.
+    staged = stage.execute("linear", [_person("p1", "Jordan Lee", "jordan@example.com")])
+    assert staged.batch_id
+
+
+def test_a_row_staged_before_email_names_were_refused_is_flagged_and_stays_unresolved() -> None:
+    conn = open_db(":memory:")
+    _, stage, review, commit, remember = _use_cases(conn)
+    batch = stage.execute(
+        "linear",
+        [_person("p1", "Jordan Lee"), {"type": "observation", "person_ref": "p1", "text": "Owns billing"}],
+    )
+    # Recreate what an older release could store: a person row named by an address.
+    conn.execute(
+        "UPDATE import_staging SET candidate_json = json_set(candidate_json, '$.name', 'contact@example.com') "
+        "WHERE json_extract(candidate_json, '$.type') = 'person'"
+    )
+
+    rows = review.execute(batch.batch_id, suggest_possible_matches=True).candidates
+    person = next(row for row in rows if row.candidate["type"] == "person")
+    observation = next(row for row in rows if row.candidate["type"] == "observation")
+    assert person.name_is_email is True
+    assert observation.name_is_email is None
+    # The flag is part of the MCP review only, like the other read-time suggestions.
+    assert review.execute(batch.batch_id).candidates[0].name_is_email is None
+
+    result = commit.execute(batch.batch_id, [person.id, observation.id])
+
+    assert result.committed_ids == []
+    assert result.unresolved_ids == [person.id, observation.id]
+    assert remember.calls == []
+    assert conn.execute("SELECT COUNT(*) FROM persons").fetchone()[0] == 0

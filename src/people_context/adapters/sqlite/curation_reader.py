@@ -88,6 +88,29 @@ WHERE a.kind <> '{HANDLE_KIND}' AND instr(a.value, '@') > 0
 ORDER BY a.person_id, a.id
 """
 
+_AT_CANONICAL_NAMES_SQL = """
+SELECT p.id AS person_id, p.canonical_name AS value, p.canonical_name_normalized AS normalized,
+       p.canonical_name, p.is_self
+FROM persons p
+WHERE p.deleted_at IS NULL AND instr(p.canonical_name, '@') > 0
+ORDER BY p.id
+"""
+
+# shortcut: compares a fact value to handles by lower(trim()), which equals `normalize_name` for the
+# ASCII addresses importers store; move the comparison into the application if non-ASCII ones matter.
+_AT_FACTS_WITHOUT_HANDLE_SQL = f"""
+SELECT f.id AS fact_id, f.person_id AS person_id, f.predicate, f.value, f.sensitivity, f.valid_from, f.valid_to,
+       p.canonical_name, p.is_self
+FROM facts f
+JOIN persons p ON p.id = f.person_id AND p.deleted_at IS NULL
+WHERE instr(f.value, '@') > 0
+  AND NOT EXISTS (
+    SELECT 1 FROM aliases a
+    WHERE a.person_id = f.person_id AND a.kind = '{HANDLE_KIND}' AND a.value_normalized = lower(trim(f.value))
+  )
+ORDER BY f.person_id, f.id
+"""
+
 # Candidate contradictions: an active person holding more than one distinct value for the same
 # predicate. Values are compared exactly as stored — the reader invents no case or whitespace
 # folding of its own — and whether the periods actually overlap is decided by the application.
@@ -172,20 +195,22 @@ class SqliteCurationReader:
             for row in self._conn.execute(_NON_HANDLE_AT_ALIASES_SQL).fetchall()
         ]
 
+    def list_at_canonical_names(self) -> list[NameUsage]:
+        """Return every active person whose canonical name contains `@`."""
+        return [
+            NameUsage(
+                person=_person(row), value=row["value"], normalized=row["normalized"], source=CANONICAL_NAME_SOURCE
+            )
+            for row in self._conn.execute(_AT_CANONICAL_NAMES_SQL).fetchall()
+        ]
+
+    def list_at_facts_without_handle(self) -> list[FactAssertion]:
+        """Return facts of active people whose value contains `@` and is not one of their handles."""
+        return [_fact(row) for row in self._conn.execute(_AT_FACTS_WITHOUT_HANDLE_SQL).fetchall()]
+
     def list_conflicting_facts(self) -> list[FactAssertion]:
         """Return facts of active people whose (person, predicate) group holds differing values."""
-        return [
-            FactAssertion(
-                person=_person(row),
-                fact_id=row["fact_id"],
-                predicate=row["predicate"],
-                value=row["value"],
-                sensitivity=row["sensitivity"],
-                valid_from=_as_date(row["valid_from"]),
-                valid_to=_as_date(row["valid_to"]),
-            )
-            for row in self._conn.execute(_CONFLICTING_FACTS_SQL).fetchall()
-        ]
+        return [_fact(row) for row in self._conn.execute(_CONFLICTING_FACTS_SQL).fetchall()]
 
     def list_deleted_person_references(self) -> list[DeletedPersonReference]:
         """Return every relationship, affiliation, or interaction still pointing at a deleted person."""
@@ -204,6 +229,18 @@ class SqliteCurationReader:
                 for row in self._conn.execute(sql).fetchall()
             )
         return references
+
+
+def _fact(row: sqlite3.Row) -> FactAssertion:
+    return FactAssertion(
+        person=_person(row),
+        fact_id=row["fact_id"],
+        predicate=row["predicate"],
+        value=row["value"],
+        sensitivity=row["sensitivity"],
+        valid_from=_as_date(row["valid_from"]),
+        valid_to=_as_date(row["valid_to"]),
+    )
 
 
 def _person(row: sqlite3.Row) -> PersonRef:

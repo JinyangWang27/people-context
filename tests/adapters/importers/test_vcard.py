@@ -345,3 +345,22 @@ def _ordinary_text(conn) -> str:
         for row in conn.execute(f"SELECT * FROM {table}").fetchall():
             values.extend(str(value) for value in row if isinstance(value, str))
     return "\n".join(values)
+
+
+@pytest.mark.parametrize(
+    ("structured", "expected_name"),
+    [("N:Lee;Jordan;;;", "Jordan Lee"), (None, "jordan")],
+)
+def test_a_card_whose_fn_is_an_address_stages_a_name_and_keeps_the_address_as_a_handle(
+    structured: str | None, expected_name: str
+) -> None:
+    conn = open_db(":memory:")
+    _, import_content, review, _ = _use_cases(conn)
+    lines = ["BEGIN:VCARD", "VERSION:4.0", "FN:jordan@example.com", structured, "END:VCARD"]
+    card = "\n".join(line for line in lines if line) + "\n"
+
+    batch = import_content.execute("vcard", content=card)
+
+    (person,) = [row.candidate for row in review.execute(batch.batch_id).candidates]
+    assert person["name"] == expected_name
+    assert {"value": "jordan@example.com", "kind": "handle"} in person["aliases"]
