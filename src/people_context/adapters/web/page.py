@@ -44,7 +44,7 @@ button.link { border: none; padding: 0; color: var(--accent); text-align: left; 
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line);
   overflow-wrap: anywhere; }
-th { color: var(--muted); font-weight: 600; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
 .warning { background: var(--warn-bg); color: var(--warn-fg); padding: 8px 12px; border-radius: 6px; }
 .notice { color: var(--muted); font-style: italic; }
 .error { color: #c0392b; }
@@ -52,7 +52,8 @@ th { color: var(--muted); font-weight: 600; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
 dt { color: var(--muted); }
 dd { margin: 0; overflow-wrap: anywhere; }
-.badge { display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px; }
+.badge { display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-radius: 4px;
+  white-space: nowrap; }
 .accepted { border-color: var(--accent); color: var(--accent); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; align-items: center; }
 .confirm { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 12px; }
@@ -63,6 +64,21 @@ textarea { width: 100%; box-sizing: border-box; }
 .edit { border: 1px solid var(--accent); border-radius: 6px; padding: 8px 12px; margin-top: 12px; }
 .edit dl { align-items: start; }
 .alias { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+a { color: var(--accent); overflow-wrap: anywhere; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.group { margin-top: 24px; }
+.group h3 { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: 0 0 4px;
+  overflow-wrap: anywhere; }
+.proposal dl { margin: 4px 0 0; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+@media (max-width: 640px) {
+  table.review, table.review tr, table.review td { display: block; width: 100%; box-sizing: border-box; }
+  table.review th { display: none; }
+  table.review tr { border-bottom: 1px solid var(--line); padding: 6px 0; }
+  table.review td { border: none; padding: 2px 0; }
+  dl { grid-template-columns: 1fr; }
+}
 </style>
 </head>
 <body>
@@ -414,12 +430,96 @@ function reenable() {
   if (batchState.commit) batchState.commit.disabled = batchState.accepted.size === 0;
 }
 
-function matchState(candidate) {
+// Whether a person row creates someone, joins someone already stored, or owes a decision first.
+function identityState(row) {
+  const candidate = row.candidate;
   if (candidate.type !== "person") return "";
   if (candidate.match_disposition === "ambiguous") {
-    return "ambiguous (" + (candidate.match_count ?? "several") + " candidates)";
+    return "Needs decision: matches " + (candidate.match_count ?? "several") + " people";
   }
-  return candidate.matched_person_id ? "matches existing person" : "new";
+  if (row.name_is_email) return "Needs decision: the name is an email address";
+  return candidate.matched_person_id ? "Existing person" : "New person";
+}
+
+// The person a row is about: a person row heads its own group, and any other row joins the first
+// staged person its person references name. The references are read from the field list rather
+// than named here, so a new one groups without a change to this page.
+function personOf(row, people) {
+  if (row.candidate.type === "person") return row.id;
+  for (const descriptor of batchState.fields[row.candidate.type] || []) {
+    if (!(descriptor.targets || []).includes("person")) continue;
+    const value = row.candidate[descriptor.name];
+    for (const id of Array.isArray(value) ? value : [value]) if (people.has(id)) return id;
+  }
+  return null;
+}
+
+// Only an absolute http(s) address becomes a link, so a `javascript:` or other scheme in staged text
+// stays inert. The page already sends `Referrer-Policy: no-referrer`; `rel` repeats it per link. A
+// value carrying a label before its address, as a stored source does (`import/agent:` then a URL),
+// links the address and keeps the label as text.
+function textOrLink(text) {
+  // Built, not written out: the page carries no literal address, so a test can hold it to none.
+  const at = Math.max(...["https", "http"].map((scheme) => text.indexOf(scheme + "://")));
+  let url = null;
+  try { url = at < 0 ? null : new URL(text.slice(at)); } catch (error) { url = null; }
+  if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) return el("span", text);
+  const link = el("a", text.slice(at));
+  link.href = url.href;
+  link.rel = "noopener noreferrer";
+  link.target = "_blank";
+  if (at === 0) return link;
+  const node = el("span", null);
+  node.append(el("span", text.slice(0, at)), link);
+  return node;
+}
+
+// A row named by what it proposes, without the ids the CLI line carries.
+function rowLabel(row) {
+  const candidate = row.candidate;
+  const what = candidate.name
+    || (candidate.predicate ? candidate.predicate + " = " + candidate.value : null)
+    || candidate.summary || candidate.text || candidate.relationship_type || candidate.org || candidate.value || "";
+  return "#" + row.ordinal + " " + candidate.type + (what ? ": " + what : "");
+}
+
+// The staged candidate as labelled fields instead of JSON. Empty fields are left out, as is a
+// reference to the person whose group the row already sits in.
+function proposal(row, owner, showSource) {
+  const node = el("div", null, "proposal");
+  node.append(el("strong", row.candidate.type));
+  const grid = el("dl");
+  for (const descriptor of batchState.fields[row.candidate.type] || []) {
+    const value = row.candidate[descriptor.name];
+    if (value === undefined || value === null || value === "" || (Array.isArray(value) && !value.length)) continue;
+    if (value === owner && row.id !== owner) continue;
+    const shown = el("dd");
+    if (descriptor.control === "alias_list") {
+      shown.append(el("span", value.map((alias) => alias.value + (alias.kind && alias.kind !== "other"
+        ? " (" + alias.kind + ")" : "")).join(", ")));
+    } else if (descriptor.targets) {
+      const byId = new Map(batchState.review.candidates.map((other) => [other.id, other]));
+      shown.append(el("span", (Array.isArray(value) ? value : [value])
+        .map((id) => (byId.has(id) ? rowLabel(byId.get(id)) : String(id))).join("; ")));
+    } else if (Array.isArray(value)) {
+      shown.append(el("span", value.join(", ")));
+    } else {
+      shown.append(textOrLink(String(value)));
+    }
+    grid.append(el("dt", descriptor.name.split("_").join(" ")), shown);
+  }
+  if (showSource && row.source) {
+    const shown = el("dd");
+    shown.append(textOrLink(row.source));
+    grid.append(el("dt", "source"), shown);
+  }
+  node.append(grid);
+  return node;
+}
+
+function labelled(node, label) {
+  node.setAttribute("aria-label", label);
+  return node;
 }
 
 // `baseline` is the digest the kept acceptances were made against: the one on screen, or the one
@@ -465,8 +565,15 @@ function renderBatch() {
   const header = el("dl");
   header.append(el("dt", "Batch"), el("dd", review.batch_id));
   for (const [status, count] of Object.entries(counts)) header.append(el("dt", status), el("dd", count));
+  // One source for the whole batch is shown once here; rows from several sources show their own.
+  const sources = new Set(review.candidates.map((row) => row.source).filter(Boolean));
+  if (sources.size === 1) {
+    const shown = el("dd");
+    shown.append(textOrLink(Array.from(sources)[0]));
+    header.append(el("dt", "Source"), shown);
+  }
   const boxes = [];
-  const rows = review.candidates.map((row, index) => {
+  const cells = (row, owner) => {
     let pick = "";
     if (row.status === "pending") {
       pick = el("input");
@@ -479,12 +586,50 @@ function renderBatch() {
     if (batchState.accepted.has(row.id)) status.append(" ", el("span", "accepted", "badge accepted"));
     const verbatim = el("details");
     verbatim.append(el("summary", "Candidate"), el("pre", JSON.stringify(row.candidate, null, 2)));
-    // Only a pending row opens a form: the use case refuses an amendment of any other with
-    // `candidate_not_pending`, and the page does not offer what would be refused.
-    const edit = row.status === "pending"
-      ? button(batchState.editing === row.id ? "Close" : "Edit", () => toggleEdit(row.id))
-      : "";
-    return [pick, "#" + row.ordinal, status, batchState.lines[index], matchState(row.candidate), verbatim, edit];
+    // Only a pending row opens a form or takes a decision: the use cases refuse an amendment or a
+    // withdrawal of any other row, and the page does not offer what would be refused.
+    const tools = el("div", null, "row-actions");
+    if (row.status === "pending") {
+      tools.append(button(batchState.editing === row.id ? "Close" : "Edit", () => toggleEdit(row.id)));
+      if (!batchState.accepted.has(row.id)) {
+        tools.append(labelled(button("Accept", () => acceptSelected([row.id])), "Accept #" + row.ordinal));
+      }
+      tools.append(labelled(button("Reject", () => withdrawSelected([row.id])), "Reject #" + row.ordinal));
+    }
+    return [pick, "#" + row.ordinal, status, proposal(row, owner, sources.size > 1), identityState(row),
+      verbatim, tools];
+  };
+  const people = new Set(review.candidates.filter((row) => row.candidate.type === "person").map((row) => row.id));
+  const groups = new Map();
+  for (const row of review.candidates) {
+    const owner = personOf(row, people);
+    if (!groups.has(owner)) groups.set(owner, []);
+    groups.get(owner).push(row);
+  }
+  // Rows about no staged person come last, after every person's group.
+  const ordered = Array.from(groups).sort(([a], [b]) => (a === null) - (b === null));
+  const editing = review.candidates.find((row) => row.id === batchState.editing && row.status === "pending");
+  const sections = ordered.map(([owner, rows]) => {
+    const head = owner === null ? null : rows.find((row) => row.id === owner);
+    const title = head ? (head.candidate.name || rowLabel(head)) : "Not about one staged person";
+    const section = labelled(el("section", null, "group"), title);
+    const heading = el("h3", title);
+    if (head) heading.append(" ", el("span", identityState(head), "badge"));
+    section.append(heading);
+    const possible = (head && head.possible_matches) || [];
+    if (possible.length) {
+      section.append(el("p", "Possibly the same as " + possible.map((match) => match.canonical_name).join(", ")
+        + (head.possible_matches_truncated ? " and others" : "")
+        + ". Unless a match is chosen, this commits as a new person.", "notice"));
+    }
+    const open = rows.filter((row) => row.status === "pending" && !batchState.accepted.has(row.id))
+      .map((row) => row.id);
+    if (open.length) section.append(button("Accept " + open.length + " for " + title, () => acceptSelected(open)));
+    const grid = table(["", "#", "Status", "Proposal", "Identity", "Staged", ""], rows.map((row) => cells(row, owner)));
+    grid.className = "review";
+    section.append(grid);
+    if (editing && rows.includes(editing)) section.append(currentForm(editing));
+    return section;
   });
   const selected = () => boxes.filter(([box]) => box.checked).map(([, id]) => id);
   const confirmArea = el("div");
@@ -499,14 +644,7 @@ function renderBatch() {
   actions.append(commit, el("span", batchState.accepted.size + " accepted", "notice"));
   const nodes = [header, el("p", reviewWarning, "warning")];
   if (batchState.message) nodes.push(el("p", batchState.message, "notice"));
-  const editing = review.candidates.find((row) => row.id === batchState.editing && row.status === "pending");
-  nodes.push(
-    actions,
-    confirmArea,
-    table(["", "#", "Status", "Candidate", "Match", "Staged", ""], rows),
-    editing ? currentForm(editing) : el("div"),
-    button("Back to sources", () => showSources(null, [])),
-  );
+  nodes.push(actions, confirmArea, ...sections, button("Back to sources", () => showSources(null, [])));
   show("Import batch", ...nodes);
 }
 
@@ -843,7 +981,7 @@ function saveEdit(row, controls, rowErrors) {
     rowErrors.replaceChildren(el("p", "Nothing changed.", "notice"));
     return;
   }
-  return amendRow(row, patch, controls, rowErrors, "Amended #" + row.ordinal + ".");
+  return amendRow(row, patch, controls, rowErrors, "Amended #" + row.ordinal + ". Saved, not accepted.");
 }
 
 async function amendRow(row, patch, controls, rowErrors, message) {
@@ -938,13 +1076,16 @@ async function withdrawSelected(ids) {
   if (at === navigation) return showBatch(batchId, message, baseline);
 }
 
-// One explicit click, on a confirmation naming how many were accepted. The result may commit
+// One explicit click, on a confirmation naming exactly the accepted rows. The result may commit
 // fewer: an ambiguous person, or a row that resolves through one, is reported unresolved.
 function confirmCommit(area) {
   const count = batchState.accepted.size;
+  const chosen = batchState.review.candidates.filter((row) => batchState.accepted.has(row.id));
   const panel = el("div", null, "confirm");
   panel.append(
-    el("p", "Commit " + count + " accepted candidates? Unresolved rows stay pending."),
+    el("p", "Commit exactly these " + count + " accepted proposals? Every other row stays pending, "
+      + "and unresolved rows stay pending too."),
+    list(chosen.map(rowLabel)),
     button("Confirm commit of " + count, () => commitAccepted()),
     " ",
     button("Cancel", () => area.replaceChildren()),

@@ -606,7 +606,9 @@ in the address bar or history; reloading that address is refused, and the printe
 Every response carries `Content-Security-Policy: default-src 'self'; script-src 'nonce-N'; style-src 'nonce-N'`
 with a fresh nonce, `Cache-Control: no-store`, and `Referrer-Policy: no-referrer`. The page is one inline document
 with no external script, stylesheet, or font; it renders every recorded value as text, so a name containing
-markup is displayed, not run.
+markup is displayed, not run. The one exception is on the batch page: an absolute `http:` or `https:` URL in a
+value, or after a source's label such as `import/agent:`, is shown as a link opening in a new tab with
+`rel="noopener noreferrer"`; any other scheme, `javascript:` included, stays text.
 
 Disclosure follows the MCP server's ordinary reads. The person view shows no `sensitive` or `restricted` record
 unless `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE` is set in the environment of the `pctx browse` process itself, and no
@@ -621,19 +623,26 @@ and remain with the operator-only `pctx source show`. A forgotten (redacted) sou
 shown as withheld, never as zero.
 
 The batch page (M30.2) opens from a source's receipt, or by typing a batch id on the sources view, which is how a
-batch staged without a receipt is reached. It lists every row in `pctx import review` order — the same `#n`
-ordinals and the same one-line description, withdrawn and committed rows included with a status badge — plus each
-person row's match state (new, matches an existing person, or ambiguous with its count) and the staged candidate
-verbatim, under the review disclosure warning. As in `pctx import review`, staged candidates are shown unfiltered,
+batch staged without a receipt is reached. It groups rows by person: each staged person heads a section, and
+every other row joins the first staged person its person reference names; rows about no staged person come last.
+A section's heading shows the person's identity state — new, existing, or needs a decision (ambiguous with its
+count, or a name that is an email address) — and any possible existing matches by name. Within a section, rows
+keep `pctx import review` order — the same `#n` ordinals and one-line description, withdrawn and committed rows
+included with a status badge — with each candidate's fields shown as labelled values (aliases, values, `stated
+by`, references by `#n`) and the staged candidate verbatim behind a disclosure, under the review disclosure
+warning. The batch's source is shown once in the header, or per row when rows come from different sources. As in `pctx import review`, staged candidates are shown unfiltered,
 including a `sensitive` fact, because the reviewer must see what they would commit. The header carries the batch
 id and counts by status only.
 
-Pending rows have a checkbox. **Accept selected** writes nothing; it marks rows for the commit, as `pctx import
-review --interactive` does. **Withdraw selected** calls the same use case as `pctx import reject`, and **Commit
-accepted** the same as `pctx import commit`, after one confirmation that names how many rows were accepted. The
+Pending rows have a checkbox and their own **Accept** and **Reject** buttons, and each section offers **Accept N
+for <person>**, which marks that person's pending rows only. **Accept selected** and every Accept button write
+nothing; they mark rows for the commit, as `pctx import review --interactive` does. Saving an edit is not
+acceptance: the page says so, and the amended row must still be accepted. **Withdraw selected** and **Reject**
+call the same use case as `pctx import reject`, and **Commit accepted** the same as `pctx import commit`, after one
+confirmation that lists exactly the accepted rows and says every other row stays pending. The
 result reports the committed, unresolved, and already-committed counts: an accepted ambiguous person, and a fact
 that resolves through it, are reported unresolved rather than committed. There is no auto-commit and no control
-that selects every row. Both writes send the `batch_digest` of the review on screen, so if another tab, a CLI
+that selects every row of the batch. Both writes send the `batch_digest` of the review on screen, so if another tab, a CLI
 command, or an MCP client amended, withdrew, or committed anything in the batch since, the whole action is refused
 with `batch_changed` and nothing is written. A refusal is shown by its use-case code alone — `batch_changed`,
 `candidate_withdrawn`, `candidate_not_pending`, and the rest — never the refused payload. After every action the
