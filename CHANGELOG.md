@@ -5,6 +5,47 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/JinyangWang27/people-context/compare/v1.4.0...v1.5.0) (2026-11-05)
+
+
+### Features
+
+* add aliases from the browser person view ([105a22c](https://github.com/JinyangWang27/people-context/commit/105a22cd5ddac56ff71ad200d897f6b6fe9b48a7))
+* add aliases from the browser person view ([bf606e0](https://github.com/JinyangWang27/people-context/commit/bf606e09cab17ed365147e59d3e79aa293456ad1))
+* add opt-in core tool set to cut per-request schema tokens ([282d1f8](https://github.com/JinyangWang27/people-context/commit/282d1f80e9222dde26ae31831697f3b0cd79c43f))
+* add opt-in core tool set to cut per-request schema tokens ([6e9334f](https://github.com/JinyangWang27/people-context/commit/6e9334f75f6e56c6b99de603f815ccac864a2642)), closes [#223](https://github.com/JinyangWang27/people-context/issues/223)
+* add remove_alias and update_alias through MCP and CLI ([#231](https://github.com/JinyangWang27/people-context/issues/231)) ([5fb6ed5](https://github.com/JinyangWang27/people-context/commit/5fb6ed524b069237f3082f122532d0c19facc404)), closes [#221](https://github.com/JinyangWang27/people-context/issues/221)
+* correct affiliations, facts, traits, and reminders from the browser ([996223b](https://github.com/JinyangWang27/people-context/commit/996223be52773f4d62e6c6dcd5d4220469a40f10))
+* correct affiliations, facts, traits, and reminders from the browser ([b90b77d](https://github.com/JinyangWang27/people-context/commit/b90b77d5c1866946bfbfbe02e332a1e71482411a))
+* edit aliases in the browser and keep email aliases as handles ([1cbc898](https://github.com/JinyangWang27/people-context/commit/1cbc898df5e0cb2b0e95c76fd2c7ae12e4dc27a8)), closes [#221](https://github.com/JinyangWang27/people-context/issues/221)
+* edit aliases in the browser and keep email aliases as handles ([#232](https://github.com/JinyangWang27/people-context/issues/232)) ([ff8ff1c](https://github.com/JinyangWang27/people-context/commit/ff8ff1c543146310beca5b70174ba0f345374926))
+* **evals:** measure workflow tool-call and token cost ([#229](https://github.com/JinyangWang27/people-context/issues/229)) ([7e35507](https://github.com/JinyangWang27/people-context/commit/7e3550753843ca42f975ba04927e36feb2876d36))
+* keep core instructions and prompts to core tools; bump plugin ([0f1ccb1](https://github.com/JinyangWang27/people-context/commit/0f1ccb1d1d4482c232ba2bb6e2c5d9adb00ead5d))
+* let pctx setup write a core tool-set entry ([fe94d38](https://github.com/JinyangWang27/people-context/commit/fe94d38dc9cd7c8b833032afc9cc3d9585b0e9eb)), closes [#223](https://github.com/JinyangWang27/people-context/issues/223)
+* review import batches person by person in the browser ([593ae15](https://github.com/JinyangWang27/people-context/commit/593ae152b07121bca38bc22707b63136b9f74d3e))
+* review import batches person by person in the browser ([1c3e978](https://github.com/JinyangWang27/people-context/commit/1c3e97833ee4a844bb8134cff94584220bdf3052)), closes [#224](https://github.com/JinyangWang27/people-context/issues/224)
+* suggest possible existing people during import review ([a9b7809](https://github.com/JinyangWang27/people-context/commit/a9b7809ae6e72e80a1844b6262fb4f52bb049de0))
+* suggest possible existing people during import review ([2492a0b](https://github.com/JinyangWang27/people-context/commit/2492a0be4a26360fc07c44bb7f3d0ec3ba73f634)), closes [#222](https://github.com/JinyangWang27/people-context/issues/222)
+
+
+### Bug Fixes
+
+* cut retries and read-backs from the staged capture path ([#230](https://github.com/JinyangWang27/people-context/issues/230)) ([bc4ff2e](https://github.com/JinyangWang27/people-context/commit/bc4ff2e73698a92e237d1f2d9002f75037322ced))
+* floor narrowed setup entries at the release that accepts --tools ([f0a1a6a](https://github.com/JinyangWang27/people-context/commit/f0a1a6a4f4de37b288c755f80bd23fbbe0599c8a))
+* guard alias writes against navigation and commit legacy email aliases ([7630b6a](https://github.com/JinyangWang27/people-context/commit/7630b6a7cf897767d38ea1f163483c35e49d0bf4))
+* keep email-shaped vCard N and NICKNAME values as handles ([6eb5cf0](https://github.com/JinyangWang27/people-context/commit/6eb5cf0742af7fcab2d99a094ab5689fa1028d7d))
+* start the plugin server under Codex and add pctx health ([#227](https://github.com/JinyangWang27/people-context/issues/227)) ([50f4bca](https://github.com/JinyangWang27/people-context/commit/50f4bcaf70cf73976aec7eb0cf27c310eb1e4ecd)), closes [#226](https://github.com/JinyangWang27/people-context/issues/226)
+* treat email addresses as contact information, never names ([df90e79](https://github.com/JinyangWang27/people-context/commit/df90e79c5dab23c78b3b476158ebab448d44fc8c))
+* treat email addresses as contact information, never names ([00c5a4c](https://github.com/JinyangWang27/people-context/commit/00c5a4cc14b5f4fcb86fec77eb75ba1d435f78a9)), closes [#225](https://github.com/JinyangWang27/people-context/issues/225)
+
+
+### Documentation
+
+* describe browser alias and record editing everywhere it is summarized ([9ee87f6](https://github.com/JinyangWang27/people-context/commit/9ee87f647d90f3629691113eeacf777f165691b8))
+* describe browser editing; chore: roll up Dependabot updates ([51f99b1](https://github.com/JinyangWang27/people-context/commit/51f99b1f874f083c2e7d13528dcc2dc5ef478183))
+* record workflow cost with the core tool set ([4b05978](https://github.com/JinyangWang27/people-context/commit/4b059787c73e8a1b7a26738466d81691404ac2a1))
+* record workflow cost with the core tool set ([04155e8](https://github.com/JinyangWang27/people-context/commit/04155e8ba70b337dffc5d4f61b8c9cf53c33d598))
+
 ## [1.4.0](https://github.com/JinyangWang27/people-context/compare/v1.3.0...v1.4.0) (2026-10-31)
 
 
