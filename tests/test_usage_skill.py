@@ -154,6 +154,16 @@ class TestUsageSkill:
 
         assert "confirming an amendment is not acceptance of the batch" in lowered
 
+    def test_possible_duplicates_are_asked_about_never_chosen_on_name_alone(self) -> None:
+        """#222: the skill and the server guide both teach the same three-way choice."""
+        for path in (SKILL_PATH, GUIDE_PATH):
+            body = path.read_text(encoding="utf-8")
+            lowered = " ".join(body.lower().split())
+
+            assert "possible_matches" in body
+            assert '{"matched_person_id": "<that id>"}' in body
+            assert "never choose one yourself on the name alone" in lowered
+
     def test_maintenance_reads_before_it_proposes_and_waits_for_approval(self) -> None:
         body = SKILL_PATH.read_text(encoding="utf-8")
         lowered = " ".join(body.lower().split())

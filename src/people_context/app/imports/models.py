@@ -74,6 +74,10 @@ class ImportBatchResult(BaseModel):
 MAX_MATCH_CANDIDATES: Final = 10
 MAX_MATCH_CANDIDATE_NAME_CHARS: Final = 256
 
+#: Possible existing people one unmatched person row may list. Kept small: these are weak suggestions
+#: from a shared given name, and a reviewer looking for someone else uses `resolve_person`.
+MAX_POSSIBLE_MATCHES: Final = 3
+
 
 class MatchCandidate(BaseModel):
     """One existing person an ambiguous person candidate could be.
@@ -95,6 +99,11 @@ class ImportReviewRow(BaseModel):
     absent, rather than empty, everywhere else, so "no decision is owed here" and "the decision has
     no options" stay distinguishable.
 
+    `possible_matches` is present only on a pending, unmatched person row that shares a given name, or
+    a common short or long form of it, with existing people: "Alex Morgan" and a stored "Alex", or
+    "Katherine Bennett" and a stored "Kate". They are suggestions, not matches — the row stays
+    unmatched and commits as a new person unless a reviewer names one through `matched_person_id`.
+
     `ordinal` is the row's 1-based position in the batch's staging order — `created_at`, then id.
     It is derived at read time and never stored. Withdrawn and committed rows keep theirs, so an
     amendment or withdrawal never renumbers the rows after it and a number a reviewer read before
@@ -108,6 +117,8 @@ class ImportReviewRow(BaseModel):
     ordinal: int = 0
     match_candidates: list[MatchCandidate] | None = None
     match_candidates_truncated: bool = False
+    possible_matches: list[MatchCandidate] | None = None
+    possible_matches_truncated: bool = False
 
 
 class ImportReviewResult(BaseModel):

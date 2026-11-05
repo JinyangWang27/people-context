@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from people_context.domain.nicknames import given_name_variants
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.repository import PersonNameMatch, PersonReader
@@ -95,6 +96,37 @@ def collision_page(people: PersonReader, tokens: list[str], limit: int) -> list[
     if not normalized:
         return []
     return people.page_by_normalized_names(normalized, limit)
+
+
+def possible_match_tokens(name: str) -> list[str]:
+    """Return names an existing record of this person may be stored under, other than the name itself.
+
+    "Alex Morgan" may already be stored as "Alex", and "Katherine Bennett" as "Kate" or "Kate Bennett":
+    the given name alone, and each common short or long form of it with and without the rest of the
+    name. These are weak evidence — unrelated people share given names — so they only ever produce
+    suggestions a reviewer confirms, never a match.
+    """
+    normalized = normalize_name(name)
+    words = normalized.split()
+    if not words:
+        return []
+    given, rest = words[0], " ".join(words[1:])
+    forms = {given, *given_name_variants(given)}
+    probes = forms | ({f"{form} {rest}" for form in forms} if rest else set())
+    probes.discard(normalized)
+    return sorted(probes)
+
+
+def possible_match_page(people: PersonReader, name: str, limit: int) -> list[PersonNameMatch]:
+    """Return the first `limit` active people stored under one of this name's possible-match tokens."""
+    tokens = possible_match_tokens(name)
+    return people.page_by_normalized_names(tokens, limit) if tokens else []
+
+
+def is_possible_match(people: PersonReader, name: str, person_id: str) -> bool:
+    """Whether one named person is among this name's possible matches, however many there are."""
+    tokens = possible_match_tokens(name)
+    return bool(tokens) and people.matches_normalized_names(person_id, tokens)
 
 
 def candidate_identity_tokens(name: str, aliases: list[dict[str, object]]) -> list[str]:
