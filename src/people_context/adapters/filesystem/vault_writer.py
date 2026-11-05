@@ -139,9 +139,11 @@ def _render_person(
             *[f"  - {_yaml_scalar(alias)}" for alias in person.aliases],
         ]
     )
+    emails = ["emails:", *[f"  - {_yaml_scalar(email)}" for email in person.emails]] if person.emails else []
     lines = [
         "---",
         *aliases,
+        *emails,
         "tags: [people-context/person]",
         f"people-context-id: {person.id}",
         "---",

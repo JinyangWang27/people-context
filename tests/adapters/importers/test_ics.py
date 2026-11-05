@@ -390,3 +390,22 @@ def _ordinary_text(conn) -> str:
         for row in conn.execute(f"SELECT * FROM {table}").fetchall():
             values.extend(str(value) for value in row if isinstance(value, str))
     return "\n".join(values)
+
+
+def test_an_attendee_whose_display_name_is_their_address_is_named_by_the_local_part() -> None:
+    content = "\n".join(
+        [
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "DTSTART:20260304T090600Z",
+            "ATTENDEE;CN=jordan.lee@example.com:mailto:jordan.lee@example.com",
+            "END:VEVENT",
+            "END:VCALENDAR",
+        ]
+    )
+
+    extracted = IcsImportExtractor().extract("ics", content=content, path=None, self_addresses=set())
+
+    people = [candidate for candidate in extracted.candidates if candidate["type"] == "person"]
+    assert [person["name"] for person in people] == ["jordan.lee"]
+    assert people[0]["aliases"] == [{"value": "jordan.lee@example.com", "kind": "handle"}]

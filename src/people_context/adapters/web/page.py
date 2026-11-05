@@ -181,14 +181,20 @@ async function showPeople(cursor, back) {
   let doc;
   try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
-  const rows = doc.people.map((person) => [
-    button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
-    person.aliases.join(", "),
-    person.summary,
-  ]);
+  const rows = doc.people.map((person) => {
+    const emails = person.emails || [];
+    return [
+      button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      person.aliases.filter((alias) => !emails.includes(alias)).join(", "),
+      emails.join(", "),
+      person.summary,
+    ];
+  });
   show(
     "People",
-    doc.people.length ? table(["Name", "Aliases", "Summary"], rows) : el("p", "No people found.", "notice"),
+    doc.people.length
+      ? table(["Name", "Aliases", "Contact", "Summary"], rows)
+      : el("p", "No people found.", "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );
 }
@@ -283,8 +289,10 @@ function aliasRow(personId, alias, kinds, reopen) {
   return row;
 }
 
-function aliasEditor(personId, doc, reopen) {
-  const details = doc.alias_details || [];
+// Email addresses are contact information, so they are edited under Contact rather than among names.
+function aliasEditor(personId, doc, reopen, contact) {
+  const emails = doc.person.emails || [];
+  const details = (doc.alias_details || []).filter((alias) => emails.includes(alias.value) === contact);
   if (!details.length) return el("span", "(none)");
   const box = el("div");
   for (const alias of details) box.append(aliasRow(personId, alias, doc.alias_kinds || [], reopen));
@@ -298,9 +306,12 @@ async function showPerson(personId, cursor, back) {
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const identity = el("dl");
+  const reopen = () => showPerson(personId, cursor, back);
   const aliases = el("dd");
-  aliases.append(aliasEditor(doc.person.id, doc, () => showPerson(personId, cursor, back)));
-  identity.append(el("dt", "Aliases"), aliases);
+  aliases.append(aliasEditor(doc.person.id, doc, reopen, false));
+  const contact = el("dd");
+  contact.append(aliasEditor(doc.person.id, doc, reopen, true));
+  identity.append(el("dt", "Aliases"), aliases, el("dt", "Contact"), contact);
   const fields = [
     ["Summary", doc.person.summary || "(none)"],
     ["Context disclosure", doc.disclosure.context],

@@ -84,7 +84,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         `from_ref`, `to_ref`, `relationship_type`; `group` `ref`, `name`, `kind`; `group_membership` `person_ref`,
         `group_ref`. Only `person` and `group` carry a `ref`; the rest point at one.
         Staging matches each `person` against stored people and review shows the outcome, so do not resolve
-        names first.
+        names first. An email address is contact information, never a `name`: put it in `aliases` as
+        `{"value": <address>, "kind": "handle"}`, which is also what matching reads.
 
         Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
         agent-visible text. Distinguish what was stated (`fact`), what happened in this source (`observation`),
@@ -154,6 +155,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         A new-person row may carry `possible_matches`: existing people sharing its given name or a
         short form of it. They are not matches. Ask the user; to reuse one, pass its id as
         `matched_person_id` to `amend_candidate`, otherwise commit to create a new person.
+        A row with `name_is_email: true` stays unresolved at commit: ask the user for the person's name and
+        amend `name` to it, keeping the address as a `handle` alias.
         """
         try:
             return deps.review_import.execute(batch_id, suggest_possible_matches=True).model_dump(mode="json")

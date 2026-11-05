@@ -11,7 +11,14 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.person import Alias, AliasKind, Person, check_alias_kind
+from people_context.domain.person import (
+    NAME_IS_EMAIL_MESSAGE,
+    Alias,
+    AliasKind,
+    Person,
+    check_alias_kind,
+    is_email_shaped,
+)
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -34,6 +41,17 @@ class SelfAlreadyExistsError(Exception):
         self.existing_id = existing.id
         self.existing_name = existing.canonical_name
         super().__init__(f"a different person is already marked self: {existing.canonical_name}")
+
+
+class EmailNameError(ValueError):
+    """Raised when a new person would be named by an email address.
+
+    Only creation is refused: an address that already belongs to someone as a `handle` still finds
+    and updates them, and a person stored under an address before this rule can still be updated.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(NAME_IS_EMAIL_MESSAGE)
 
 
 class AliasInput(BaseModel):
@@ -153,6 +171,8 @@ class RememberPerson:
         return RememberPersonResult(person=person, created=False)
 
     def _create(self, data: RememberPersonInput, transaction_id: str | None) -> RememberPersonResult:
+        if is_email_shaped(data.name):
+            raise EmailNameError
         now = self._clock.now()
         aliases = [
             Alias(value=alias.value, kind=alias.kind, lang=alias.lang, script=alias.script) for alias in data.aliases

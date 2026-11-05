@@ -30,6 +30,8 @@ export interface PersonIndexEntry {
   id: string;
   canonicalName: string;
   aliases: string[];
+  /** The email addresses among `aliases`: contact information, not names. Empty from older servers. */
+  emails: string[];
   summary: string | null;
   isSelf: boolean;
   deleted: boolean;
@@ -198,9 +200,8 @@ function parseIndexEntry(raw: unknown, path: string): PersonIndexEntry {
   return {
     id,
     canonicalName,
-    aliases: readArray(entry.aliases)
-      .map((alias) => readOptionalString(alias))
-      .filter((alias): alias is string => alias !== null),
+    aliases: readStrings(entry.aliases),
+    emails: readStrings(entry.emails),
     summary: readOptionalString(entry.summary),
     isSelf: entry.is_self === true,
     deleted: entry.deleted === true,
@@ -289,6 +290,12 @@ function readObject(raw: unknown): Record<string, unknown> {
 
 function readArray(raw: unknown): unknown[] {
   return Array.isArray(raw) ? raw : [];
+}
+
+function readStrings(raw: unknown): string[] {
+  return readArray(raw)
+    .map((value) => readOptionalString(value))
+    .filter((value): value is string => value !== null);
 }
 
 function readOptionalString(raw: unknown): string | null {

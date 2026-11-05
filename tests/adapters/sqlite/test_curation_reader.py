@@ -345,3 +345,21 @@ def test_non_handle_at_aliases_are_candidates_and_handles_or_deleted_people_are_
     assert [(usage.person.person_id, usage.value, usage.source) for usage in usages] == [
         (alice.id, "alice@example.com", "alias:other")
     ]
+
+
+def test_at_canonical_names_and_unhandled_at_facts_are_candidates() -> None:
+    fixture = _Fixture()
+    legacy = fixture.person("contact@example.com")
+    fixture.person("Alice Zhang")
+    fixture.soft_delete(fixture.person("gone@example.com"))
+    covered = fixture.person("Bea", aliases=[_handle("bea@example.com")])
+    fixture.fact(covered, "email", "BEA@example.com")
+    loose = fixture.fact(legacy, "email", "jordan@example.com")
+
+    names = fixture.reader.list_at_canonical_names()
+    facts = fixture.reader.list_at_facts_without_handle()
+
+    assert [(usage.person.person_id, usage.value, usage.source) for usage in names] == [
+        (legacy.id, "contact@example.com", "canonical_name")
+    ]
+    assert [(fact.person.person_id, fact.fact_id) for fact in facts] == [(legacy.id, loose)]

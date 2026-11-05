@@ -48,6 +48,8 @@ class FindingCode(StrEnum):
     CONTRADICTORY_FACT = "contradictory_fact"
     DANGLING_REFERENCE = "dangling_reference"
     EMAIL_ALIAS_NOT_HANDLE = "email_alias_not_handle"
+    EMAIL_CANONICAL_NAME = "email_canonical_name"
+    EMAIL_FACT = "email_fact"
 
 
 #: Every known code in report order, for `--only` validation and deterministic ordering.
@@ -192,6 +194,10 @@ class ReportDoctorFindings:
             findings.extend(_reference_findings(self._curation.list_deleted_person_references()))
         if FindingCode.EMAIL_ALIAS_NOT_HANDLE in codes:
             findings.extend(_email_alias_findings(self._curation.list_non_handle_at_aliases()))
+        if FindingCode.EMAIL_CANONICAL_NAME in codes:
+            findings.extend(_email_name_findings(self._curation.list_at_canonical_names()))
+        if FindingCode.EMAIL_FACT in codes:
+            findings.extend(_email_fact_findings(self._curation.list_at_facts_without_handle()))
 
         findings.sort(key=_finding_sort_key)
         return DoctorReport(
@@ -409,6 +415,61 @@ def _email_alias_findings(usages: Iterable[NameUsage]) -> list[DoctorFinding]:
             )
         )
     return findings
+
+
+def _email_name_findings(usages: Iterable[NameUsage]) -> list[DoctorFinding]:
+    """Report each person whose canonical name is an email address.
+
+    Only the user knows the person's real name, so the rename names the person and leaves `name` for
+    the operator. `rename_person` keeps the address as a `handle`, so no contact information is lost.
+    """
+    return [
+        DoctorFinding(
+            code=FindingCode.EMAIL_CANONICAL_NAME.value,
+            message="A person's canonical name is an email address, which is contact information.",
+            people=[_finding_person(usage.person)],
+            normalized_name=usage.normalized,
+            names=[NameEvidence(person_id=usage.person.person_id, value=usage.value, source=usage.source)],
+            actions=[
+                CliAction(argv=["pctx", "show", usage.person.person_id]),
+                McpAction(
+                    tool="rename_person", arguments={"person_id": usage.person.person_id}, requires=["name"]
+                ),
+            ],
+        )
+        for usage in usages
+        if is_email_shaped(usage.value)
+    ]
+
+
+def _email_fact_findings(assertions: Iterable[FactAssertion]) -> list[DoctorFinding]:
+    """Report each email address stored only as a fact, where import matching and vCard export miss it.
+
+    A `handle` alias is the one place an address is contact information. The fact may stay; adding the
+    handle is what makes the address count.
+    """
+    return [
+        DoctorFinding(
+            code=FindingCode.EMAIL_FACT.value,
+            message="An email address is stored as a fact but not as a handle alias of the same person.",
+            people=[_finding_person(fact.person)],
+            predicate=fact.predicate,
+            facts=[_fact_evidence(fact)],
+            actions=[
+                CliAction(argv=["pctx", "show", fact.person.person_id]),
+                McpAction(
+                    tool="add_alias",
+                    arguments={
+                        "person_id": fact.person.person_id,
+                        "value": fact.value.strip(),
+                        "kind": AliasKind.HANDLE.value,
+                    },
+                ),
+            ],
+        )
+        for fact in assertions
+        if is_email_shaped(fact.value)
+    ]
 
 
 def _reference_message(evidence: list[ReferenceEvidence]) -> str:

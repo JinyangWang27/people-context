@@ -141,11 +141,17 @@ function matches(entry: PersonIndexEntry, needle: string): boolean {
   return haystack.includes(needle);
 }
 
+/** The aliases that are names; email addresses are contact information and shown apart. */
+function nameAliases(entry: PersonIndexEntry): string[] {
+  return entry.aliases.filter((alias) => !entry.emails.includes(alias));
+}
+
 function subtitleFor(entry: PersonIndexEntry): string {
   if (entry.summary !== null && entry.summary.trim() !== "") {
     return entry.summary;
   }
-  return entry.aliases.join(", ");
+  const names = nameAliases(entry);
+  return (names.length > 0 ? names : entry.emails).join(", ");
 }
 
 /** Build the sectioned view model for one person's brief. */
@@ -155,7 +161,8 @@ export function buildBriefView(document: BriefDocument): BriefView {
     `Person id: ${person.id}`,
     `Generated: ${formatTimestamp(document.generatedAt)}`,
     `Self: ${person.isSelf ? "yes" : "no"}`,
-    `Aliases: ${person.aliases.length > 0 ? person.aliases.join(", ") : "(none)"}`,
+    `Aliases: ${nameAliases(person).length > 0 ? nameAliases(person).join(", ") : "(none)"}`,
+    `Contact: ${person.emails.length > 0 ? person.emails.join(", ") : "(none)"}`,
     `Summary: ${person.summary ?? "(none)"}`,
     `Context disclosure: ${document.disclosure.context}`,
     `Guidance disclosure: ${document.disclosure.guidance} (never widened)`,

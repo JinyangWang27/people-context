@@ -68,7 +68,7 @@ from people_context.domain.import_provenance import (
     STAGING_STATUS_PENDING,
     STAGING_STATUS_REJECTED,
 )
-from people_context.domain.person import AliasKind, kind_for_name
+from people_context.domain.person import AliasKind, is_email_shaped, kind_for_name
 from people_context.domain.shared import new_id, normalize_name
 from people_context.domain.trait_evidence import TRAIT_EVIDENCE_TYPES
 from people_context.ports.audit_log import AuditLog
@@ -374,7 +374,15 @@ class ReviewImport:
             batch_id=batch_id,
             batch_digest=batch_digest(rows),
             candidates=[
-                _review_row(row, ordinal, projections.get(row.id), possible.get(row.id))
+                _review_row(
+                    row,
+                    ordinal,
+                    projections.get(row.id),
+                    possible.get(row.id),
+                    name_is_email=suggest_possible_matches
+                    and _is_unmatched_pending_person(row)
+                    and is_email_shaped(str(row.candidate.get("name", ""))),
+                )
                 for ordinal, row in enumerate(ordered, start=1)
             ],
         )
@@ -462,6 +470,8 @@ def _review_row(
     ordinal: int,
     projection: tuple[list[dict[str, Any]], bool] | None,
     possible: tuple[list[dict[str, Any]], bool] | None = None,
+    *,
+    name_is_email: bool = False,
 ) -> ImportReviewRow:
     """Project one staging row for review, attaching its match options only where one is owed."""
     review = ImportReviewRow(
@@ -475,6 +485,8 @@ def _review_row(
         entries, truncated = possible
         review.possible_matches = [MatchCandidate.model_validate(entry) for entry in entries]
         review.possible_matches_truncated = truncated
+    if name_is_email:
+        review.name_is_email = True
     return review
 
 
@@ -1249,6 +1261,11 @@ class CommitImport:
             name = matched.canonical_name
         else:
             name = candidate["name"]
+            # A row staged before email names were refused would create a person named by an address;
+            # it stays unresolved until a reviewer amends the name, as review flags it. An address that
+            # now belongs to someone as a handle still updates them, as `RememberPerson` resolves it.
+            if is_email_shaped(name) and not self._people.find_by_normalized_name(normalize_name(name)):
+                return None
         result = self._remember_person.execute(
             RememberPersonInput(
                 name=name,

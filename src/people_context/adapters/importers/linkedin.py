@@ -16,7 +16,7 @@ from people_context.adapters.importers.bounded_source import (
     open_source_stream,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
-from people_context.adapters.importers.normalization import clean_text, normalize_email
+from people_context.adapters.importers.normalization import clean_text, normalize_email, person_name
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
@@ -139,7 +139,7 @@ class LinkedInImportExtractor:
         try:
             for row_index, row in enumerate(reader, start=1):
                 work.account(1)
-                name = _combined_name(row)
+                name = person_name(_combined_name(row))
                 if not name:
                     skipped.append({"index": row_index, "reason": "missing_name"})
                     continue

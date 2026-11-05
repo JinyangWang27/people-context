@@ -211,7 +211,7 @@ plugins do this), it advertises only the **core** tools below; the rest need `--
 **Core**, read-only: `resolve_person` · `search_people` · `get_person_context` · `get_person_timeline` ·
 `get_communication_guidance` · `upcoming_dates` · `review_import` · `list_reminders`
 
-**Core**, write: `remember` · `remember_person` · `add_alias` · `update_alias` · `remove_alias` ·
+**Core**, write: `remember` · `remember_person` · `add_alias` · `update_alias` · `remove_alias` · `rename_person` ·
 `supersede_fact` · `correct_record` · `set_communication_philosophy` · `forget` · `stage_candidates` ·
 `amend_candidate` · `withdraw_candidates` · `commit_import` · `set_reminder` · `complete_reminder`
 

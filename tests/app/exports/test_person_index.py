@@ -106,6 +106,7 @@ def test_entry_carries_identity_only() -> None:
         "aliases": ["Ali", "a@example.com"],
         "summary": "A friend",
         "is_self": True,
+        "emails": ["a@example.com"],
         "deleted": False,
     }
 

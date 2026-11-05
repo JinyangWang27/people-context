@@ -16,6 +16,7 @@ from people_context.adapters.importers.bounded_source import (
     open_source_stream,
 )
 from people_context.adapters.importers.errors import ImportExtractionError
+from people_context.adapters.importers.normalization import person_name
 from people_context.domain.person import AliasKind
 from people_context.domain.shared import normalize_name
 from people_context.ports.imports import ExtractedImport
@@ -169,7 +170,8 @@ class IcsImportExtractor:
             normalized = normalize_name(address)
             if not normalized or "@" not in normalized or normalized in normalized_self:
                 continue
-            display = _clean_text(event.attendee_names.get(address) or "") or normalized.split("@", maxsplit=1)[0]
+            display = person_name(_clean_text(event.attendee_names.get(address) or ""))
+            display = display or normalized.split("@", maxsplit=1)[0]
             accumulator = people.get(normalized)
             if accumulator is None:
                 people[normalized] = _PersonAccumulator(ref=normalized, name=display)

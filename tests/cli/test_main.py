@@ -117,6 +117,7 @@ def test_list_json_emits_the_versioned_person_index(tmp_path: Path, capsys: pyte
             "aliases": [],
             "summary": "A curious person from the story.",
             "is_self": False,
+            "emails": [],
             "deleted": False,
         }
     ]
@@ -290,7 +291,20 @@ def test_edit_requires_a_field_updates_person_and_audits_before_after(
     assert updated.canonical_name == "Alice Smith"
     assert entry.payload["before"]["canonical_name"] == "Alice"
     assert entry.payload["after"]["summary"] == "New"
-    assert entry.payload["fields"] == ["canonical_name", "summary"]
+    assert entry.payload["fields"] == ["canonical_name", "summary", "aliases"]
+    # A rename keeps the replaced name, so the person is still found by it.
+    assert [(alias.value, alias.kind.value) for alias in updated.aliases] == [("Alice", "former_name")]
+
+
+def test_edit_refuses_an_email_address_as_the_new_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db_file = tmp_path / "people.db"
+    person = _seed(db_file, "Alice")
+
+    assert cli.main(["--db", str(db_file), "edit", person.id, "--name", "alice@example.com"]) == 1
+
+    err = capsys.readouterr().err
+    assert "not a name" in err
+    assert "alice@example.com" not in err
 
 
 def test_edit_rejects_canonical_collision_and_shared_resolver_keeps_ambiguous_exit_code(

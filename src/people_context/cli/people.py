@@ -102,9 +102,13 @@ def cmd_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     if person is None:
         return exit_code
     try:
-        updated = runtime.use_cases.edit_person.execute(
-            EditPersonInput(person_id=person.id, name=args.name, summary=args.summary)
-        )
+        data = EditPersonInput(person_id=person.id, name=args.name, summary=args.summary)
+    except ValidationError:
+        # The only rule on these fields is the email one; the message names no value.
+        print("An email address is not a name; add it with add-alias --kind handle.", file=sys.stderr)
+        return 1
+    try:
+        updated = runtime.use_cases.edit_person.execute(data)
     except PersonNameCollisionError as exc:
         print(str(exc), file=sys.stderr)
         return 1

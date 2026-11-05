@@ -20,11 +20,13 @@ from people_context.app.capture import CaptureKind, QuickCaptureInput
 from people_context.app.people import (
     AliasInput,
     AmbiguousPersonError,
+    EmailNameError,
     RememberPersonInput,
     ResolutionHints,
     SelfAlreadyExistsError,
 )
 from people_context.app.semantic import SemanticSearchValidationError
+from people_context.domain.person import NAME_IS_EMAIL
 from people_context.domain.shared import Sensitivity
 from people_context.domain.trait import TraitCategory
 
@@ -150,7 +152,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         Use this to durably record someone the user talks about. `aliases` is a list
         of `{value, kind?, lang?, script?}` objects (kinds: nickname, native_script,
         transliteration, handle, former_name, other); new aliases are merged into an
-        existing record. Set `summary` to describe who they are, and `is_self=True`
+        existing record. An email address is contact information: store it as a `handle`
+        alias, never as `name`. Set `summary` to describe who they are, and `is_self=True`
         only for the user themselves. Returns the person and whether it was created.
         """
         alias_inputs = [AliasInput.model_validate(alias) for alias in (aliases or [])]
@@ -178,6 +181,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 "message": str(exc),
                 "existing": {"person_id": exc.existing_id, "canonical_name": exc.existing_name},
             }
+        except EmailNameError as exc:
+            return {"error": NAME_IS_EMAIL, "message": str(exc)}
         return result.model_dump(mode="json")
 
     @mcp.tool(annotations=_WRITE)

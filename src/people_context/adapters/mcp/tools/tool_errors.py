@@ -11,7 +11,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ValidationError
 
 from people_context.app.groups.commands import InvalidMembershipClosureError
-from people_context.app.people import AliasConflictError, AliasNotFoundError
+from people_context.app.people import AliasConflictError, AliasNotFoundError, PersonNameCollisionError
 from people_context.app.records import (
     InvalidCorrectionError,
     InvalidReminderError,
@@ -132,5 +132,7 @@ def call_action(action: Callable[[], BaseModel]) -> dict[str, Any]:
             "alias": exc.value,
             "reason": exc.reason,
         }
+    except PersonNameCollisionError as exc:
+        return {"error": "name_conflict", "message": str(exc), "person_id": exc.person_id}
     except ValidationError as exc:
         return validation_error_payload(exc)

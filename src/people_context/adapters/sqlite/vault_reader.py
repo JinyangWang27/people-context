@@ -7,6 +7,7 @@ from datetime import date
 
 from people_context.adapters.sqlite.context_reader import SqliteContextReader
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
+from people_context.domain.person import contact_emails
 from people_context.domain.shared import Sensitivity
 from people_context.domain.vault import (
     VaultAffiliation,
@@ -95,13 +96,15 @@ class SqliteVaultReader:
                 for reminder in self._context.list_active_reminders(person.id)
             ]
             reminders.sort(key=lambda row: (row.due_at is None, row.due_at, row.text))
+            emails = contact_emails(person.aliases)
             people.append(
                 VaultPerson(
                     id=person.id,
                     name=person.canonical_name,
                     is_self=person.is_self,
                     summary=person.summary,
-                    aliases=sorted({alias.value for alias in person.aliases}, key=str.casefold),
+                    aliases=sorted({alias.value for alias in person.aliases} - set(emails), key=str.casefold),
+                    emails=sorted(set(emails), key=str.casefold),
                     relationships=relationships,
                     affiliations=affiliations,
                     facts=facts,

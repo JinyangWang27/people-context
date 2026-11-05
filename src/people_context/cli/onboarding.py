@@ -14,6 +14,7 @@ from people_context.app.imports import ImportPipelineError
 from people_context.app.people import (
     AliasInput,
     AmbiguousPersonError,
+    EmailNameError,
     RememberPersonInput,
     SelfAlreadyExistsError,
 )
@@ -86,7 +87,7 @@ def cmd_init(runtime: ApplicationRuntime, explicit_db_path: str | None = None, e
                 source="cli/init",
             )
         )
-    except (AmbiguousPersonError, SelfAlreadyExistsError) as exc:
+    except (AmbiguousPersonError, SelfAlreadyExistsError, EmailNameError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     target = remembered.person
