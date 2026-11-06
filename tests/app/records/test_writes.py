@@ -189,6 +189,23 @@ def test_relationship_affiliation_and_direct_records(write_deps: tuple) -> None:
     ]
 
 
+def test_affiliation_exact_repeat_returns_the_stored_row_without_writing(write_deps: tuple) -> None:
+    people, records, audit, clock, _, other = write_deps
+    use_case = SetAffiliation(people, FakeOrganizationStore(), records, audit, clock)
+
+    first = use_case.execute(SetAffiliationInput(person_id=other.id, org="Acme", role="Engineer"))
+    entries = len(audit.entries)
+    repeat = use_case.execute(SetAffiliationInput(person_id=other.id, org="acme", role="Engineer"))
+
+    assert repeat == first
+    assert len(audit.entries) == entries
+    other_role = use_case.execute(SetAffiliationInput(person_id=other.id, org="Acme", role="Manager"))
+    dated = use_case.execute(
+        SetAffiliationInput(person_id=other.id, org="Acme", role="Engineer", valid_from=date(2024, 1, 1))
+    )
+    assert len({first.id, other_role.id, dated.id}) == 3
+
+
 def test_interaction_requires_all_known_participants_and_deduplicates(write_deps: tuple) -> None:
     people, records, audit, clock, self_person, other = write_deps
     use_case = RecordInteraction(people, records, audit, clock)

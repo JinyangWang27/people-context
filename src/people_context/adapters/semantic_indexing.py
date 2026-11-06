@@ -14,6 +14,7 @@ from people_context.domain.organization import Affiliation
 from people_context.domain.person import Person
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
+from people_context.domain.shared import ValidityPeriod
 from people_context.domain.trait import Trait
 from people_context.ports.forget import ForgetPreviewStore, ForgetStore
 from people_context.ports.lifecycle import ForgetStoreResult, MergeStoreResult
@@ -99,6 +100,9 @@ class IndexingRecordStore:
 
     def save_affiliation(self, affiliation: Affiliation) -> None:
         self._delegate.save_affiliation(affiliation)
+
+    def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
+        return self._delegate.find_affiliation(person_id, org_id, role, period)
 
     def save_fact(self, fact: Fact) -> None:
         self._delegate.save_fact(fact)

@@ -110,6 +110,17 @@ class TestRecording:
         assert [item.organization_name for item in context.affiliations] == ["Acme"]
         assert [trait.category for trait in context.traits] == [TraitCategory.COMMUNICATION_STYLE]
 
+    def test_repeating_an_affiliation_reuses_the_stored_row(self, runtime: ApplicationRuntime) -> None:
+        _seed(runtime, "Me", is_self=True)
+        capture = QuickCaptureInput(person="Alice Ng", org="Acme", relationship="colleague_of")
+
+        first = runtime.use_cases.quick_capture.execute(capture)
+        repeat = runtime.use_cases.quick_capture.execute(capture)
+
+        assert [record.id for record in repeat.recorded] == [record.id for record in first.recorded]
+        context = runtime.use_cases.get_person_context.execute(first.person_id or "", purpose="communication")
+        assert [item.organization_name for item in context.affiliations] == ["Acme"]
+
     def test_explicit_kind_overrides_the_rule(self, runtime: ApplicationRuntime) -> None:
         result = runtime.use_cases.quick_capture.execute(
             QuickCaptureInput(person="Alice Ng", note="likes hiking", kind="fact", predicate="hobby")

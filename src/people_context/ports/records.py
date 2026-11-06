@@ -12,6 +12,7 @@ from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation, Organization
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
+from people_context.domain.shared import ValidityPeriod
 from people_context.domain.trait import Trait
 
 Record: TypeAlias = (
@@ -26,6 +27,10 @@ class RecordWriter(Protocol):
     def save_relationship(self, relationship: Relationship) -> None: ...
 
     def save_affiliation(self, affiliation: Affiliation) -> None: ...
+
+    def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
+        """Return the earliest stored affiliation identical in person, organization, role, and period."""
+        ...
 
     def save_fact(self, fact: Fact) -> None: ...
 
