@@ -23,12 +23,12 @@ def _run(server: Any, coro_factory: Any) -> Any:
     return anyio.run(main)
 
 
-def test_packaged_guide_is_the_usage_skill_body() -> None:
-    """One source of truth: the resource text is the skill minus its frontmatter."""
+def test_packaged_guide_opens_with_the_usage_skill_body() -> None:
+    """One source of truth: the resource text is the skill minus its frontmatter, then its reference files."""
     skill = (ROOT / "skills" / "people-context-usage" / "SKILL.md").read_text(encoding="utf-8")
     body = re.sub(r"\A---\n.*?\n---\n\n?", "", skill, count=1, flags=re.S)
 
-    assert load_guide() == body
+    assert load_guide().startswith(body)
 
 
 def test_resources_and_prompts_are_listed_and_readable(tmp_path: Path) -> None:

@@ -24,7 +24,7 @@ _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempoten
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register reminder tools with their locked schemas."""
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def list_reminders(
         person_id: str | None = None,
@@ -54,7 +54,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return validation_error_payload(exc)
         return {"reminders": [item.model_dump(mode="json") for item in deps.list_reminders.execute(data)]}
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def set_reminder(
         person_id: str,
@@ -80,7 +80,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def complete_reminder(reminder_id: str) -> dict[str, Any]:
         """Transition one active reminder to completed."""

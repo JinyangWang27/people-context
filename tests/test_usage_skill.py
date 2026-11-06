@@ -13,6 +13,17 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SKILL_PATH = REPOSITORY_ROOT / "skills" / "people-context-usage" / "SKILL.md"
 GUIDE_PATH = REPOSITORY_ROOT / "src" / "people_context" / "adapters" / "mcp" / "guide.md"
+#: Loaded only when a task needs them, in the order the served guide appends them to the skill body.
+REFERENCES = ("conversations.md", "staged-capture.md", "documents.md", "maintenance.md")
+#: The skill loads whenever a person is mentioned, so its size is a cost paid on nearly every session.
+SKILL_BUDGET_CHARS = 10_000
+
+
+def _skill_text() -> str:
+    """The whole skill: `SKILL.md` (frontmatter first) followed by every reference file."""
+    parts = [SKILL_PATH.read_text(encoding="utf-8")]
+    parts += [(SKILL_PATH.parent / "references" / name).read_text(encoding="utf-8") for name in REFERENCES]
+    return "\n".join(parts)
 
 
 def _split_frontmatter(text: str) -> tuple[dict[str, str], str]:
@@ -40,14 +51,14 @@ class TestUsageSkill:
         assert not (REPOSITORY_ROOT / ".claude-plugin" / "skills").exists()
 
     def test_frontmatter_declares_matching_name_and_description(self) -> None:
-        fields, _ = _split_frontmatter(SKILL_PATH.read_text(encoding="utf-8"))
+        fields, _ = _split_frontmatter(_skill_text())
 
         assert fields["name"] == "people-context-usage"
         assert fields["name"] == SKILL_PATH.parent.name
         assert fields["description"]
 
     def test_teaches_resolution_first_and_ambiguity_contract(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8").lower()
+        body = _skill_text().lower()
 
         assert "resolve_person" in body
         assert "ambiguous" in body
@@ -56,7 +67,7 @@ class TestUsageSkill:
         assert "get_communication_guidance" in body
 
     def test_meeting_preparation_composes_existing_reads_only(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = body.lower()
 
         assert "meeting" in lowered
@@ -75,7 +86,7 @@ class TestUsageSkill:
         assert "read-only" in lowered
 
     def test_teaches_strict_candidate_vocabulary(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
 
         for candidate_type in (
             "`person`",
@@ -93,7 +104,7 @@ class TestUsageSkill:
         assert "batch-local" in lowered
 
     def test_teaches_the_fact_observation_trait_distinction_for_unstructured_sources(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         # The three epistemic levels are the point of the extraction workflow: an agent that
@@ -107,7 +118,7 @@ class TestUsageSkill:
         assert "never a quoted passage" in lowered or "never a transcript excerpt" in lowered
 
     def test_omits_elevated_relationships_rather_than_downgrading_them(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         # The durable relationship model has no sensitivity field, so an elevated edge stays
         # out of the graph entirely instead of entering it stripped of its protection.
@@ -116,7 +127,7 @@ class TestUsageSkill:
         assert "rather than downgrading it" in lowered
 
     def test_names_the_cli_staging_path_for_agents_without_mcp(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "pctx import stage-candidates" in body
@@ -124,7 +135,7 @@ class TestUsageSkill:
         assert "candidate json — never the transcript" in lowered
 
     def test_treats_staging_as_proposal_and_never_auto_commits(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
 
         assert "stage_candidates" in body
         assert "review_import" in body
@@ -136,7 +147,7 @@ class TestUsageSkill:
 
     def test_teaches_the_chat_review_loop_rather_than_reciting_ulids(self) -> None:
         """M29.1's guidance: number the batch, correct it with the two verbs, re-present it."""
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "amend_candidate" in body
@@ -150,14 +161,13 @@ class TestUsageSkill:
         A user who says "yes, Staff Engineer is right" has approved one correction. Reading that
         as approval of the batch is how a review gate turns into a rubber stamp.
         """
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "confirming an amendment is not acceptance of the batch" in lowered
 
     def test_possible_duplicates_are_asked_about_never_chosen_on_name_alone(self) -> None:
         """#222: the skill and the server guide both teach the same three-way choice."""
-        for path in (SKILL_PATH, GUIDE_PATH):
-            body = path.read_text(encoding="utf-8")
+        for body in (_skill_text(), GUIDE_PATH.read_text(encoding="utf-8")):
             lowered = " ".join(body.lower().split())
 
             assert "possible_matches" in body
@@ -165,7 +175,7 @@ class TestUsageSkill:
             assert "never choose one yourself on the name alone" in lowered
 
     def test_maintenance_reads_before_it_proposes_and_waits_for_approval(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         # The review is a read pass over the three bounded reads, ending in proposals.
@@ -182,7 +192,7 @@ class TestUsageSkill:
         assert "never a shell command" in lowered
 
     def test_distinguishes_correction_from_temporal_supersession(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "correct_record" in body and "supersede_fact" in body
@@ -196,7 +206,7 @@ class TestUsageSkill:
         assert "rather than nudging the date" in lowered
 
     def test_keeps_multiple_evidence_distinct_from_redundant_representation(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         # Three observations supporting one trait are evidence, not duplicates to collapse.
         assert "three pieces of evidence" in lowered
@@ -212,7 +222,7 @@ class TestUsageSkill:
         # approach" taught agents to relay a recommendation the server never made — and to
         # read `situation` and `friction_notes` as findings rather than as echoed input and
         # ordinary recent summaries.
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "tone and approach derived from the stored communication philosophy" not in lowered
         assert "the server composes no tone and recommends no approach" in lowered
@@ -220,7 +230,7 @@ class TestUsageSkill:
         assert "whether or not friction occurred, so a field name is not evidence that friction happened" in lowered
 
     def test_frames_disclosure_gates_as_expected_not_obstacles(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
 
         # Elevated tools are named only to explain the gate, never as something to call
         # or to suggest enabling in order to widen disclosure.
@@ -232,7 +242,7 @@ class TestUsageSkill:
         assert "call `export_data`" not in lowered
 
     def test_end_of_session_capture_proposes_without_committing(self) -> None:
-        lowered = SKILL_PATH.read_text(encoding="utf-8").lower()
+        lowered = _skill_text().lower()
 
         assert "end of a session" in lowered or "wrapping up" in lowered
         # Capture is best-effort proposal-only; it must not promise a mechanical commit.
@@ -242,7 +252,7 @@ class TestUsageSkill:
 
 class TestQuickCaptureAndNameReads:
     def test_remember_is_for_direct_statements_only(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "`remember` in a single call" in lowered
@@ -252,14 +262,14 @@ class TestQuickCaptureAndNameReads:
         assert "goes through the staged capture flow, never through a direct write" in lowered
 
     def test_elevated_records_are_framed_as_leaving_no_trace(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         # The ordinary bundle is the complete intended view, not a redacted one with a gap to probe.
         assert "leave no trace at all" in lowered
         assert "complete ordinary view" in lowered
 
     def test_a_lone_fuzzy_candidate_is_treated_like_ambiguity(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "read `match_reason`, not just the score" in lowered
         assert "spelling distance" in lowered
@@ -267,7 +277,7 @@ class TestQuickCaptureAndNameReads:
         assert "a high score alone does not make a near-spelling into a match" in lowered
 
     def test_reads_accept_a_name_with_the_same_ambiguity_contract(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "accept `person` (the name as said)" in lowered
         assert "returns candidates instead of data" in lowered
@@ -284,20 +294,20 @@ class TestCvCapture:
     """
 
     def test_frames_a_document_as_asserting_rather_than_establishing(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "the document asserts, it does not establish" in lowered
         assert "attribution is not verification" in lowered
 
     def test_reports_unreadable_and_partial_documents_instead_of_guessing(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "never present a partial read as a complete cv" in lowered
         # The refusal example ends in nothing staged, not in a best guess.
         assert "stage nothing" in lowered
 
     def test_resolves_identity_before_staging_rather_than_trusting_the_matcher(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "an ambiguous match stays unresolved" in lowered
         assert "do not turn it into a new person" in lowered
@@ -307,7 +317,7 @@ class TestCvCapture:
         assert "fails the whole commit after the user has already reviewed it" in lowered
 
     def test_maps_employment_to_affiliations_and_background_to_facts(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "employment and education are `affiliation` candidates" in lowered
         assert "background are `fact` candidates" in lowered
@@ -315,26 +325,26 @@ class TestCvCapture:
         assert "a cv is not a meeting you sat in" in lowered
 
     def test_keeps_a_self_description_an_attributed_fact_rather_than_a_trait(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "`stated_by`" in lowered
         assert 'it never becomes a `trait` valued "analytical", because nobody observed it' in lowered
 
     def test_keeps_inexact_dates_in_the_claim_text(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "never invent a january 1, a month boundary, or a date taken from when you happened" in lowered
         assert "a recording date is not an event date" in lowered
         assert "months and days unknown" in lowered
 
     def test_refuses_to_open_an_affiliation_for_a_role_with_unknown_bounds(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "an affiliation with no `valid_to` reads as current everywhere" in lowered
         assert "silence about an end date is not a claim that the role continues" in lowered
 
     def test_treats_concurrent_roles_and_omissions_correctly(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "two roles at once are ordinary" in lowered
         assert "omission is not an ending" in lowered
@@ -342,27 +352,27 @@ class TestCvCapture:
         assert "is not thereby more likely to be true" in lowered
 
     def test_puts_sensitive_background_only_where_disclosure_is_enforceable(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "affiliations and relationships carry no sensitivity field, so they cannot protect anything" in lowered
         # Nor may it be copied sideways into a record that has no protection to give.
         assert "not into a `stated_by` string" in lowered
 
     def test_treats_a_source_receipt_as_processing_evidence_only(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "`content_digest` over the bytes you actually read" in lowered
         assert "never verification of the claims inside it" in lowered
         assert "no private source content, no filesystem path" in lowered
 
     def test_commits_only_what_was_explicitly_accepted_and_reads_back(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "commit only the candidates the user explicitly accepted" in lowered
         assert "report what committed and what stayed unresolved" in lowered
 
     def test_claims_neither_completeness_nor_semantic_deduplication(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "neither pass claims to be complete" in lowered
         assert "not a survey of what is knowable about someone" in lowered
@@ -372,14 +382,25 @@ class TestCvCapture:
 def test_the_served_guide_matches_the_packaged_skill() -> None:
     """One body, two delivery paths.
 
-    `guide.md` is served as the `people-context://guide` resource and `SKILL.md` is loaded by
-    Claude Code; they are the same guidance and have always been kept byte-identical below the
-    frontmatter by hand. Nothing enforced it, so an edit to one could silently teach MCP callers
-    and skill users different rules about the same tools.
+    `guide.md` is served as the `people-context://guide` resource, for clients that load no skills, so it
+    carries everything: the `SKILL.md` body followed by each reference file. Regenerate it from those files
+    after editing any of them; this keeps MCP callers and skill users learning the same rules.
     """
     _, skill_body = _split_frontmatter(SKILL_PATH.read_text(encoding="utf-8"))
+    references = [(SKILL_PATH.parent / "references" / name).read_text(encoding="utf-8") for name in REFERENCES]
 
-    assert GUIDE_PATH.read_text(encoding="utf-8") == skill_body.lstrip("\n")
+    assert GUIDE_PATH.read_text(encoding="utf-8") == "\n".join([skill_body.lstrip("\n"), *references])
+
+
+def test_the_skill_stays_small_and_links_every_reference_file() -> None:
+    """The specialised workflows live in reference files, so a person mention does not load all of them."""
+    skill = SKILL_PATH.read_text(encoding="utf-8")
+    shipped = sorted(path.name for path in (SKILL_PATH.parent / "references").glob("*.md"))
+
+    assert len(skill) <= SKILL_BUDGET_CHARS
+    assert shipped == sorted(REFERENCES)
+    for name in REFERENCES:
+        assert f"](references/{name})" in skill
 
 
 class TestReviewedCvUpdate:
@@ -393,12 +414,12 @@ class TestReviewedCvUpdate:
     """
 
     def test_frames_a_newer_document_as_evidence_rather_than_a_replacement(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "a second cv is more evidence about someone, not a replacement" in lowered
 
     def test_ends_the_review_on_an_ambiguous_or_incoherent_identity(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "ends the review there" in lowered
         # Neither escape from ambiguity is available: invent a person, or merge two.
@@ -406,14 +427,14 @@ class TestReviewedCvUpdate:
         assert "do not merge two people in order to have somewhere to put the document" in lowered
 
     def test_reads_the_store_including_stored_affiliations_before_comparing(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
 
         assert "### Reviewing a newer CV against what is stored" in body
         assert "`get_consolidation_context`" in body
         assert "carries the stored affiliations" in body
 
     def test_states_unreadable_and_truncated_reads_as_limits_of_the_comparison(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "those are limits of the comparison" in lowered
         # A page that stopped is the commonest false negative in a comparison like this.
@@ -427,7 +448,7 @@ class TestReviewedCvUpdate:
         stays unresolved — and an outcome can change when fresh evidence arrives. Saying "one
         outcome per claim" would contradict the worked example, which does both.
         """
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "give every proposal exactly one outcome" in lowered
@@ -440,13 +461,13 @@ class TestReviewedCvUpdate:
             assert outcome in body, outcome
 
     def test_every_proposed_mutation_names_its_target_and_its_call(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "names the target record ids" in lowered
         assert "the exact tool and arguments you would call" in lowered
 
     def test_acceptance_is_per_action_rather_than_a_blanket_yes(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "wait for explicit acceptance, and take it per action" in lowered
         assert "being asked to read a cv is not approval to write" in lowered
@@ -454,25 +475,25 @@ class TestReviewedCvUpdate:
         assert "stage → review → commit gate" in lowered
 
     def test_rereads_the_target_immediately_before_applying(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "reread immediately before you apply" in lowered
         assert "go back for renewed review" in lowered
         assert "never silently retarget an accepted mutation" in lowered
 
     def test_reports_completed_failed_skipped_and_unresolved_separately(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "report completed, failed, skipped, and unresolved actions separately" in lowered
 
     def test_omission_never_implies_deletion_or_an_ending(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "omission is never deletion, and never an ending" in lowered
         assert "propose nothing for a record the new document is merely silent about" in lowered
 
     def test_keeps_concurrent_roles_and_repetition_out_of_the_verdict(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "concurrent roles, several skills, and different traits are not contradictions" in lowered
         assert "they are not verdicts about which record to discard" in lowered
@@ -481,14 +502,14 @@ class TestReviewedCvUpdate:
         assert "another source receipt does not raise `confidence`" in lowered
 
     def test_refuses_to_manufacture_an_effective_date(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "never invent an effective date" in lowered
         assert "out of a year, out of the newer cv's own date, or out of the day you read it" in lowered
         assert "without one the transition stays unresolved" in lowered
 
     def test_has_no_generic_affiliation_transition_and_will_not_fake_one(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "there is no generic affiliation or relationship supersession" in lowered
         # The tempting substitution: overwrite the role in place and call it an update.
@@ -502,7 +523,7 @@ class TestReviewedCvUpdate:
         tell the difference for you: it keeps no copy of the first document, and a receipt records
         only that an artifact was processed.
         """
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "disagreement is not proof of error" in lowered
         assert "not that the stored one was wrong when it was written" in lowered
@@ -515,7 +536,7 @@ class TestReviewedCvUpdate:
         declines to act keeps the stored assertion and quietly drops the incoming one — the opposite
         of preserving a conflict the evidence cannot settle.
         """
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "keeping a conflict means recording the incoming half of it" in lowered
         assert "keeps the stored claim and loses the one that disagreed with it" in lowered
@@ -525,7 +546,7 @@ class TestReviewedCvUpdate:
 
     def test_states_that_a_new_row_cannot_name_the_document(self) -> None:
         """`supersede_fact` cannot name the document, and the guidance must not imply it can."""
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "a new row records you, not the document" in lowered
         assert "take no `stated_by`" in lowered
@@ -540,7 +561,7 @@ class TestReviewedCvUpdate:
         would teach an agent to announce a loss that did not happen, and to pad the corrected value
         with source text to compensate for it.
         """
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "a correction leaves attribution alone" in lowered
         assert "keeps the attribution it was written with" in lowered
@@ -548,14 +569,14 @@ class TestReviewedCvUpdate:
 
     def test_adds_a_supported_new_role_rather_than_dropping_it(self) -> None:
         """Unsupported transition is not unsupported claim; the new role is still evidence."""
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "the new role is **added** as an affiliation like any other" in lowered
         assert "what stays **unresolved** is only the *transition*" in lowered
 
     def test_the_worked_example_never_manufactures_a_day_from_a_month(self) -> None:
         """The example must obey the rule the section states, or it teaches the opposite of it."""
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "from 2 march 2026" in lowered
@@ -566,13 +587,13 @@ class TestReviewedCvUpdate:
 
     def test_the_worked_example_carries_the_source_into_the_superseded_value(self) -> None:
         """Stating the attribution limit is not enough; the example has to apply its own remedy."""
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "the new value carries it, `leeds; per revised cv`" in lowered
         assert "the row's own provenance names you and not the document" in lowered
 
     def test_treats_several_calls_as_several_calls_rather_than_a_transaction(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "separate tool calls are not one transaction" in lowered
         assert "has no collective rollback" in lowered
@@ -591,7 +612,7 @@ class TestCommunicationCoaching:
     """
 
     def test_the_section_exists_and_leads_with_something_usable(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "## Coaching a real conversation" in body
@@ -599,12 +620,12 @@ class TestCommunicationCoaching:
         assert "lead with a draft reply or a concrete next action" in lowered
 
     def test_the_trigger_stays_narrower_than_mentioning_someone(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "not every mention of a person is an ask for coaching" in lowered
 
     def test_identity_resolves_first_and_its_absence_does_not_stop_coaching(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "resolve the named person before any personalized read" in lowered
         assert "does not stop the coaching" in lowered
@@ -612,14 +633,14 @@ class TestCommunicationCoaching:
         assert "never create a person in order to have somewhere to write" in lowered
 
     def test_keeps_recorded_reported_and_inferred_apart(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "a stored trait is a subjective signal rather than a verdict" in lowered
         assert "one incident is not a personality" in lowered
         assert "repeated reports of the same friction are one perspective repeated, not independent" in lowered
 
     def test_preserves_voice_and_claims_no_guaranteed_reaction(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "match their language and voice instead of a corporate register" in lowered
         assert "offer an alternative only where it is a real tradeoff" in lowered
@@ -629,14 +650,14 @@ class TestCommunicationCoaching:
     def test_coaching_writes_nothing_including_end_of_session_capture(self) -> None:
         # The end-of-session review sits a few sections below and would otherwise stage
         # invented knowledge about a person the session only drafted a message to.
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
-        assert "coaching is a read-only flow, and the end-of-session capture below does not apply" in lowered
+        assert "coaching is a read-only flow, and the end-of-session capture in `skill.md` does not apply" in lowered
         assert "a draft is not an outcome and a simulated reaction is not observed behaviour" in lowered
         assert "changes only through `set_communication_philosophy`, and only when they ask for it" in lowered
 
     def test_supports_refusal_and_rejects_stereotyped_advice(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "hierarchy is context, not permission to erase what the user needs" in lowered
         assert "a firm refusal is a valid recommendation" in lowered
@@ -664,7 +685,7 @@ class TestTranscriptAttributionReview:
     """
 
     def test_the_section_exists_and_settles_attribution_before_extraction(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "### Reviewing attribution when the source is a transcript" in body
@@ -672,13 +693,13 @@ class TestTranscriptAttributionReview:
         assert "settle attribution in conversation first, then stage only what survived" in lowered
 
     def test_keeps_participation_speech_subject_and_commitment_apart(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "attendance establishes none of the other three" in lowered
         assert "a task nobody answered is a suggestion rather than a promise" in lowered
 
     def test_labels_stay_recording_local_in_both_directions(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "never a name, an alias, identity proof, or a person record" in lowered
         assert "diarization can split one person across several labels" in lowered
@@ -688,7 +709,7 @@ class TestTranscriptAttributionReview:
         assert "labels never transfer between recordings" in lowered
 
     def test_resolution_precedes_staging_and_attribution_stays_bounded(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "never invent an event time" in lowered
         assert "never create or merge a person to make a speaker map fit" in lowered
@@ -696,26 +717,26 @@ class TestTranscriptAttributionReview:
         assert "never for a guessed speaker and never for a label" in lowered
 
     def test_the_gate_survives_the_attribution_confirmation(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "confirming who spoke is not approval to commit what they said" in lowered
         assert "anything resting on an unknown speaker or owner waits" in lowered
         assert "supported independent claims proceed" in lowered
 
     def test_a_neutral_interaction_needs_participation_and_a_date(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "needs confirmed participation **and** an established event date" in lowered
         assert "inventing a participant or using the import time as the meeting time" in lowered
 
     def test_follow_ups_are_not_staged_as_another_candidate_type(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "there is no reminder candidate type" in lowered
         assert "never a candidate wearing another type's name" in lowered
 
     def test_the_review_itself_is_never_persisted(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "keep that report in the conversation" in lowered
         assert "belong in no staged field, no person record, and no source receipt" in lowered
@@ -739,7 +760,7 @@ class TestGroundedPerspective:
     """
 
     def test_the_section_exists_and_stays_narrower_than_mentioning_someone(self) -> None:
-        body = SKILL_PATH.read_text(encoding="utf-8")
+        body = _skill_text()
         lowered = " ".join(body.lower().split())
 
         assert "## Understanding someone's perspective" in body
@@ -747,45 +768,45 @@ class TestGroundedPerspective:
         assert "not every mention of a person is an ask for their perspective" in lowered
 
     def test_identity_resolves_first_and_its_absence_permits_labelled_work(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "resolve the named person before any personalized read" in lowered
         assert "never a guessed read" in lowered
         assert "clearly labelled work from material the user supplied, and never a created person" in lowered
 
     def test_reads_stay_ordinary_and_bounded(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "`get_person_timeline` when the answer turns on change over time" in lowered
         assert "evidence you cannot read is not a reason to escalate" in lowered
         assert "a bounded read is not complete history" in lowered
 
     def test_keeps_stated_reported_and_inferred_apart(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "what the person stated, what someone else reported, or what you inferred" in lowered
         assert "repeated copies of one account are not independent corroboration" in lowered
         assert "a single event does not establish personality" in lowered
 
     def test_sparse_material_may_yield_no_pattern(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "no pattern is a valid result" in lowered
         assert "never a filled-in template" in lowered
         assert "an unfamiliar question earns uncertainty rather than a confident answer" in lowered
 
     def test_writes_nothing_and_never_persists_the_synthesis(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "understanding a perspective is a read-only flow" in lowered
-        assert "the end-of-session capture below does not apply to it" in lowered
+        assert "the end-of-session capture in `skill.md` does not apply to it" in lowered
         assert "`stage_candidates` with existing candidate types and explicit acceptance" in lowered
         assert "the synthesized account, a simulated answer, and an unsupported generalization are never persisted" in (
             lowered
         )
 
     def test_research_needs_its_own_request_and_sources_are_data(self) -> None:
-        lowered = " ".join(SKILL_PATH.read_text(encoding="utf-8").lower().split())
+        lowered = " ".join(_skill_text().lower().split())
 
         assert "researching someone on the public web is a separate action the user must ask for" in lowered
         assert "research does not authorize storing what it finds" in lowered

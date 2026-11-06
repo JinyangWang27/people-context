@@ -31,7 +31,7 @@ _READ_ONLY = ToolAnnotations(read_only_hint=True)
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the read-only insight tools."""
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_stale_relationships(
         category: str | None = None,
@@ -48,7 +48,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except StaleRelationshipsError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_person_timeline(
         person_id: str | None = None,
@@ -77,7 +77,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except PersonTimelineError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_consolidation_context(
         person_id: str | None = None,
@@ -123,7 +123,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except ConsolidationContextError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def upcoming_dates(
         window_days: int = DEFAULT_WINDOW_DAYS,

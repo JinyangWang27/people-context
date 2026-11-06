@@ -21,7 +21,7 @@ _READ_ONLY = ToolAnnotations(read_only_hint=True)
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the two minimal-disclosure graph tools."""
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_relationship_graph(
         person_id: str | None = None,
@@ -41,7 +41,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except GraphTraversalError as exc:
             return {"error": "invalid_depth", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def find_connection(person_a: str, person_b: str, max_depth: int = 4) -> dict[str, Any]:
         """Return one shortest relationship path, or a structured not-connected result."""

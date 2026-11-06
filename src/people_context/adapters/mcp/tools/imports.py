@@ -27,7 +27,7 @@ def _error(exc: ImportPipelineError | ImportExtractionError) -> dict[str, Any]:
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register header-only extraction, review, and selective commit tools."""
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def import_content(
         source_type: str,
@@ -62,7 +62,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except OSError as exc:
             return {"error": "invalid_path", "message": str(exc), "path": path}
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def stage_candidates(
         source: str,
@@ -82,53 +82,16 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         `predicate`, `value`; `observation` `person_ref`, `text`; `trait` `person_ref`, `category`, `value`,
         `evidence_note`, `confidence`; `interaction` `summary`, `participant_refs`, `date`; `relationship`
         `from_ref`, `to_ref`, `relationship_type`; `group` `ref`, `name`, `kind`; `group_membership` `person_ref`,
-        `group_ref`. Only `person` and `group` carry a `ref`; the rest point at one.
-        Staging matches each `person` against stored people and review shows the outcome, so do not resolve
-        names first. An email address is contact information, never a `name`: put it in `aliases` as
-        `{"value": <address>, "kind": "handle"}`, which is also what matching reads.
+        `group_ref`. Only `person` and `group` carry a `ref`; the rest point at one, and refs are batch-local.
+        Staging matches each `person` against stored people, so do not resolve names first. An email address is
+        a `{"value": <address>, "kind": "handle"}` alias, never a `name`.
 
-        Use this after extracting concise candidates from user-provided notes, meeting transcripts, or other
-        agent-visible text. Distinguish what was stated (`fact`), what happened in this source (`observation`),
-        and what you inferred (`trait`, which requires an explicit `confidence` and a concise `evidence_note`).
-        Relationship candidates carry batch-local `from_ref`/`to_ref` and are ordinary-disclosure only: omit a
-        relationship the user would consider sensitive or restricted rather than staging it.
-
-        References are batch-local; raw notes and source text must not be included in candidate fields. A
-        request using `observation`, `trait`, or `relationship` is bounded to 500 candidates, a 128-character
-        `source`, 1 MiB of candidate JSON, and 8 KiB per string.
-
-        A `fact` or `affiliation` may record who asserted it in an optional `stated_by` of at most 256
-        characters: a person, a document, or a role. Attribution is not verification. A CV saying someone is
-        analytical is that person's own claim about themselves, so stage it as a fact whose value says so and
-        whose `stated_by` names them, never as an inferred `trait`. `stated_by` is separate from `source`, which
-        names the process that wrote the row, and from `source_kind` below, which receipts the artifact read.
-        Omit it when the attribution is unknown rather than guessing at a speaker.
-
-        A trait may name the records it was drawn from. Give a supporting `observation` or `interaction` any
-        short `evidence_ref` label of your own and list those labels in the trait's `evidence_refs`; use
-        `evidence_ids` for records already stored. Evidence must be about the trait's own person, and one trait
-        cites at most 32 references and ids combined, each at most 256 characters.
-
-        A shared context is two candidates, never one. A `group` names an identified class, cohort, team,
-        department, club, household, or community and carries a batch-local `ref`; a `group_membership` places
-        one `person_ref` in one `group_ref` with a `role`, and requires a batch that passes `source_kind`, so a
-        group committed in an earlier call can still be named. Group names never merge: staging looks nothing up
-        by name, so committing a group candidate creates a new group unless you pass `group_id` — resolve an
-        existing group with `find_groups` first and pass the id it returns. Record dates only where the source
-        gave them. Absent dates stay absent and mean unknown, never "still going": `temporal_basis` is `unknown`
-        without dates, `period` with them, and `ongoing` only when you set it because the source said so. Do not
-        invent a year, a class number, or a yearly placement per grade; a confirmation that people stayed
-        together records the people and the extent that were confirmed, and nothing more. "My classmate" with no
-        identified group is a `relationship`, not an invented group.
-
-        `source_kind` optionally records an import receipt for this batch. It is a machine category such as
-        `meeting_transcript`, at most 128 characters of letters, digits, `.`, `_`, `-`, or `/` — never a person, a
-        title, or a description; put any human wording in `label` instead. `label`, `content_digest`,
-        `extraction_fingerprint`, and `external_source_id` are refused without `source_kind`. If you can compute a
-        SHA-256 over the exact source artifact, pass it as `content_digest` (64 lowercase hex characters) so
-        re-importing that same source can be detected; without one, no duplicate detection is promised.
-        `extraction_fingerprint` is optional and should be omitted unless you have explicit, bounded configuration
-        semantics for it. None of these fields may carry source text.
+        A `fact` is stated, an `observation` happened in this source, and a `trait` is inferred. Never put raw
+        source text in a field, and leave out a relationship the user would consider sensitive. Staging writes
+        nothing durable: the user reviews with `review_import` and accepts with `commit_import`. Before staging
+        `stated_by`, trait evidence, groups and memberships, dates, or the receipt fields `source_kind`, `label`,
+        `content_digest`, `extraction_fingerprint`, and `external_source_id`, read the "Staged capture" and
+        "Documents and shared contexts" sections of the `people-context://guide` resource.
         """
         try:
             return deps.stage_candidates.execute(
@@ -143,7 +106,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except ImportPipelineError as exc:
             return _error(exc)
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def review_import(batch_id: str) -> dict[str, Any]:
         """Return staged candidates and statuses for one batch.
@@ -163,7 +126,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except ImportPipelineError as exc:
             return _error(exc)
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def amend_candidate(
         batch_id: str,
@@ -186,7 +149,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except ImportPipelineError as exc:
             return _error(exc)
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def withdraw_candidates(
         batch_id: str,
@@ -207,7 +170,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except ImportPipelineError as exc:
             return _error(exc)
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def commit_import(
         batch_id: str,

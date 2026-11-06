@@ -22,7 +22,7 @@ _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempoten
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register communication guidance and preference tools."""
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_communication_guidance(
         person_id: str | None = None, situation: str | None = None, person: str | None = None
@@ -37,7 +37,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return target
         return deps.get_communication_guidance.execute(target, situation=situation).model_dump(mode="json")
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def set_communication_philosophy(text: str) -> dict[str, Any]:
         """Store communication philosophy verbatim while auditing lengths only."""

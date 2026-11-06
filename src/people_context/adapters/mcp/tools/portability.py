@@ -22,7 +22,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     if not process_elevation_enabled(EXPORT_ENV):
         return
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def export_data() -> dict[str, Any]:
         """Export the complete portable domain dataset.

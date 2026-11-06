@@ -20,7 +20,8 @@ EXAMPLES_PATH = REPOSITORY_ROOT / "docs/shared-connections-examples.md"
 EVALS_PATH = REPOSITORY_ROOT / "docs/evals.md"
 GALLERY_INDEX_PATH = REPOSITORY_ROOT / "docs/use-cases/README.md"
 IMPORT_DOC_PATH = REPOSITORY_ROOT / "docs/import.md"
-SKILL_PATH = REPOSITORY_ROOT / "skills/people-context-usage/SKILL.md"
+# The served guide is the usage skill plus its reference files, so it holds the whole of what the skill teaches.
+GUIDE_PATH = REPOSITORY_ROOT / "src/people_context/adapters/mcp/guide.md"
 
 #: The lifecycle checks the examples name. A document claiming they run is only as good as these.
 LIFECYCLE_TEST_PATHS: tuple[Path, ...] = (
@@ -161,7 +162,7 @@ def test_a_negative_lookup_is_never_reported_as_proof_of_no_connection() -> None
 
 def test_the_guidance_separates_an_empty_result_from_an_unreadable_person() -> None:
     """The two negatives have different remedies, so conflating them misroutes the agent."""
-    text = _flowed(SKILL_PATH)
+    text = _flowed(GUIDE_PATH)
 
     assert "An **empty `connections` list with `found: true`** is the scoped negative" in text
     assert "**`found: false`** is not a result about the pair at all" in text
@@ -232,7 +233,7 @@ def test_the_harness_disclaims_shared_context_capture() -> None:
 
 def test_the_guidance_requires_explicit_group_resolution_before_capture() -> None:
     """The one rule that cannot be recovered from afterwards: M28 offers no group merge."""
-    text = _flowed(SKILL_PATH)
+    text = _flowed(GUIDE_PATH)
 
     assert "**Never guess a group.**" in text
     assert "there is no merge to undo a wrong one" in text
@@ -240,7 +241,7 @@ def test_the_guidance_requires_explicit_group_resolution_before_capture() -> Non
 
 
 def test_the_guidance_forbids_filled_dates_and_extrapolated_rosters() -> None:
-    text = _flowed(SKILL_PATH)
+    text = _flowed(GUIDE_PATH)
 
     assert "**Never fill in a date.**" in text
     assert 'Absent means unknown, not "still going"' in text
@@ -249,7 +250,7 @@ def test_the_guidance_forbids_filled_dates_and_extrapolated_rosters() -> None:
 
 
 def test_the_guidance_keeps_the_lookup_explicit_and_context_unexpanded() -> None:
-    text = _flowed(SKILL_PATH)
+    text = _flowed(GUIDE_PATH)
 
     assert "without waiting for the user to name a tool" in text
     assert "Do not add derived classmates or colleagues to ordinary `get_person_context` results" in text
@@ -257,7 +258,7 @@ def test_the_guidance_keeps_the_lookup_explicit_and_context_unexpanded() -> None
 
 
 def test_the_guidance_keeps_context_label_and_assertion_distinct() -> None:
-    text = _flowed(SKILL_PATH)
+    text = _flowed(GUIDE_PATH)
 
     assert "It is not evidence they know each other, are friends, or ever met." in text
     assert "A teacher and a pupil of one class are not classmates." in text

@@ -62,8 +62,12 @@ def test_a_refused_write_is_flagged_as_an_error_and_keeps_its_payload(tmp_path: 
     assert isinstance(block, TextContent)
     assert json.loads(block.text) == refused.structured_content
 
-    # A successful write is untouched.
+    # A successful write is not flagged, and its text block is the same payload as compact JSON.
     assert added.is_error is False
+    added_block = added.content[0]
+    assert isinstance(added_block, TextContent)
+    assert json.loads(added_block.text) == added.structured_content
+    assert "\n" not in added_block.text
     assert [alias["value"] for alias in added.structured_content["aliases"]] == ["JY"]
 
 
@@ -139,7 +143,8 @@ def test_flagging_leaves_the_published_tool_definitions_unchanged(tmp_path: Path
     assert record_fact.description is not None
     assert record_fact.description.startswith("Record a time-aware fact about an existing person.")
     assert record_fact.input_schema["required"] == ["person_id", "predicate", "value"]
-    assert record_fact.output_schema is not None
+    # A schema derived from `dict[str, Any]` says nothing, and every request would re-send it.
+    assert all(tool.output_schema is None for tool in tools)
 
     resolve_person = _tool(tools, "resolve_person")
     assert resolve_person.annotations is not None and resolve_person.annotations.read_only_hint is True
