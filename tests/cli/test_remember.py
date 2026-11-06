@@ -110,3 +110,16 @@ def test_a_padded_name_is_trimmed_and_recorded(tmp_path: Path, capsys: pytest.Ca
     assert cli.main(["--db", str(tmp_path / "r.db"), "remember", "  Alice Ng  ", "moved to Berlin"]) == 0
 
     assert capsys.readouterr().out.startswith("Created Alice Ng (")
+
+
+def test_subject_records_a_relationship_between_two_other_people(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db = str(tmp_path / "r.db")
+    cli.main(["--db", db, "remember", "Dana Ito", "x"])
+    capsys.readouterr()
+
+    assert cli.main(["--db", db, "remember", "Pat Lee", "--subject", "Dana Ito", "--relationship", "manages"]) == 0
+    assert "+ relationship: manages (from Dana Ito)" in capsys.readouterr().out
+
+    assert cli.main(["--db", db, "remember", "Pat Lee", "--subject", "Nobody Here", "--relationship", "manages"]) == 1

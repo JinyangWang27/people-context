@@ -268,6 +268,12 @@ def build_parser() -> argparse.ArgumentParser:
     remember.add_argument("--org", default=None, help="Organisation; records an affiliation.")
     remember.add_argument("--role", default=None, help="Role at --org (default: member).")
     remember.add_argument("--relationship", default=None, help="How you relate to them, e.g. manager_of.")
+    remember.add_argument(
+        "--subject",
+        default=None,
+        help="An existing person --relationship runs from instead of you, e.g. --subject Dmitrii "
+        "--relationship reports_to.",
+    )
     remember.add_argument("--predicate", default=None, help="Fact predicate (default: note).")
     remember.add_argument(
         "--trait-category",
@@ -426,6 +432,17 @@ def build_parser() -> argparse.ArgumentParser:
     delete = subparsers.add_parser("delete", help="Permanently forget a person and their linked data.")
     delete.add_argument("person", help="An active person id, or a name to resolve.")
     delete.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+
+    relate = subparsers.add_parser(
+        "relate",
+        help="Record how one or more people relate to another, e.g. `relate Eli Pat reports_to Dana`.",
+    )
+    relate.add_argument("subjects", nargs="+", metavar="PERSON", help="An active person id, or a name to resolve.")
+    relate.add_argument("type", help="Relationship type, e.g. reports_to, manages, colleague_of.")
+    relate.add_argument("object", metavar="OTHER", help="An active person id, or a name to resolve.")
+    relate.add_argument("--label", default=None, help="Free-text detail for the relationship.")
+    relate.add_argument("--from", dest="valid_from", default=None, help="Known start date (YYYY-MM-DD).")
+    relate.add_argument("--to", dest="valid_to", default=None, help="Known end date (YYYY-MM-DD).")
 
     relationship_types = subparsers.add_parser(
         "relationship-types",

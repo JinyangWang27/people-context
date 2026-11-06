@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import sys
 
+from pydantic import ValidationError
+
 from people_context.adapters.runtime import ApplicationRuntime
 from people_context.app.relationships import (
     AddRelationshipTypeInput,
     RelationshipTypeAlreadyExistsError,
+    SetRelationshipInput,
 )
+from people_context.cli.people import resolve_person
 from people_context.cli.rendering import print_table
 
 
@@ -53,6 +57,51 @@ def cmd_relationship_types(runtime: ApplicationRuntime, args: argparse.Namespace
     else:
         for type_name in uncategorized:
             print(f"  - {type_name}")
+    return 0
+
+
+def cmd_relate(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
+    """Record one relationship from each subject to the object, resolving every name before any write."""
+    other, exit_code = resolve_person(runtime, args.object)
+    if other is None:
+        return exit_code
+    subjects = []
+    for reference in args.subjects:
+        person, exit_code = resolve_person(runtime, reference)
+        if person is None:
+            return exit_code
+        if person.id == other.id:
+            print(f"{person.canonical_name} cannot be related to themselves.", file=sys.stderr)
+            return 1
+        subjects.append(person)
+    try:
+        inputs = [
+            SetRelationshipInput(
+                subject_id=person.id,
+                object_id=other.id,
+                type=args.type,
+                label=args.label,
+                valid_from=args.valid_from,
+                valid_to=args.valid_to,
+                source="cli",
+            )
+            for person in subjects
+        ]
+    except ValidationError:
+        print("Dates must be YYYY-MM-DD, and --from may not be after --to.", file=sys.stderr)
+        return 1
+    # shortcut: one transaction per edge, so a failure partway keeps earlier edges; names and dates are checked first.
+    for person, data in zip(subjects, inputs, strict=True):
+        try:
+            runtime.use_cases.set_relationship.execute(data)
+        except ValidationError:
+            # The period is validated when built, so an inverted range fails on the first edge, before any write.
+            print("Dates must be YYYY-MM-DD, and --from may not be after --to.", file=sys.stderr)
+            return 1
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"Recorded: {person.canonical_name} {args.type} {other.canonical_name}")
     return 0
 
 

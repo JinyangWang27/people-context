@@ -33,7 +33,7 @@ browser batch review, and M30.3 browser inline edit.
 | `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
-| `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
+| `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--subject PERSON] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--subject` records the relationship from that existing person instead of you; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
 | `browse [--open] [--port N]` | Serve a local page of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
@@ -53,6 +53,7 @@ browser batch review, and M30.3 browser inline edit.
 | `watch [--interval S] [--from-start]` | Follow the local changelog as JSON lines until interrupted. |
 | `reindex` | Rebuild the active-person FTS index. |
 | `reindex --semantic` | Explicitly obtain the pinned model and atomically rebuild semantic vectors. |
+| `relate PERSON... TYPE OTHER [--label TEXT] [--from DATE] [--to DATE]` | Record a relationship from each PERSON to OTHER, e.g. `relate Eli Pat reports_to Dana`. Every name resolves before anything is written; an inverse type such as `manages` is stored in its canonical direction, and repeating a link updates it in place. A self-link or a bad date exits 1. |
 | `relationship-types` | List vocabulary and uncategorized types currently used by active edges. |
 | `relationship-types add ...` | Add portable custom vocabulary (add-only in v1). |
 | `normalize-relationships [--apply]` | Dry-run or apply audited canonical rewrites of legacy edges. |
@@ -77,7 +78,7 @@ browser batch review, and M30.3 browser inline edit.
 | `group memberships PERSON [--limit N] [--include-sensitive] [--json]` | List one person's memberships with each group. |
 | `group shared PERSON_A PERSON_B [--limit N] [--include-sensitive] [--json]` | Explain how two people share identified groups, and when. |
 
-`show`, `brief`, `timeline`, `edit`, `add-alias`, `remove-alias`, `update-alias`, and `delete` try an active id first and then
+`show`, `brief`, `timeline`, `edit`, `add-alias`, `remove-alias`, `update-alias`, `relate`, and `delete` try an active id first and then
 `ResolvePerson`. Unknown references exit 1; ambiguous names exit 2 and print candidates rather than
 guessing.
 
