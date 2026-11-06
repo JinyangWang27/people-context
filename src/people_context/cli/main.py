@@ -45,7 +45,7 @@ from people_context.cli.portability import (
     cmd_sync_pull,
     cmd_sync_push,
 )
-from people_context.cli.relationships import cmd_normalize_relationships, cmd_relationship_types
+from people_context.cli.relationships import cmd_normalize_relationships, cmd_relate, cmd_relationship_types
 from people_context.cli.setup import cmd_setup
 from people_context.cli.sources import cmd_source, cmd_sources
 from people_context.config import (
@@ -87,6 +87,7 @@ _COMMANDS: dict[str, CommandHandler] = {
     "update-alias": cmd_update_alias,
     "set": cmd_set,
     "delete": cmd_delete,
+    "relate": cmd_relate,
     "relationship-types": cmd_relationship_types,
     "normalize-relationships": cmd_normalize_relationships,
     "sync": cmd_sync,

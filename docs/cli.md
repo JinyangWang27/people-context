@@ -53,6 +53,7 @@ browser batch review, and M30.3 browser inline edit.
 | `watch [--interval S] [--from-start]` | Follow the local changelog as JSON lines until interrupted. |
 | `reindex` | Rebuild the active-person FTS index. |
 | `reindex --semantic` | Explicitly obtain the pinned model and atomically rebuild semantic vectors. |
+| `relate PERSON... TYPE OTHER [--label TEXT] [--from DATE] [--to DATE]` | Record a relationship from each PERSON to OTHER, e.g. `relate Eli Pat reports_to Dana`. Every name resolves before anything is written; an inverse type such as `manages` is stored in its canonical direction, and repeating a link updates it in place. A self-link or a bad date exits 1. |
 | `relationship-types` | List vocabulary and uncategorized types currently used by active edges. |
 | `relationship-types add ...` | Add portable custom vocabulary (add-only in v1). |
 | `normalize-relationships [--apply]` | Dry-run or apply audited canonical rewrites of legacy edges. |
@@ -77,7 +78,7 @@ browser batch review, and M30.3 browser inline edit.
 | `group memberships PERSON [--limit N] [--include-sensitive] [--json]` | List one person's memberships with each group. |
 | `group shared PERSON_A PERSON_B [--limit N] [--include-sensitive] [--json]` | Explain how two people share identified groups, and when. |
 
-`show`, `brief`, `timeline`, `edit`, `add-alias`, `remove-alias`, `update-alias`, and `delete` try an active id first and then
+`show`, `brief`, `timeline`, `edit`, `add-alias`, `remove-alias`, `update-alias`, `relate`, and `delete` try an active id first and then
 `ResolvePerson`. Unknown references exit 1; ambiguous names exit 2 and print candidates rather than
 guessing.
 

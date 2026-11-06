@@ -427,6 +427,17 @@ def build_parser() -> argparse.ArgumentParser:
     delete.add_argument("person", help="An active person id, or a name to resolve.")
     delete.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
 
+    relate = subparsers.add_parser(
+        "relate",
+        help="Record how one or more people relate to another, e.g. `relate Eli Pat reports_to Dana`.",
+    )
+    relate.add_argument("subjects", nargs="+", metavar="PERSON", help="An active person id, or a name to resolve.")
+    relate.add_argument("type", help="Relationship type, e.g. reports_to, manages, colleague_of.")
+    relate.add_argument("object", metavar="OTHER", help="An active person id, or a name to resolve.")
+    relate.add_argument("--label", default=None, help="Free-text detail for the relationship.")
+    relate.add_argument("--from", dest="valid_from", default=None, help="Known start date (YYYY-MM-DD).")
+    relate.add_argument("--to", dest="valid_to", default=None, help="Known end date (YYYY-MM-DD).")
+
     relationship_types = subparsers.add_parser(
         "relationship-types",
         help="List relationship vocabulary or add a custom type.",
