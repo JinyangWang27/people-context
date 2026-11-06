@@ -46,6 +46,13 @@ graph results keep their meanings.
 - default write annotation: clients should apply normal write approval.
 - `destructiveHint=true`: irreversible/restructuring operations (`merge_people`, `forget`).
 
+## Result format
+
+Every tool result carries its payload twice: as `structuredContent`, and as one text block holding the same
+payload as compact JSON, with no indentation or spaces after separators. Tools advertise no `outputSchema`; the one
+the SDK derived from a plain `dict` described nothing and was re-sent with every request. A field documented
+as `null` is still sent as `null`, never omitted.
+
 ## Refusals
 
 A refusal is a structured `{"error": <code>, "message": ...}` payload rather than a protocol error, so the model

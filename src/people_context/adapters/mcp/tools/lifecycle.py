@@ -21,7 +21,7 @@ _DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True)
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register implemented lifecycle tools."""
 
-    @mcp.tool(annotations=_DESTRUCTIVE)
+    @mcp.tool(annotations=_DESTRUCTIVE, structured_output=False)
     @flag_refusals
     async def merge_people(primary_id: str, duplicate_id: str) -> dict[str, Any]:
         """Merge a duplicate person into a primary person atomically."""
@@ -32,7 +32,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except MergePeopleError as exc:
             return {"error": exc.code, "message": str(exc)}
 
-    @mcp.tool(annotations=_DESTRUCTIVE)
+    @mcp.tool(annotations=_DESTRUCTIVE, structured_output=False)
     @flag_refusals
     async def forget(target: str, scope: str) -> dict[str, Any]:
         """Hard-delete a person or record and redact identifying audit history."""

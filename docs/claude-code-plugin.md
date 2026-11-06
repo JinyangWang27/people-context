@@ -99,7 +99,9 @@ If the tools still do not connect, every operation has a CLI equivalent: run the
 
 The plugin ships model-discoverable skills at the plugin root, where Claude Code discovers
 them rather than inside `.claude-plugin/`. `skills/people-context-usage/SKILL.md` is the
-general one, `skills/communication-coach/SKILL.md` covers help with one specific
+general one; it keeps the rules every session needs and moves each specialised workflow (meetings and
+coaching, staged capture, documents and shared contexts, maintenance) to a file under its `references/` folder
+that is read only when the task needs it. `skills/communication-coach/SKILL.md` covers help with one specific
 conversation, `skills/person-perspective/SKILL.md` covers understanding how someone tends to
 think or decide from the available evidence, and `skills/transcript-review/SKILL.md` covers
 reviewing who said what in a transcript before anything is staged. None adds a tool or a

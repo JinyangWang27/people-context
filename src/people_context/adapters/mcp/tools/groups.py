@@ -29,7 +29,7 @@ _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempoten
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register group management and ordinary-disclosure group reads."""
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def create_group(
         name: str,
@@ -56,7 +56,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def add_group_membership(
         person_id: str,
@@ -92,7 +92,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def close_group_membership(membership_id: str, ended_on: str) -> dict[str, Any]:
         """Record the last day a historically true membership held.
@@ -108,7 +108,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def find_groups(
         name: str | None = None,
@@ -126,7 +126,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except GroupQueryError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_group(group_id: str, limit: int = DEFAULT_GROUP_LIMIT) -> dict[str, Any]:
         """Return one group and a bounded page of its recorded memberships.
@@ -140,7 +140,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except GroupQueryError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def list_group_memberships(
         person_id: str | None = None,
@@ -161,7 +161,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except GroupQueryError as exc:
             return {"error": "invalid_parameter", "message": str(exc)}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def explain_shared_connections(
         person_a_id: str | None = None,

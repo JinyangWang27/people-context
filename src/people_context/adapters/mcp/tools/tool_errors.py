@@ -28,15 +28,18 @@ _P = ParamSpec("_P")
 
 def flag_refusals(
     tool: Callable[_P, Awaitable[_ToolPayload]],
-) -> Callable[_P, Awaitable[_ToolPayload | CallToolResult]]:
-    """Report a refusal payload as an MCP tool error while keeping the payload intact.
+) -> Callable[_P, Awaitable[CallToolResult]]:
+    """Render every payload as compact JSON, and report a refusal payload as an MCP tool error.
 
     Every tool answers a refusal with a structured ``{"error": <code>, ...}`` payload rather than a
     protocol error, so the model reads an actionable reason instead of a stack trace. Returned as an
-    ordinary result it leaves ``isError`` false, and a client applying the standard MCP check reads a
-    dropped write as a successful one. Only the refusal branch is wrapped: the payload still ships as
-    ``structuredContent`` and as the same JSON text block the SDK would have rendered, now with
-    ``isError`` set so both kinds of caller agree on what happened.
+    ordinary result it would leave ``isError`` false, and a client applying the standard MCP check reads a
+    dropped write as a successful one, so a refusal sets ``isError``.
+
+    Each payload ships as ``structuredContent`` and as one compact JSON text block. The SDK's own rendering
+    indents that block, which costs about a third more tokens every time a model reads a result. Tools
+    register with ``structured_output=False``, so the SDK advertises no output schema: the one it derived
+    from ``dict[str, Any]`` told a model nothing and was re-sent with every request.
 
     The wrapper is registered in place of the tool, so ``functools.wraps`` matters twice over:
     ``inspect.signature`` unwraps it to derive the published input schema from the real signature,
@@ -44,17 +47,12 @@ def flag_refusals(
     """
 
     @functools.wraps(tool)
-    async def flagged(*args: _P.args, **kwargs: _P.kwargs) -> _ToolPayload | CallToolResult:
-        payload = await tool(*args, **kwargs)
-        if not payload.get("error"):
-            return payload
-        # Mirrors the SDK's own dict-to-text rendering, so flagging a refusal leaves the text block
-        # a client already displays for it unchanged.
-        text = pydantic_core.to_json(payload, fallback=str, indent=2).decode()
+    async def flagged(*args: _P.args, **kwargs: _P.kwargs) -> CallToolResult:
+        payload = pydantic_core.to_jsonable_python(await tool(*args, **kwargs), fallback=str)
         return CallToolResult(
-            content=[TextContent(type="text", text=text)],
+            content=[TextContent(type="text", text=pydantic_core.to_json(payload).decode())],
             structured_content=payload,
-            is_error=True,
+            is_error=bool(payload.get("error")),
         )
 
     return flagged

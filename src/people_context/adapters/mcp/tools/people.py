@@ -42,7 +42,7 @@ _WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempoten
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register the resolve/search/remember tools bound to the given use cases."""
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def resolve_person(query: str, hints: ResolutionHints | None = None, limit: int = 5) -> dict[str, Any]:
         """Resolve a name, nickname, or partial reference to candidate people.
@@ -57,7 +57,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         """
         return deps.resolve_person.execute(query, limit=limit, hints=hints).model_dump(mode="json")
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def get_person_context(
         person_id: str | None = None,
@@ -90,7 +90,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     if process_elevation_enabled(SENSITIVE_CONTEXT_ENV):
 
-        @mcp.tool(annotations=_READ_ONLY)
+        @mcp.tool(annotations=_READ_ONLY, structured_output=False)
         @flag_refusals
         async def get_sensitive_person_context(
             person_id: str,
@@ -110,7 +110,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 include_sensitive=True,
             ).model_dump(mode="json")
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def search_people(query: str, limit: int = 10) -> dict[str, Any]:
         """Free-text search over stored people for browsing or lookup.
@@ -121,7 +121,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         results = deps.search_people.execute(query, limit=limit)
         return {"query": query, "results": [candidate.model_dump(mode="json") for candidate in results]}
 
-    @mcp.tool(annotations=_READ_ONLY)
+    @mcp.tool(annotations=_READ_ONLY, structured_output=False)
     @flag_refusals
     async def semantic_search(
         query: str,
@@ -138,7 +138,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         except SemanticSearchValidationError as exc:
             return {"error": exc.code, "message": str(exc)}
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def remember_person(
         name: str,
@@ -185,7 +185,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             return {"error": NAME_IS_EMAIL, "message": str(exc)}
         return result.model_dump(mode="json")
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def remember(
         person: str,
@@ -201,28 +201,17 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         source: str = "agent",
         subject: str | None = None,
     ) -> dict[str, Any]:
-        """Record one thing the user stated about one person, in a single call.
+        """Record one thing the user stated directly about one person, in a single call.
 
-        Use this when the user directly tells you something durable — "Alice from Acme
-        prefers short emails", "Bob is my manager", "I had coffee with Dana today".
-        `person` is the name as the user said it: it is resolved first, and a new
-        person is created only when nobody matches. `org`/`role` record an affiliation,
-        `relationship` records how the user relates to them (e.g. `manager_of`,
-        `friend_of`, from the user's point of view; pass `subject` to record it from another
-        existing person instead: `person="Pu", subject="Dmitrii", relationship="reports_to"`
-        means Dmitrii reports to Pu, and `subject` is resolved but never created), and `note` records the statement
-        as a `fact`, `trait`, or `interaction`. Leave `kind` as `auto` to classify the
-        note by a fixed keyword rule, or set it explicitly when you know. Pass `occurred_at` when
-        the statement says an interaction happened earlier ("met Dana last week"); without it such
-        a note is refused rather than dated today, because that date is what the staleness report
-        reads.
+        `person` is the name as said; a new person is created only when nobody matches. `org`/`role` record an
+        affiliation. `relationship` (e.g. `manager_of`, `friend_of`) is from the user's point of view, or from
+        `subject`, an existing person who is never created: `person="Pu", subject="Dmitrii",
+        relationship="reports_to"` means Dmitrii reports to Pu. `note` is recorded as a `fact`, `trait`, or
+        `interaction`; `kind="auto"` picks by keyword. Pass `occurred_at` for an earlier interaction, or the
+        note is refused rather than dated today.
 
-        Identity is never guessed for a write: `status: ambiguous` or `unconfirmed`
-        returns candidates and records nothing — ask the user, then call again with the
-        exact canonical name or a unique alias. Everything recorded commits in one
-        transaction and is audited like the individual tools. For material you
-        extracted or inferred from a transcript rather than a direct statement, use
-        `stage_candidates` so the user reviews it first.
+        `status: ambiguous` or `unconfirmed` returns candidates and records nothing: ask, then call again with
+        the exact name. Material extracted from a transcript goes through `stage_candidates` instead.
         """
         try:
             data = QuickCaptureInput(

@@ -35,7 +35,7 @@ _CORRECT = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempote
 def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     """Register record-oriented write tools with their locked schemas."""
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def add_alias(
         person_id: str,
@@ -62,7 +62,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_REMOVE)
+    @mcp.tool(annotations=_REMOVE, structured_output=False)
     @flag_refusals
     async def remove_alias(person_id: str, value: str) -> dict[str, Any]:
         """Remove one alias, matched by normalized value, from an existing person.
@@ -73,7 +73,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         """
         return call_action(lambda: deps.remove_alias.execute(RemoveAliasInput(person_id=person_id, value=value)))
 
-    @mcp.tool(annotations=_CORRECT)
+    @mcp.tool(annotations=_CORRECT, structured_output=False)
     @flag_refusals
     async def update_alias(
         person_id: str,
@@ -97,7 +97,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_CORRECT)
+    @mcp.tool(annotations=_CORRECT, structured_output=False)
     @flag_refusals
     async def rename_person(person_id: str, name: str) -> dict[str, Any]:
         """Replace a person's canonical name; the old name stays on as an alias.
@@ -111,7 +111,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             lambda: deps.edit_person.execute(EditPersonInput(person_id=person_id, name=name, source="agent"))
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def set_relationship(
         subject_id: str,
@@ -137,7 +137,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def set_affiliation(
         person_id: str,
@@ -161,7 +161,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def record_fact(
         person_id: str,
@@ -191,7 +191,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def record_observation(
         person_id: str,
@@ -211,7 +211,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def record_trait(
         person_id: str,
@@ -242,7 +242,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def record_interaction(
         summary: str,
@@ -264,7 +264,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def correct_record(entity_type: str, entity_id: str, fields: dict[str, Any]) -> dict[str, Any]:
         """Correct whitelisted assertion fields in place with before/after audit."""
@@ -274,7 +274,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
             )
         )
 
-    @mcp.tool(annotations=_WRITE)
+    @mcp.tool(annotations=_WRITE, structured_output=False)
     @flag_refusals
     async def supersede_fact(
         fact_id: str,
