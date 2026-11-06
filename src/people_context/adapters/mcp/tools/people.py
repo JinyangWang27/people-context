@@ -199,6 +199,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         trait_category: TraitCategory | None = None,
         sensitivity: Sensitivity = Sensitivity.PERSONAL,
         source: str = "agent",
+        subject: str | None = None,
     ) -> dict[str, Any]:
         """Record one thing the user stated about one person, in a single call.
 
@@ -207,7 +208,9 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         `person` is the name as the user said it: it is resolved first, and a new
         person is created only when nobody matches. `org`/`role` record an affiliation,
         `relationship` records how the user relates to them (e.g. `manager_of`,
-        `friend_of`, from the user's point of view), and `note` records the statement
+        `friend_of`, from the user's point of view; pass `subject` to record it from another
+        existing person instead: `person="Pu", subject="Dmitrii", relationship="reports_to"`
+        means Dmitrii reports to Pu, and `subject` is resolved but never created), and `note` records the statement
         as a `fact`, `trait`, or `interaction`. Leave `kind` as `auto` to classify the
         note by a fixed keyword rule, or set it explicitly when you know. Pass `occurred_at` when
         the statement says an interaction happened earlier ("met Dana last week"); without it such
@@ -230,6 +233,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                 org=org,
                 role=role,
                 relationship=relationship,
+                subject=subject,
                 predicate=predicate,
                 trait_category=trait_category,
                 sensitivity=sensitivity,

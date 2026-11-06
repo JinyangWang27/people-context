@@ -47,7 +47,7 @@ from people_context.app.records import (
 )
 from people_context.app.relationships import SetRelationship, SetRelationshipInput
 from people_context.app.relationships.policy import relationship_display_type
-from people_context.domain.person import is_email_shaped
+from people_context.domain.person import Person, is_email_shaped
 from people_context.domain.shared import Sensitivity, new_id
 from people_context.domain.trait import TraitCategory
 from people_context.ports.audit_log import AuditLog
@@ -137,6 +137,8 @@ class QuickCaptureInput(BaseModel):
     org: str | None = None
     role: str | None = None
     relationship: str | None = None
+    #: Who `relationship` runs from, when that is not the user; must already exist.
+    subject: str | None = None
     predicate: str | None = None
     trait_category: TraitCategory | None = None
     sensitivity: Sensitivity = Sensitivity.PERSONAL
@@ -223,6 +225,8 @@ def _validate(data: QuickCaptureInput, note: str | None) -> str | None:
     """
     if data.kind == "affiliation" and data.org is None:
         return "kind=affiliation needs `org`; nothing was recorded."
+    if data.subject is not None and data.relationship is None:
+        return "`subject` names who a relationship runs from, so it needs `relationship`; nothing was recorded."
     if data.kind == "relationship" and data.relationship is None:
         return "kind=relationship needs `relationship`; nothing was recorded."
     if data.kind in ("affiliation", "relationship") and note is not None:
@@ -289,7 +293,7 @@ class QuickCapture:
         invalid = _validate(data, note)
         if invalid is not None:
             return QuickCaptureResult(status="invalid_request", message=invalid)
-        if data.relationship is not None and self._people.get_self() is None:
+        if data.relationship is not None and data.subject is None and self._people.get_self() is None:
             return QuickCaptureResult(
                 status="no_self",
                 message="A relationship is recorded from the user's own record, and none exists yet; "
@@ -298,11 +302,20 @@ class QuickCapture:
 
         with self._uow:
             transaction_id = new_id()
+            # The subject resolves first and is never created, so a bad one leaves no new person behind.
+            subject = self._identify_subject(data)
+            if isinstance(subject, QuickCaptureResult):
+                return subject
             identity = self._identify(data, transaction_id)
             if isinstance(identity, QuickCaptureResult):
                 return identity
             person_id, canonical_name, created = identity
-            recorded = self._record(person_id, note, data, transaction_id)
+            if subject is not None and subject.id == person_id:
+                return QuickCaptureResult(
+                    status="invalid_request",
+                    message=f"{data.subject!r} and {data.person!r} are the same person; nothing was recorded.",
+                )
+            recorded = self._record(person_id, note, data, transaction_id, subject)
             return QuickCaptureResult(
                 status="recorded",
                 person_id=person_id,
@@ -311,28 +324,54 @@ class QuickCapture:
                 recorded=recorded,
             )
 
-    def _identify(
-        self, data: QuickCaptureInput, transaction_id: str
-    ) -> tuple[str, str, bool] | QuickCaptureResult:
-        hints = ResolutionHints(org=data.org, role=data.role, relationship=data.relationship)
-        resolution = self._resolve.execute(data.person, limit=5, hints=hints)
+    def _match(self, name: str, hints: ResolutionHints) -> ResolutionCandidate | QuickCaptureResult | None:
+        """Return the one confident match for `name`, a refusal naming the candidates, or None for nobody."""
+        resolution = self._resolve.execute(name, limit=5, hints=hints)
         if resolution.ambiguous:
             return QuickCaptureResult(
                 status="ambiguous",
                 candidates=resolution.candidates,
-                message=f"{data.person!r} matches several people; nothing was recorded. "
+                message=f"{name!r} matches several people; nothing was recorded. "
                 "Ask which one, then call again with a unique name or alias.",
             )
-        if resolution.candidates:
-            top = resolution.candidates[0]
-            if not _is_confident(top):
-                return QuickCaptureResult(
-                    status="unconfirmed",
-                    candidates=resolution.candidates,
-                    message=f"{data.person!r} only loosely matches {top.canonical_name!r}; nothing was recorded. "
-                    "Confirm with the user, then call again with that exact name — or a new one to create.",
-                )
-            return top.person_id, top.canonical_name, False
+        if not resolution.candidates:
+            return None
+        top = resolution.candidates[0]
+        if not _is_confident(top):
+            return QuickCaptureResult(
+                status="unconfirmed",
+                candidates=resolution.candidates,
+                message=f"{name!r} only loosely matches {top.canonical_name!r}; nothing was recorded. "
+                "Confirm with the user, then call again with that exact name — or a new one to create.",
+            )
+        return top
+
+    def _identify_subject(self, data: QuickCaptureInput) -> Person | QuickCaptureResult | None:
+        if data.subject is None:
+            return None
+        match = self._match(data.subject, ResolutionHints())
+        if isinstance(match, QuickCaptureResult):
+            return match
+        subject = self._people.get(match.person_id) if match is not None else None
+        if subject is None:
+            return QuickCaptureResult(
+                status="invalid_request",
+                message=f"No one is stored as {data.subject!r}, and a relationship's subject is never created; "
+                "nothing was recorded. Record them first, or call again with an existing name.",
+            )
+        return subject
+
+    def _identify(
+        self, data: QuickCaptureInput, transaction_id: str
+    ) -> tuple[str, str, bool] | QuickCaptureResult:
+        # The relationship hint scores links to the user, so it only applies when the user is the subject.
+        relationship_hint = data.relationship if data.subject is None else None
+        hints = ResolutionHints(org=data.org, role=data.role, relationship=relationship_hint)
+        match = self._match(data.person, hints)
+        if isinstance(match, QuickCaptureResult):
+            return match
+        if match is not None:
+            return match.person_id, match.canonical_name, False
         if is_email_shaped(data.person):
             return QuickCaptureResult(
                 status="invalid_request",
@@ -346,7 +385,12 @@ class QuickCapture:
         return result.person.id, result.person.canonical_name, True
 
     def _record(
-        self, person_id: str, note: str | None, data: QuickCaptureInput, transaction_id: str
+        self,
+        person_id: str,
+        note: str | None,
+        data: QuickCaptureInput,
+        transaction_id: str,
+        subject: Person | None = None,
     ) -> list[CapturedRecord]:
         recorded: list[CapturedRecord] = []
         kind: RecordedKind | None = None if data.kind == "auto" else data.kind
@@ -364,11 +408,11 @@ class QuickCapture:
             )
             recorded.append(CapturedRecord(kind="affiliation", id=affiliation.id, summary=f"{role} at {data.org}"))
         if data.relationship is not None:
-            self_person = self._people.get_self()
-            assert self_person is not None  # checked in execute before the transaction opened
+            from_person = subject or self._people.get_self()
+            assert from_person is not None  # checked in execute before the transaction opened
             relationship = self._set_relationship.execute(
                 SetRelationshipInput(
-                    subject_id=self_person.id,
+                    subject_id=from_person.id,
                     object_id=person_id,
                     type=data.relationship,
                     source=data.source,
@@ -381,11 +425,13 @@ class QuickCapture:
             # was asked, so it is rendered from the user's side exactly as every read renders it.
             display = relationship_display_type(
                 relationship.type,
-                queried_person_id=self_person.id,
+                queried_person_id=from_person.id,
                 subject_id=relationship.subject_id,
                 vocabulary=self._vocabulary,
             )
-            recorded.append(CapturedRecord(kind="relationship", id=relationship.id, summary=f"{display} (from you)"))
+            origin = "you" if subject is None else subject.canonical_name
+            summary = f"{display} (from {origin})"
+            recorded.append(CapturedRecord(kind="relationship", id=relationship.id, summary=summary))
         # A structural `kind` never reaches here carrying a note: `_validate` refused that pairing.
         if note is None or kind in ("affiliation", "relationship"):
             return recorded

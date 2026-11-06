@@ -229,6 +229,7 @@ def cmd_remember(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             org=args.org,
             role=args.role,
             relationship=args.relationship,
+            subject=args.subject,
             predicate=args.predicate,
             trait_category=args.trait_category,
             sensitivity=args.sensitivity,

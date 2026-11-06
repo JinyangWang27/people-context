@@ -268,6 +268,12 @@ def build_parser() -> argparse.ArgumentParser:
     remember.add_argument("--org", default=None, help="Organisation; records an affiliation.")
     remember.add_argument("--role", default=None, help="Role at --org (default: member).")
     remember.add_argument("--relationship", default=None, help="How you relate to them, e.g. manager_of.")
+    remember.add_argument(
+        "--subject",
+        default=None,
+        help="An existing person --relationship runs from instead of you, e.g. --subject Dmitrii "
+        "--relationship reports_to.",
+    )
     remember.add_argument("--predicate", default=None, help="Fact predicate (default: note).")
     remember.add_argument(
         "--trait-category",

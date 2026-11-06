@@ -870,7 +870,12 @@ a fuzzy edit-distance match is never written against. When nobody matches, the p
 - `org` (with `role`, default `member`) records an affiliation through `SetAffiliation`;
 - `relationship` records an edge from the user's self record to the person through `SetRelationship` with the
   normal vocabulary and inverse handling; without a self record the call returns `status: no_self` and writes
-  nothing;
+  nothing. With `subject`, the edge runs from that person instead and no self record is needed:
+  `remember(person="Pu", subject="Dmitrii", relationship="reports_to")` records that Dmitrii reports to Pu, and the
+  summary reads `reports_to (from Dmitrii)`. `subject` resolves before `person` under the same no-guessing rule,
+  but is never created: an unknown subject, a subject without `relationship`, or a subject that is the person
+  itself is `invalid_request`, and an ambiguous or loose one is `ambiguous` or `unconfirmed`, all with nothing
+  written;
 - `note` records one of `fact` (`predicate`, default `note`), `trait` (`trait_category`, default by rule or
   `other`), or `interaction` (the person as sole participant, at `occurred_at` or now). A note that places an
   interaction earlier — "met Alice yesterday", "met Alice on 2026-08-20" — without an `occurred_at` is refused as `invalid_request`

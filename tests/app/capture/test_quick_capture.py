@@ -457,3 +457,69 @@ class TestBlankNames:
         )
 
         assert result.canonical_name == "Alice Ng"
+
+
+class TestSubject:
+    """`subject` names who the relationship starts from when it is not the user."""
+
+    def _edges(self, runtime: ApplicationRuntime, person_id: str) -> list[tuple[str, str, str]]:
+        edges = runtime.context_reader.list_active_relationships(person_id, runtime.clock.now().date())
+        return [(e.relationship.subject_id, e.relationship.type, e.relationship.object_id) for e in edges]
+
+    def test_relationship_runs_from_the_subject_and_needs_no_self(self, runtime: ApplicationRuntime) -> None:
+        dana = _seed(runtime, "Dana Ito")
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Pat Lee", subject="Dana Ito", relationship="reports_to", org="Acme")
+        )
+
+        assert result.status == "recorded" and result.created
+        assert [record.kind for record in result.recorded] == ["affiliation", "relationship"]
+        assert result.recorded[1].summary == "reports_to (from Dana Ito)"
+        assert self._edges(runtime, result.person_id or "") == [(dana, "reports_to", result.person_id)]
+
+    def test_an_inverse_type_is_echoed_from_the_subject_side(self, runtime: ApplicationRuntime) -> None:
+        dana = _seed(runtime, "Dana Ito")
+        pat = _seed(runtime, "Pat Lee")
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Pat Lee", subject="Dana Ito", relationship="manages")
+        )
+
+        assert result.recorded[0].summary == "manages (from Dana Ito)"
+        assert self._edges(runtime, pat) == [(pat, "reports_to", dana)]
+
+    @pytest.mark.parametrize(
+        ("subject", "status"),
+        [("Priya", "ambiguous"), ("Nobody Here", "invalid_request"), ("Pat Lee", "invalid_request")],
+    )
+    def test_an_unusable_subject_records_nothing(self, runtime: ApplicationRuntime, subject: str, status: str) -> None:
+        _seed(runtime, "Priya Raman")
+        _seed(runtime, "Priya Shah")
+        _seed(runtime, "Pat Lee")
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Pat Lee", subject=subject, relationship="reports_to", note="moved to Berlin")
+        )
+
+        assert result.status == status and result.recorded == []
+        assert len(runtime.repo.list_people()) == 3
+        assert all(runtime.context_reader.list_facts(p.id) == [] for p in runtime.repo.list_people())
+
+    def test_an_unknown_subject_does_not_create_the_person_either(self, runtime: ApplicationRuntime) -> None:
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Pat Lee", subject="Nobody Here", relationship="reports_to")
+        )
+
+        assert result.status == "invalid_request"
+        assert runtime.repo.list_people() == []
+
+    def test_subject_without_relationship_is_refused(self, runtime: ApplicationRuntime) -> None:
+        _seed(runtime, "Dana Ito")
+
+        result = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Pat Lee", subject="Dana Ito", note="moved to Berlin")
+        )
+
+        assert result.status == "invalid_request"
+        assert len(runtime.repo.list_people()) == 1
