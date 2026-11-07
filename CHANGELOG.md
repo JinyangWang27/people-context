@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/JinyangWang27/people-context/compare/v1.5.0...v1.6.0) (2026-11-07)
+
+
+### Features
+
+* record relationships between two other people (pctx relate, remember subject) ([#243](https://github.com/JinyangWang27/people-context/issues/243)) ([ede3542](https://github.com/JinyangWang27/people-context/commit/ede35426e2fd8856394bc67912ef885494e748a2))
+
+
+### Bug Fixes
+
+* return the stored affiliation on an exact repeat capture ([#246](https://github.com/JinyangWang27/people-context/issues/246)) ([1af7055](https://github.com/JinyangWang27/people-context/commit/1af70554578a6c8e0a9663ce73fdd10ad6279900)), closes [#242](https://github.com/JinyangWang27/people-context/issues/242)
+
+
+### Performance Improvements
+
+* cut the tokens agents spend on tool lists, results, and the usage skill ([#245](https://github.com/JinyangWang27/people-context/issues/245)) ([9a872af](https://github.com/JinyangWang27/people-context/commit/9a872af8965c532111fe320cb9fb3eb71a7e67e6))
+
 ## [1.5.0](https://github.com/JinyangWang27/people-context/compare/v1.4.0...v1.5.0) (2026-11-05)
 
 
