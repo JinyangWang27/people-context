@@ -60,7 +60,11 @@ class SetAffiliation:
 
     @transactional
     def execute(self, data: SetAffiliationInput, *, transaction_id: str | None = None) -> Affiliation:
-        """Create and audit an affiliation, auditing organization creation separately."""
+        """Create and audit an affiliation, auditing organization creation separately.
+
+        An exact repeat — same person, organization, role, and validity period — returns the stored row
+        and writes nothing: it is the same claim, not a second role. A different role still adds a row.
+        """
         require_active_person(self._people, data.person_id)
         transaction_id = transaction_id or new_id()
         organization = self._organizations.get(data.org)
@@ -83,11 +87,15 @@ class SetAffiliation:
                 session=data.session,
                 stated_by=data.stated_by,
             )
+        period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
+        existing = self._writer.find_affiliation(data.person_id, organization.id, data.role, period)
+        if existing is not None:
+            return existing
         affiliation = Affiliation(
             person_id=data.person_id,
             org_id=organization.id,
             role=data.role,
-            period=ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to),
+            period=period,
             confidence=data.confidence if data.confidence is not None else 1.0,
             provenance=provenance(data.source, data.session, data.stated_by),
             created_at=self._clock.now(),

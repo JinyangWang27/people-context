@@ -749,7 +749,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `remove_alias` | Remove one alias, matched by normalized value; the person and their other records stay intact. Returns `{person_id, alias, removed}`; an absent alias is `removed: false` and changes nothing. The canonical name is refused with `alias_conflict` (`reason: canonical_name`). Annotated destructive and idempotent. |
 | `update_alias` | Change one alias's `value`, `kind`, `lang`, or `script` in place, keeping its id; omitted fields stay unchanged. Returns `{person_id, alias, changed}`. An unknown alias is refused with `alias_not_found`; a new value matching the canonical name or another alias is refused with `alias_conflict` (`reason: duplicate_name`). An update whose result is an email address of a kind other than `handle` is refused with `alias_conflict` (`reason: alias_email_not_handle`), so setting `kind: handle` is how an email stored as a name is fixed. |
 | `set_relationship` | Normalize vocabulary/direction and create or update one canonical active edge. |
-| `set_affiliation` | Create a role at an existing or get/created organization. |
+| `set_affiliation` | Create a role at an existing or get/created organization; an exact repeat (same organization, role, and validity dates) returns the stored row. |
 | `record_fact` | Record an objective time-aware fact. |
 | `record_observation` | Record a subjective observation. |
 | `record_trait` | Record a derived categorized trait. |

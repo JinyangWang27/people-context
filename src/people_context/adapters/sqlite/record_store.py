@@ -82,6 +82,20 @@ class SqliteRecordStore:
             },
         )
 
+    def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
+        values = _period_values(period)
+        row = self._conn.execute(
+            """
+            SELECT * FROM affiliations
+            WHERE person_id = ? AND org_id = ? AND role = ?
+              AND valid_from IS ? AND valid_to IS ?
+            ORDER BY created_at, id
+            LIMIT 1
+            """,
+            (person_id, org_id, role, values["valid_from"], values["valid_to"]),
+        ).fetchone()
+        return _affiliation(row, self._participant_ids) if row is not None else None
+
     def save_fact(self, fact: Fact) -> None:
         self._upsert(
             "facts",
