@@ -6,7 +6,8 @@ exists only for the page. The writes are batch amendment, withdrawal, and commit
 use cases `pctx import` calls, always with the digest of the review the page displayed; alias addition,
 correction, and removal on a person page, through the same use cases as `pctx add-alias`,
 `pctx update-alias`, and `pctx remove-alias`; a rename or summary change through the same `EditPerson` as
-`pctx edit`; and in-place correction of an affiliation, fact, trait, or
+`pctx edit`; a new affiliation through the same `SetAffiliation` as the `set_affiliation` MCP tool; and
+in-place correction of an affiliation, fact, trait, or
 reminder the page displays, through the same `CorrectRecord` as the `correct_record` MCP tool.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
@@ -26,6 +27,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractContextManager, asynccontextmanager
+from datetime import date
 from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
@@ -72,11 +74,13 @@ from people_context.app.people import (
 from people_context.app.records import (
     CorrectRecordInput,
     InvalidCorrectionError,
+    OrganizationNotFoundError,
     PersonNotFoundError,
     RecordNotFoundError,
+    SetAffiliationInput,
 )
 from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, NAME_IS_EMAIL, AliasKind
-from people_context.domain.shared import Sensitivity
+from people_context.domain.shared import Sensitivity, ValidityPeriod
 
 LOOPBACK_HOST = "127.0.0.1"
 TOKEN_HEADER = "X-Pctx-Token"
@@ -139,6 +143,18 @@ class _EditPersonAction(BaseModel):
     name: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")] | None = None
     # An empty summary clears it.
     summary: str | None = None
+
+
+class _AddAffiliationAction(BaseModel):
+    """Record one role at an organization, named by name, for the person the page displayed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    org: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
+    role: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
+    valid_from: date | None = None
+    valid_to: date | None = None
 
 
 class _CorrectRecordAction(BaseModel):
@@ -375,6 +391,29 @@ def create_browse_app(
             return _error("name_conflict", 409)
         return _json(json.dumps({"person_id": person.id}) + "\n")
 
+    async def add_affiliation(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AddAffiliationAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        try:
+            # Checked before the write: the use case would otherwise create a new organization
+            # and only then refuse the period.
+            ValidityPeriod(valid_from=action.valid_from, valid_to=action.valid_to)
+        except ValidationError:
+            return _error("invalid_period", 400)
+        try:
+            affiliation = runtime.use_cases.set_affiliation.execute(
+                SetAffiliationInput(**action.model_dump(), source="browser")
+            )
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        except OrganizationNotFoundError:
+            # An organization given by an id that is not stored, never created under that id.
+            return _error("unknown_organization", 404)
+        return _json(json.dumps({"affiliation_id": affiliation.id}) + "\n")
+
     async def correct_record(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
@@ -510,6 +549,7 @@ def create_browse_app(
             Route("/api/person/alias/remove", remove_alias, methods=["POST"]),
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
             Route("/api/person/edit", edit_person, methods=["POST"]),
+            Route("/api/person/affiliation/add", add_affiliation, methods=["POST"]),
             Route("/api/record/correct", correct_record, methods=["POST"]),
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),

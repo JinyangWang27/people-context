@@ -30,7 +30,8 @@ is refused with `batch_changed`. M30.3 adds inline editing of a staged candidate
 submitted. The person view also edits durable records, each audited with source `browser`: it can add, correct, or
 remove an alias through the same `AddAlias`, `UpdateAlias`, and `RemoveAlias` use cases as `pctx add-alias`,
 `pctx update-alias`, and `pctx remove-alias`, rename the person or rewrite their summary through the same
-`EditPerson` use case as `pctx edit`, and correct an affiliation, fact, trait, or reminder in place through
+`EditPerson` use case as `pctx edit`, add an affiliation through the same `SetAffiliation` use case as the
+`set_affiliation` MCP tool, and correct an affiliation, fact, trait, or reminder in place through
 the same `CorrectRecord` use case as the `correct_record` MCP tool. A record the view's disclosure hides is refused
 as `record_not_found`, exactly as a missing one is, and the corrected record is not echoed back. Interactions and
 every other record type stay read-only on the page.
@@ -648,7 +649,7 @@ physical deletion from an unreachable device or third-party backup.
   render as text. Sensitive and restricted durable records appear only when `PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE`
   is set in the `pctx browse` process environment, never from a page control; a source's committed mappings are
   never served. Batch withdrawal and commit (M30.2), amendment of a staged candidate (M30.3), alias add, correction,
-  and removal, a rename or summary edit, and in-place correction of an affiliation, fact, trait, or reminder are token-guarded `POST`s through
+  and removal, a rename or summary edit, a new affiliation, and in-place correction of an affiliation, fact, trait, or reminder are token-guarded `POST`s through
   the same use cases and audit seam as the CLI and MCP tools. A correction of a record the view's disclosure hides
   is refused as `record_not_found`, so the page cannot edit what it cannot show. A refusal returns the use-case
   error code, plus — for an amendment or correction — the declared field each rule named (and, for an amendment,

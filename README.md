@@ -174,6 +174,7 @@ Prefer a table to a terminal? `pctx browse --open` opens a local page over the s
   narrowing to one organization or group; open one person's brief;
 - rename a person (the old name stays as an alias) or rewrite their summary;
 - add, correct, or remove a person's aliases and email addresses;
+- add an affiliation (organization, role, optional dates);
 - correct an affiliation, fact, trait, or reminder in place, with the before and after kept in the audit log;
 - review a staged import batch person by person, edit its candidates, then withdraw or commit them.
 

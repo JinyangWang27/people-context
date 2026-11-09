@@ -288,6 +288,8 @@ const ALIAS_REFUSALS = {
   record_not_found: "This record is no longer stored.",
   name_conflict: "Another person already has that name.",
   name_is_email: "An email address is not a name; add it under Contact instead.",
+  invalid_period: "The end date is before the start date.",
+  unknown_organization: "No organization is stored under that id.",
 };
 
 function aliasRefusal(error) {
@@ -476,6 +478,45 @@ function recordRow(type, record, label, descriptors, reopen) {
   return row;
 }
 
+// A new role at an organization, through the same `SetAffiliation` as the `set_affiliation` MCP
+// tool: an organization is matched by name, case- and accent-insensitively, and created if none
+// matches. Dates are optional; an exact repeat of a stored affiliation records nothing new.
+function affiliationAdder(personId, reopen) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  function idle() {
+    row.replaceChildren(button("Add affiliation", adding), message);
+  }
+  function adding() {
+    message.textContent = "";
+    const input = (label, type) => {
+      const node = el("input");
+      node.type = type;
+      node.placeholder = label;
+      node.setAttribute("aria-label", "new affiliation " + label);
+      return node;
+    };
+    const org = input("organization", "text");
+    const role = input("role", "text");
+    const from = input("from", "date");
+    const to = input("to", "date");
+    const save = () => {
+      if (!org.value.trim() || !role.value.trim()) {
+        message.textContent = "Enter an organization and a role.";
+        return;
+      }
+      const body = { person_id: personId, org: org.value.trim(), role: role.value.trim() };
+      if (from.value) body.valid_from = from.value;
+      if (to.value) body.valid_to = to.value;
+      aliasWrite("/api/person/affiliation/add", body, message, reopen);
+    };
+    row.replaceChildren(org, role, el("span", "from"), from, el("span", "to"), to,
+      button("Add", save), button("Cancel", idle), message);
+  }
+  idle();
+  return row;
+}
+
 // The person's name or summary, edited through the same `EditPerson` as `pctx edit`. A rename keeps
 // the old name as an alias; emptying the summary clears it, while a name cannot be emptied.
 function personFieldRow(personId, field, stored, reopen) {
@@ -541,6 +582,7 @@ async function showPerson(personId, cursor, back) {
     el("h3", "Affiliations"),
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
       a.affiliation.role + " at " + a.organization_name])),
+    affiliationAdder(doc.person.id, reopen),
     el("h3", "Facts"),
     editable("fact", doc.facts.map((fact) => [fact, fact.predicate + ": " + fact.value])),
     // No use case corrects an interaction in place, so they stay read-only here.
