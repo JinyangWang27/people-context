@@ -115,6 +115,8 @@ class PersonIndexReader(Protocol):
     moved in the order since the cursor was issued. ``where`` narrows and orders the page; the
     order it names replaces the name order above. ``person_filter_options`` lists the organizations
     and groups worth offering as filters: those with at least one active member the view may show.
+    ``organization_names`` returns, for each given person with any affiliation, ended ones included,
+    the distinct names of those organizations in name order.
     """
 
     def get(self, person_id: str) -> Person | None: ...
@@ -128,6 +130,8 @@ class PersonIndexReader(Protocol):
     def person_filter_options(
         self, *, include_sensitive: bool
     ) -> tuple[list[PersonFilterOption], list[PersonFilterOption]]: ...
+
+    def organization_names(self, person_ids: list[str]) -> dict[str, list[str]]: ...
 
 
 @runtime_checkable

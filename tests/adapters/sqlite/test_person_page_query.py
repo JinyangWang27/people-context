@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -153,3 +153,22 @@ def test_filter_options_list_only_what_has_a_visible_active_member(
     assert [option["name"] for option in ordinary["organizations"]] == ["Alhamitech", "Presight"]
     assert [option["name"] for option in ordinary["groups"]] == ["MOFT"]
     assert [option["name"] for option in elevated["groups"]] == ["Clinic", "MOFT"]
+
+
+def test_organization_names_list_each_person_s_organizations_once_in_name_order(
+    runtime: ApplicationRuntime, people: dict[str, str]
+) -> None:
+    # A second role at the same organization, and an ended one elsewhere, for Ana.
+    cases = runtime.use_cases
+    cases.set_affiliation.execute(SetAffiliationInput(person_id=people["ana"], org="presight", role="lead"))
+    cases.set_affiliation.execute(
+        SetAffiliationInput(person_id=people["ana"], org="Acme", role="intern", valid_to=date(2020, 1, 1))
+    )
+    index = runtime.use_cases.list_person_index
+    names = index.organization_names(index.page())
+    assert names == {
+        people["ana"]: ["Acme", "Presight"],
+        people["bo"]: ["Presight"],
+        people["cy"]: ["Alhamitech"],
+    }
+    assert runtime.repo.organization_names([]) == {}

@@ -234,6 +234,24 @@ class SqlitePeopleRepository:
             [PersonFilterOption(id=row["id"], name=row["name"]) for row in groups],
         )
 
+    def organization_names(self, person_ids: list[str]) -> dict[str, list[str]]:
+        if not person_ids:
+            return {}
+        # A page holds at most MAX_PERSON_PAGE_LIMIT ids, well under SQLite's bound-parameter limit.
+        rows = self._conn.execute(
+            f"""
+            SELECT DISTINCT f.person_id, o.name FROM affiliations f
+            JOIN organizations o ON o.id = f.org_id
+            WHERE f.person_id IN ({", ".join("?" * len(person_ids))})
+            ORDER BY lower(o.name), o.name
+            """,
+            person_ids,
+        ).fetchall()
+        names: dict[str, list[str]] = {}
+        for row in rows:
+            names.setdefault(row["person_id"], []).append(row["name"])
+        return names
+
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         rows = self._conn.execute(
             """
