@@ -34,6 +34,8 @@ CORRECTABLE_FIELDS: dict[str, frozenset[str]] = {
     "fact": frozenset({"predicate", "value", "valid_from", "valid_to", "confidence", "sensitivity"}),
     "observation": frozenset({"text", "observed_at", "sensitivity"}),
     "trait": frozenset({"category", "value", "evidence_note", "confidence", "sensitivity"}),
+    # Participants are not correctable here: who took part is identity, not a mistyped value.
+    "interaction": frozenset({"summary", "occurred_at", "channel", "sensitivity"}),
     "relationship": frozenset({"type", "label", "valid_from", "valid_to", "confidence"}),
     "affiliation": frozenset({"role", "valid_from", "valid_to", "confidence"}),
     "reminder": frozenset({"text", "kind", "due_at", "recurrence"}),

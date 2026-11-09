@@ -439,9 +439,14 @@ function aliasEditor(personId, doc, reopen, contact) {
   return box;
 }
 
+// The record types the person view can remove, through the same `Forget` as the `forget` MCP tool.
+const REMOVABLE = new Set(["affiliation", "fact", "interaction"]);
+
 // One stored record with an Edit form built from the fields `CorrectRecord` accepts for its type.
 // Saving corrects the record in place — fixing what was recorded wrongly, with the before and after
 // kept in the audit log — and sends only the fields that moved; an emptied field is sent as null.
+// A removable type also has Remove, which asks first: removal is a forget, so the record is deleted
+// and its history redacted rather than kept, and an interaction goes for every participant.
 function recordRow(type, record, label, descriptors, reopen) {
   const row = el("li");
   const message = el("span", null, "error");
@@ -450,7 +455,22 @@ function recordRow(type, record, label, descriptors, reopen) {
     message.textContent = "";
     const edit = button("Edit", editing);
     edit.setAttribute("aria-label", "Edit " + label);
-    row.replaceChildren(el("span", label), " ", edit, message);
+    const controls = [edit];
+    if (REMOVABLE.has(type)) {
+      const remove = button("Remove", confirming);
+      remove.setAttribute("aria-label", "Remove " + label);
+      controls.push(" ", remove);
+    }
+    row.replaceChildren(el("span", label), " ", ...controls, message);
+  }
+  function confirming() {
+    message.textContent = "";
+    const shared = (record.participant_ids || []).length > 1 ? " It is removed for every participant." : "";
+    const prompt = el("span", "Permanently remove " + label + "? This cannot be undone." + shared);
+    const remove = button("Remove", () =>
+      aliasWrite("/api/record/remove", { entity_type: type, entity_id: record.id }, message, reopen));
+    remove.setAttribute("aria-label", "Confirm removal of " + label);
+    row.replaceChildren(prompt, " ", remove, button("Cancel", idle), message);
   }
   function editing() {
     message.textContent = "";
@@ -480,43 +500,72 @@ function recordRow(type, record, label, descriptors, reopen) {
   return row;
 }
 
+// A form that records one new record for the person. `fields` are [key, label, type, required];
+// text is sent trimmed, and an optional field left blank is not sent at all.
+function recordAdder(personId, noun, path, fields, missing, reopen) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  function idle() {
+    row.replaceChildren(button("Add " + noun, adding), message);
+  }
+  function adding() {
+    message.textContent = "";
+    const inputs = [];
+    const nodes = [];
+    for (const [key, label, type, required] of fields) {
+      const node = el("input");
+      node.type = type;
+      node.placeholder = label;
+      node.setAttribute("aria-label", "new " + noun + " " + label);
+      inputs.push([key, node, required]);
+      if (type === "date") nodes.push(el("span", label));
+      nodes.push(node);
+    }
+    const save = () => {
+      if (inputs.some(([, node, required]) => required && !node.value.trim())) {
+        message.textContent = missing;
+        return;
+      }
+      const body = { person_id: personId };
+      for (const [key, node] of inputs) if (node.value.trim()) body[key] = node.value.trim();
+      aliasWrite(path, body, message, reopen);
+    };
+    row.replaceChildren(...nodes, button("Add", save), button("Cancel", idle), message);
+  }
+  idle();
+  return row;
+}
+
 // A new role at an organization, through the same `SetAffiliation` as the `set_affiliation` MCP
 // tool: an organization is matched by name, case- and accent-insensitively, and created if none
 // matches. Dates are optional; an exact repeat of a stored affiliation records nothing new.
 function affiliationAdder(personId, reopen) {
-  const row = el("div", null, "alias");
-  const message = el("span", null, "error");
-  function idle() {
-    row.replaceChildren(button("Add affiliation", adding), message);
-  }
-  function adding() {
-    message.textContent = "";
-    const input = (label, type) => {
-      const node = el("input");
-      node.type = type;
-      node.placeholder = label;
-      node.setAttribute("aria-label", "new affiliation " + label);
-      return node;
-    };
-    const org = input("organization", "text");
-    const role = input("role", "text");
-    const from = input("from", "date");
-    const to = input("to", "date");
-    const save = () => {
-      if (!org.value.trim() || !role.value.trim()) {
-        message.textContent = "Enter an organization and a role.";
-        return;
-      }
-      const body = { person_id: personId, org: org.value.trim(), role: role.value.trim() };
-      if (from.value) body.valid_from = from.value;
-      if (to.value) body.valid_to = to.value;
-      aliasWrite("/api/person/affiliation/add", body, message, reopen);
-    };
-    row.replaceChildren(org, role, el("span", "from"), from, el("span", "to"), to,
-      button("Add", save), button("Cancel", idle), message);
-  }
-  idle();
-  return row;
+  return recordAdder(personId, "affiliation", "/api/person/affiliation/add", [
+    ["org", "organization", "text", true],
+    ["role", "role", "text", true],
+    ["valid_from", "from", "date", false],
+    ["valid_to", "to", "date", false],
+  ], "Enter an organization and a role.", reopen);
+}
+
+// A new fact, through the same `RecordFact` as the `record_fact` MCP tool, of ordinary sensitivity.
+function factAdder(personId, reopen) {
+  return recordAdder(personId, "fact", "/api/person/fact/add", [
+    ["predicate", "predicate", "text", true],
+    ["value", "value", "text", true],
+    ["valid_from", "from", "date", false],
+    ["valid_to", "to", "date", false],
+  ], "Enter a predicate and a value.", reopen);
+}
+
+// A new interaction with this person, through the same `RecordInteraction` as the
+// `record_interaction` MCP tool. A summary only, never a transcript; without a date it is now.
+function interactionAdder(personId, reopen) {
+  return recordAdder(personId, "interaction", "/api/person/interaction/add", [
+    ["summary", "summary", "text", true],
+    ["channel", "channel", "text", false],
+    ["occurred_on", "on", "date", false],
+  ], "Enter a summary.", reopen);
 }
 
 // The person's name or summary, edited through the same `EditPerson` as `pctx edit`. A rename keeps
@@ -587,9 +636,11 @@ async function showPerson(personId, cursor, back) {
     affiliationAdder(doc.person.id, reopen),
     el("h3", "Facts"),
     editable("fact", doc.facts.map((fact) => [fact, fact.predicate + ": " + fact.value])),
-    // No use case corrects an interaction in place, so they stay read-only here.
+    factAdder(doc.person.id, reopen),
     el("h3", "Interactions"),
-    list(doc.interactions.map((i) => String(i.occurred_at).slice(0, 10) + ": " + i.summary)),
+    editable("interaction", doc.interactions.map((i) => [i, String(i.occurred_at).slice(0, 10)
+      + (i.channel ? " (" + i.channel + ")" : "") + ": " + i.summary])),
+    interactionAdder(doc.person.id, reopen),
     el("h3", "Reminders"),
     editable("reminder", doc.reminders.map((r) => [r,
       r.kind + (r.due_at ? " (due " + r.due_at + ")" : "") + ": " + r.text])),

@@ -6,9 +6,11 @@ exists only for the page. The writes are batch amendment, withdrawal, and commit
 use cases `pctx import` calls, always with the digest of the review the page displayed; alias addition,
 correction, and removal on a person page, through the same use cases as `pctx add-alias`,
 `pctx update-alias`, and `pctx remove-alias`; a rename or summary change through the same `EditPerson` as
-`pctx edit`; a new affiliation through the same `SetAffiliation` as the `set_affiliation` MCP tool; and
-in-place correction of an affiliation, fact, trait, or
-reminder the page displays, through the same `CorrectRecord` as the `correct_record` MCP tool.
+`pctx edit`; a new affiliation, fact, or interaction through the same `SetAffiliation`, `RecordFact`, and
+`RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools; in-place
+correction of an affiliation, fact, interaction, trait, or reminder the page displays, through the same
+`CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, or interaction the page
+displays, through the same `Forget` as the `forget` MCP tool.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
@@ -27,7 +29,7 @@ import json
 import secrets
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractContextManager, asynccontextmanager
-from datetime import date
+from datetime import UTC, date, datetime, time
 from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
@@ -67,6 +69,7 @@ from people_context.app.people import (
     AliasConflictError,
     AliasNotFoundError,
     EditPersonInput,
+    ForgetError,
     PersonNameCollisionError,
     RemoveAliasInput,
     UpdateAliasInput,
@@ -76,6 +79,8 @@ from people_context.app.records import (
     InvalidCorrectionError,
     OrganizationNotFoundError,
     PersonNotFoundError,
+    RecordFactInput,
+    RecordInteractionInput,
     RecordNotFoundError,
     SetAffiliationInput,
 )
@@ -97,6 +102,8 @@ ReviewLines = Callable[[list[ImportReviewRow]], list[str]]
 MAX_BATCH_ACTION_BYTES = MAX_CLI_STAGED_PAYLOAD_BYTES
 
 _NonBlank = Annotated[str, StringConstraints(min_length=1)]
+#: Text that needs one visible character; the value itself is stored as typed.
+_Visible = Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
 _ActionT = TypeVar("_ActionT", bound=BaseModel)
 
 
@@ -157,14 +164,47 @@ class _AddAffiliationAction(BaseModel):
     valid_to: date | None = None
 
 
+class _AddFactAction(BaseModel):
+    """Record one fact, of ordinary sensitivity, about the person the page displayed."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    predicate: _Visible
+    value: _Visible
+    valid_from: date | None = None
+    valid_to: date | None = None
+
+
+class _AddInteractionAction(BaseModel):
+    """Record one interaction, of ordinary sensitivity, with the person the page displayed as its participant."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    summary: _Visible
+    # A day, as a date picker gives it; absent means now, as for `record_interaction`.
+    occurred_on: date | None = None
+    channel: _Visible | None = None
+
+
 class _CorrectRecordAction(BaseModel):
     """Correct fields of one record the person view lists; the use case decides which fields and values hold."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "trait", "reminder"]
+    entity_type: Literal["affiliation", "fact", "interaction", "trait", "reminder"]
     entity_id: _NonBlank
     fields: dict[str, Any]
+
+
+class _RemoveRecordAction(BaseModel):
+    """Permanently remove one record the person view lists."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    entity_type: Literal["affiliation", "fact", "interaction"]
+    entity_id: _NonBlank
 
 
 class _RemoveAliasAction(BaseModel):
@@ -415,6 +455,48 @@ def create_browse_app(
             return _error("unknown_organization", 404)
         return _json(json.dumps({"affiliation_id": affiliation.id}) + "\n")
 
+    async def add_fact(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AddFactAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        try:
+            fact = runtime.use_cases.record_fact.execute(RecordFactInput(**action.model_dump(), source="browser"))
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        except ValidationError:
+            # The action passed its strict schema, so the one rule left is the period's order.
+            return _error("invalid_period", 400)
+        return _json(json.dumps({"fact_id": fact.id}) + "\n")
+
+    async def add_interaction(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AddInteractionAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        occurred_at = None if action.occurred_on is None else datetime.combine(action.occurred_on, time(), UTC)
+        try:
+            interaction = runtime.use_cases.record_interaction.execute(
+                RecordInteractionInput(
+                    summary=action.summary,
+                    participant_ids=[action.person_id],
+                    occurred_at=occurred_at,
+                    channel=action.channel,
+                    source="browser",
+                )
+            )
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        return _json(json.dumps({"interaction_id": interaction.id}) + "\n")
+
+    def displayed(runtime: ApplicationRuntime, entity_type: str, entity_id: str) -> bool:
+        """Whether the person view could have shown this record under the process's disclosure."""
+        current = runtime.records.get_record(entity_type, entity_id)
+        sensitivity = getattr(current, "sensitivity", Sensitivity.PERSONAL)
+        return current is not None and (include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL))
+
     async def correct_record(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
@@ -423,9 +505,7 @@ def create_browse_app(
             return _error(exc.code, exc.status)
         # The page edits only what it can show: a record the view's disclosure hides is refused as
         # unknown, the same answer as a record that does not exist, so neither is confirmed.
-        current = runtime.records.get_record(action.entity_type, action.entity_id)
-        sensitivity = getattr(current, "sensitivity", Sensitivity.PERSONAL)
-        if current is None or not (include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL)):
+        if not displayed(runtime, action.entity_type, action.entity_id):
             return _error("record_not_found", 404)
         try:
             runtime.use_cases.correct_record.execute(
@@ -443,6 +523,22 @@ def create_browse_app(
             return _error("unknown_person", 404)
         # The corrected record is not echoed: the page reloads the brief, which applies disclosure.
         return _json(json.dumps({"corrected": sorted(action.fields)}) + "\n")
+
+    async def remove_record(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _RemoveRecordAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        # As for a correction: the page removes only what it can show.
+        if not displayed(runtime, action.entity_type, action.entity_id):
+            return _error("record_not_found", 404)
+        try:
+            runtime.use_cases.forget.execute(f"{action.entity_type}:{action.entity_id}", "record", source="browser")
+        except (RecordNotFoundError, ForgetError):
+            # The schema already fixes the type and a non-empty id, so either means the record is gone.
+            return _error("record_not_found", 404)
+        return _json(json.dumps({"removed": action.entity_type}) + "\n")
 
     async def sources(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
@@ -551,7 +647,10 @@ def create_browse_app(
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
             Route("/api/person/edit", edit_person, methods=["POST"]),
             Route("/api/person/affiliation/add", add_affiliation, methods=["POST"]),
+            Route("/api/person/fact/add", add_fact, methods=["POST"]),
+            Route("/api/person/interaction/add", add_interaction, methods=["POST"]),
             Route("/api/record/correct", correct_record, methods=["POST"]),
+            Route("/api/record/remove", remove_record, methods=["POST"]),
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),
             Route("/api/batch", batch, methods=["GET"]),

@@ -32,6 +32,7 @@ from people_context.domain.import_provenance import (
     STAGED_REFERENCE_FIELDS,
     STAGED_REFERENCE_LIST_FIELDS,
 )
+from people_context.domain.interaction import Interaction
 from people_context.domain.organization import Affiliation
 from people_context.domain.reminder import Reminder
 from people_context.domain.staged_candidate import STAGED_CANDIDATE_MODELS, StagedAlias
@@ -128,7 +129,13 @@ ALIAS_FIELDS: list[dict[str, Any]] = _fields(StagedAlias, skip=frozenset())
 
 
 #: The stored record types the person view lists and lets a reviewer correct in place.
-_RECORD_MODELS: dict[str, Any] = {"affiliation": Affiliation, "fact": Fact, "trait": Trait, "reminder": Reminder}
+_RECORD_MODELS: dict[str, Any] = {
+    "affiliation": Affiliation,
+    "fact": Fact,
+    "interaction": Interaction,
+    "trait": Trait,
+    "reminder": Reminder,
+}
 
 
 def _record_fields(entity_type: str, model: Any) -> list[dict[str, Any]]:
