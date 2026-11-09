@@ -1797,6 +1797,79 @@ def test_a_person_edit_for_an_unknown_person_is_refused(db_file: Path) -> None:
     assert (response.status_code, response.json()) == (404, {"error": "unknown_person"})
 
 
+def _affiliation_rows(db_file: Path) -> list[tuple[str, str, str | None, str | None, str]]:
+    conn = open_db(db_file)
+    try:
+        return [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT o.name, f.role, f.valid_from, f.valid_to, f.provenance_source FROM affiliations f"
+                " JOIN organizations o ON o.id = f.org_id ORDER BY f.created_at"
+            )
+        ]
+    finally:
+        conn.close()
+
+
+def test_the_person_view_adds_an_affiliation_through_set_affiliation(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        first = client.post(
+            "/api/person/affiliation/add",
+            json={"person_id": person_id, "org": "Presight", "role": "engineer", "valid_from": "2026-09-01"},
+        )
+        # Another role at the same organization, named differently cased: one organization, two roles.
+        second = client.post(
+            "/api/person/affiliation/add", json={"person_id": person_id, "org": "PRESIGHT", "role": "lead"}
+        )
+        repeat = client.post(
+            "/api/person/affiliation/add",
+            json={"person_id": person_id, "org": "Presight", "role": "engineer", "valid_from": "2026-09-01"},
+        )
+        shown = client.get("/api/person", params={"id": person_id}).json()
+
+    assert (first.status_code, second.status_code, repeat.status_code) == (200, 200, 200)
+    assert repeat.json() == first.json()  # an exact repeat returns the stored row
+    assert _affiliation_rows(db_file) == [
+        ("Presight", "engineer", "2026-09-01", None, "browser"),
+        ("Presight", "lead", None, None, "browser"),
+    ]
+    assert sorted(a["affiliation"]["role"] for a in shown["affiliations"]) == ["engineer", "lead"]
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "expected"),
+    [
+        ({"org": "Presight", "role": "x", "valid_from": "2026-10-01", "valid_to": "2026-09-01"}, 400, "invalid_period"),
+        ({"org": "Presight", "role": "  "}, 400, "invalid_request"),
+        ({"org": "Presight", "role": "x", "valid_from": "last spring"}, 400, "invalid_request"),
+        ({"org": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "role": "x"}, 404, "unknown_organization"),
+        ({"org": "Presight", "role": "x", "extra": _SENTINEL}, 400, "invalid_request"),
+    ],
+)
+def test_affiliation_refusals_name_a_code_and_create_nothing(
+    db_file: Path, body: dict[str, Any], status: int, expected: str
+) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post("/api/person/affiliation/add", json={"person_id": person_id, **body})
+    assert (response.status_code, response.json()) == (status, {"error": expected})
+    assert _SENTINEL not in response.text
+    conn = open_db(db_file)
+    try:
+        # A refused period must not leave a new organization behind.
+        assert conn.execute("SELECT COUNT(*) FROM organizations").fetchone()[0] == 0
+    finally:
+        conn.close()
+    assert _affiliation_rows(db_file) == []
+
+
+def test_an_affiliation_for_an_unknown_person_is_refused(db_file: Path) -> None:
+    with _client(db_file) as client:
+        response = client.post("/api/person/affiliation/add", json={"person_id": "missing", "org": "A", "role": "b"})
+    assert (response.status_code, response.json()) == (404, {"error": "unknown_person"})
+
+
 def test_an_alias_write_for_an_unknown_person_is_refused(db_file: Path) -> None:
     with _client(db_file) as client:
         response = client.post("/api/person/alias/remove", json={"person_id": "missing", "value": "x"})
@@ -2140,6 +2213,40 @@ def test_the_name_and_summary_rows_send_only_a_moved_value(db_file: Path, tmp_pa
             ["/api/person/edit", {"person_id": "P", "name": "Jordan A. Lee"}],
             # An emptied summary is sent as "", which clears it; null would mean "unchanged".
             ["/api/person/edit", {"person_id": "P", "summary": ""}],
+        ],
+    }
+
+
+_ADD_AN_AFFILIATION = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+    alias_kinds: [], alias_details: [], record_fields: {} };
+  await showPerson("P", null, []);
+  find("Add affiliation").listeners.click();
+  labelled("new affiliation organization").value = "Presight";
+  find("Add").listeners.click();
+  const blocked = posts.length;
+  labelled("new affiliation role").value = " engineer ";
+  labelled("new affiliation from").value = "2026-09-01";
+  find("Add").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ blocked, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_affiliation_form_sends_trimmed_values_and_only_the_dates_given(db_file: Path, tmp_path: Path) -> None:
+    assert _run_page(db_file, tmp_path, _ADD_AN_AFFILIATION) == {
+        "blocked": 0,
+        "posts": [
+            [
+                "/api/person/affiliation/add",
+                {"person_id": "P", "org": "Presight", "role": "engineer", "valid_from": "2026-09-01"},
+            ]
         ],
     }
 
