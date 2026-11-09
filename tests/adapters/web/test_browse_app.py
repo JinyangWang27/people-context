@@ -25,7 +25,7 @@ from people_context.adapters.web import app as web_app
 from people_context.adapters.web.fields import ALIAS_FIELDS, CANDIDATE_FIELDS
 from people_context.app.exports.brief import BRIEF_CONTEXT_ITEMS
 from people_context.app.imports import ImportPipelineError, ImportReviewRow
-from people_context.app.records import RecordFact, RecordFactInput, SetAffiliationInput
+from people_context.app.records import RecordFact, RecordFactInput, RecordInteractionInput, SetAffiliationInput
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
 from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
@@ -2093,9 +2093,18 @@ def _person_with_records(db_file: Path) -> dict[str, str]:
             )
         )
         affiliation = cases.set_affiliation.execute(SetAffiliationInput(person_id=person_id, org="Acme", role="Eng"))
+        interaction = cases.record_interaction.execute(
+            RecordInteractionInput(summary="Seed swap", participant_ids=[person_id], channel="garden")
+        )
     finally:
         runtime.close()
-    return {"person": person_id, "fact": fact.id, "hidden": hidden.id, "affiliation": affiliation.id}
+    return {
+        "person": person_id,
+        "fact": fact.id,
+        "hidden": hidden.id,
+        "affiliation": affiliation.id,
+        "interaction": interaction.id,
+    }
 
 
 def _correct(client: TestClient, entity_type: str, entity_id: str, fields: dict[str, Any]) -> Any:
@@ -2116,7 +2125,7 @@ def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path)
     stored = next(row for row in after["facts"] if row["id"] == ids["fact"])
     assert (stored["value"], stored["period"]["valid_from"]) == ("Head gardener", "2024-03-01")
     assert after["affiliations"][0]["affiliation"]["role"] == "Engineer"
-    assert set(after["record_fields"]) == {"affiliation", "fact", "trait", "reminder"}
+    assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder"}
     conn = open_db(db_file)
     try:
         ops = conn.execute(
@@ -2137,7 +2146,9 @@ def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path)
         # An undeclared field is the caller's own text, so it is not named back.
         ("fact", "fact", {_SENTINEL: "x"}, 400, {"error": "invalid_correction", "fields": []}),
         ("affiliation", "affiliation", {"org_id": _SENTINEL}, 400, {"error": "invalid_correction", "fields": []}),
-        ("interaction", "fact", {"summary": _SENTINEL}, 400, {"error": "invalid_request"}),
+        ("observation", "fact", {"text": _SENTINEL}, 400, {"error": "invalid_request"}),
+        # A correction names its record's own type; a fact's id is no interaction.
+        ("interaction", "fact", {"summary": _SENTINEL}, 404, {"error": "record_not_found"}),
     ],
 )
 def test_record_corrections_are_refused_by_code_without_echoing_the_value(
@@ -2265,3 +2276,237 @@ def test_editing_a_fact_sends_only_the_fields_that_moved(db_file: Path, tmp_path
             ]
         ],
     }
+
+
+# --- Adding and removing facts and interactions, and removing affiliations, from the person view --
+
+
+def _browser_ops(db_file: Path, op: str) -> list[tuple[str, str]]:
+    conn = open_db(db_file)
+    try:
+        rows = conn.execute(
+            "SELECT entity_type, entity_id FROM audit_log WHERE op = ? AND source = 'browser' ORDER BY rowid", (op,)
+        ).fetchall()
+    finally:
+        conn.close()
+    return [(row[0], row[1]) for row in rows]
+
+
+def test_the_person_view_adds_a_fact_through_record_fact(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        added = client.post(
+            "/api/person/fact/add",
+            json={"person_id": person_id, "predicate": "lives_in", "value": "Dubai", "valid_from": "2024-01-01"},
+        )
+        shown = client.get("/api/person", params={"id": person_id}).json()
+    assert added.status_code == 200
+    fact_id = added.json()["fact_id"]
+    stored = next(row for row in shown["facts"] if row["id"] == fact_id)
+    assert (stored["predicate"], stored["value"], stored["period"]["valid_from"]) == ("lives_in", "Dubai", "2024-01-01")
+    assert (stored["sensitivity"], stored["provenance"]["source"]) == ("personal", "browser")
+    assert _browser_ops(db_file, "create") == [("fact", fact_id)]
+
+
+@pytest.mark.parametrize(
+    ("path", "body", "status", "expected"),
+    [
+        (
+            "fact",
+            {"predicate": "x", "value": "y", "valid_from": "2026-10-01", "valid_to": "2026-09-01"},
+            400,
+            "invalid_period",
+        ),
+        ("fact", {"predicate": " ", "value": _SENTINEL}, 400, "invalid_request"),
+        ("fact", {"predicate": "x", "value": "y", "sensitivity": "sensitive"}, 400, "invalid_request"),
+        ("interaction", {"summary": "  "}, 400, "invalid_request"),
+        ("interaction", {"summary": _SENTINEL, "occurred_on": "yesterday"}, 400, "invalid_request"),
+        ("interaction", {"summary": "x", "participant_ids": [_SENTINEL]}, 400, "invalid_request"),
+    ],
+)
+def test_record_additions_are_refused_by_code_and_write_nothing(
+    db_file: Path, path: str, body: dict[str, Any], status: int, expected: str
+) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post(f"/api/person/{path}/add", json={"person_id": person_id, **body})
+        unknown = client.post(
+            f"/api/person/{path}/add",
+            json={"person_id": "missing", "predicate": "x", "value": "y"}
+            if path == "fact"
+            else {"person_id": "missing", "summary": "x"},
+        )
+    assert (response.status_code, response.json()) == (status, {"error": expected})
+    assert _SENTINEL not in response.text
+    assert (unknown.status_code, unknown.json()) == (404, {"error": "unknown_person"})
+    assert _browser_ops(db_file, "create") == []
+
+
+def test_the_person_view_adds_an_interaction_with_that_person(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        dated = client.post(
+            "/api/person/interaction/add",
+            json={"person_id": person_id, "summary": "Lunch", "channel": "in person", "occurred_on": "2026-08-30"},
+        )
+        undated = client.post("/api/person/interaction/add", json={"person_id": person_id, "summary": "Call"})
+        shown = client.get("/api/person", params={"id": person_id}).json()
+    assert (dated.status_code, undated.status_code) == (200, 200)
+    by_id = {row["id"]: row for row in shown["interactions"]}
+    lunch = by_id[dated.json()["interaction_id"]]
+    assert (lunch["summary"], lunch["channel"], lunch["participant_ids"]) == ("Lunch", "in person", [person_id])
+    assert datetime.fromisoformat(lunch["occurred_at"]) == datetime(2026, 8, 30, tzinfo=UTC)
+    assert by_id[undated.json()["interaction_id"]]["channel"] is None
+    assert [entity for entity, _ in _browser_ops(db_file, "create")] == ["interaction", "interaction"]
+
+
+def test_the_person_view_corrects_an_interaction_in_place(db_file: Path) -> None:
+    ids = _person_with_records(db_file)
+    with _client(db_file) as client:
+        corrected = _correct(client, "interaction", ids["interaction"], {"summary": "Seed and bulb swap"})
+        refused = _correct(client, "interaction", ids["interaction"], {"participant_ids": [_SENTINEL]})
+        shown = client.get("/api/person", params={"id": ids["person"]}).json()
+    assert corrected.json() == {"corrected": ["summary"]}
+    assert (refused.status_code, refused.json()) == (400, {"error": "invalid_correction", "fields": []})
+    assert shown["interactions"][0]["summary"] == "Seed and bulb swap"
+    assert _browser_ops(db_file, "correct") == [("interaction", ids["interaction"])]
+
+
+def test_the_person_view_removes_affiliations_facts_and_interactions_through_forget(db_file: Path) -> None:
+    ids = _person_with_records(db_file)
+    with _client(db_file) as client:
+        removed = [
+            client.post("/api/record/remove", json={"entity_type": kind, "entity_id": ids[kind]})
+            for kind in ("affiliation", "fact", "interaction")
+        ]
+        again = client.post("/api/record/remove", json={"entity_type": "fact", "entity_id": ids["fact"]})
+        shown = client.get("/api/person", params={"id": ids["person"]}).json()
+    assert [response.json() for response in removed] == [
+        {"removed": "affiliation"},
+        {"removed": "fact"},
+        {"removed": "interaction"},
+    ]
+    assert (again.status_code, again.json()) == (404, {"error": "record_not_found"})
+    assert (shown["affiliations"], shown["facts"], shown["interactions"]) == ([], [], [])
+    assert [entity for entity, _ in _browser_ops(db_file, "forget")] == ["record"] * 3
+    conn = open_db(db_file)
+    try:
+        counts = [conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for t in ("affiliations", "interactions")]
+        # The hidden fact was never on the page and is untouched.
+        facts = [row[0] for row in conn.execute("SELECT id FROM facts")]
+    finally:
+        conn.close()
+    assert counts == [0, 0]
+    assert facts == [ids["hidden"]]
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "target", "status", "expected"),
+    [
+        # A record the view's disclosure hides is as unknown as one that does not exist.
+        ("fact", "hidden", 404, "record_not_found"),
+        ("fact", "missing", 404, "record_not_found"),
+        ("interaction", "fact", 404, "record_not_found"),
+        # Only the types the page offers Remove for; anything else is not a page request.
+        ("trait", "fact", 400, "invalid_request"),
+        ("person", "person", 400, "invalid_request"),
+    ],
+)
+def test_record_removals_are_refused_by_code_and_delete_nothing(
+    db_file: Path, entity_type: str, target: str, status: int, expected: str
+) -> None:
+    ids = _person_with_records(db_file)
+    with _client(db_file) as client:
+        response = client.post(
+            "/api/record/remove", json={"entity_type": entity_type, "entity_id": ids.get(target, target)}
+        )
+        shown = client.get("/api/person", params={"id": ids["person"]}).json()
+    assert (response.status_code, response.json()) == (status, {"error": expected})
+    assert _SENSITIVE_VALUE not in response.text
+    assert _browser_ops(db_file, "forget") == []
+    assert len(shown["facts"]) == 1 and len(shown["interactions"]) == 1
+
+
+def test_a_cross_origin_removal_is_not_acted_on(db_file: Path) -> None:
+    ids = _person_with_records(db_file)
+    with _client(db_file) as client:
+        refused = client.post(
+            "/api/record/remove",
+            json={"entity_type": "fact", "entity_id": ids["fact"]},
+            headers={"origin": "http://evil.example"},
+        )
+    assert refused.status_code == 403
+    assert _browser_ops(db_file, "forget") == []
+
+
+_ADD_AND_REMOVE_RECORDS = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  const texts = () => view.all().map((n) => n.textContent || n.text).filter((t) => typeof t === "string" && t);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, reminders: [], traits: [], alias_kinds: [], alias_details: [],
+    record_fields: __RECORD_FIELDS__,
+    affiliations: [{ affiliation: { id: "A1", role: "Eng", period: {} }, organization_name: "Acme" }],
+    facts: [{ id: "F1", predicate: "role", value: "Gardener", period: {} }],
+    interactions: [{ id: "I1", summary: "Lunch", occurred_at: "2026-08-30T00:00:00Z", channel: "in person",
+      participant_ids: ["P", "Q"] }] };
+  await showPerson("P", null, []);
+  const reminderHasRemove = !!labelled("Remove " + "reminder");
+  // Remove asks first; Cancel sends nothing.
+  labelled("Remove role: Gardener").listeners.click();
+  const factPrompt = texts().find((t) => t.startsWith("Permanently remove"));
+  find("Cancel").listeners.click();
+  const cancelled = posts.length;
+  labelled("Remove 2026-08-30 (in person): Lunch").listeners.click();
+  const sharedPrompt = texts().find((t) => t.startsWith("Permanently remove"));
+  labelled("Confirm removal of 2026-08-30 (in person): Lunch").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  await showPerson("P", null, []);
+  labelled("Remove Eng at Acme").listeners.click();
+  labelled("Confirm removal of Eng at Acme").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  await showPerson("P", null, []);
+  find("Add fact").listeners.click();
+  labelled("new fact predicate").value = "lives_in";
+  find("Add").listeners.click();
+  const blocked = posts.length;
+  labelled("new fact value").value = " Dubai ";
+  find("Add").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  await showPerson("P", null, []);
+  find("Add interaction").listeners.click();
+  labelled("new interaction summary").value = "Call about seeds";
+  labelled("new interaction on").value = "2026-09-01";
+  find("Add").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  await showPerson("P", null, []);
+  labelled("Edit 2026-08-30 (in person): Lunch").listeners.click();
+  labelled("summary").value = "Long lunch";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ reminderHasRemove, factPrompt, cancelled, sharedPrompt, blocked,
+    posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_person_view_adds_edits_and_removes_after_confirmation(db_file: Path, tmp_path: Path) -> None:
+    from people_context.adapters.web.fields import RECORD_FIELDS
+
+    outcome = _run_page(
+        db_file, tmp_path, _ADD_AND_REMOVE_RECORDS.replace("__RECORD_FIELDS__", json.dumps(RECORD_FIELDS))
+    )
+    assert outcome["reminderHasRemove"] is False
+    assert outcome["factPrompt"] == "Permanently remove role: Gardener? This cannot be undone."
+    assert outcome["cancelled"] == 0
+    assert outcome["sharedPrompt"].endswith("It is removed for every participant.")
+    assert outcome["blocked"] == 2
+    assert outcome["posts"] == [
+        ["/api/record/remove", {"entity_type": "interaction", "entity_id": "I1"}],
+        ["/api/record/remove", {"entity_type": "affiliation", "entity_id": "A1"}],
+        ["/api/person/fact/add", {"person_id": "P", "predicate": "lives_in", "value": "Dubai"}],
+        ["/api/person/interaction/add", {"person_id": "P", "summary": "Call about seeds", "occurred_on": "2026-09-01"}],
+        ["/api/record/correct", {"entity_type": "interaction", "entity_id": "I1", "fields": {"summary": "Long lunch"}}],
+    ]

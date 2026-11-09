@@ -754,7 +754,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `record_observation` | Record a subjective observation. |
 | `record_trait` | Record a derived categorized trait. |
 | `record_interaction` | Record a concise summary after participant validation. |
-| `correct_record` | Correct whitelisted fields with lossless before/after audit. |
+| `correct_record` | Correct whitelisted fields with lossless before/after audit; an interaction's `summary`, `occurred_at`, `channel`, and `sensitivity`, never its participants. |
 | `supersede_fact` | Close a historically correct fact and open its replacement, atomically. |
 | `create_group` / `add_group_membership` / `close_group_membership` | Create an identified group, record a membership, and record the end of one that was true. |
 | `set_reminder` / `complete_reminder` | Create and transition reminders. |

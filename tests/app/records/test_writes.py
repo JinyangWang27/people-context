@@ -246,6 +246,33 @@ def test_correct_fact_updates_in_place_and_rejects_identity_or_provenance(write_
     assert len(audit.entries) == 2
 
 
+def test_correct_interaction_updates_its_summary_but_never_its_participants(write_deps: tuple) -> None:
+    people, records, audit, clock, self_person, other = write_deps
+    interaction = RecordInteraction(people, records, audit, clock).execute(
+        RecordInteractionInput(summary="Coffee in Dubia", participant_ids=[self_person.id, other.id])
+    )
+    correct = CorrectRecord(records, records, audit, clock, people=people)
+
+    updated = correct.execute(
+        CorrectRecordInput(
+            entity_type="interaction",
+            entity_id=interaction.id,
+            fields={"summary": "Coffee in Dubai", "channel": "in person", "occurred_at": "2025-05-30T08:00:00Z"},
+        )
+    )
+
+    assert (updated.summary, updated.channel, updated.occurred_at) == (
+        "Coffee in Dubai",
+        "in person",
+        datetime(2025, 5, 30, 8, 0, tzinfo=UTC),
+    )
+    assert audit.entries[-1].payload["before"]["summary"] == "Coffee in Dubia"
+    with pytest.raises(InvalidCorrectionError):
+        correct.execute(
+            CorrectRecordInput(entity_type="interaction", entity_id=interaction.id, fields={"participant_ids": []})
+        )
+
+
 def test_reminder_transitions_and_kind_validation(write_deps: tuple) -> None:
     people, records, audit, clock, _, other = write_deps
     set_reminder = SetReminder(people, records, audit, clock)
