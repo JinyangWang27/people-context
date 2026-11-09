@@ -589,7 +589,11 @@ fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`,
 review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`,
 `pctx remove-alias`, `pctx edit`, and the `correct_record` MCP tool already call; it writes only through the last eight. The person's **Name** and **Summary** each have Edit, through the same use case as `pctx edit`: a rename keeps
 the old name as an alias, a name another person already holds is refused as `name_conflict`, an email address as
-`name_is_email`, and emptying the summary clears it. Each alias on the person view has Edit and
+`name_is_email`, and emptying the summary clears it. The people list has a search box that keeps the people whose name, an alias, or the summary contains the text
+(compared case- and accent-insensitively; press Enter), an order (name, recently added, or recently edited), and,
+once there is something to choose, an organization and a group filter. A group counts only memberships of
+ordinary sensitivity in an ordinary group unless sensitive records are enabled for the process, so a filter never
+reveals what the view hides; changing any of these starts again from the first page. Each alias on the person view has Edit and
 Remove, and Remove asks for confirmation. **Add alias** adds a name with its kind (default `nickname`), language,
 and script; **Add email** under Contact adds an address as a `handle`, the only kind an email address may have. A
 value the person already carries is reported as already stored and changes nothing. Each affiliation, fact,
