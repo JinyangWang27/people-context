@@ -5,7 +5,8 @@ wraps an existing use case and returns what it returns. No use case, validation,
 exists only for the page. The writes are batch amendment, withdrawal, and commit, through the same
 use cases `pctx import` calls, always with the digest of the review the page displayed; alias addition,
 correction, and removal on a person page, through the same use cases as `pctx add-alias`,
-`pctx update-alias`, and `pctx remove-alias`; and in-place correction of an affiliation, fact, trait, or
+`pctx update-alias`, and `pctx remove-alias`; a rename or summary change through the same `EditPerson` as
+`pctx edit`; and in-place correction of an affiliation, fact, trait, or
 reminder the page displays, through the same `CorrectRecord` as the `correct_record` MCP tool.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
@@ -63,6 +64,8 @@ from people_context.app.people import (
     AddAliasInput,
     AliasConflictError,
     AliasNotFoundError,
+    EditPersonInput,
+    PersonNameCollisionError,
     RemoveAliasInput,
     UpdateAliasInput,
 )
@@ -72,7 +75,7 @@ from people_context.app.records import (
     PersonNotFoundError,
     RecordNotFoundError,
 )
-from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, AliasKind
+from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, NAME_IS_EMAIL, AliasKind
 from people_context.domain.shared import Sensitivity
 
 LOOPBACK_HOST = "127.0.0.1"
@@ -125,6 +128,17 @@ class _AddAliasAction(BaseModel):
     kind: AliasKind = AliasKind.OTHER
     lang: _NonBlank | None = None
     script: _NonBlank | None = None
+
+
+class _EditPersonAction(BaseModel):
+    """Rename the person the page displayed or replace their summary; an absent field is unchanged."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    name: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")] | None = None
+    # An empty summary clears it.
+    summary: str | None = None
 
 
 class _CorrectRecordAction(BaseModel):
@@ -330,6 +344,27 @@ def create_browse_app(
             return _alias_refusal(exc)
         return _json(result.model_dump_json() + "\n")
 
+    async def edit_person(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _EditPersonAction)
+            data = EditPersonInput(**action.model_dump(), source="browser")
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        except ValidationError:
+            # The action already passed its strict schema, so the input's one remaining rule failed.
+            return _error(NAME_IS_EMAIL, 400)
+        if data.name is None and data.summary is None:
+            return _error("invalid_request", 400)
+        try:
+            person = runtime.use_cases.edit_person.execute(data)
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        except PersonNameCollisionError:
+            # Which person already holds the name is not echoed: it may be one the view never showed.
+            return _error("name_conflict", 409)
+        return _json(json.dumps({"person_id": person.id}) + "\n")
+
     async def correct_record(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
@@ -464,6 +499,7 @@ def create_browse_app(
             Route("/api/person/alias/add", add_alias, methods=["POST"]),
             Route("/api/person/alias/remove", remove_alias, methods=["POST"]),
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
+            Route("/api/person/edit", edit_person, methods=["POST"]),
             Route("/api/record/correct", correct_record, methods=["POST"]),
             Route("/api/sources", sources, methods=["GET"]),
             Route("/api/source", source, methods=["GET"]),

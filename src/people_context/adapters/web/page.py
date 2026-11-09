@@ -223,6 +223,8 @@ const ALIAS_REFUSALS = {
   unknown_person: "This person is no longer stored.",
   invalid_correction: "That value is not allowed here; nothing was changed.",
   record_not_found: "This record is no longer stored.",
+  name_conflict: "Another person already has that name.",
+  name_is_email: "An email address is not a name; add it under Contact instead.",
 };
 
 function aliasRefusal(error) {
@@ -411,6 +413,35 @@ function recordRow(type, record, label, descriptors, reopen) {
   return row;
 }
 
+// The person's name or summary, edited through the same `EditPerson` as `pctx edit`. A rename keeps
+// the old name as an alias; emptying the summary clears it, while a name cannot be emptied.
+function personFieldRow(personId, field, stored, reopen) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  function idle() {
+    message.textContent = "";
+    const edit = button("Edit", editing);
+    edit.setAttribute("aria-label", "Edit " + field);
+    row.replaceChildren(el("span", stored || "(none)"), " ", edit, message);
+  }
+  function editing() {
+    message.textContent = "";
+    const control = textControl({ name: field, control: "text" }, stored || "");
+    const save = () => {
+      const value = control.read();
+      if (value === undefined) return idle();
+      if (field === "name" && (value === null || !value.trim())) {
+        message.textContent = "Enter a name.";
+        return;
+      }
+      aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, reopen);
+    };
+    row.replaceChildren(control.node, button("Save", save), button("Cancel", idle), message);
+  }
+  idle();
+  return row;
+}
+
 function recordList(type, entries, descriptors, reopen) {
   if (!entries.length) return el("p", "None recorded.", "notice");
   const node = el("ul");
@@ -431,12 +462,12 @@ async function showPerson(personId, cursor, back) {
   aliases.append(aliasEditor(doc.person.id, doc, reopen, false), aliasAdder(doc.person.id, kinds, reopen, false));
   const contact = el("dd");
   contact.append(aliasEditor(doc.person.id, doc, reopen, true), aliasAdder(doc.person.id, kinds, reopen, true));
-  identity.append(el("dt", "Aliases"), aliases, el("dt", "Contact"), contact);
-  const fields = [
-    ["Summary", doc.person.summary || "(none)"],
-    ["Context disclosure", doc.disclosure.context],
-  ];
-  for (const [term, value] of fields) identity.append(el("dt", term), el("dd", value));
+  const name = el("dd");
+  name.append(personFieldRow(doc.person.id, "name", doc.person.canonical_name, reopen));
+  const summary = el("dd");
+  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen));
+  identity.append(el("dt", "Name"), name, el("dt", "Aliases"), aliases, el("dt", "Contact"), contact,
+    el("dt", "Summary"), summary, el("dt", "Context disclosure"), el("dd", doc.disclosure.context));
   const nodes = [identity];
   if (doc.truncated) {
     nodes.push(el("p", "Facts and interactions are bounded; more exist beyond this view.", "notice"));

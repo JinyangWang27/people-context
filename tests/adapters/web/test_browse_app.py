@@ -1023,7 +1023,8 @@ _CONTACT_IS_NOT_A_NAME = r"""
     alias_details: [{ value: "Jordy", kind: "nickname" }, { value: "jordan@example.com", kind: "handle" }] };
   await showPerson("P", null, []);
   const terms = view.all().filter((n) => n.tag === "dd");
-  console.log(JSON.stringify({ row: texts(row), aliases: texts(terms[0]), contact: texts(terms[1]) }));
+  // The identity list runs Name, Aliases, Contact.
+  console.log(JSON.stringify({ row: texts(row), aliases: texts(terms[1]), contact: texts(terms[2]) }));
 })();
 """
 
@@ -1462,8 +1463,8 @@ def test_the_form_edits_staged_rows_only_and_authors_nothing(db_file: Path) -> N
     # The one write the form makes, always with the digest of the review it was built from.
     assert '"/api/batch/amend"' in script
     assert "expected_batch_digest: batchState.review.batch_digest" in script
-    # No endpoint for creating a candidate or editing a person, fact, or any other durable record.
-    for absent in ("/api/batch/stage", "/api/batch/add", "/api/person/edit", "/api/fact"):
+    # No endpoint for creating a candidate; durable records are edited only from the person view.
+    for absent in ("/api/batch/stage", "/api/batch/add", "/api/fact"):
         assert absent not in script, absent
     # A closed row opens no form, and the type is never patched.
     assert 'row.status === "pending"' in script
@@ -1671,6 +1672,57 @@ def test_alias_refusals_name_a_code_and_never_the_value(
     assert response.status_code == status
     assert response.json() == expected
     assert _SENTINEL not in response.text
+
+
+def test_the_person_view_renames_and_rewrites_the_summary_through_edit_person(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        renamed = client.post("/api/person/edit", json={"person_id": person_id, "name": "Priya S. Sharma"})
+        summarised = client.post("/api/person/edit", json={"person_id": person_id, "summary": "Runs the book club"})
+        after = client.get("/api/person", params={"id": person_id}).json()
+        cleared = client.post("/api/person/edit", json={"person_id": person_id, "summary": ""})
+        emptied = client.get("/api/person", params={"id": person_id}).json()
+
+    assert (renamed.status_code, summarised.status_code, cleared.status_code) == (200, 200, 200)
+    assert after["person"]["canonical_name"] == "Priya S. Sharma"
+    assert after["person"]["summary"] == "Runs the book club"
+    # A rename keeps the name being replaced as an alias, exactly as `pctx edit` does.
+    assert "Priya Sharma" in [alias["value"] for alias in after["alias_details"]]
+    assert not emptied["person"]["summary"]
+    conn = open_db(db_file)
+    try:
+        sources = [row[0] for row in conn.execute("SELECT source FROM audit_log WHERE entity_id = ?", (person_id,))]
+    finally:
+        conn.close()
+    assert sources.count("browser") == 3
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "expected"),
+    [
+        ({"name": "Elena Marsh"}, 409, {"error": "name_conflict"}),
+        ({"name": "priya@example.org"}, 400, {"error": "name_is_email"}),
+        ({"name": "   "}, 400, {"error": "invalid_request"}),
+        ({}, 400, {"error": "invalid_request"}),
+        ({"summary": "x", "extra": _SENTINEL}, 400, {"error": "invalid_request"}),
+    ],
+)
+def test_person_edit_refusals_name_a_code_and_never_the_value(
+    db_file: Path, body: dict[str, Any], status: int, expected: dict[str, str]
+) -> None:
+    _seed_people(db_file)
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post("/api/person/edit", json={"person_id": person_id, **body})
+    assert response.status_code == status
+    assert response.json() == expected
+    assert _SENTINEL not in response.text
+
+
+def test_a_person_edit_for_an_unknown_person_is_refused(db_file: Path) -> None:
+    with _client(db_file) as client:
+        response = client.post("/api/person/edit", json={"person_id": "missing", "summary": "x"})
+    assert (response.status_code, response.json()) == (404, {"error": "unknown_person"})
 
 
 def test_an_alias_write_for_an_unknown_person_is_refused(db_file: Path) -> None:
@@ -1968,7 +2020,7 @@ _EDIT_A_FACT = r"""
   labelled("Edit role: Gardener").listeners.click();
   find("Save").listeners.click();
   const unchanged = posts.length;
-  find("Edit").listeners.click();
+  labelled("Edit role: Gardener").listeners.click();
   labelled("value").value = "Head gardener";
   labelled("valid_from").value = "";
   find("Save").listeners.click();
@@ -1976,6 +2028,48 @@ _EDIT_A_FACT = r"""
   console.log(JSON.stringify({ unchanged, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
 })();
 """
+
+
+_EDIT_NAME_AND_SUMMARY = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", aliases: [], emails: [],
+      summary: "Neighbour" },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+    alias_kinds: [], alias_details: [], record_fields: {} };
+  await showPerson("P", null, []);
+  labelled("Edit name").listeners.click();
+  find("Save").listeners.click();
+  const unchanged = posts.length;
+  labelled("Edit name").listeners.click();
+  labelled("name").value = "  ";
+  find("Save").listeners.click();
+  const blank = posts.length;
+  labelled("name").value = "Jordan A. Lee";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  labelled("Edit summary").listeners.click();
+  labelled("summary").value = "";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ unchanged, blank, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_name_and_summary_rows_send_only_a_moved_value(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _EDIT_NAME_AND_SUMMARY)
+    assert outcome == {
+        "unchanged": 0,
+        "blank": 0,
+        "posts": [
+            ["/api/person/edit", {"person_id": "P", "name": "Jordan A. Lee"}],
+            # An emptied summary is sent as "", which clears it; null would mean "unchanged".
+            ["/api/person/edit", {"person_id": "P", "summary": ""}],
+        ],
+    }
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
