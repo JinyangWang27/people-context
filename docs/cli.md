@@ -587,7 +587,9 @@ Serves one page on `127.0.0.1` for whoever finds a table easier than a terminal:
 brief, the import sources with each receipt's staged counts, and review and editing of one staged batch. It is a
 fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
 review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`,
-`pctx remove-alias`, and the `correct_record` MCP tool already call; it writes only through the last seven. Each alias on the person view has Edit and
+`pctx remove-alias`, `pctx edit`, and the `correct_record` MCP tool already call; it writes only through the last eight. The person's **Name** and **Summary** each have Edit, through the same use case as `pctx edit`: a rename keeps
+the old name as an alias, a name another person already holds is refused as `name_conflict`, an email address as
+`name_is_email`, and emptying the summary clears it. Each alias on the person view has Edit and
 Remove, and Remove asks for confirmation. **Add alias** adds a name with its kind (default `nickname`), language,
 and script; **Add email** under Contact adds an address as a `handle`, the only kind an email address may have. A
 value the person already carries is reported as already stored and changes nothing. Each affiliation, fact,
