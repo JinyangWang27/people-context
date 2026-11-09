@@ -49,6 +49,8 @@ th { color: var(--muted); font-weight: 600; white-space: nowrap; }
 .notice { color: var(--muted); font-style: italic; }
 .error { color: #c0392b; }
 .pager { display: flex; gap: 8px; margin-top: 12px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.filters input[type=search] { flex: 1 1 16rem; min-width: 0; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
 dt { color: var(--muted); }
 dd { margin: 0; overflow-wrap: anywhere; }
@@ -192,10 +194,69 @@ function pager(back, cursor, nextCursor, open) {
   return node;
 }
 
+// The people list's search, order, and filters. Kept across views, so Back from a person returns to
+// the same narrowed list; changing any of them starts again from the first page.
+const peopleFilter = { q: "", sort: "name", organization: "", group: "" };
+
+const PEOPLE_SORTS = [
+  { value: "name", label: "Name (A-Z)" },
+  { value: "created", label: "Recently added" },
+  { value: "updated", label: "Recently edited" },
+];
+
+function peopleControls(filters) {
+  const box = el("div", null, "filters");
+  const refilter = (key, value) => {
+    if (peopleFilter[key] === value) return;
+    peopleFilter[key] = value;
+    showPeople(null, []);
+  };
+  const search = el("input");
+  search.type = "search";
+  search.value = peopleFilter.q;
+  search.placeholder = "Search names, aliases, summary";
+  search.setAttribute("aria-label", "search people");
+  // `change` fires on Enter and when the box loses focus, so typing does not query per keystroke.
+  search.addEventListener("change", () => refilter("q", search.value.trim()));
+  box.append(search);
+  const picker = (key, label, options, blank) => {
+    const select = el("select");
+    select.setAttribute("aria-label", label);
+    if (blank) {
+      const any = el("option", blank);
+      any.value = "";
+      select.append(any);
+    }
+    for (const option of options) {
+      const node = el("option", option.label);
+      node.value = option.value;
+      select.append(node);
+    }
+    // A filter whose choice is no longer offered still shows it rather than silently widening.
+    if (peopleFilter[key] && !options.some((option) => option.value === peopleFilter[key])) {
+      const kept = el("option", "(no longer listed)");
+      kept.value = peopleFilter[key];
+      select.append(kept);
+    }
+    select.value = peopleFilter[key];
+    select.addEventListener("change", () => refilter(key, select.value));
+    box.append(select);
+  };
+  picker("sort", "sort people", PEOPLE_SORTS, null);
+  const named = (rows) => rows.map((row) => ({ value: row.id, label: row.name }));
+  if ((filters.organizations || []).length || peopleFilter.organization) {
+    picker("organization", "filter by organization", named(filters.organizations || []), "Any organization");
+  }
+  if ((filters.groups || []).length || peopleFilter.group) {
+    picker("group", "filter by group", named(filters.groups || []), "Any group");
+  }
+  return box;
+}
+
 async function showPeople(cursor, back) {
   const at = navigate();
   let doc;
-  try { doc = await api("/api/people" + query({ cursor })); } catch (error) { return fail(error, at); }
+  try { doc = await api("/api/people" + query({ cursor, ...peopleFilter })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const rows = doc.people.map((person) => {
     const emails = person.emails || [];
@@ -206,11 +267,13 @@ async function showPeople(cursor, back) {
       person.summary,
     ];
   });
+  const narrowed = peopleFilter.q || peopleFilter.organization || peopleFilter.group;
   show(
     "People",
+    peopleControls(doc.filters || {}),
     doc.people.length
       ? table(["Name", "Aliases", "Contact", "Summary"], rows)
-      : el("p", "No people found.", "notice"),
+      : el("p", narrowed ? "No people match." : "No people found.", "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );
 }

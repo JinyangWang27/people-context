@@ -170,7 +170,8 @@ Or, without an agent: `pctx remember "Amina Hassan" "prefers short emails" --org
 
 Prefer a table to a terminal? `pctx browse --open` opens a local page over the same database:
 
-- browse people and open one person's brief;
+- browse people, searching names, aliases, and summaries, sorting by name or newest added or edited, and
+  narrowing to one organization or group; open one person's brief;
 - rename a person (the old name stays as an alias) or rewrite their summary;
 - add, correct, or remove a person's aliases and email addresses;
 - correct an affiliation, fact, trait, or reminder in place, with the before and after kept in the audit log;

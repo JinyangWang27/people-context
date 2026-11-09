@@ -25,7 +25,7 @@ from people_context.adapters.web import app as web_app
 from people_context.adapters.web.fields import ALIAS_FIELDS, CANDIDATE_FIELDS
 from people_context.app.exports.brief import BRIEF_CONTEXT_ITEMS
 from people_context.app.imports import ImportPipelineError, ImportReviewRow
-from people_context.app.records import RecordFact, RecordFactInput
+from people_context.app.records import RecordFact, RecordFactInput, SetAffiliationInput
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
 from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
@@ -263,6 +263,76 @@ def test_the_people_list_defaults_to_fifty_and_never_exceeds_two_hundred(db_file
     with _client(db_file) as client:
         assert len(client.get("/api/people").json()["people"]) == 50
         assert len(client.get("/api/people", params={"limit": "200"}).json()["people"]) == 200
+
+
+def test_the_people_list_searches_orders_and_filters_through_the_person_index(db_file: Path) -> None:
+    ids = _seed_people(db_file)
+    runtime = build_runtime(db_file)
+    try:
+        runtime.use_cases.set_affiliation.execute(
+            SetAffiliationInput(person_id=ids["elena"], org="Allotment Society", role="treasurer")
+        )
+    finally:
+        runtime.close()
+    with _client(db_file) as client:
+        everyone = client.get("/api/people").json()
+        organization = everyone["filters"]["organizations"][0]
+        searched = client.get("/api/people", params={"q": "ALLOTMENT"}).json()  # Elena's summary
+        filtered = client.get("/api/people", params={"organization": organization["id"]}).json()
+        newest = client.get("/api/people", params={"sort": "created"}).json()
+        unknown = client.get("/api/people", params={"sort": "shoe size"})
+    assert everyone["filters"] == {"organizations": [organization], "groups": []}
+    assert organization["name"] == "Allotment Society"
+    assert [p["id"] for p in searched["people"]] == [ids["elena"]]
+    assert [p["id"] for p in filtered["people"]] == [ids["elena"]]
+    # Toma was saved after Elena, so the newest-first order puts Toma first.
+    assert [p["id"] for p in newest["people"]] == [ids["toma"], ids["elena"]]
+    assert (unknown.status_code, unknown.json()) == (400, {"error": "invalid_person_sort"})
+
+
+_FILTER_PEOPLE = r"""
+(async () => {
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.peopleDoc = { people: [], next_cursor: "C1",
+    filters: { organizations: [{ id: "O1", name: "Presight" }], groups: [] } };
+  await showPeople(null, []);
+  const groupOffered = labelled("filter by group") !== undefined;
+  view.all().find((n) => n.tag === "button" && n.textContent === "Next").listeners.click();
+  await tick();
+  const search = labelled("search people");
+  search.value = "  moft ";
+  search.listeners.change();
+  await tick();
+  const organization = labelled("filter by organization");
+  organization.value = "O1";
+  organization.listeners.change();
+  await tick();
+  const sort = labelled("sort people");
+  sort.value = "updated";
+  sort.listeners.change();
+  await tick();
+  // Unchanged: no new request.
+  labelled("search people").listeners.change();
+  await tick();
+  console.log(JSON.stringify({ groupOffered, gets, notice: view.all().map((n) => n.textContent).filter((t) => t)
+    .includes("No people match.") }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_changing_a_filter_refetches_from_the_first_page(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _FILTER_PEOPLE)
+    initial = outcome["gets"][:1]  # the page's own first load
+    assert outcome["groupOffered"] is False
+    assert outcome["gets"][len(initial) :] == [
+        "/api/people?sort=name",
+        "/api/people?cursor=C1&sort=name",
+        "/api/people?q=moft&sort=name",
+        "/api/people?q=moft&sort=name&organization=O1",
+        "/api/people?q=moft&sort=updated&organization=O1",
+    ]
+    assert outcome["notice"] is True
 
 
 def test_a_markup_name_is_returned_as_data_not_markup(db_file: Path) -> None:

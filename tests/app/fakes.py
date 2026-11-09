@@ -32,7 +32,7 @@ from people_context.ports.context import AffiliationRecord, RelationshipRecord, 
 from people_context.ports.curation import DeletedPersonReference, FactAssertion, NameUsage
 from people_context.ports.export import ExportSnapshot
 from people_context.ports.insights import RecencySignal
-from people_context.ports.repository import SearchHit
+from people_context.ports.repository import PersonFilterOption, PersonPageQuery, SearchHit
 from people_context.ports.semantic import (
     SemanticEntity,
     SemanticIndexMetadata,
@@ -101,9 +101,25 @@ class FakePeopleRepository:
         people.sort(key=lambda p: (p.canonical_name, p.id))
         return people[:limit] if limit is not None else people
 
-    def page_people(self, *, limit: int, after_person_id: str | None) -> list[Person] | None:
+    def page_people(
+        self, *, limit: int, after_person_id: str | None, where: PersonPageQuery | None = None
+    ) -> list[Person] | None:
+        where = where or PersonPageQuery()
+        # The fake stores no affiliations or groups, so it cannot honour those filters.
+        assert where.organization_id is None and where.group_id is None
+        descending = where.sort != "name"
+
         def key(person: Person) -> tuple[str, str]:
-            return (normalize_name(person.canonical_name), person.id)
+            if where.sort == "name":
+                return (normalize_name(person.canonical_name), person.id)
+            stamp = person.created_at if where.sort == "created" else person.updated_at
+            return (stamp.isoformat(), person.id)
+
+        def matches(person: Person) -> bool:
+            if not where.text:
+                return True
+            names = [normalize_name(name) for name in person.all_names()]
+            return any(where.text in name for name in names) or where.text in (person.summary or "").lower()
 
         after: tuple[str, str] | None = None
         if after_person_id is not None:
@@ -111,8 +127,15 @@ class FakePeopleRepository:
             if anchor is None:
                 return None
             after = key(anchor)
-        active = sorted((p for p in self._people.values() if p.deleted_at is None), key=key)
-        return [p for p in active if after is None or key(p) > after][:limit]
+        active = sorted(
+            (p for p in self._people.values() if p.deleted_at is None and matches(p)), key=key, reverse=descending
+        )
+        return [p for p in active if after is None or (key(p) < after if descending else key(p) > after)][:limit]
+
+    def person_filter_options(
+        self, *, include_sensitive: bool
+    ) -> tuple[list[PersonFilterOption], list[PersonFilterOption]]:
+        return ([], [])
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         matches: list[Person] = []

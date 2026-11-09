@@ -268,12 +268,22 @@ def create_browse_app(
     async def people(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
         try:
+            params = request.query_params
             document = runtime.use_cases.list_person_index.page(
-                limit=_limit(request, DEFAULT_PERSON_PAGE_LIMIT), cursor=request.query_params.get("cursor")
+                limit=_limit(request, DEFAULT_PERSON_PAGE_LIMIT),
+                cursor=params.get("cursor"),
+                query=params.get("q"),
+                sort=params.get("sort", "name"),
+                organization_id=params.get("organization"),
+                group_id=params.get("group"),
+                include_sensitive=include_sensitive,
             )
         except PersonIndexError as exc:
             return _error(exc.code, 400)
-        return _json(render_person_index_json(document))
+        # The choices the page's filters offer ride beside the index document rather than inside it.
+        body = json.loads(render_person_index_json(document))
+        body["filters"] = runtime.use_cases.list_person_index.filter_options(include_sensitive=include_sensitive)
+        return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
 
     async def person(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime

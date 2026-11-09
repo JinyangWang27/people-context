@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from people_context.domain.person import Person
 
@@ -77,6 +77,34 @@ class PersonReader(Protocol):
     def search_names(self, query: str, limit: int = 10) -> list[SearchHit]: ...
 
 
+#: The orders a person-index page may be read in; the two timestamps run newest first.
+PersonPageSort = Literal["name", "created", "updated"]
+
+
+@dataclass(frozen=True)
+class PersonPageQuery:
+    """What one person-index page is narrowed to and ordered by; the default is every active person by name.
+
+    ``text`` is a normalized substring matched against the canonical name, every alias, and the
+    summary. ``group_id`` honours membership and group sensitivity: unless ``include_sensitive``,
+    only public and personal memberships of a public or personal group count.
+    """
+
+    text: str | None = None
+    sort: PersonPageSort = "name"
+    organization_id: str | None = None
+    group_id: str | None = None
+    include_sensitive: bool = False
+
+
+@dataclass(frozen=True)
+class PersonFilterOption:
+    """One organization or group a person-index page can be narrowed to."""
+
+    id: str
+    name: str
+
+
 class PersonIndexReader(Protocol):
     """The person-index read: the whole listing, or one keyset page of active people.
 
@@ -84,14 +112,22 @@ class PersonIndexReader(Protocol):
     ``after_person_id`` names — soft-deleted or not, since its row still fixes a position. It
     returns ``None`` when no row has that id any more, so a caller can refuse a stale cursor
     instead of silently restarting at the top. ``get`` lets the caller check the anchor has not
-    moved in the order since the cursor was issued.
+    moved in the order since the cursor was issued. ``where`` narrows and orders the page; the
+    order it names replaces the name order above. ``person_filter_options`` lists the organizations
+    and groups worth offering as filters: those with at least one active member the view may show.
     """
 
     def get(self, person_id: str) -> Person | None: ...
 
     def list_people(self, include_deleted: bool = False, limit: int | None = None) -> list[Person]: ...
 
-    def page_people(self, *, limit: int, after_person_id: str | None) -> list[Person] | None: ...
+    def page_people(
+        self, *, limit: int, after_person_id: str | None, where: PersonPageQuery | None = None
+    ) -> list[Person] | None: ...
+
+    def person_filter_options(
+        self, *, include_sensitive: bool
+    ) -> tuple[list[PersonFilterOption], list[PersonFilterOption]]: ...
 
 
 @runtime_checkable

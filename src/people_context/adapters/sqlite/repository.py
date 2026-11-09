@@ -9,8 +9,24 @@ from datetime import datetime
 
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.person import Alias, AliasKind, Person
-from people_context.domain.shared import normalize_name
-from people_context.ports.repository import PersonNameMatch, PersonNameMatches, SearchHit
+from people_context.domain.shared import Sensitivity, normalize_name
+from people_context.ports.repository import (
+    PersonFilterOption,
+    PersonNameMatch,
+    PersonNameMatches,
+    PersonPageQuery,
+    SearchHit,
+)
+
+#: The ordering column and direction of each person-index sort. Fixed strings, never caller text.
+_PAGE_ORDER: dict[str, tuple[str, str]] = {
+    "name": ("canonical_name_normalized", "ASC"),
+    "created": ("created_at", "DESC"),
+    "updated": ("updated_at", "DESC"),
+}
+
+#: The sensitivities a group filter counts without the operator's elevation.
+_ORDINARY_SENSITIVITIES = (Sensitivity.PUBLIC.value, Sensitivity.PERSONAL.value)
 
 # Modest fixed scores for the non-FTS substring fallback path.
 _LIKE_SCORE_CANONICAL = 0.5
@@ -151,28 +167,72 @@ class SqlitePeopleRepository:
             params = (limit,)
         return [self._hydrate(row) for row in self._conn.execute(sql, params).fetchall()]
 
-    def page_people(self, *, limit: int, after_person_id: str | None) -> list[Person] | None:
-        if after_person_id is None:
-            rows = self._conn.execute(
-                "SELECT * FROM persons WHERE deleted_at IS NULL ORDER BY canonical_name_normalized, id LIMIT ?",
-                (limit,),
-            ).fetchall()
-            return [self._hydrate(row) for row in rows]
-        key = self._conn.execute(
-            "SELECT canonical_name_normalized, id FROM persons WHERE id = ?", (after_person_id,)
-        ).fetchone()
-        if key is None:
-            return None
+    def page_people(
+        self, *, limit: int, after_person_id: str | None, where: PersonPageQuery | None = None
+    ) -> list[Person] | None:
+        where = where or PersonPageQuery()
+        column, direction = _PAGE_ORDER[where.sort]
+        conditions = ["p.deleted_at IS NULL"]
+        params: list[object] = []
+        if where.text:
+            # shortcut: SQLite `lower` folds ASCII only, so a summary's non-ASCII capitals miss a
+            # lower-case query; names and aliases are matched on their stored normalized form.
+            conditions.append(
+                "(instr(p.canonical_name_normalized, ?) > 0 OR instr(lower(coalesce(p.summary, '')), ?) > 0"
+                " OR EXISTS (SELECT 1 FROM aliases a WHERE a.person_id = p.id AND instr(a.value_normalized, ?) > 0))"
+            )
+            params += [where.text, where.text, where.text]
+        if where.organization_id is not None:
+            conditions.append("EXISTS (SELECT 1 FROM affiliations f WHERE f.person_id = p.id AND f.org_id = ?)")
+            params.append(where.organization_id)
+        if where.group_id is not None:
+            visible = "" if where.include_sensitive else " AND m.sensitivity IN (?, ?) AND g.sensitivity IN (?, ?)"
+            conditions.append(
+                "EXISTS (SELECT 1 FROM group_memberships m JOIN identified_groups g ON g.id = m.group_id"
+                f" WHERE m.person_id = p.id AND m.group_id = ?{visible})"
+            )
+            params.append(where.group_id)
+            if not where.include_sensitive:
+                params += [*_ORDINARY_SENSITIVITIES, *_ORDINARY_SENSITIVITIES]
+        if after_person_id is not None:
+            key = self._conn.execute(f"SELECT {column}, id FROM persons WHERE id = ?", (after_person_id,)).fetchone()
+            if key is None:
+                return None
+            conditions.append(f"(p.{column}, p.id) {'>' if direction == 'ASC' else '<'} (?, ?)")
+            params += [key[0], key[1]]
         rows = self._conn.execute(
-            """
-            SELECT * FROM persons
-            WHERE deleted_at IS NULL AND (canonical_name_normalized, id) > (?, ?)
-            ORDER BY canonical_name_normalized, id
-            LIMIT ?
-            """,
-            (key[0], key[1], limit),
+            f"SELECT p.* FROM persons p WHERE {' AND '.join(conditions)}"
+            f" ORDER BY p.{column} {direction}, p.id {direction} LIMIT ?",
+            (*params, limit),
         ).fetchall()
         return [self._hydrate(row) for row in rows]
+
+    def person_filter_options(
+        self, *, include_sensitive: bool
+    ) -> tuple[list[PersonFilterOption], list[PersonFilterOption]]:
+        organizations = self._conn.execute(
+            """
+            SELECT DISTINCT o.id, o.name FROM organizations o
+            JOIN affiliations f ON f.org_id = o.id
+            JOIN persons p ON p.id = f.person_id AND p.deleted_at IS NULL
+            ORDER BY lower(o.name), o.id
+            """
+        ).fetchall()
+        visible = "" if include_sensitive else " AND m.sensitivity IN (?, ?) AND g.sensitivity IN (?, ?)"
+        groups = self._conn.execute(
+            f"""
+            SELECT DISTINCT g.id, g.name, g.name_normalized FROM identified_groups g
+            JOIN group_memberships m ON m.group_id = g.id
+            JOIN persons p ON p.id = m.person_id AND p.deleted_at IS NULL
+            WHERE 1 = 1{visible}
+            ORDER BY g.name_normalized, g.id
+            """,
+            () if include_sensitive else (*_ORDINARY_SENSITIVITIES, *_ORDINARY_SENSITIVITIES),
+        ).fetchall()
+        return (
+            [PersonFilterOption(id=row["id"], name=row["name"]) for row in organizations],
+            [PersonFilterOption(id=row["id"], name=row["name"]) for row in groups],
+        )
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         rows = self._conn.execute(
