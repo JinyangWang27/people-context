@@ -587,7 +587,7 @@ Serves one page on `127.0.0.1` for whoever finds a table easier than a terminal:
 brief, the import sources with each receipt's staged counts, and review and editing of one staged batch. It is a
 fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
 review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`,
-`pctx remove-alias`, `pctx edit`, and the `correct_record` MCP tool already call; it writes only through the last eight. The person's **Name** and **Summary** each have Edit, through the same use case as `pctx edit`: a rename keeps
+`pctx remove-alias`, `pctx edit`, and the `set_affiliation` and `correct_record` MCP tools already call; it writes only through the last nine. The person's **Name** and **Summary** each have Edit, through the same use case as `pctx edit`: a rename keeps
 the old name as an alias, a name another person already holds is refused as `name_conflict`, an email address as
 `name_is_email`, and emptying the summary clears it. The people list has a search box that keeps the people whose name, an alias, or the summary contains the text
 (compared case- and accent-insensitively; press Enter), an order (name, recently added, or recently edited), and,
@@ -596,7 +596,10 @@ ordinary sensitivity in an ordinary group unless sensitive records are enabled f
 reveals what the view hides; changing any of these starts again from the first page. Each alias on the person view has Edit and
 Remove, and Remove asks for confirmation. **Add alias** adds a name with its kind (default `nickname`), language,
 and script; **Add email** under Contact adds an address as a `handle`, the only kind an email address may have. A
-value the person already carries is reported as already stored and changes nothing. Each affiliation, fact,
+value the person already carries is reported as already stored and changes nothing. **Add affiliation** under Affiliations records a role at an organization, with optional start and end dates,
+through the same use case as the `set_affiliation` MCP tool: the organization is matched by name case- and
+accent-insensitively and created if none matches, an exact repeat records nothing new, and an end date before the
+start is refused as `invalid_period` before anything is written. Each affiliation, fact,
 trait, and reminder has **Edit**, a form of exactly the fields `CorrectRecord` accepts for that type (an
 affiliation's organization is not one of them), which corrects the record in place, sending only the fields that
 changed; an emptied field is sent as `null`, which clears an optional value such as an end date and is refused for
