@@ -258,12 +258,14 @@ async function showPeople(cursor, back) {
   let doc;
   try { doc = await api("/api/people" + query({ cursor, ...peopleFilter })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
+  const organizations = doc.organization_names || {};
   const rows = doc.people.map((person) => {
     const emails = person.emails || [];
     return [
       button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      (organizations[person.id] || []).join(", "),
+      // Email addresses are contact information, shown on the person view rather than as names here.
       person.aliases.filter((alias) => !emails.includes(alias)).join(", "),
-      emails.join(", "),
       person.summary,
     ];
   });
@@ -272,7 +274,7 @@ async function showPeople(cursor, back) {
     "People",
     peopleControls(doc.filters || {}),
     doc.people.length
-      ? table(["Name", "Aliases", "Contact", "Summary"], rows)
+      ? table(["Name", "Organization", "Aliases", "Summary"], rows)
       : el("p", narrowed ? "No people match." : "No people found.", "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );

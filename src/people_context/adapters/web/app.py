@@ -283,6 +283,7 @@ def create_browse_app(
         # The choices the page's filters offer ride beside the index document rather than inside it.
         body = json.loads(render_person_index_json(document))
         body["filters"] = runtime.use_cases.list_person_index.filter_options(include_sensitive=include_sensitive)
+        body["organization_names"] = runtime.use_cases.list_person_index.organization_names(document)
         return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
 
     async def person(request: Request) -> Response:

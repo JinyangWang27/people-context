@@ -282,6 +282,7 @@ def test_the_people_list_searches_orders_and_filters_through_the_person_index(db
         newest = client.get("/api/people", params={"sort": "created"}).json()
         unknown = client.get("/api/people", params={"sort": "shoe size"})
     assert everyone["filters"] == {"organizations": [organization], "groups": []}
+    assert everyone["organization_names"] == {ids["elena"]: ["Allotment Society"]}
     assert organization["name"] == "Allotment Society"
     assert [p["id"] for p in searched["people"]] == [ids["elena"]]
     assert [p["id"] for p in filtered["people"]] == [ids["elena"]]
@@ -1085,7 +1086,7 @@ _CONTACT_IS_NOT_A_NAME = r"""
   const texts = (node) => node.all().map((n) => n.textContent || n.text).filter((t) => typeof t === "string" && t);
   const person = { id: "P", canonical_name: "Jordan Lee", aliases: ["Jordy", "jordan@example.com"],
     emails: ["jordan@example.com"], summary: null, is_self: false };
-  globalThis.peopleDoc = { people: [person], next_cursor: null };
+  globalThis.peopleDoc = { people: [person], next_cursor: null, organization_names: { P: ["Acme", "Presight"] } };
   await showPeople(null, []);
   const row = view.all().find((n) => n.tag === "tr" && texts(n).includes("Jordan Lee"));
   globalThis.personDoc = { person, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
@@ -1105,7 +1106,8 @@ def test_email_addresses_are_shown_as_contact_rather_than_aliases(db_file: Path,
     assert "jordan@example.com" not in " ".join(outcome["aliases"])
     assert "Jordy" in " ".join(outcome["aliases"])
     assert "jordan@example.com" in " ".join(outcome["contact"])
-    assert outcome["row"] == ["Jordan Lee", "Jordy", "jordan@example.com"]
+    # The people list has no contact column; the address appears only under Contact on the person view.
+    assert outcome["row"] == ["Jordan Lee", "Acme, Presight", "Jordy"]
 
 
 def _run_page(db_file: Path, tmp_path: Path, scenario: str) -> Any:
