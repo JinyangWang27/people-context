@@ -1035,18 +1035,37 @@ function toggleEdit(candidateId) {
 // The open form holds edits nobody has saved yet. The batch re-renders for reasons that have
 // nothing to do with them — an acceptance, which writes nothing at all, is the ordinary one — so
 // the form's own nodes are kept and re-attached rather than rebuilt from the stored candidate,
-// which would silently discard every unsaved value. It is rebuilt only when its basis moved: a
-// different row, or a batch whose content changed under it.
+// which would silently discard every unsaved value. It is rebuilt from the stored candidate only
+// when its basis moved: a different row, or a batch whose content changed under it. A switch of
+// language rebuilds it too, in the new language, carrying what it holds unsaved into the new form.
 function currentForm(row) {
   const cached = batchState.form;
-  if (cached && cached.id === row.id && cached.digest === batchState.review.batch_digest) {
-    // Whatever disabled these was an action that has since finished; a re-render is never busy.
-    for (const control of cached.node.querySelectorAll(_CONTROLS)) control.disabled = false;
-    return cached.node;
+  const digest = batchState.review.batch_digest;
+  if (cached && cached.id === row.id && cached.digest === digest) {
+    if (cached.lang === lang) {
+      // Whatever disabled these was an action that has since finished; a re-render is never busy.
+      for (const control of cached.node.querySelectorAll(_CONTROLS)) control.disabled = false;
+      return cached.node;
+    }
+    return keepForm(row, editForm(row, unsaved(cached.controls)));
   }
-  const node = editForm(row);
-  batchState.form = { id: row.id, digest: batchState.review.batch_digest, node };
-  return node;
+  return keepForm(row, editForm(row));
+}
+
+function keepForm(row, form) {
+  batchState.form = { id: row.id, digest: batchState.review.batch_digest, lang, node: form.node,
+    controls: form.controls };
+  return form.node;
+}
+
+// What an open form would send now: each moved control's value, by field.
+function unsaved(controls) {
+  const draft = {};
+  for (const [name, control] of controls) {
+    const value = control.read();
+    if (value !== undefined) draft[name] = value;
+  }
+  return draft;
 }
 
 // --- M30.3 inline edit ------------------------------------------------------------------------
@@ -1075,10 +1094,14 @@ function submitted(raw, numeric) {
 const LF = String.fromCharCode(10);
 const CR = String.fromCharCode(13);
 
-function textControl(descriptor, staged) {
+// `draft`, when given, is an unsaved value the control opens on instead of the stored one; it is still
+// compared against the stored one, so rebuilding a form never turns an untouched field into an edit.
+function textControl(descriptor, staged, draft) {
   const seed = seedText(staged);
+  const opening = draft === undefined ? seed : seedText(draft);
   // A long value gets a textarea too, so it can be read whole while it is edited.
-  const multiline = descriptor.control === "text" && (seed.includes(LF) || seed.includes(CR) || seed.length > 60);
+  const long = (text) => text.includes(LF) || text.includes(CR) || text.length > 60;
+  const multiline = descriptor.control === "text" && (long(seed) || long(opening));
   const input = el(multiline ? "textarea" : "input");
   if (multiline) {
     input.rows = 4;
@@ -1095,6 +1118,7 @@ function textControl(descriptor, staged) {
   // Compared against what the control actually holds, not against what it was handed: a value a
   // browser normalised on the way in must not be patched back over a field nobody touched.
   const shown = input.value;
+  input.value = opening;
   const numeric = descriptor.control === "number";
   return { node: input, read: () => (input.value === shown ? undefined : submitted(input.value, numeric)) };
 }
@@ -1113,11 +1137,11 @@ function optionList(select, options, seed) {
   }
 }
 
-function selectControl(descriptor, staged, options) {
+function selectControl(descriptor, staged, options, draft) {
   const select = el("select");
   const seed = seedText(staged);
   optionList(select, options, seed);
-  select.value = seed;
+  select.value = draft === undefined ? seed : seedText(draft);
   select.setAttribute("aria-label", fieldAria(descriptor.name));
   return { node: select, read: () => (select.value === seed ? undefined : submitted(select.value, false)) };
 }
@@ -1140,16 +1164,17 @@ function referenceOptionsFor(descriptor) {
   return options;
 }
 
-function multiControl(descriptor, staged) {
+function multiControl(descriptor, staged, draft) {
   const select = el("select");
   select.multiple = true;
   const chosen = Array.isArray(staged) ? staged : [];
+  const opening = Array.isArray(draft) ? draft : chosen;
   const options = referenceOptionsFor(descriptor);
   select.size = Math.min(Math.max(options.length, 2), 8);
   for (const option of options) {
     const node = el("option", option.label);
     node.value = option.value;
-    node.selected = chosen.includes(option.value);
+    node.selected = opening.includes(option.value);
     select.append(node);
   }
   select.setAttribute("aria-label", fieldAria(descriptor.name));
@@ -1186,7 +1211,7 @@ function readonlyControl(descriptor, staged, row) {
   return { node, read: () => undefined };
 }
 
-function aliasControl(descriptor, staged) {
+function aliasControl(descriptor, staged, draft) {
   const stagedRows = Array.isArray(staged) ? staged : [];
   const container = el("div");
   const rows = [];
@@ -1208,7 +1233,9 @@ function aliasControl(descriptor, staged) {
     container.append(entry.node);
   };
 
-  for (const alias of stagedRows) addRow(alias);
+  // Opened on a draft, its rows are the draft's: each re-emits itself untouched, and the list as a
+  // whole is still compared against what was staged.
+  for (const alias of Array.isArray(draft) ? draft : stagedRows) addRow(alias);
   const adder = button(t("alias.add"), () => addRow({}));
   const node = el("div");
   node.append(container, adder);
@@ -1234,18 +1261,19 @@ function aliasControl(descriptor, staged) {
   };
 }
 
-function buildControl(descriptor, row) {
+function buildControl(descriptor, row, draft) {
   const staged = row.candidate[descriptor.name];
-  if (descriptor.control === "alias_list") return aliasControl(descriptor, staged);
+  const opening = descriptor.name in draft ? draft[descriptor.name] : undefined;
+  if (descriptor.control === "alias_list") return aliasControl(descriptor, staged, opening);
   if (descriptor.control === "readonly") return readonlyControl(descriptor, staged, row);
-  if (descriptor.control === "candidate_multiselect") return multiControl(descriptor, staged);
+  if (descriptor.control === "candidate_multiselect") return multiControl(descriptor, staged, opening);
   if (descriptor.control === "candidate_select") {
-    return selectControl(descriptor, staged, referenceOptionsFor(descriptor));
+    return selectControl(descriptor, staged, referenceOptionsFor(descriptor), opening);
   }
   if (descriptor.control === "select") {
-    return selectControl(descriptor, staged, enumOptions(descriptor));
+    return selectControl(descriptor, staged, enumOptions(descriptor), opening);
   }
-  return textControl(descriptor, staged);
+  return textControl(descriptor, staged, opening);
 }
 
 // Whether this person row owes or holds an identity decision. `match_candidates` is projected
@@ -1263,7 +1291,7 @@ function hasMatchDecision(row) {
 // Choosing, changing, or clearing is one ordinary `matched_person_id` patch, which the use case
 // accepts only when the matcher itself produced that person; clearing sends null, which re-runs
 // the matcher and puts an ambiguous row back to ambiguous with its full list.
-function matchPicker(row) {
+function matchPicker(row, draft) {
   const matches = row.match_candidates || [];
   const resolved = seedText(row.candidate.matched_person_id);
   const select = el("select");
@@ -1298,6 +1326,12 @@ function matchPicker(row) {
       typed,
     );
   }
+  // An unsaved choice reopens as the reviewer left it: a listed person selected, anything else pasted.
+  if (draft !== undefined) {
+    const listed = draft === null || draft === resolved || matches.some((match) => match.id === draft);
+    select.value = listed ? seedText(draft) : resolved;
+    if (!listed) typed.value = draft;
+  }
   const node = el("div");
   node.append(...nodes);
   // Present-and-null is how a person row records "matched nothing", so the comparison normalises
@@ -1317,14 +1351,16 @@ function matchPicker(row) {
   };
 }
 
-function editForm(row) {
+// `draft` holds unsaved values to reopen on, by field, when the form is rebuilt in another language.
+function editForm(row, draft) {
+  const opening = draft || {};
   const descriptors = (batchState.fields || {})[row.candidate.type] || [];
   const controls = [];
   const grid = el("dl");
   const panel = el("div", null, "edit");
   panel.append(el("h3", t("batch.editing", { ordinal: row.ordinal, type: valueLabel(row.candidate.type) })));
   if (hasMatchDecision(row)) {
-    const picker = matchPicker(row);
+    const picker = matchPicker(row, "matched_person_id" in opening ? opening.matched_person_id : undefined);
     picker.slot = el("div");
     controls.push(["matched_person_id", picker]);
     const holder = el("div");
@@ -1332,7 +1368,7 @@ function editForm(row) {
     panel.append(holder);
   }
   for (const descriptor of descriptors) {
-    const control = buildControl(descriptor, row);
+    const control = buildControl(descriptor, row, opening);
     control.slot = el("div");
     controls.push([descriptor.name, control]);
     const value = el("dd");
@@ -1347,7 +1383,7 @@ function editForm(row) {
     button(t("common.cancel"), () => toggleEdit(row.id)),
   );
   panel.append(actions);
-  return panel;
+  return { node: panel, controls };
 }
 
 function saveEdit(row, controls, rowErrors) {

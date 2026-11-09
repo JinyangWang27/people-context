@@ -155,3 +155,43 @@ def test_the_page_opens_in_chinese_and_the_toggle_switches_in_place(db_file: Pat
     }
     assert (outcome["back"], outcome["affiliation"]) == ("联系人", True)
     assert outcome["posts"] == 0
+
+
+_SWITCH_WITH_A_FORM_OPEN = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  setRow({ candidate: { type: "person", name: "Elena Marsh", summary: "Allotment", matched_person_id: null,
+    match_disposition: "ambiguous", match_count: 2,
+    aliases: [{ value: "Lena", kind: "nickname" }] },
+    match_candidates: [{ id: "person-1", canonical_name: "Elena Marsh", name_truncated: false },
+      { id: "person-2", canonical_name: "Elena Marsh", name_truncated: false }] });
+  await showBatch("B");
+  find("Edit").listeners.click();
+  labelled("name").value = "Elena Marshe";
+  labelled("Matching person").value = "person-2";
+  document.getElementById("nav-lang").listeners.click(); await tick();
+  const panel = view.all().find((n) => n.tag === "div" && n.className === "edit");
+  const heading = panel.children[0].textContent;
+  const terms = panel.all().filter((n) => n.tag === "dt").map((n) => n.textContent);
+  const kept = { name: labelled("名称").value, summary: labelled("摘要").value,
+    match: labelled("匹配的联系人").value };
+  const kinds = labelled("类型").children.map((o) => [o.value, o.textContent]);
+  find("保存").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ heading, terms, kept, kinds, patch: JSON.parse(posts[0].body).patch }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_switching_language_rebuilds_an_open_form_in_place_keeping_what_was_typed(
+    db_file: Path, tmp_path: Path
+) -> None:
+    outcome = _run_page(db_file, tmp_path, _SWITCH_WITH_A_FORM_OPEN)
+    assert outcome["heading"] == "正在编辑 #1（联系人）"
+    assert "名称" in outcome["terms"] and "别名" in outcome["terms"]
+    assert outcome["kept"] == {"name": "Elena Marshe", "summary": "Allotment", "match": "person-2"}
+    assert ["nickname", "昵称"] in outcome["kinds"]
+    # Only what the reviewer changed is sent: the untouched summary and alias list stay out.
+    assert outcome["patch"] == {"name": "Elena Marshe", "matched_person_id": "person-2"}
