@@ -27,7 +27,12 @@ from people_context.adapters.web import LOOPBACK_HOST, create_browse_app
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
 from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
-from people_context.config import SENSITIVE_CONTEXT_ENV, process_elevation_enabled
+from people_context.config import (
+    SENSITIVE_CONTEXT_ENV,
+    InvalidBrowseLanguageError,
+    process_elevation_enabled,
+    resolve_browse_language,
+)
 
 #: Only uvicorn's own warnings and errors reach stderr, as the bare message; its access logger has
 #: no handler and does not propagate, so no request line is ever written anywhere.
@@ -62,6 +67,11 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     if not 0 <= args.port <= 65535:
         print("Error: --port must be between 0 and 65535.", file=sys.stderr)
         return 2
+    try:
+        language = resolve_browse_language(args.lang)
+    except InvalidBrowseLanguageError as exc:
+        print(f"Error: {exc}.", file=sys.stderr)
+        return 2
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     reuse_option = _address_reuse_option()
     if reuse_option is not None:
@@ -95,6 +105,7 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
         review_warning=REVIEW_DISCLOSURE_WARNING,
         sources_warning=SOURCES_DISCLOSURE_WARNING,
         review_lines=import_review_lines,
+        language=language,
     )
     server = uvicorn.Server(uvicorn.Config(app, access_log=False, log_config=_LOG_CONFIG, lifespan="on"))
 

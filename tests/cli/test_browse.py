@@ -64,6 +64,13 @@ def test_an_impossible_port_is_refused(tmp_path: Path, port: str, capsys: pytest
     assert "--port" in capsys.readouterr().err
 
 
+def test_an_unknown_language_is_refused_before_anything_is_bound(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["--db", str(tmp_path / "people.db"), "browse", "--lang", "fr"]) == 2
+    assert "--lang must be one of en, zh-CN" in capsys.readouterr().err
+
+
 def test_a_busy_port_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     with socket.socket() as busy:
         busy.bind(("127.0.0.1", 0))

@@ -36,7 +36,7 @@ browser batch review, and M30.3 browser inline edit.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--subject PERSON] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--subject` records the relationship from that existing person instead of you; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N]` | Serve a local page of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
@@ -581,6 +581,7 @@ without writing anything, when `--output` names the database it is reading or on
 ```bash
 uv run pctx browse
 uv run pctx browse --open --port 8766
+uv run pctx browse --open --lang zh-CN
 ```
 
 Serves one page on `127.0.0.1` for whoever finds a table easier than a terminal: the people list, one person's
@@ -617,6 +618,17 @@ as the `forget` MCP tool: it is deleted and its audit and replay history redacte
 and a shared interaction is removed for every participant. A record the view's disclosure hides is refused as
 `record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or
 configuration, and two launches are two unrelated processes.
+
+The page is in English or Simplified Chinese. It opens in the first of `--lang`, the `PEOPLE_CONTEXT_BROWSE_LANG`
+environment variable, and `browse_lang` in `config.toml` (the same file as `db_path`, below) that is set, and in
+English when none is. Each takes `en` or `zh-CN`, with `zh` and `zh-Hans` accepted for `zh-CN` in any case; any
+other value exits 2 naming where it came from, rather than opening in English. The **中文 / EN** button in the
+header switches language while the page is open, with no request: it redraws the view on screen from what it
+already holds, so a batch's acceptances and an open edit form survive it. The page stores no choice; the next
+launch opens in the configured language again. Only interface text is translated. Recorded values — names, facts,
+summaries, a source's kind — are shown as stored, an enum option is still sent as its stored value whatever its
+label, and the per-field message an import amendment is refused with is the use case's own English text, under a
+translated prefix.
 
 The bind is loopback only. There is no `--host`; `--port` picks the port (default: an ephemeral one) and a busy
 port exits 1. The command prints one URL on stdout carrying a per-launch `secrets.token_urlsafe` token, and the
@@ -1109,6 +1121,9 @@ The CLI and server use the same first-match order, independent of working direct
 2. `PEOPLE_CONTEXT_DB`;
 3. `db_path` in `{XDG_CONFIG_HOME or ~/.config}/people-context/config.toml`;
 4. the shared per-user default `~/.pctx/people.db` in the user's home directory.
+
+The same file may also set the language `pctx browse` opens in, as `browse_lang = "zh-CN"`; see
+[Local browser viewer](#local-browser-viewer).
 
 Paths are expanded and parent directories are created only when SQLite opens the selected database, with the
 existing private-file protections. Resolution and `pctx db-path` never create directories, open SQLite, or apply

@@ -303,13 +303,15 @@ def create_browse_app(
     review_warning: str,
     sources_warning: str,
     review_lines: ReviewLines,
+    language: str = "en",
 ) -> Starlette:
     """Build the page and its endpoints.
 
     `include_sensitive` is the operator's process-level elevation, fixed before the process starts;
     no request can change it. `on_done` is called when the page says the user is finished.
     `review_lines` is the CLI's own one-line rendering of review rows, so the batch page and
-    `pctx import review` describe a candidate identically.
+    `pctx import review` describe a candidate identically. `language` is only the one the page
+    opens in; its toggle switches between every language it offers without a request.
     """
 
     @asynccontextmanager
@@ -319,7 +321,8 @@ def create_browse_app(
 
     async def page(request: Request) -> Response:
         nonce = request.scope[_NONCE_KEY]
-        return HTMLResponse(render_page(nonce, review_warning=review_warning, sources_warning=sources_warning))
+        text = render_page(nonce, review_warning=review_warning, sources_warning=sources_warning, language=language)
+        return HTMLResponse(text)
 
     async def people(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime

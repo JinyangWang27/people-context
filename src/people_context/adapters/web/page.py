@@ -6,20 +6,29 @@ to link to and the token never has to be copied into a URL after the first load.
 
 Two rules keep recorded data inert. Every value is placed with `textContent` on elements built by
 `createElement` — never `innerHTML` — so a name containing markup is displayed, not parsed. And the
-only server-side substitutions are the per-response nonce and the fixed warnings, the latter
-HTML-escaped. The page carries no `style` attribute, which the nonce-based policy could not admit.
+only server-side substitutions are the per-response nonce, the language the page opens in, and
+the interface text of `i18n.py` with the fixed warnings, as JSON whose `<`, `>`, and `&` are
+escaped so nothing in it can close the script. The page carries no `style` attribute, which the
+nonce-based policy could not admit.
+
+Every sentence goes through `t(key, params)`, which substitutes `{name}` placeholders in one pass,
+so a recorded value placed into a sentence is never itself searched for placeholders. The 中文 / EN
+button switches language without a request and redraws the current view; the language a launch
+opens in is the operator's (`--lang`, the environment, or config.toml), and the page stores none.
 """
 
 from __future__ import annotations
 
-import html
+import json
+
+from people_context.adapters.web.i18n import FIELD_LABELS, MESSAGES, VALUE_LABELS, WARNINGS
 
 _NONCE = "__PCTX_NONCE__"
-_REVIEW_WARNING = "__PCTX_REVIEW_WARNING__"
-_SOURCES_WARNING = "__PCTX_SOURCES_WARNING__"
+_LANG = "__PCTX_LANG__"
+_I18N = "__PCTX_I18N__"
 
 _TEMPLATE = """<!doctype html>
-<html lang="en">
+<html lang="__PCTX_LANG__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -85,16 +94,15 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </head>
 <body>
 <header>
-<h1>People Context</h1>
+<h1 id="app-title">People Context</h1>
 <nav>
 <button type="button" id="nav-people">People</button>
 <button type="button" id="nav-sources">Import sources</button>
 <button type="button" id="nav-done">Done</button>
+<button type="button" id="nav-lang"></button>
 </nav>
 </header>
 <main id="view"></main>
-<p id="review-warning" hidden>__PCTX_REVIEW_WARNING__</p>
-<p id="sources-warning" hidden>__PCTX_SOURCES_WARNING__</p>
 <script nonce="__PCTX_NONCE__">
 "use strict";
 // The token is read once and the history entry replaced before any request is made, so it never
@@ -103,8 +111,66 @@ const token = new URLSearchParams(location.search).get("token") || "";
 history.replaceState(null, "", "/");
 
 const view = document.getElementById("view");
-const reviewWarning = document.getElementById("review-warning").textContent;
-const sourcesWarning = document.getElementById("sources-warning").textContent;
+
+// --- Language ---------------------------------------------------------------------------------
+// The interface text of every offered language, fixed for this launch, and the language on screen.
+const I18N = __PCTX_I18N__;
+let lang = I18N.messages[I18N.default] ? I18N.default : "en";
+
+// One pass over the template: a value placed into a sentence is never searched for placeholders.
+function t(key, params) {
+  const text = (I18N.messages[lang] || {})[key] ?? I18N.messages.en[key] ?? key;
+  if (!params) return text;
+  return text.replace(/[{]([a-z_]+)[}]/g, (whole, name) => (name in params ? String(params[name]) : whole));
+}
+
+// A declared field or an enum value as this language labels it. English shows the name itself,
+// so `fallback` keeps what the page showed before there was a choice of language.
+function fieldLabel(name, fallback) {
+  return (I18N.fields[lang] || {})[name] || (fallback === undefined ? name : fallback);
+}
+
+function valueLabel(value) {
+  return (I18N.values[lang] || {})[value] || value;
+}
+
+// A control's accessible name: the declared field in English, as the page has always named it,
+// and its label in any other language.
+function fieldAria(name) {
+  return lang === "en" ? name : fieldLabel(name);
+}
+
+function warning(which) {
+  return (I18N.warnings[lang] || {})[which] || I18N.warnings.en[which];
+}
+
+// What the toggle redraws: the view on screen, from what it already holds where it can.
+let current = null;
+
+// The toggle names the language it switches to, in that language.
+const LANGUAGE_NAMES = { en: "EN", "zh-CN": "中文" };
+
+function applyLanguage() {
+  if (document.documentElement) document.documentElement.lang = lang;
+  document.title = t("app.title");
+  document.getElementById("app-title").textContent = t("app.title");
+  document.getElementById("nav-people").textContent = t("nav.people");
+  document.getElementById("nav-sources").textContent = t("nav.sources");
+  document.getElementById("nav-done").textContent = t("nav.done");
+  const toggle = document.getElementById("nav-lang");
+  const other = I18N.languages.find((code) => code !== lang) || lang;
+  toggle.textContent = LANGUAGE_NAMES[other] || other;
+  toggle.setAttribute("aria-label", t("nav.language"));
+  toggle.setAttribute("lang", other);
+}
+
+function switchLanguage() {
+  const other = I18N.languages.find((code) => code !== lang);
+  if (!other) return;
+  lang = other;
+  applyLanguage();
+  if (current) current();
+}
 
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -159,7 +225,7 @@ function show(title, ...nodes) {
 
 function fail(error, at) {
   if (at !== undefined && at !== navigation) return;
-  view.replaceChildren(el("p", "Error: " + error.message, "error"));
+  view.replaceChildren(el("p", t("error", { message: error.message }), "error"));
 }
 
 function table(headings, rows) {
@@ -180,7 +246,7 @@ function table(headings, rows) {
 }
 
 function list(items) {
-  if (!items.length) return el("p", "None recorded.", "notice");
+  if (!items.length) return el("p", t("common.none_recorded"), "notice");
   const node = el("ul");
   for (const item of items) node.append(el("li", item));
   return node;
@@ -189,8 +255,8 @@ function list(items) {
 // `back` holds the cursors that opened the earlier pages, so Previous needs no server offset.
 function pager(back, cursor, nextCursor, open) {
   const node = el("div", null, "pager");
-  if (back.length) node.append(button("Previous", () => open(back[back.length - 1], back.slice(0, -1))));
-  if (nextCursor) node.append(button("Next", () => open(nextCursor, back.concat([cursor]))));
+  if (back.length) node.append(button(t("pager.previous"), () => open(back[back.length - 1], back.slice(0, -1))));
+  if (nextCursor) node.append(button(t("pager.next"), () => open(nextCursor, back.concat([cursor]))));
   return node;
 }
 
@@ -198,11 +264,7 @@ function pager(back, cursor, nextCursor, open) {
 // the same narrowed list; changing any of them starts again from the first page.
 const peopleFilter = { q: "", sort: "name", organization: "", group: "" };
 
-const PEOPLE_SORTS = [
-  { value: "name", label: "Name (A-Z)" },
-  { value: "created", label: "Recently added" },
-  { value: "updated", label: "Recently edited" },
-];
+const PEOPLE_SORTS = ["name", "created", "updated"];
 
 function peopleControls(filters) {
   const box = el("div", null, "filters");
@@ -214,8 +276,8 @@ function peopleControls(filters) {
   const search = el("input");
   search.type = "search";
   search.value = peopleFilter.q;
-  search.placeholder = "Search names, aliases, summary";
-  search.setAttribute("aria-label", "search people");
+  search.placeholder = t("people.search.placeholder");
+  search.setAttribute("aria-label", t("people.search.aria"));
   // `change` fires on Enter and when the box loses focus, so typing does not query per keystroke.
   search.addEventListener("change", () => refilter("q", search.value.trim()));
   box.append(search);
@@ -234,7 +296,7 @@ function peopleControls(filters) {
     }
     // A filter whose choice is no longer offered still shows it rather than silently widening.
     if (peopleFilter[key] && !options.some((option) => option.value === peopleFilter[key])) {
-      const kept = el("option", "(no longer listed)");
+      const kept = el("option", t("people.filter.kept"));
       kept.value = peopleFilter[key];
       select.append(kept);
     }
@@ -242,18 +304,21 @@ function peopleControls(filters) {
     select.addEventListener("change", () => refilter(key, select.value));
     box.append(select);
   };
-  picker("sort", "sort people", PEOPLE_SORTS, null);
+  picker("sort", t("people.sort.aria"), PEOPLE_SORTS.map((value) => ({ value, label: t("people.sort." + value) })),
+    null);
   const named = (rows) => rows.map((row) => ({ value: row.id, label: row.name }));
   if ((filters.organizations || []).length || peopleFilter.organization) {
-    picker("organization", "filter by organization", named(filters.organizations || []), "Any organization");
+    picker("organization", t("people.filter.organization.aria"), named(filters.organizations || []),
+      t("people.filter.organization.any"));
   }
   if ((filters.groups || []).length || peopleFilter.group) {
-    picker("group", "filter by group", named(filters.groups || []), "Any group");
+    picker("group", t("people.filter.group.aria"), named(filters.groups || []), t("people.filter.group.any"));
   }
   return box;
 }
 
 async function showPeople(cursor, back) {
+  current = () => showPeople(cursor, back);
   const at = navigate();
   let doc;
   try { doc = await api("/api/people" + query({ cursor, ...peopleFilter })); } catch (error) { return fail(error, at); }
@@ -271,35 +336,24 @@ async function showPeople(cursor, back) {
   });
   const narrowed = peopleFilter.q || peopleFilter.organization || peopleFilter.group;
   show(
-    "People",
+    t("people.title"),
     peopleControls(doc.filters || {}),
     doc.people.length
-      ? table(["Name", "Organization", "Aliases", "Summary"], rows)
-      : el("p", narrowed ? "No people match." : "No people found.", "notice"),
+      ? table(["name", "organization", "aliases", "summary"].map((column) => t("people.column." + column)), rows)
+      : el("p", t(narrowed ? "people.none_match" : "people.none"), "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );
 }
 
-const ALIAS_REFUSALS = {
-  canonical_name: "That is the person's name, not an alias.",
-  duplicate_name: "Another name of this person already has that value.",
-  alias_email_not_handle: "An email address is an alias only with kind handle.",
-  alias_not_found: "That alias is no longer stored.",
-  unknown_person: "This person is no longer stored.",
-  invalid_correction: "That value is not allowed here; nothing was changed.",
-  record_not_found: "This record is no longer stored.",
-  name_conflict: "Another person already has that name.",
-  name_is_email: "An email address is not a name; add it under Contact instead.",
-  invalid_period: "The end date is before the start date.",
-  unknown_organization: "No organization is stored under that id.",
-};
-
+// A refusal arrives as a code; the text for it is this language's, and an unknown code is shown as is.
 function aliasRefusal(error) {
-  return "Refused: " + (ALIAS_REFUSALS[error.reason || error.message] || error.message);
+  const code = error.reason || error.message;
+  const key = "refusal." + code;
+  return t("refused", { reason: key in I18N.messages.en ? t(key) : error.message });
 }
 
 function aliasLabel(alias) {
-  const tags = [alias.kind, alias.lang, alias.script].filter((tag) => tag);
+  const tags = [valueLabel(alias.kind), alias.lang, alias.script].filter((tag) => tag);
   return alias.value + " (" + tags.join(", ") + ")";
 }
 
@@ -341,40 +395,40 @@ function aliasAdder(personId, kinds, reopen, contact) {
   const row = el("div", null, "alias");
   const message = el("span", null, "error");
   function idle() {
-    row.replaceChildren(button(contact ? "Add email" : "Add alias", adding), message);
+    row.replaceChildren(button(t(contact ? "alias.add_email" : "alias.add"), adding), message);
   }
   function adding() {
     message.textContent = "";
     const input = (label) => {
       const node = el("input");
       node.placeholder = label;
-      node.setAttribute("aria-label", "new alias " + label);
+      node.setAttribute("aria-label", t("alias.new.aria", { label }));
       return node;
     };
-    const value = input(contact ? "email address" : "value");
-    const lang = input("language");
-    const script = input("script");
+    const value = input(t(contact ? "alias.placeholder.email" : "alias.placeholder.value"));
+    const lang = input(t("alias.placeholder.language"));
+    const script = input(t("alias.placeholder.script"));
     const kind = el("select");
     for (const option of kinds) {
-      const node = el("option", option);
+      const node = el("option", valueLabel(option));
       node.value = option;
       kind.append(node);
     }
     kind.value = contact ? "handle" : "nickname";
-    kind.setAttribute("aria-label", "new alias kind");
+    kind.setAttribute("aria-label", t("alias.new.kind.aria"));
     const save = () => {
       if (!value.value.trim()) {
-        message.textContent = "Enter a value.";
+        message.textContent = t("alias.enter_value");
         return;
       }
       const body = { person_id: personId, value: value.value, kind: kind.value };
       if (lang.value.trim()) body.lang = lang.value;
       if (script.value.trim()) body.script = script.value;
       aliasWrite("/api/person/alias/add", body, message, reopen,
-        (result) => (result.added ? null : "Already stored as a name of this person."));
+        (result) => (result.added ? null : t("alias.already_stored")));
     };
     const fields = contact ? [value] : [value, kind, lang, script];
-    row.replaceChildren(...fields, button("Add", save), button("Cancel", idle), message);
+    row.replaceChildren(...fields, button(t("common.add"), save), button(t("common.cancel"), idle), message);
   }
   idle();
   return row;
@@ -386,12 +440,13 @@ function aliasRow(personId, alias, kinds, reopen) {
   const target = { person_id: personId, value: alias.value };
   const remove = () => aliasWrite("/api/person/alias/remove", target, message, reopen);
   function idle() {
-    row.replaceChildren(el("span", aliasLabel(alias)), button("Edit", editing), button("Remove", confirming), message);
+    row.replaceChildren(el("span", aliasLabel(alias)), button(t("common.edit"), editing),
+      button(t("common.remove"), confirming), message);
   }
   function confirming() {
     message.textContent = "";
-    const prompt = el("span", "Remove alias " + alias.value + "?");
-    row.replaceChildren(prompt, button("Remove", remove), button("Cancel", idle), message);
+    const prompt = el("span", t("alias.remove_prompt", { value: alias.value }));
+    row.replaceChildren(prompt, button(t("common.remove"), remove), button(t("common.cancel"), idle), message);
   }
   function editing() {
     message.textContent = "";
@@ -399,20 +454,20 @@ function aliasRow(personId, alias, kinds, reopen) {
       const node = el("input");
       node.value = seed || "";
       node.placeholder = label;
-      node.setAttribute("aria-label", "alias " + label);
+      node.setAttribute("aria-label", t("alias.aria", { label }));
       return node;
     };
-    const value = input(alias.value, "value");
-    const lang = input(alias.lang, "language");
-    const script = input(alias.script, "script");
+    const value = input(alias.value, t("alias.placeholder.value"));
+    const lang = input(alias.lang, t("alias.placeholder.language"));
+    const script = input(alias.script, t("alias.placeholder.script"));
     const kind = el("select");
     for (const option of kinds) {
-      const node = el("option", option);
+      const node = el("option", valueLabel(option));
       node.value = option;
       kind.append(node);
     }
     kind.value = alias.kind;
-    kind.setAttribute("aria-label", "alias kind");
+    kind.setAttribute("aria-label", t("alias.kind.aria"));
     const save = () => {
       // Only changed, non-blank fields are sent: the update leaves anything absent as it was.
       const body = { person_id: personId, value: alias.value };
@@ -423,7 +478,8 @@ function aliasRow(personId, alias, kinds, reopen) {
       if (Object.keys(body).length === 2) return idle();
       aliasWrite("/api/person/alias/update", body, message, reopen);
     };
-    row.replaceChildren(value, kind, lang, script, button("Save", save), button("Cancel", idle), message);
+    row.replaceChildren(value, kind, lang, script, button(t("common.save"), save), button(t("common.cancel"), idle),
+      message);
   }
   idle();
   return row;
@@ -433,7 +489,7 @@ function aliasRow(personId, alias, kinds, reopen) {
 function aliasEditor(personId, doc, reopen, contact) {
   const emails = doc.person.emails || [];
   const details = (doc.alias_details || []).filter((alias) => emails.includes(alias.value) === contact);
-  if (!details.length) return el("span", "(none)");
+  if (!details.length) return el("span", t("common.none"));
   const box = el("div");
   for (const alias of details) box.append(aliasRow(personId, alias, doc.alias_kinds || [], reopen));
   return box;
@@ -453,24 +509,24 @@ function recordRow(type, record, label, descriptors, reopen) {
   const seed = (name) => (name === "valid_from" || name === "valid_to" ? (record.period || {})[name] : record[name]);
   function idle() {
     message.textContent = "";
-    const edit = button("Edit", editing);
-    edit.setAttribute("aria-label", "Edit " + label);
+    const edit = button(t("common.edit"), editing);
+    edit.setAttribute("aria-label", t("record.edit.aria", { label }));
     const controls = [edit];
     if (REMOVABLE.has(type)) {
-      const remove = button("Remove", confirming);
-      remove.setAttribute("aria-label", "Remove " + label);
+      const remove = button(t("common.remove"), confirming);
+      remove.setAttribute("aria-label", t("record.remove.aria", { label }));
       controls.push(" ", remove);
     }
     row.replaceChildren(el("span", label), " ", ...controls, message);
   }
   function confirming() {
     message.textContent = "";
-    const shared = (record.participant_ids || []).length > 1 ? " It is removed for every participant." : "";
-    const prompt = el("span", "Permanently remove " + label + "? This cannot be undone." + shared);
-    const remove = button("Remove", () =>
+    const shared = (record.participant_ids || []).length > 1;
+    const prompt = el("span", t(shared ? "record.remove.prompt_shared" : "record.remove.prompt", { label }));
+    const remove = button(t("common.remove"), () =>
       aliasWrite("/api/record/remove", { entity_type: type, entity_id: record.id }, message, reopen));
-    remove.setAttribute("aria-label", "Confirm removal of " + label);
-    row.replaceChildren(prompt, " ", remove, button("Cancel", idle), message);
+    remove.setAttribute("aria-label", t("record.remove.confirm.aria", { label }));
+    row.replaceChildren(prompt, " ", remove, button(t("common.cancel"), idle), message);
   }
   function editing() {
     message.textContent = "";
@@ -478,12 +534,12 @@ function recordRow(type, record, label, descriptors, reopen) {
     const controls = [];
     for (const descriptor of descriptors) {
       const control = descriptor.control === "select"
-        ? selectControl(descriptor, seed(descriptor.name), descriptor.options.map((value) => ({ value, label: value })))
+        ? selectControl(descriptor, seed(descriptor.name), enumOptions(descriptor))
         : textControl(descriptor, seed(descriptor.name));
       controls.push([descriptor.name, control]);
       const value = el("dd");
       value.append(control.node);
-      grid.append(el("dt", descriptor.name.split("_").join(" ")), value);
+      grid.append(el("dt", fieldLabel(descriptor.name, descriptor.name.split("_").join(" "))), value);
     }
     const save = () => {
       const fields = {};
@@ -494,43 +550,45 @@ function recordRow(type, record, label, descriptors, reopen) {
       if (!Object.keys(fields).length) return idle();
       aliasWrite("/api/record/correct", { entity_type: type, entity_id: record.id, fields }, message, reopen);
     };
-    row.replaceChildren(el("span", label), grid, button("Save", save), button("Cancel", idle), message);
+    row.replaceChildren(el("span", label), grid, button(t("common.save"), save), button(t("common.cancel"), idle),
+      message);
   }
   idle();
   return row;
 }
 
-// A form that records one new record for the person. `fields` are [key, label, type, required];
-// text is sent trimmed, and an optional field left blank is not sent at all.
-function recordAdder(personId, noun, path, fields, missing, reopen) {
+// A form that records one new record for the person. `fields` are [key, label, type, required],
+// the label a key of `adder.`; text is sent trimmed, and an optional field left blank is not sent.
+function recordAdder(personId, noun, path, fields, reopen) {
   const row = el("div", null, "alias");
   const message = el("span", null, "error");
   function idle() {
-    row.replaceChildren(button("Add " + noun, adding), message);
+    row.replaceChildren(button(t("adder." + noun), adding), message);
   }
   function adding() {
     message.textContent = "";
     const inputs = [];
     const nodes = [];
-    for (const [key, label, type, required] of fields) {
+    for (const [key, name, type, required] of fields) {
+      const label = t("adder." + name);
       const node = el("input");
       node.type = type;
       node.placeholder = label;
-      node.setAttribute("aria-label", "new " + noun + " " + label);
+      node.setAttribute("aria-label", t("adder." + noun + ".aria", { label }));
       inputs.push([key, node, required]);
       if (type === "date") nodes.push(el("span", label));
       nodes.push(node);
     }
     const save = () => {
       if (inputs.some(([, node, required]) => required && !node.value.trim())) {
-        message.textContent = missing;
+        message.textContent = t("adder." + noun + ".missing");
         return;
       }
       const body = { person_id: personId };
       for (const [key, node] of inputs) if (node.value.trim()) body[key] = node.value.trim();
       aliasWrite(path, body, message, reopen);
     };
-    row.replaceChildren(...nodes, button("Add", save), button("Cancel", idle), message);
+    row.replaceChildren(...nodes, button(t("common.add"), save), button(t("common.cancel"), idle), message);
   }
   idle();
   return row;
@@ -545,7 +603,7 @@ function affiliationAdder(personId, reopen) {
     ["role", "role", "text", true],
     ["valid_from", "from", "date", false],
     ["valid_to", "to", "date", false],
-  ], "Enter an organization and a role.", reopen);
+  ], reopen);
 }
 
 // A new fact, through the same `RecordFact` as the `record_fact` MCP tool, of ordinary sensitivity.
@@ -555,7 +613,7 @@ function factAdder(personId, reopen) {
     ["value", "value", "text", true],
     ["valid_from", "from", "date", false],
     ["valid_to", "to", "date", false],
-  ], "Enter a predicate and a value.", reopen);
+  ], reopen);
 }
 
 // A new interaction with this person, through the same `RecordInteraction` as the
@@ -565,7 +623,7 @@ function interactionAdder(personId, reopen) {
     ["summary", "summary", "text", true],
     ["channel", "channel", "text", false],
     ["occurred_on", "on", "date", false],
-  ], "Enter a summary.", reopen);
+  ], reopen);
 }
 
 // The person's name or summary, edited through the same `EditPerson` as `pctx edit`. A rename keeps
@@ -575,9 +633,9 @@ function personFieldRow(personId, field, stored, reopen) {
   const message = el("span", null, "error");
   function idle() {
     message.textContent = "";
-    const edit = button("Edit", editing);
-    edit.setAttribute("aria-label", "Edit " + field);
-    row.replaceChildren(el("span", stored || "(none)"), " ", edit, message);
+    const edit = button(t("common.edit"), editing);
+    edit.setAttribute("aria-label", t("person.edit_" + field));
+    row.replaceChildren(el("span", stored || t("common.none")), " ", edit, message);
   }
   function editing() {
     message.textContent = "";
@@ -586,19 +644,19 @@ function personFieldRow(personId, field, stored, reopen) {
       const value = control.read();
       if (value === undefined) return idle();
       if (field === "name" && (value === null || !value.trim())) {
-        message.textContent = "Enter a name.";
+        message.textContent = t("person.enter_name");
         return;
       }
       aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, reopen);
     };
-    row.replaceChildren(control.node, button("Save", save), button("Cancel", idle), message);
+    row.replaceChildren(control.node, button(t("common.save"), save), button(t("common.cancel"), idle), message);
   }
   idle();
   return row;
 }
 
 function recordList(type, entries, descriptors, reopen) {
-  if (!entries.length) return el("p", "None recorded.", "notice");
+  if (!entries.length) return el("p", t("common.none_recorded"), "notice");
   const node = el("ul");
   for (const [record, label] of entries) node.append(recordRow(type, record, label, descriptors, reopen));
   return node;
@@ -606,6 +664,7 @@ function recordList(type, entries, descriptors, reopen) {
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
 async function showPerson(personId, cursor, back) {
+  current = () => showPerson(personId, cursor, back);
   const at = navigate();
   let doc;
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
@@ -621,37 +680,39 @@ async function showPerson(personId, cursor, back) {
   name.append(personFieldRow(doc.person.id, "name", doc.person.canonical_name, reopen));
   const summary = el("dd");
   summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen));
-  identity.append(el("dt", "Name"), name, el("dt", "Aliases"), aliases, el("dt", "Contact"), contact,
-    el("dt", "Summary"), summary, el("dt", "Context disclosure"), el("dd", doc.disclosure.context));
+  identity.append(el("dt", t("person.name")), name, el("dt", t("person.aliases")), aliases,
+    el("dt", t("person.contact")), contact, el("dt", t("person.summary")), summary,
+    el("dt", t("person.disclosure")), el("dd", valueLabel(doc.disclosure.context)));
   const nodes = [identity];
   if (doc.truncated) {
-    nodes.push(el("p", "Facts and interactions are bounded; more exist beyond this view.", "notice"));
+    nodes.push(el("p", t("person.truncated"), "notice"));
   }
   const forms = doc.record_fields || {};
   const editable = (type, entries) => recordList(type, entries, forms[type] || [], reopen);
   nodes.push(
-    el("h3", "Affiliations"),
+    el("h3", t("person.affiliations")),
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
-      a.affiliation.role + " at " + a.organization_name])),
+      t("person.affiliation_label", { role: a.affiliation.role, organization: a.organization_name })])),
     affiliationAdder(doc.person.id, reopen),
-    el("h3", "Facts"),
+    el("h3", t("person.facts")),
     editable("fact", doc.facts.map((fact) => [fact, fact.predicate + ": " + fact.value])),
     factAdder(doc.person.id, reopen),
-    el("h3", "Interactions"),
+    el("h3", t("person.interactions")),
     editable("interaction", doc.interactions.map((i) => [i, String(i.occurred_at).slice(0, 10)
       + (i.channel ? " (" + i.channel + ")" : "") + ": " + i.summary])),
     interactionAdder(doc.person.id, reopen),
-    el("h3", "Reminders"),
+    el("h3", t("person.reminders")),
     editable("reminder", doc.reminders.map((r) => [r,
-      r.kind + (r.due_at ? " (due " + r.due_at + ")" : "") + ": " + r.text])),
-    el("h3", "Traits"),
-    editable("trait", doc.traits.map((trait) => [trait, trait.category + ": " + trait.value])),
+      valueLabel(r.kind) + (r.due_at ? t("person.reminder_due", { date: r.due_at }) : "") + ": " + r.text])),
+    el("h3", t("person.traits")),
+    editable("trait", doc.traits.map((trait) => [trait, valueLabel(trait.category) + ": " + trait.value])),
   );
-  nodes.push(button("Back to people", () => showPeople(cursor, back)));
+  nodes.push(button(t("person.back"), () => showPeople(cursor, back)));
   show(doc.person.canonical_name, ...nodes);
 }
 
 async function showSources(cursor, back) {
+  current = () => showSources(cursor, back);
   const at = navigate();
   let doc;
   try { doc = await api("/api/sources" + query({ cursor })); } catch (error) { return fail(error, at); }
@@ -659,51 +720,55 @@ async function showSources(cursor, back) {
   const rows = doc.sources.map((source) => [
     button(source.source_kind, () => showSource(source.id, cursor, back), "link"),
     source.label,
-    source.status,
+    valueLabel(source.status),
     source.batch_id,
   ]);
   // A batch staged without a receipt is not listed, so it is opened by id.
   const batchInput = el("input");
   batchInput.type = "text";
-  batchInput.placeholder = "Batch id";
-  batchInput.setAttribute("aria-label", "Batch id");
+  batchInput.placeholder = t("sources.batch_id");
+  batchInput.setAttribute("aria-label", t("sources.batch_id"));
   const openBatch = el("div", null, "actions");
   const openTyped = () => { if (batchInput.value.trim()) showBatch(batchInput.value.trim()); };
-  openBatch.append(batchInput, button("Open batch", openTyped));
+  openBatch.append(batchInput, button(t("sources.open_batch"), openTyped));
+  const columns = ["kind", "label", "status", "batch"].map((column) => t("sources.column." + column));
   show(
-    "Import sources",
-    el("p", sourcesWarning, "warning"),
+    t("sources.title"),
+    el("p", warning("sources"), "warning"),
     openBatch,
-    doc.sources.length ? table(["Kind", "Label", "Status", "Batch"], rows) : el("p", "No import sources.", "notice"),
+    doc.sources.length ? table(columns, rows) : el("p", t("sources.none"), "notice"),
     pager(back, cursor, doc.next_cursor, showSources),
   );
 }
 
 async function showSource(sourceId, cursor, back) {
+  current = () => showSource(sourceId, cursor, back);
   const at = navigate();
   let doc;
   try { doc = await api("/api/source" + query({ id: sourceId })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const details = el("dl");
   const fields = [
-    ["Source", doc.source.id],
-    ["Kind", doc.source.source_kind],
-    ["Label", doc.source.label || "-"],
-    ["Status", doc.source.status],
-    ["Batch", doc.source.batch_id || "-"],
+    [t("source.source"), doc.source.id],
+    [t("sources.column.kind"), doc.source.source_kind],
+    [t("sources.column.label"), doc.source.label || "-"],
+    [t("sources.column.status"), valueLabel(doc.source.status)],
+    [t("sources.column.batch"), doc.source.batch_id || "-"],
   ];
   for (const [term, value] of fields) details.append(el("dt", term), el("dd", value));
-  const toList = button("Back to sources", () => showSources(cursor, back));
+  const toList = button(t("sources.back"), () => showSources(cursor, back));
   if (doc.source.redacted) {
     // A forgotten source's counts are withheld, not zero, so none are shown.
-    show("Import source", details, el("p", "This source was forgotten; its counts are withheld.", "notice"), toList);
+    show(t("source.title"), details, el("p", t("source.forgotten"), "notice"), toList);
     return;
   }
-  details.append(el("dt", "Staged candidates"), el("dd", doc.staged_total));
-  const counts = Object.entries(doc.staged_by_status).map(([status, count]) => status + ": " + count);
-  const nodes = [el("p", reviewWarning, "warning"), details, el("h3", "Staged by status"), list(counts)];
-  if (doc.source.batch_id && doc.staged_total) nodes.push(button("Open batch", () => showBatch(doc.source.batch_id)));
-  show("Import source", ...nodes, toList);
+  details.append(el("dt", t("source.staged")), el("dd", doc.staged_total));
+  const counts = Object.entries(doc.staged_by_status).map(([status, count]) => valueLabel(status) + ": " + count);
+  const nodes = [el("p", warning("review"), "warning"), details, el("h3", t("source.by_status")), list(counts)];
+  if (doc.source.batch_id && doc.staged_total) {
+    nodes.push(button(t("sources.open_batch"), () => showBatch(doc.source.batch_id)));
+  }
+  show(t("source.title"), ...nodes, toList);
 }
 
 // Batch review (M30.2). Accepting writes nothing: it only marks rows for the commit, as
@@ -737,10 +802,10 @@ function identityState(row) {
   const candidate = row.candidate;
   if (candidate.type !== "person") return "";
   if (candidate.match_disposition === "ambiguous") {
-    return "Needs decision: matches " + (candidate.match_count ?? "several") + " people";
+    return t("identity.ambiguous", { count: candidate.match_count ?? t("identity.several") });
   }
-  if (row.name_is_email) return "Needs decision: the name is an email address";
-  return candidate.matched_person_id ? "Existing person" : "New person";
+  if (row.name_is_email) return t("identity.email");
+  return t(candidate.matched_person_id ? "identity.existing" : "identity.new");
 }
 
 // The person a row is about: a person row heads its own group, and any other row joins the first
@@ -782,14 +847,14 @@ function rowLabel(row) {
   const what = candidate.name
     || (candidate.predicate ? candidate.predicate + " = " + candidate.value : null)
     || candidate.summary || candidate.text || candidate.relationship_type || candidate.org || candidate.value || "";
-  return "#" + row.ordinal + " " + candidate.type + (what ? ": " + what : "");
+  return "#" + row.ordinal + " " + valueLabel(candidate.type) + (what ? ": " + what : "");
 }
 
 // The staged candidate as labelled fields instead of JSON. Empty fields are left out, as is a
 // reference to the person whose group the row already sits in.
 function proposal(row, owner, showSource) {
   const node = el("div", null, "proposal");
-  node.append(el("strong", row.candidate.type));
+  node.append(el("strong", valueLabel(row.candidate.type)));
   const grid = el("dl");
   for (const descriptor of batchState.fields[row.candidate.type] || []) {
     const value = row.candidate[descriptor.name];
@@ -798,7 +863,7 @@ function proposal(row, owner, showSource) {
     const shown = el("dd");
     if (descriptor.control === "alias_list") {
       shown.append(el("span", value.map((alias) => alias.value + (alias.kind && alias.kind !== "other"
-        ? " (" + alias.kind + ")" : "")).join(", ")));
+        ? " (" + valueLabel(alias.kind) + ")" : "")).join(", ")));
     } else if (descriptor.targets) {
       const byId = new Map(batchState.review.candidates.map((other) => [other.id, other]));
       shown.append(el("span", (Array.isArray(value) ? value : [value])
@@ -808,12 +873,12 @@ function proposal(row, owner, showSource) {
     } else {
       shown.append(textOrLink(String(value)));
     }
-    grid.append(el("dt", descriptor.name.split("_").join(" ")), shown);
+    grid.append(el("dt", fieldLabel(descriptor.name, descriptor.name.split("_").join(" "))), shown);
   }
   if (showSource && row.source) {
     const shown = el("dd");
     shown.append(textOrLink(row.source));
-    grid.append(el("dt", "source"), shown);
+    grid.append(el("dt", fieldLabel("source")), shown);
   }
   node.append(grid);
   return node;
@@ -842,8 +907,7 @@ async function showBatch(batchId, message, baseline) {
   if (at !== navigation) return;
   if (shown !== null && doc.review.batch_digest !== shown && batchState.accepted.size) {
     batchState.accepted = new Set();
-    batchState.message = (batchState.message ? batchState.message + " " : "")
-      + "Batch changed elsewhere; acceptances discarded.";
+    batchState.message = (batchState.message ? batchState.message + " " : "") + t("batch.changed");
   }
   batchState.review = doc.review;
   batchState.lines = doc.lines;
@@ -860,19 +924,21 @@ async function showBatch(batchId, message, baseline) {
   renderBatch();
 }
 
+// Redrawn from the batch already held, so switching language keeps acceptances and an open form.
 function renderBatch() {
+  current = renderBatch;
   const review = batchState.review;
   const counts = {};
   for (const row of review.candidates) counts[row.status] = (counts[row.status] || 0) + 1;
   const header = el("dl");
-  header.append(el("dt", "Batch"), el("dd", review.batch_id));
-  for (const [status, count] of Object.entries(counts)) header.append(el("dt", status), el("dd", count));
+  header.append(el("dt", t("batch.batch")), el("dd", review.batch_id));
+  for (const [status, count] of Object.entries(counts)) header.append(el("dt", valueLabel(status)), el("dd", count));
   // One source for the whole batch is shown once here; rows from several sources show their own.
   const sources = new Set(review.candidates.map((row) => row.source).filter(Boolean));
   if (sources.size === 1) {
     const shown = el("dd");
     shown.append(textOrLink(Array.from(sources)[0]));
-    header.append(el("dt", "Source"), shown);
+    header.append(el("dt", t("source.source")), shown);
   }
   const boxes = [];
   const cells = (row, owner) => {
@@ -880,23 +946,26 @@ function renderBatch() {
     if (row.status === "pending") {
       pick = el("input");
       pick.type = "checkbox";
-      pick.setAttribute("aria-label", "Select #" + row.ordinal);
+      pick.setAttribute("aria-label", t("batch.select.aria", { ordinal: row.ordinal }));
       boxes.push([pick, row.id]);
     }
     const status = el("span");
-    status.append(el("span", row.status, "badge"));
-    if (batchState.accepted.has(row.id)) status.append(" ", el("span", "accepted", "badge accepted"));
+    status.append(el("span", valueLabel(row.status), "badge"));
+    if (batchState.accepted.has(row.id)) status.append(" ", el("span", t("batch.accepted_badge"), "badge accepted"));
     const verbatim = el("details");
-    verbatim.append(el("summary", "Candidate"), el("pre", JSON.stringify(row.candidate, null, 2)));
+    verbatim.append(el("summary", t("batch.candidate")), el("pre", JSON.stringify(row.candidate, null, 2)));
     // Only a pending row opens a form or takes a decision: the use cases refuse an amendment or a
     // withdrawal of any other row, and the page does not offer what would be refused.
     const tools = el("div", null, "row-actions");
     if (row.status === "pending") {
-      tools.append(button(batchState.editing === row.id ? "Close" : "Edit", () => toggleEdit(row.id)));
+      tools.append(button(t(batchState.editing === row.id ? "common.close" : "common.edit"), () => toggleEdit(row.id)));
+      const ordinal = { ordinal: row.ordinal };
       if (!batchState.accepted.has(row.id)) {
-        tools.append(labelled(button("Accept", () => acceptSelected([row.id])), "Accept #" + row.ordinal));
+        const accept = button(t("batch.accept"), () => acceptSelected([row.id]));
+        tools.append(labelled(accept, t("batch.accept.aria", ordinal)));
       }
-      tools.append(labelled(button("Reject", () => withdrawSelected([row.id])), "Reject #" + row.ordinal));
+      const reject = button(t("batch.reject"), () => withdrawSelected([row.id]));
+      tools.append(labelled(reject, t("batch.reject.aria", ordinal)));
     }
     return [pick, "#" + row.ordinal, status, proposal(row, owner, sources.size > 1), identityState(row),
       verbatim, tools];
@@ -913,21 +982,25 @@ function renderBatch() {
   const editing = review.candidates.find((row) => row.id === batchState.editing && row.status === "pending");
   const sections = ordered.map(([owner, rows]) => {
     const head = owner === null ? null : rows.find((row) => row.id === owner);
-    const title = head ? (head.candidate.name || rowLabel(head)) : "Not about one staged person";
+    const title = head ? (head.candidate.name || rowLabel(head)) : t("batch.no_person");
     const section = labelled(el("section", null, "group"), title);
     const heading = el("h3", title);
     if (head) heading.append(" ", el("span", identityState(head), "badge"));
     section.append(heading);
     const possible = (head && head.possible_matches) || [];
     if (possible.length) {
-      section.append(el("p", "Possibly the same as " + possible.map((match) => match.canonical_name).join(", ")
-        + (head.possible_matches_truncated ? " and others" : "")
-        + ". Unless a match is chosen, this commits as a new person.", "notice"));
+      section.append(el("p", t("batch.possible", {
+        names: possible.map((match) => match.canonical_name).join(", "),
+        more: head.possible_matches_truncated ? t("batch.possible_more") : "",
+      }), "notice"));
     }
     const open = rows.filter((row) => row.status === "pending" && !batchState.accepted.has(row.id))
       .map((row) => row.id);
-    if (open.length) section.append(button("Accept " + open.length + " for " + title, () => acceptSelected(open)));
-    const grid = table(["", "#", "Status", "Proposal", "Identity", "Staged", ""], rows.map((row) => cells(row, owner)));
+    if (open.length) {
+      section.append(button(t("batch.accept_for", { count: open.length, title }), () => acceptSelected(open)));
+    }
+    const headings = ["", "#", ...["status", "proposal", "identity", "staged"].map((c) => t("batch.column." + c)), ""];
+    const grid = table(headings, rows.map((row) => cells(row, owner)));
     grid.className = "review";
     section.append(grid);
     if (editing && rows.includes(editing)) section.append(currentForm(editing));
@@ -937,17 +1010,17 @@ function renderBatch() {
   const confirmArea = el("div");
   const actions = el("div", null, "actions");
   actions.append(
-    button("Accept selected", () => acceptSelected(selected())),
-    button("Withdraw selected", () => withdrawSelected(selected())),
+    button(t("batch.accept_selected"), () => acceptSelected(selected())),
+    button(t("batch.withdraw_selected"), () => withdrawSelected(selected())),
   );
-  const commit = button("Commit accepted", () => confirmCommit(confirmArea));
+  const commit = button(t("batch.commit_accepted"), () => confirmCommit(confirmArea));
   commit.disabled = batchState.accepted.size === 0;
   batchState.commit = commit;
-  actions.append(commit, el("span", batchState.accepted.size + " accepted", "notice"));
-  const nodes = [header, el("p", reviewWarning, "warning")];
+  actions.append(commit, el("span", t("batch.accepted_count", { count: batchState.accepted.size }), "notice"));
+  const nodes = [header, el("p", warning("review"), "warning")];
   if (batchState.message) nodes.push(el("p", batchState.message, "notice"));
-  nodes.push(actions, confirmArea, ...sections, button("Back to sources", () => showSources(null, [])));
-  show("Import batch", ...nodes);
+  nodes.push(actions, confirmArea, ...sections, button(t("sources.back"), () => showSources(null, [])));
+  show(t("batch.title"), ...nodes);
 }
 
 // Opening a form reads nothing from the server: it is built from the batch already on screen and
@@ -1018,7 +1091,7 @@ function textControl(descriptor, staged) {
     }
   }
   input.value = seed;
-  input.setAttribute("aria-label", descriptor.name);
+  input.setAttribute("aria-label", fieldAria(descriptor.name));
   // Compared against what the control actually holds, not against what it was handed: a value a
   // browser normalised on the way in must not be patched back over a field nobody touched.
   const shown = input.value;
@@ -1027,7 +1100,7 @@ function textControl(descriptor, staged) {
 }
 
 function optionList(select, options, seed) {
-  const blank = el("option", "(unset)");
+  const blank = el("option", t("common.unset"));
   blank.value = "";
   select.append(blank);
   // A stored value the current vocabulary no longer offers stays on the list rather than being
@@ -1045,8 +1118,13 @@ function selectControl(descriptor, staged, options) {
   const seed = seedText(staged);
   optionList(select, options, seed);
   select.value = seed;
-  select.setAttribute("aria-label", descriptor.name);
+  select.setAttribute("aria-label", fieldAria(descriptor.name));
   return { node: select, read: () => (select.value === seed ? undefined : submitted(select.value, false)) };
+}
+
+// An enum field's options, each sent as its stored value and shown as this language labels it.
+function enumOptions(descriptor) {
+  return descriptor.options.map((value) => ({ value, label: valueLabel(value) }));
 }
 
 // Every row of the batch whose type this reference may name — withdrawn and committed included,
@@ -1074,7 +1152,7 @@ function multiControl(descriptor, staged) {
     node.selected = chosen.includes(option.value);
     select.append(node);
   }
-  select.setAttribute("aria-label", descriptor.name);
+  select.setAttribute("aria-label", fieldAria(descriptor.name));
   const same = (values) => values.length === chosen.length && values.every((value) => chosen.includes(value));
   return {
     node: select,
@@ -1101,10 +1179,10 @@ function shellQuote(value) {
 function readonlyControl(descriptor, staged, row) {
   const values = Array.isArray(staged) ? staged : [];
   const node = el("div");
-  node.append(el("p", values.length ? values.join(", ") : "(none)"));
-  node.append(el("p", "Change with: pctx import amend " + shellQuote(batchState.id) + " "
+  node.append(el("p", values.length ? values.join(", ") : t("common.none")));
+  node.append(el("p", t("batch.change_with", { command: "pctx import amend " + shellQuote(batchState.id) + " "
     + shellQuote(row.id) + " --patch "
-    + shellQuote(JSON.stringify({ [descriptor.name]: values })), "notice"));
+    + shellQuote(JSON.stringify({ [descriptor.name]: values })) }), "notice"));
   return { node, read: () => undefined };
 }
 
@@ -1117,12 +1195,12 @@ function aliasControl(descriptor, staged) {
     const entry = { base, controls: [], node: el("div", null, "alias") };
     for (const field of batchState.aliasFields) {
       const control = field.control === "select"
-        ? selectControl(field, base[field.name], field.options.map((value) => ({ value, label: value })))
+        ? selectControl(field, base[field.name], enumOptions(field))
         : textControl(field, base[field.name]);
       entry.controls.push([field.name, control]);
-      entry.node.append(el("span", field.name, "notice"), control.node);
+      entry.node.append(el("span", fieldLabel(field.name), "notice"), control.node);
     }
-    entry.node.append(button("Remove", () => {
+    entry.node.append(button(t("common.remove"), () => {
       entry.removed = true;
       container.removeChild(entry.node);
     }));
@@ -1131,7 +1209,7 @@ function aliasControl(descriptor, staged) {
   };
 
   for (const alias of stagedRows) addRow(alias);
-  const adder = button("Add alias", () => addRow({}));
+  const adder = button(t("alias.add"), () => addRow({}));
   const node = el("div");
   node.append(container, adder);
 
@@ -1165,7 +1243,7 @@ function buildControl(descriptor, row) {
     return selectControl(descriptor, staged, referenceOptionsFor(descriptor));
   }
   if (descriptor.control === "select") {
-    return selectControl(descriptor, staged, descriptor.options.map((value) => ({ value, label: value })));
+    return selectControl(descriptor, staged, enumOptions(descriptor));
   }
   return textControl(descriptor, staged);
 }
@@ -1189,36 +1267,34 @@ function matchPicker(row) {
   const matches = row.match_candidates || [];
   const resolved = seedText(row.candidate.matched_person_id);
   const select = el("select");
-  const unresolved = el("option", "(leave unresolved)");
+  const unresolved = el("option", t("match.unresolved"));
   unresolved.value = "";
   select.append(unresolved);
   // The row's own choice stays on the list even once the projection no longer names it, so the
   // control opens on what is recorded rather than silently on "unresolved".
   if (resolved !== "" && !matches.some((match) => match.id === resolved)) {
-    const current = el("option", "(current match) " + resolved);
-    current.value = resolved;
-    select.append(current);
+    const kept = el("option", t("match.current", { id: resolved }));
+    kept.value = resolved;
+    select.append(kept);
   }
   for (const match of matches) {
-    const option = el("option", match.canonical_name + (match.name_truncated ? " (name shortened)" : "")
+    const option = el("option", match.canonical_name + (match.name_truncated ? t("match.shortened") : "")
       + " - " + match.id);
     option.value = match.id;
     select.append(option);
   }
   select.value = resolved;
-  select.setAttribute("aria-label", "Matching person");
+  select.setAttribute("aria-label", t("match.aria"));
   const typed = el("input");
   typed.type = "text";
-  typed.setAttribute("aria-label", "Person id");
-  typed.placeholder = "Person id";
-  const nodes = [el("p", matches.length
-    ? "This name matches several people. Choose one, or leave it unresolved."
-    : "This row is resolved to one person. Leave it unresolved to match again, or paste another id."), select];
+  typed.setAttribute("aria-label", t("match.person_id"));
+  typed.placeholder = t("match.person_id");
+  const nodes = [el("p", t(matches.length ? "match.several" : "match.resolved")), select];
   // A pasted id is the only way to reach a person the projection does not list, which is either
   // because there are more than it shows or because the row is no longer ambiguous.
   if (row.match_candidates_truncated || !matches.length) {
     nodes.push(
-      el("p", "Find the right person with pctx search or the resolve_person tool and paste its id.", "notice"),
+      el("p", t("match.find"), "notice"),
       typed,
     );
   }
@@ -1246,7 +1322,7 @@ function editForm(row) {
   const controls = [];
   const grid = el("dl");
   const panel = el("div", null, "edit");
-  panel.append(el("h3", "Editing #" + row.ordinal + " (" + row.candidate.type + ")"));
+  panel.append(el("h3", t("batch.editing", { ordinal: row.ordinal, type: valueLabel(row.candidate.type) })));
   if (hasMatchDecision(row)) {
     const picker = matchPicker(row);
     picker.slot = el("div");
@@ -1261,14 +1337,14 @@ function editForm(row) {
     controls.push([descriptor.name, control]);
     const value = el("dd");
     value.append(control.node, control.slot);
-    grid.append(el("dt", descriptor.name), value);
+    grid.append(el("dt", fieldLabel(descriptor.name)), value);
   }
   const rowErrors = el("div");
   panel.append(grid, rowErrors);
   const actions = el("div", null, "actions");
   actions.append(
-    button("Save", () => saveEdit(row, controls, rowErrors)),
-    button("Cancel", () => toggleEdit(row.id)),
+    button(t("common.save"), () => saveEdit(row, controls, rowErrors)),
+    button(t("common.cancel"), () => toggleEdit(row.id)),
   );
   panel.append(actions);
   return panel;
@@ -1281,10 +1357,10 @@ function saveEdit(row, controls, rowErrors) {
     if (value !== undefined) patch[name] = value;
   }
   if (!Object.keys(patch).length) {
-    rowErrors.replaceChildren(el("p", "Nothing changed.", "notice"));
+    rowErrors.replaceChildren(el("p", t("batch.nothing_changed"), "notice"));
     return;
   }
-  return amendRow(row, patch, controls, rowErrors, "Amended #" + row.ordinal + ". Saved, not accepted.");
+  return amendRow(row, patch, controls, rowErrors, t("batch.amended", { ordinal: row.ordinal }));
 }
 
 async function amendRow(row, patch, controls, rowErrors, message) {
@@ -1310,7 +1386,7 @@ async function amendRow(row, patch, controls, rowErrors, message) {
     // moved, and every later Save from this form would repeat the digest that was already
     // refused. Reload instead, as withdraw and commit do, so the concurrent change is on screen.
     if (error.message === "batch_changed") {
-      return showBatch(batchId, "Refused: batch_changed.");
+      return showBatch(batchId, t("refused.code", { code: "batch_changed" }));
     }
     showRefusal(error, controls, rowErrors);
     return reenable();
@@ -1325,7 +1401,7 @@ async function amendRow(row, patch, controls, rowErrors, message) {
   // refuse it. They are dropped whole rather than guessed at row by row.
   const dropped = batchState.accepted.size;
   batchState.accepted = new Set();
-  if (dropped) message += " " + dropped + " acceptance(s) discarded; review the amended batch again.";
+  if (dropped) message += " " + t("batch.acceptances_dropped", { count: dropped });
   if (at === navigation) return showBatch(batchId, message, result.batch_digest);
 }
 
@@ -1341,16 +1417,16 @@ function showRefusal(error, controls, rowErrors) {
     control.slot.append(el("p", named.get(name), "error"));
     shown.add(name);
   }
-  const rest = [el("p", "Refused: " + error.message, "error")];
+  const rest = [el("p", t("refused", { reason: error.message }), "error")];
   for (const entry of error.fields || []) {
-    if (!shown.has(entry.field)) rest.push(el("p", entry.field + ": " + entry.message, "error"));
+    if (!shown.has(entry.field)) rest.push(el("p", fieldLabel(entry.field) + ": " + entry.message, "error"));
   }
   rowErrors.replaceChildren(...rest);
 }
 
 function acceptSelected(ids) {
   for (const id of ids) batchState.accepted.add(id);
-  return showBatch(batchState.id, ids.length ? "Accepted " + ids.length + "; nothing is committed yet." : null);
+  return showBatch(batchState.id, ids.length ? t("batch.accepted", { count: ids.length }) : null);
 }
 
 async function batchAction(path, ids) {
@@ -1373,9 +1449,9 @@ async function withdrawSelected(ids) {
   let baseline;
   try {
     const result = await batchAction("/api/batch/withdraw", ids);
-    message = "Withdrew " + result.withdrawn + ".";
+    message = t("batch.withdrew", { count: result.withdrawn });
     baseline = result.batch_digest;
-  } catch (error) { message = "Refused: " + error.message; } finally { batchState.busy = false; }
+  } catch (error) { message = t("refused", { reason: error.message }); } finally { batchState.busy = false; }
   if (at === navigation) return showBatch(batchId, message, baseline);
 }
 
@@ -1386,12 +1462,11 @@ function confirmCommit(area) {
   const chosen = batchState.review.candidates.filter((row) => batchState.accepted.has(row.id));
   const panel = el("div", null, "confirm");
   panel.append(
-    el("p", "Commit exactly these " + count + " accepted proposals? Every other row stays pending, "
-      + "and unresolved rows stay pending too."),
+    el("p", t("batch.commit_confirm", { count })),
     list(chosen.map(rowLabel)),
-    button("Confirm commit of " + count, () => commitAccepted()),
+    button(t("batch.commit_confirm_button", { count }), () => commitAccepted()),
     " ",
-    button("Cancel", () => area.replaceChildren()),
+    button(t("common.cancel"), () => area.replaceChildren()),
   );
   area.replaceChildren(panel);
 }
@@ -1405,9 +1480,12 @@ async function commitAccepted() {
   let message;
   try {
     const result = await batchAction("/api/batch/commit", ids);
-    message = "Committed " + result.committed_ids.length + "; " + result.unresolved_ids.length
-      + " unresolved; " + result.skipped_ids.length + " already committed.";
-  } catch (error) { message = "Refused: " + error.message; } finally { batchState.busy = false; }
+    message = t("batch.committed", {
+      committed: result.committed_ids.length,
+      unresolved: result.unresolved_ids.length,
+      skipped: result.skipped_ids.length,
+    });
+  } catch (error) { message = t("refused", { reason: error.message }); } finally { batchState.busy = false; }
   if (at === navigation) return showBatch(batchId, message);
 }
 
@@ -1416,12 +1494,15 @@ async function done() {
   const at = navigate();
   try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
-  view.replaceChildren(el("p", "pctx browse has stopped. You can close this tab."));
+  current = () => view.replaceChildren(el("p", t("done.stopped")));
+  current();
 }
 
 document.getElementById("nav-people").addEventListener("click", () => showPeople(null, []));
 document.getElementById("nav-sources").addEventListener("click", () => showSources(null, []));
 document.getElementById("nav-done").addEventListener("click", done);
+document.getElementById("nav-lang").addEventListener("click", switchLanguage);
+applyLanguage();
 showPeople(null, []);
 </script>
 </body>
@@ -1429,10 +1510,23 @@ showPeople(null, []);
 """
 
 
-def render_page(nonce: str, *, review_warning: str, sources_warning: str) -> str:
-    """Return the document with this response's nonce and the escaped warnings filled in."""
-    return (
-        _TEMPLATE.replace(_REVIEW_WARNING, html.escape(review_warning))
-        .replace(_SOURCES_WARNING, html.escape(sources_warning))
-        .replace(_NONCE, nonce)
-    )
+def render_page(nonce: str, *, review_warning: str, sources_warning: str, language: str = "en") -> str:
+    """Return the document with this response's nonce, its opening language, and its text filled in.
+
+    The warnings are the caller's English wording; their translations come from `i18n.WARNINGS`.
+    """
+    if language not in MESSAGES:
+        raise ValueError(f"unsupported language {language!r}")
+    catalogue = {
+        "default": language,
+        "languages": list(MESSAGES),
+        "messages": MESSAGES,
+        "fields": FIELD_LABELS,
+        "values": VALUE_LABELS,
+        "warnings": {"en": {"review": review_warning, "sources": sources_warning}, **WARNINGS},
+    }
+    # Inside a script, `</script>` or `<!--` would end or bend it; escaping every `<`, `>`, and `&`
+    # makes the JSON inert there whatever the warnings say, and JavaScript reads it unchanged.
+    text = json.dumps(catalogue, ensure_ascii=False)
+    text = text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    return _TEMPLATE.replace(_I18N, text).replace(_LANG, language).replace(_NONCE, nonce)

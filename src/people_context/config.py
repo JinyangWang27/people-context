@@ -1,7 +1,10 @@
-"""Database path and encryption-key resolution.
+"""Database path, encryption-key, and browser-language resolution.
 
 Precedence (first hit wins): explicit arg -> PEOPLE_CONTEXT_DB env ->
 config.toml db_path -> the shared per-user default ``~/.pctx/people.db``.
+
+The language `pctx browse` opens in follows the same ladder: ``--lang`` ->
+PEOPLE_CONTEXT_BROWSE_LANG env -> config.toml browse_lang -> English.
 
 The optional at-rest encryption key has no such ladder: it comes only from the
 ``PEOPLE_CONTEXT_DB_KEY`` environment variable, never from a flag value or a
@@ -29,6 +32,21 @@ SENSITIVE_CONTEXT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_SENSITIVE"
 EXPORT_ENV = "PEOPLE_CONTEXT_MCP_ENABLE_EXPORT"
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+#: The languages the `pctx browse` page offers, the first being the default.
+BROWSE_LANGUAGES: tuple[str, ...] = ("en", "zh-CN")
+BROWSE_LANG_ENV = "PEOPLE_CONTEXT_BROWSE_LANG"
+#: Accepted spellings, compared case-insensitively, of each offered language.
+_BROWSE_LANGUAGE_NAMES = {"en": "en", "zh-cn": "zh-CN", "zh": "zh-CN", "zh-hans": "zh-CN"}
+
+
+class InvalidBrowseLanguageError(ValueError):
+    """A configured browser language that the page does not offer."""
+
+    def __init__(self, value: str, source: str) -> None:
+        super().__init__(f"{source} must be one of {', '.join(BROWSE_LANGUAGES)}; got {value!r}")
+        self.value = value
+        self.source = source
 
 
 def process_elevation_enabled(variable: str, env: Mapping[str, str] | None = None) -> bool:
@@ -70,6 +88,7 @@ def resolve_db_key(env: Mapping[str, str] | None = None) -> str:
 #: Home-relative directory of the shared per-user default database.
 SHARED_DB_DIRNAME = ".pctx"
 
+
 def _expand(path: str | Path) -> Path:
     return Path(os.path.expanduser(path))
 
@@ -84,15 +103,40 @@ def _config_dir(env: Mapping[str, str]) -> Path:
     return _expand(xdg) if xdg else _home(env) / ".config"
 
 
-def _config_file_db_path(env: Mapping[str, str]) -> Path | None:
+def _config_file(env: Mapping[str, str]) -> dict[str, object]:
     config_file = _config_dir(env) / "people-context" / "config.toml"
     try:
         with config_file.open("rb") as fh:
-            data = tomllib.load(fh)
+            return tomllib.load(fh)
     except (OSError, tomllib.TOMLDecodeError):
-        return None
-    db_path = data.get("db_path")
+        return {}
+
+
+def _config_file_db_path(env: Mapping[str, str]) -> Path | None:
+    db_path = _config_file(env).get("db_path")
     return _expand(db_path) if isinstance(db_path, str) and db_path else None
+
+
+def resolve_browse_language(explicit: str | None = None, env: Mapping[str, str] | None = None) -> str:
+    """Return the language `pctx browse` opens in: `--lang`, then the environment, then config.toml.
+
+    A value that names no offered language is refused rather than ignored, so a typo in a config
+    file is reported instead of silently opening the page in English. `zh` and `zh-Hans` are
+    accepted for `zh-CN`, in any case.
+    """
+    env = os.environ if env is None else env
+    candidates: list[tuple[object, str]] = [
+        (explicit, "--lang"),
+        (env.get(BROWSE_LANG_ENV), BROWSE_LANG_ENV),
+        (_config_file(env).get("browse_lang"), "config.toml browse_lang"),
+    ]
+    for value, source in candidates:
+        if value is None or value == "":
+            continue
+        if not isinstance(value, str) or value.strip().lower() not in _BROWSE_LANGUAGE_NAMES:
+            raise InvalidBrowseLanguageError(str(value), source)
+        return _BROWSE_LANGUAGE_NAMES[value.strip().lower()]
+    return BROWSE_LANGUAGES[0]
 
 
 def shared_default_db_path(env: Mapping[str, str] | None = None) -> Path:
