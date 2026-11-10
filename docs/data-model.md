@@ -44,6 +44,16 @@ Existing affiliations and relationships are never automatically converted into g
 
 ### Persons and soft deletion
 
+Migration `011_person_names.sql` adds optional `preferred_name`, `given_name`, and `family_name` columns
+and normalized search columns. Existing names, aliases, and ids are preserved; components are never guessed.
+Preferred name is how the user addresses someone. Given/family names are explicit components independent of
+written order. Display falls back from preferred name to given name to canonical name. Empty input clears a
+component; omission preserves it. Browse name ordering uses the displayed name and stable id, backed by an
+expression index; changing the cursor anchor's display name invalidates that cursor. Canonical names and
+aliases remain the automatic identity-matching keys. The three components are searchable without becoming
+new exact identity keys. Merge keeps primary components, fills missing components from the duplicate, and
+retains a conflicting preferred name as a nickname alias.
+
 `persons.deleted_at` hides a person from ordinary resolution, graph, context, and vault reads while preserving
 the database rows. `forget` is different: it hard-deletes the selected record/person graph, redacts covered
 audit/changelog payloads, and emits an ID-only durable tombstone.

@@ -43,16 +43,17 @@ class CanonicalVCardWriter:
 def _render_card(contact: VCardContact, version: str) -> list[str]:
     """Render one card in a fixed property order shared by both dialects.
 
-    `N` repeats the whole canonical name in the family-name component and leaves the other
-    four empty. The store never recorded a given/family boundary, so splitting on whitespace
-    would invent one and hand a consumer a structure that is wrong for most of the world's
-    naming conventions.
+    Explicit components populate `N`. Without them, keep the legacy unstructured
+    full-name fallback rather than guessing a boundary.
     """
+    structured = contact.given_name is not None or contact.family_name is not None
+    family = (contact.family_name or "") if structured else contact.full_name
+    given = contact.given_name or ""
     lines = [
         "BEGIN:VCARD",
         f"VERSION:{version}",
         f"FN:{_escape(contact.full_name)}",
-        f"N:{_escape(contact.full_name)};;;;",
+        f"N:{_escape(family)};{_escape(given)};;;",
     ]
     if contact.nicknames:
         lines.append("NICKNAME:" + ",".join(_escape(nickname) for nickname in contact.nicknames))

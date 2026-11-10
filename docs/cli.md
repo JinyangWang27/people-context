@@ -41,7 +41,7 @@ browser batch review, and M30.3 browser inline edit.
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
-| `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
+| `edit PERSON [--name NAME] [--summary TEXT] [--preferred-name NAME] [--given-name NAME] [--family-name NAME]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. An email address is accepted only with `--kind handle`. |
 | `remove-alias PERSON VALUE` | Remove one alias, matched by normalized value; exits 1 when it is not an alias. |
 | `update-alias PERSON VALUE [--to NEW] [--kind KIND] [--lang LANG] [--script SCRIPT]` | Correct one alias in place; exits 1 on an unknown alias or a clashing new value. |
@@ -731,6 +731,20 @@ did not produce, and nothing on the page edits a durable record.
 
 ## Person index
 
+Browse displays and sorts its first column by preferred name, falling back to given name and then canonical
+name. The full name remains in a separate column for disambiguation. All three optional components have Edit
+controls on the person page in both English and Simplified Chinese. For example:
+
+```bash
+pctx edit PERSON_ID --preferred-name Ming --given-name Xiaoming --family-name Wang
+pctx edit PERSON_ID --preferred-name ""
+```
+
+An empty component clears it; omitted components stay unchanged. Existing canonical names are never split.
+Person index and brief JSON add `preferred_name`, `given_name`, `family_name`, and resolved `display_name` fields
+without changing their version-1 envelopes. Unpaged person indexes retain their canonical-name ordering;
+the paginated browser list uses display-name ordering.
+
 ```bash
 uv run pctx list --json
 uv run pctx list --all --json
@@ -1013,9 +1027,9 @@ stores (see the birthday note below).
 The mapping is deliberately non-heuristic, and everything it emits reads back through the bundled vCard importer
 unchanged:
 
-- `FN` is the canonical name, and `N` repeats that whole name in the family-name component
-  (`N:<canonical name>;;;;`). The store never recorded a given/family boundary, so splitting the name on
-  whitespace would invent one.
+- `FN` is the canonical name. When explicit given/family components exist, `N` uses them;
+  otherwise `N` repeats that whole name in the family-name component
+  (`N:<canonical name>;;;;`). Without explicit components, splitting the name on whitespace would invent a boundary.
 - `NICKNAME` comes from nickname aliases and `EMAIL` from handle aliases that actually parse as mail addresses.
   A handle that is not an address — `@alice`, say — is not exported as one.
 - One `ORG`/`TITLE` pair is emitted, chosen by normalized organization name, then normalized role, then

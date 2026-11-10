@@ -99,16 +99,42 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
     @mcp.tool(annotations=_CORRECT, structured_output=False)
     @flag_refusals
-    async def rename_person(person_id: str, name: str) -> dict[str, Any]:
-        """Replace a person's canonical name; the old name stays on as an alias.
+    async def rename_person(
+        person_id: str,
+        name: str | None = None,
+        preferred_name: str | None = None,
+        given_name: str | None = None,
+        family_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Edit explicit person names; a replaced canonical name stays on as an alias.
+
+        Omitted components stay unchanged; an empty string clears preferred/given/family name.
+        At least one name field is required. Preferred name is how you address the person.
 
         Use this to correct a wrong name, such as an email address stored as the name: the old name is kept
         as a `former_name` alias, or as a `handle` when it is an email address, so it is still contact
         information and imports still match on it. An email address as the new name is refused with
         `name_is_email`; a name that already belongs to another person is refused with `name_conflict`.
         """
+        if name is None and preferred_name is None and given_name is None and family_name is None:
+            return {"error": "invalid_request", "message": "At least one name field is required."}
         return call_action(
-            lambda: deps.edit_person.execute(EditPersonInput(person_id=person_id, name=name, source="agent"))
+            lambda: deps.edit_person.execute(
+                EditPersonInput(
+                    person_id=person_id,
+                    name=name,
+                    source="agent",
+                    **{
+                        field: value
+                        for field, value in (
+                            ("preferred_name", preferred_name),
+                            ("given_name", given_name),
+                            ("family_name", family_name),
+                        )
+                        if value is not None
+                    },
+                )
+            )
         )
 
     @mcp.tool(annotations=_WRITE, structured_output=False)

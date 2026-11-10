@@ -102,3 +102,23 @@ def test_remove_alias_is_published_as_destructive_and_idempotent(tmp_path: Path)
     assert tools["remove_alias"].annotations.destructive_hint is True
     assert tools["remove_alias"].annotations.idempotent_hint is True
     assert tools["update_alias"].annotations.destructive_hint is True
+
+
+def test_name_fields_are_available_through_existing_write_tools(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "names.db")
+
+    async def flow(client: Client) -> None:
+        created = await client.call_tool("remember_person", {
+            "name": "Alice Zhang", "preferred_name": "Ali", "given_name": "Alice", "family_name": "Zhang",
+        })
+        assert created.is_error is False
+        person = created.structured_content["person"]
+        assert (person["preferred_name"], person["given_name"], person["family_name"]) == ("Ali", "Alice", "Zhang")
+        edited = await client.call_tool("rename_person", {"person_id": person["id"], "preferred_name": ""})
+        assert edited.is_error is False
+        assert edited.structured_content["preferred_name"] is None
+        assert edited.structured_content["given_name"] == "Alice"
+        refused = await client.call_tool("rename_person", {"person_id": person["id"]})
+        assert refused.is_error is True
+        assert refused.structured_content["error"] == "invalid_request"
+    _run(server, flow)

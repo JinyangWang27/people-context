@@ -462,6 +462,9 @@ def _check_persisted_shape(row: StagedImportRow, merged: dict[str, Any], kind: s
             "the amended candidate is not a valid staged candidate",
         ) from exc
     normalized: dict[str, Any] = model.model_dump(mode="json", exclude_none=True)
+    normalized.update(model.model_dump(
+        include={"preferred_name", "given_name", "family_name"} & model.model_fields_set,
+    ))
     for field_name in _MATCH_OUTCOME_FIELDS:
         if field_name in merged:
             normalized[field_name] = merged[field_name]

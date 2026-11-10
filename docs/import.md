@@ -1079,3 +1079,12 @@ audit and replayable changelog entries as interactive writes. `import_staging` i
 review state and is not captured. The version-1 `pctx export` envelope is unchanged in M6 and does
 not include `devices`, `changelog`, or `sync_conflicts`; first-device bootstrap and changelog transfer require
 the trusted snapshot/restore protocol deferred to M7.
+
+## Explicit person names
+
+Person candidates optionally carry `preferred_name`, `given_name`, and `family_name`. These survive staging,
+review, amendment, and commit. Omitted fields preserve existing components; explicit blank or null clears one.
+They do not alter identity matching. vCard extraction retains explicit given/family values from `N` alongside
+`FN` and aliases; it does not choose a preferred name from the nickname list. vCard export writes known
+components into `N` without guessing a split. Preferred-name preference is retained in JSON export and sync
+bundles; vCard has no dedicated preference field in this integration.

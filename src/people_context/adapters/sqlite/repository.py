@@ -20,9 +20,9 @@ from people_context.ports.repository import (
 
 #: The ordering column and direction of each person-index sort. Fixed strings, never caller text.
 _PAGE_ORDER: dict[str, tuple[str, str]] = {
-    "name": ("canonical_name_normalized", "ASC"),
-    "created": ("created_at", "DESC"),
-    "updated": ("updated_at", "DESC"),
+    "name": ("coalesce(p.preferred_name_normalized, p.given_name_normalized, p.canonical_name_normalized)", "ASC"),
+    "created": ("p.created_at", "DESC"),
+    "updated": ("p.updated_at", "DESC"),
 }
 
 #: The sensitivities a group filter counts without the operator's elevation.
@@ -82,9 +82,11 @@ class SqlitePeopleRepository:
                 """
                 INSERT INTO persons (
                     id, canonical_name, canonical_name_normalized, is_self,
-                    summary, created_at, updated_at, deleted_at
+                    summary, created_at, updated_at, deleted_at,
+                    preferred_name, given_name, family_name,
+                    preferred_name_normalized, given_name_normalized, family_name_normalized
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     canonical_name = excluded.canonical_name,
                     canonical_name_normalized = excluded.canonical_name_normalized,
@@ -92,7 +94,13 @@ class SqlitePeopleRepository:
                     summary = excluded.summary,
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at,
-                    deleted_at = excluded.deleted_at
+                    deleted_at = excluded.deleted_at,
+                    preferred_name = excluded.preferred_name,
+                    given_name = excluded.given_name,
+                    family_name = excluded.family_name,
+                    preferred_name_normalized = excluded.preferred_name_normalized,
+                    given_name_normalized = excluded.given_name_normalized,
+                    family_name_normalized = excluded.family_name_normalized
                 """,
                 (
                     person.id,
@@ -103,6 +111,13 @@ class SqlitePeopleRepository:
                     person.created_at.isoformat(),
                     person.updated_at.isoformat(),
                     person.deleted_at.isoformat() if person.deleted_at else None,
+                    person.preferred_name,
+                    person.given_name,
+                    person.family_name,
+                    *(
+                        normalize_name(name) if name else None
+                        for name in (person.preferred_name, person.given_name, person.family_name)
+                    ),
                 ),
             )
 
@@ -134,13 +149,13 @@ class SqlitePeopleRepository:
             return
         self._conn.executemany(
             "INSERT INTO person_search (name, person_id) VALUES (?, ?)",
-            [(name, person.id) for name in person.all_names()],
+            [(name, person.id) for name in person.searchable_names()],
         )
 
     def rebuild_person_search(self) -> tuple[int, int]:
         """Rebuild FTS rows from active people and aliases in one transaction."""
         people = self.list_people()
-        names = [(name, person.id) for person in people for name in person.all_names()]
+        names = [(name, person.id) for person in people for name in person.searchable_names()]
         with SqliteUnitOfWork(self._conn):
             self._conn.execute("DELETE FROM person_search")
             self._conn.executemany("INSERT INTO person_search (name, person_id) VALUES (?, ?)", names)
@@ -179,9 +194,12 @@ class SqlitePeopleRepository:
             # lower-case query; names and aliases are matched on their stored normalized form.
             conditions.append(
                 "(instr(p.canonical_name_normalized, ?) > 0 OR instr(lower(coalesce(p.summary, '')), ?) > 0"
+                " OR instr(coalesce(p.preferred_name_normalized, ''), ?) > 0"
+                " OR instr(coalesce(p.given_name_normalized, ''), ?) > 0"
+                " OR instr(coalesce(p.family_name_normalized, ''), ?) > 0"
                 " OR EXISTS (SELECT 1 FROM aliases a WHERE a.person_id = p.id AND instr(a.value_normalized, ?) > 0))"
             )
-            params += [where.text, where.text, where.text]
+            params += [where.text] * 6
         if where.organization_id is not None:
             conditions.append("EXISTS (SELECT 1 FROM affiliations f WHERE f.person_id = p.id AND f.org_id = ?)")
             params.append(where.organization_id)
@@ -195,14 +213,16 @@ class SqlitePeopleRepository:
             if not where.include_sensitive:
                 params += [*_ORDINARY_SENSITIVITIES, *_ORDINARY_SENSITIVITIES]
         if after_person_id is not None:
-            key = self._conn.execute(f"SELECT {column}, id FROM persons WHERE id = ?", (after_person_id,)).fetchone()
+            key = self._conn.execute(
+                f"SELECT {column}, p.id FROM persons p WHERE p.id = ?", (after_person_id,)
+            ).fetchone()
             if key is None:
                 return None
-            conditions.append(f"(p.{column}, p.id) {'>' if direction == 'ASC' else '<'} (?, ?)")
+            conditions.append(f"({column}, p.id) {'>' if direction == 'ASC' else '<'} (?, ?)")
             params += [key[0], key[1]]
         rows = self._conn.execute(
             f"SELECT p.* FROM persons p WHERE {' AND '.join(conditions)}"
-            f" ORDER BY p.{column} {direction}, p.id {direction} LIMIT ?",
+            f" ORDER BY {column} {direction}, p.id {direction} LIMIT ?",
             (*params, limit),
         ).fetchall()
         return [self._hydrate(row) for row in rows]
@@ -362,14 +382,17 @@ class SqlitePeopleRepository:
             SELECT p.id AS person_id, p.canonical_name AS name,
                    ? AS score
             FROM persons p
-            WHERE p.deleted_at IS NULL AND p.canonical_name_normalized LIKE ? ESCAPE '\\'
+            WHERE p.deleted_at IS NULL AND (p.canonical_name_normalized LIKE ? ESCAPE '\\'
+              OR p.preferred_name_normalized LIKE ? ESCAPE '\\'
+              OR p.given_name_normalized LIKE ? ESCAPE '\\'
+              OR p.family_name_normalized LIKE ? ESCAPE '\\')
             UNION ALL
             SELECT a.person_id AS person_id, a.value AS name, ? AS score
             FROM aliases a
             JOIN persons p ON p.id = a.person_id
             WHERE p.deleted_at IS NULL AND a.value_normalized LIKE ? ESCAPE '\\'
             """,
-            (_LIKE_SCORE_CANONICAL, pattern, _LIKE_SCORE_ALIAS, pattern),
+            (_LIKE_SCORE_CANONICAL, pattern, pattern, pattern, pattern, _LIKE_SCORE_ALIAS, pattern),
         ).fetchall()
         scored = [(row["name"], row["person_id"], float(row["score"])) for row in rows]
         scored.sort(key=lambda item: item[2], reverse=True)
@@ -411,6 +434,9 @@ class SqlitePeopleRepository:
         return Person(
             id=row["id"],
             canonical_name=row["canonical_name"],
+            preferred_name=row["preferred_name"],
+            given_name=row["given_name"],
+            family_name=row["family_name"],
             is_self=bool(row["is_self"]),
             summary=row["summary"],
             aliases=aliases,

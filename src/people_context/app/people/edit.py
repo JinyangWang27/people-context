@@ -11,7 +11,7 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.person import Alias, AliasKind, Person, check_person_name, kind_for_name
+from people_context.domain.person import Alias, AliasKind, OptionalName, Person, check_person_name, kind_for_name
 from people_context.domain.shared import normalize_name
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -32,6 +32,9 @@ class EditPersonInput(BaseModel):
 
     person_id: str
     name: str | None = None
+    preferred_name: OptionalName = None
+    given_name: OptionalName = None
+    family_name: OptionalName = None
     summary: str | None = None
     source: str = "cli"
 
@@ -62,8 +65,12 @@ class EditPerson:
             fields.append("canonical_name")
         if data.summary is not None:
             fields.append("summary")
+        name_fields = [
+            field for field in ("preferred_name", "given_name", "family_name") if field in data.model_fields_set
+        ]
+        fields.extend(name_fields)
         if not fields:
-            raise ValueError("at least one of name or summary is required")
+            raise ValueError("at least one person field is required")
         before = snapshot(person)
         if data.name is not None:
             normalized = normalize_name(data.name)
@@ -79,6 +86,8 @@ class EditPerson:
                 raise PersonNameCollisionError(data.name, collision.id)
             _keep_former_name(person, normalized)
             person.canonical_name = data.name
+        for field in name_fields:
+            setattr(person, field, getattr(data, field))
         if data.summary is not None:
             person.summary = data.summary
         if before["aliases"] != snapshot(person)["aliases"]:

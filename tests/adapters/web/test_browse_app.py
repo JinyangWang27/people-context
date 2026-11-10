@@ -1109,7 +1109,7 @@ def test_email_addresses_are_shown_as_contact_rather_than_aliases(db_file: Path,
     assert "Jordy" in " ".join(outcome["aliases"])
     assert "jordan@example.com" in " ".join(outcome["contact"])
     # The people list has no contact column; the address appears only under Contact on the person view.
-    assert outcome["row"] == ["Jordan Lee", "Acme, Presight", "Jordy"]
+    assert outcome["row"] == ["Jordan Lee", "Jordan Lee", "Acme, Presight", "Jordy"]
 
 
 def _run_page(db_file: Path, tmp_path: Path, scenario: str, *, language: str = "en") -> Any:
@@ -2512,3 +2512,58 @@ def test_the_person_view_adds_edits_and_removes_after_confirmation(db_file: Path
         ["/api/person/interaction/add", {"person_id": "P", "summary": "Call about seeds", "occurred_on": "2026-09-01"}],
         ["/api/record/correct", {"entity_type": "interaction", "entity_id": "I1", "fields": {"summary": "Long lunch"}}],
     ]
+
+
+def test_explicit_person_names_can_be_edited_and_cleared_in_browse(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post(
+            "/api/person/edit",
+            json={
+                "person_id": person_id,
+                "preferred_name": "Pri",
+                "given_name": "Priya",
+                "family_name": "Sharma",
+            },
+        )
+        assert response.status_code == 200
+        person = client.get("/api/person", params={"id": person_id}).json()["person"]
+        assert person["display_name"] == "Pri"
+        assert person["canonical_name"] == "Priya Sharma"
+        assert client.post("/api/person/edit", json={"person_id": person_id, "preferred_name": ""}).status_code == 200
+        person = client.get("/api/person", params={"id": person_id}).json()["person"]
+        assert person["preferred_name"] is None
+        assert person["display_name"] == "Priya"
+        assert person["family_name"] == "Sharma"
+        assert client.post("/api/person/edit", json={"person_id": person_id, "given_name": "p@example.org"}).json() == {
+            "error": "name_is_email",
+        }
+
+
+
+_EDIT_PREFERRED_NAME = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (label) => view.all().find((n) => (n.attrs || {})["aria-label"] === label);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", display_name: "Jordy",
+    preferred_name: "Jordy", given_name: "Jordan", family_name: "Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+    alias_kinds: [], alias_details: [], record_fields: {} };
+  await showPerson("P", null, []);
+  const title = view.children[0].textContent;
+  labelled("Edit preferred name").listeners.click();
+  labelled("preferred_name").value = "";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ title, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_preferred_name_heading_and_clear_action(db_file: Path, tmp_path: Path) -> None:
+    result = _run_page(db_file, tmp_path, _EDIT_PREFERRED_NAME)
+    assert result == {
+        "title": "Jordy",
+        "posts": [["/api/person/edit", {"person_id": "P", "preferred_name": ""}]],
+    }

@@ -308,3 +308,24 @@ def test_a_committed_legacy_person_stops_resolving_once_its_name_becomes_ambiguo
 
     assert commit.execute(result.batch_id, [fact.id]).unresolved_ids == [fact.id]
     assert conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0] == 0
+
+
+def test_reviewed_person_names_reach_storage_and_explicit_blanks_clear() -> None:
+    conn = open_db(":memory:")
+    people, stage, review, commit = _use_cases(conn)
+    first = stage.execute("names", [{
+        "type": "person", "ref": "alice", "name": "Alice Zhang", "preferred_name": "Ali",
+        "given_name": "Alice", "family_name": "Zhang",
+    }])
+    rows = review.execute(first.batch_id).candidates
+    commit.execute(first.batch_id, [row.id for row in rows])
+    person = people.find_by_normalized_name("alice zhang")[0]
+    assert (person.preferred_name, person.given_name, person.family_name) == ("Ali", "Alice", "Zhang")
+    second = stage.execute("clear-name", [{
+        "type": "person", "ref": "alice", "name": "Alice Zhang", "preferred_name": "",
+    }])
+    rows = review.execute(second.batch_id).candidates
+    commit.execute(second.batch_id, [row.id for row in rows])
+    person = people.get(person.id)
+    assert person.preferred_name is None
+    assert person.display_name == "Alice"

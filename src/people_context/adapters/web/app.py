@@ -148,6 +148,9 @@ class _EditPersonAction(BaseModel):
 
     person_id: _NonBlank
     name: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")] | None = None
+    preferred_name: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
     # An empty summary clears it.
     summary: str | None = None
 
@@ -405,9 +408,7 @@ def create_browse_app(
         runtime: ApplicationRuntime = request.state.runtime
         try:
             action = await _read_action(request, _UpdateAliasAction)
-            result = runtime.use_cases.update_alias.execute(
-                UpdateAliasInput(**action.model_dump(), source="browser")
-            )
+            result = runtime.use_cases.update_alias.execute(UpdateAliasInput(**action.model_dump(), source="browser"))
         except _RequestRefused as exc:
             return _error(exc.code, exc.status)
         except (PersonNotFoundError, AliasNotFoundError, AliasConflictError) as exc:
@@ -418,13 +419,17 @@ def create_browse_app(
         runtime: ApplicationRuntime = request.state.runtime
         try:
             action = await _read_action(request, _EditPersonAction)
-            data = EditPersonInput(**action.model_dump(), source="browser")
+            data = EditPersonInput(**action.model_dump(exclude_unset=True), source="browser")
         except _RequestRefused as exc:
             return _error(exc.code, exc.status)
         except ValidationError:
             # The action already passed its strict schema, so the input's one remaining rule failed.
             return _error(NAME_IS_EMAIL, 400)
-        if data.name is None and data.summary is None:
+        if (
+            data.name is None
+            and data.summary is None
+            and not ({"preferred_name", "given_name", "family_name"} & data.model_fields_set)
+        ):
             return _error("invalid_request", 400)
         try:
             person = runtime.use_cases.edit_person.execute(data)
@@ -511,9 +516,7 @@ def create_browse_app(
         if not displayed(runtime, action.entity_type, action.entity_id):
             return _error("record_not_found", 404)
         try:
-            runtime.use_cases.correct_record.execute(
-                CorrectRecordInput(**action.model_dump(), source="browser")
-            )
+            runtime.use_cases.correct_record.execute(CorrectRecordInput(**action.model_dump(), source="browser"))
         except InvalidCorrectionError as exc:
             # Only declared field names, which the page already holds: an unknown key is the caller's
             # own text, so it is never echoed, and neither is any submitted value.

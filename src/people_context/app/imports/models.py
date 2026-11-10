@@ -16,7 +16,7 @@ from people_context.domain.group import (
     check_temporal_basis,
     resolve_temporal_basis,
 )
-from people_context.domain.person import AliasKind, check_alias_kind, check_person_name
+from people_context.domain.person import AliasKind, OptionalName, check_alias_kind, check_person_name
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
@@ -298,6 +298,9 @@ class PersonCandidateInput(BaseModel):
     type: Literal["person"]
     ref: NonBlank
     name: NonBlank
+    preferred_name: OptionalName = None
+    given_name: OptionalName = None
+    family_name: OptionalName = None
     aliases: list[CandidateAlias] = Field(default_factory=list)
     summary: str | None = None
     message_id: str | None = None

@@ -1271,6 +1271,11 @@ class CommitImport:
                 name=name,
                 aliases=aliases,
                 summary=candidate.get("summary"),
+                **{
+                    field: candidate[field]
+                    for field in ("preferred_name", "given_name", "family_name")
+                    if field in candidate
+                },
                 source=row.source,
                 session=candidate.get("message_id"),
                 # The matched identity is passed as an id rather than left to be re-derived from

@@ -111,6 +111,10 @@ def test_identity_is_narrow_and_active_context_is_outside_zero_budget() -> None:
     assert result.identity.model_dump() == {
         "id": person.id,
         "canonical_name": "Alice",
+        "preferred_name": None,
+        "given_name": None,
+        "family_name": None,
+        "display_name": "Alice",
         "aliases": ["Ally"],
         "summary": "A trusted colleague",
         "is_self": False,

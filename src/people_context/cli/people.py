@@ -95,14 +95,19 @@ def resolve_person(runtime: ApplicationRuntime, reference: str) -> tuple[Person 
 
 def cmd_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
     """Edit a person's canonical name or summary."""
-    if args.name is None and args.summary is None:
-        print("edit requires at least one of --name or --summary.", file=sys.stderr)
+    names = {
+        field: value
+        for field in ("preferred_name", "given_name", "family_name")
+        if (value := getattr(args, field, None)) is not None
+    }
+    if args.name is None and args.summary is None and not names:
+        print("edit requires --name, --summary, --preferred-name, --given-name, or --family-name.", file=sys.stderr)
         return 2
     person, exit_code = resolve_person(runtime, args.person)
     if person is None:
         return exit_code
     try:
-        data = EditPersonInput(person_id=person.id, name=args.name, summary=args.summary)
+        data = EditPersonInput(person_id=person.id, name=args.name, summary=args.summary, **names)
     except ValidationError:
         # The only rule on these fields is the email one; the message names no value.
         print("An email address is not a name; add it with add-alias --kind handle.", file=sys.stderr)

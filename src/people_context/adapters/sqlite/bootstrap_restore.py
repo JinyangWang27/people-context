@@ -280,8 +280,22 @@ class SqliteBootstrapRestorer:
         )
         self._insert_many(
             "persons",
-            ("id", "canonical_name", "canonical_name_normalized", "is_self", "summary",
-             "created_at", "updated_at", "deleted_at"),
+            (
+                "id",
+                "canonical_name",
+                "canonical_name_normalized",
+                "is_self",
+                "summary",
+                "created_at",
+                "updated_at",
+                "deleted_at",
+                "preferred_name",
+                "given_name",
+                "family_name",
+                "preferred_name_normalized",
+                "given_name_normalized",
+                "family_name_normalized",
+            ),
             (
                 (
                     row.id,
@@ -292,6 +306,13 @@ class SqliteBootstrapRestorer:
                     row.created_at.isoformat(),
                     row.updated_at.isoformat(),
                     row.deleted_at.isoformat() if row.deleted_at else None,
+                    row.preferred_name,
+                    row.given_name,
+                    row.family_name,
+                    *(
+                        normalize_name(name) if name else None
+                        for name in (row.preferred_name, row.given_name, row.family_name)
+                    ),
                 )
                 for row in snapshot.people
             ),

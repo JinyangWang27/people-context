@@ -42,6 +42,25 @@ def test_alias_kinds() -> None:
     assert AliasKind.OTHER == "other"
 
 
+def test_display_name_falls_back_without_guessing_name_parts() -> None:
+    person = Person(canonical_name="王小明")
+    assert person.given_name is None
+    assert person.family_name is None
+    assert person.display_name == "王小明"
+    person.given_name = "小明"
+    assert person.display_name == "小明"
+    person.preferred_name = "Ming"
+    assert person.display_name == "Ming"
+
+
+@pytest.mark.parametrize("field", ["preferred_name", "given_name", "family_name"])
+def test_optional_names_trim_and_clear_and_refuse_email(field: str) -> None:
+    assert getattr(Person(canonical_name="Alice", **{field: "  Ali  "}), field) == "Ali"
+    assert getattr(Person(canonical_name="Alice", **{field: "  "}), field) is None
+    with pytest.raises(ValidationError):
+        Person(canonical_name="Alice", **{field: "alice@example.com"})
+
+
 def test_confidence_within_bounds_ok() -> None:
     trait = Trait(
         person_id="p1",

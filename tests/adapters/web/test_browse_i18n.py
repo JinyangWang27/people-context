@@ -24,7 +24,7 @@ _OTHER_LANGUAGES = [code for code in BROWSE_LANGUAGES if code != "en"]
 #: Keys the page builds from a prefix and a known suffix rather than naming whole.
 _COMPOSED_KEYS = {
     *(f"people.sort.{value}" for value in ("name", "created", "updated")),
-    *(f"people.column.{column}" for column in ("name", "organization", "aliases", "summary")),
+    *(f"people.column.{column}" for column in ("preferred_name", "name", "organization", "aliases", "summary")),
     *(f"sources.column.{column}" for column in ("kind", "label", "status", "batch")),
     *(f"batch.column.{column}" for column in ("status", "proposal", "identity", "staged")),
     *(
@@ -38,6 +38,12 @@ _COMPOSED_KEYS = {
     ),
     "person.edit_name",
     "person.edit_summary",
+    "person.edit_preferred_name",
+    "person.edit_given_name",
+    "person.edit_family_name",
+    "person.preferred_name",
+    "person.given_name",
+    "person.family_name",
 }
 
 

@@ -128,6 +128,8 @@ class MergePeople:
         former_name = duplicate.canonical_name
         former = Alias(value=former_name, kind=kind_for_name(former_name, AliasKind.FORMER_NAME))
         candidates = [former, *duplicate.aliases]
+        if duplicate.preferred_name and duplicate.preferred_name != primary.preferred_name:
+            candidates.append(Alias(value=duplicate.preferred_name, kind=AliasKind.NICKNAME))
         aliases_added: list[str] = []
         for alias in candidates:
             normalized = normalize_name(alias.value)
@@ -136,6 +138,9 @@ class MergePeople:
             known.add(normalized)
             primary.aliases.append(alias.model_copy(deep=True))
             aliases_added.append(alias.value)
+        for field in ("preferred_name", "given_name", "family_name"):
+            if not getattr(primary, field):
+                setattr(primary, field, getattr(duplicate, field))
         if not primary.summary:
             primary.summary = duplicate.summary
         return aliases_added

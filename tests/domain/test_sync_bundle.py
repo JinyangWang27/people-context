@@ -61,6 +61,9 @@ def _document() -> dict[str, Any]:
                 {
                     "id": _PERSON_ID,
                     "canonical_name": "Alice",
+                "preferred_name": None,
+                "given_name": None,
+                "family_name": None,
                     "is_self": False,
                     "summary": None,
                     "aliases": [
@@ -1087,7 +1090,7 @@ def test_the_current_version_accepts_a_rejected_staging_row() -> None:
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 7
+    assert document.version == SYNC_BUNDLE_VERSION == 8
     assert document.imports.staging[0].status == "rejected"
 
 
@@ -1216,7 +1219,7 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 7
+    assert document.version == SYNC_BUNDLE_VERSION == 8
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1301,7 +1304,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 1, 6, 8, "7"])
+@pytest.mark.parametrize("version", [0, 1, 6, 7, 9, "8"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version
@@ -1871,3 +1874,12 @@ def test_a_bundled_group_name_at_exactly_the_domain_bound_is_accepted() -> None:
     payload["groups"][0]["name"] = "x" * 256
 
     assert parse_bundle_payload(payload).groups[0].name == "x" * 256
+
+
+@pytest.mark.parametrize("field", ["preferred_name", "given_name", "family_name"])
+@pytest.mark.parametrize("value", ["x@example.org", "  Alice  ", ""])
+def test_bundle_refuses_name_components_that_cannot_hydrate_verbatim(field: str, value: str) -> None:
+    payload = _document()
+    payload["snapshot"]["people"][0][field] = value
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)

@@ -31,6 +31,8 @@ class VCardContact:
 
     person_id: str
     full_name: str
+    given_name: str | None = None
+    family_name: str | None = None
     nicknames: tuple[str, ...] = ()
     emails: tuple[str, ...] = ()
     affiliation: VCardAffiliation | None = None

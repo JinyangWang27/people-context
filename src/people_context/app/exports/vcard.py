@@ -142,6 +142,8 @@ class ExportVCard:
                 VCardContact(
                     person_id=person.id,
                     full_name=full_name,
+                    given_name=person.given_name,
+                    family_name=person.family_name,
                     nicknames=_nicknames(person),
                     emails=_emails(person),
                     affiliation=affiliation,

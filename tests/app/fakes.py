@@ -111,14 +111,14 @@ class FakePeopleRepository:
 
         def key(person: Person) -> tuple[str, str]:
             if where.sort == "name":
-                return (normalize_name(person.canonical_name), person.id)
+                return (normalize_name(person.display_name), person.id)
             stamp = person.created_at if where.sort == "created" else person.updated_at
             return (stamp.isoformat(), person.id)
 
         def matches(person: Person) -> bool:
             if not where.text:
                 return True
-            names = [normalize_name(name) for name in person.all_names()]
+            names = [normalize_name(name) for name in person.searchable_names()]
             return any(where.text in name for name in names) or where.text in (person.summary or "").lower()
 
         after: tuple[str, str] | None = None

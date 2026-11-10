@@ -411,6 +411,9 @@ def build_parser() -> argparse.ArgumentParser:
     edit.add_argument("person", help="An active person id, or a name to resolve.")
     edit.add_argument("--name", default=None, help="New canonical name.")
     edit.add_argument("--summary", default=None, help="New summary.")
+    edit.add_argument("--preferred-name", default=None, help="How you address them; empty clears it.")
+    edit.add_argument("--given-name", default=None, help="Explicit given name; empty clears it.")
+    edit.add_argument("--family-name", default=None, help="Explicit family name; empty clears it.")
 
     add_alias = subparsers.add_parser("add-alias", help="Add an alias to a person.")
     add_alias.add_argument("person", help="An active person id, or a name to resolve.")

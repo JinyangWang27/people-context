@@ -327,7 +327,8 @@ async function showPeople(cursor, back) {
   const rows = doc.people.map((person) => {
     const emails = person.emails || [];
     return [
-      button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      button(person.display_name || person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      person.canonical_name,
       (organizations[person.id] || []).join(", "),
       // Email addresses are contact information, shown on the person view rather than as names here.
       person.aliases.filter((alias) => !emails.includes(alias)).join(", "),
@@ -339,7 +340,8 @@ async function showPeople(cursor, back) {
     t("people.title"),
     peopleControls(doc.filters || {}),
     doc.people.length
-      ? table(["name", "organization", "aliases", "summary"].map((column) => t("people.column." + column)), rows)
+      ? table(["preferred_name", "name", "organization", "aliases", "summary"].map(
+        (column) => t("people.column." + column)), rows)
       : el("p", t(narrowed ? "people.none_match" : "people.none"), "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );
@@ -683,7 +685,12 @@ async function showPerson(personId, cursor, back) {
   identity.append(el("dt", t("person.name")), name, el("dt", t("person.aliases")), aliases,
     el("dt", t("person.contact")), contact, el("dt", t("person.summary")), summary,
     el("dt", t("person.disclosure")), el("dd", valueLabel(doc.disclosure.context)));
-  const nodes = [identity];
+  for (const field of ["preferred_name", "given_name", "family_name"]) {
+    const value = el("dd");
+    value.append(personFieldRow(doc.person.id, field, doc.person[field], reopen));
+    identity.append(el("dt", t("person." + field)), value);
+  }
+  const nodes = [identity, el("p", t("person.name_fallback"), "notice")];
   if (doc.truncated) {
     nodes.push(el("p", t("person.truncated"), "notice"));
   }
@@ -708,7 +715,7 @@ async function showPerson(personId, cursor, back) {
     editable("trait", doc.traits.map((trait) => [trait, valueLabel(trait.category) + ": " + trait.value])),
   );
   nodes.push(button(t("person.back"), () => showPeople(cursor, back)));
-  show(doc.person.canonical_name, ...nodes);
+  show(doc.person.display_name || doc.person.canonical_name, ...nodes);
 }
 
 async function showSources(cursor, back) {
