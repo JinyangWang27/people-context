@@ -660,14 +660,14 @@ function recordList(type, entries, descriptors, reopen) {
 }
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
-async function showPerson(personId, cursor, back) {
-  current = () => showPerson(personId, cursor, back);
+async function showPerson(personId, cursor, back, previousNameDetails = null) {
+  current = () => showPerson(personId, cursor, back, previousNameDetails);
   const at = navigate();
   let doc;
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const identity = el("dl");
-  const reopen = () => showPerson(personId, cursor, back);
+  const reopen = () => showPerson(personId, cursor, back, details);
   const aliases = el("dd");
   const kinds = doc.alias_kinds || [];
   aliases.append(aliasEditor(doc.person.id, doc, reopen, false), aliasAdder(doc.person.id, kinds, reopen, false));
@@ -678,6 +678,9 @@ async function showPerson(personId, cursor, back) {
   identity.append(el("dt", t("person.preferred_name")), preferred,
     el("dt", t("person.name")), el("dd", doc.person.full_name || doc.person.canonical_name));
   const details = el("details");
+  details.open = Boolean(previousNameDetails && previousNameDetails.open);
+  previousNameDetails = null;
+  current = reopen;
   const components = el("dl");
   for (const field of ["given_name", "family_name"]) {
     const value = el("dd");

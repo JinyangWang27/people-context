@@ -2607,9 +2607,25 @@ _NAME_DETAILS = r"""
     summary: details.children[0].textContent, order: order.checked,
     nameEditors: identity.all().filter((n) => n.tag === "button").length,
     parts: details.all().filter((n) => n.tag === "dt").map((n) => n.textContent) };
-  order.checked = false; order.listeners.change();
+  details.open = true;
+  details.all().find((n) => n.tag === "button"
+    && n.attrs["aria-label"] === t("person.edit_given_name")).listeners.click();
+  details.all().find((n) => n.attrs && n.attrs["aria-label"] === fieldAria("given_name")).value = "小亮";
+  details.all().find((n) => n.tag === "button" && n.textContent === t("common.save")).listeners.click();
   releases.forEach((r) => r()); await tick();
-  console.log(JSON.stringify({ ...state, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+  const openAfterSave = Boolean(view.children.find((n) => n.tag === "details").open);
+  document.getElementById("nav-lang").listeners.click(); await tick();
+  const refreshed = view.children.find((n) => n.tag === "details");
+  const openAfterLanguage = Boolean(refreshed.open);
+  const changedOrder = refreshed.all().find((n) => n.type === "checkbox");
+  holdGets = true;
+  changedOrder.checked = false; changedOrder.listeners.change();
+  releases.forEach((r) => r()); await tick();
+  refreshed.open = false;
+  holdGets = false; heldGets.forEach((r) => r()); await tick();
+  const closedAfterSave = !view.children.find((n) => n.tag === "details").open;
+  console.log(JSON.stringify({ ...state, openAfterSave, openAfterLanguage, closedAfterSave,
+    posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
 })();
 """
 
@@ -2634,7 +2650,13 @@ def test_name_details_keep_full_name_read_only_and_edit_order(
         "order": True,
         "nameEditors": 1,
         "parts": parts,
-        "posts": [["/api/person/edit", {"person_id": "P", "family_name_first": False}]],
+        "openAfterSave": True,
+        "openAfterLanguage": True,
+        "closedAfterSave": True,
+        "posts": [
+            ["/api/person/edit", {"person_id": "P", "given_name": "小亮"}],
+            ["/api/person/edit", {"person_id": "P", "family_name_first": False}],
+        ],
     }
 
 
