@@ -98,7 +98,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 <nav>
 <button type="button" id="nav-people">People</button>
 <button type="button" id="nav-sources">Import sources</button>
-<button type="button" id="nav-done">Done</button>
+<button type="button" id="nav-done">Close</button>
 <button type="button" id="nav-lang"></button>
 </nav>
 </header>
@@ -264,6 +264,17 @@ function pager(back, cursor, nextCursor, open) {
 // the same narrowed list; changing any of them starts again from the first page.
 const peopleFilter = { q: "", sort: "name", organization: "", group: "" };
 
+let restoringHistory = false;
+let viewerClosed = false;
+
+function rememberPage(page, args) {
+  if (restoringHistory || viewerClosed) return;
+  const state = { pctx: true, page, args, filters: { ...peopleFilter } };
+  if (JSON.stringify(history.state) === JSON.stringify(state)) return;
+  if (history.state && history.state.pctx) history.pushState(state, "");
+  else history.replaceState(state, "");
+}
+
 const PEOPLE_SORTS = ["name", "created", "updated"];
 
 function peopleControls(filters) {
@@ -318,6 +329,7 @@ function peopleControls(filters) {
 }
 
 async function showPeople(cursor, back) {
+  rememberPage("people", [cursor, back]);
   current = () => showPeople(cursor, back);
   const at = navigate();
   let doc;
@@ -668,6 +680,7 @@ function recordList(type, entries, descriptors, reopen) {
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
 async function showPerson(personId, cursor, back, previousNameDetails = null, pendingEdits = new Map()) {
+  rememberPage("person", [personId, cursor, back]);
   current = () => showPerson(personId, cursor, back, previousNameDetails, pendingEdits);
   const at = navigate();
   let doc;
@@ -740,6 +753,7 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
 }
 
 async function showSources(cursor, back) {
+  rememberPage("sources", [cursor, back]);
   current = () => showSources(cursor, back);
   const at = navigate();
   let doc;
@@ -770,6 +784,7 @@ async function showSources(cursor, back) {
 }
 
 async function showSource(sourceId, cursor, back) {
+  rememberPage("source", [sourceId, cursor, back]);
   current = () => showSource(sourceId, cursor, back);
   const at = navigate();
   let doc;
@@ -920,6 +935,7 @@ function labelled(node, label) {
 // `baseline` is the digest the kept acceptances were made against: the one on screen, or the one
 // this page's own withdrawal produced. Any other digest means another client changed the batch.
 async function showBatch(batchId, message, baseline) {
+  rememberPage("batch", [batchId]);
   if (batchState.id !== batchId) {
     batchState.accepted = new Set();
     batchState.editing = null;
@@ -1565,11 +1581,26 @@ async function commitAccepted() {
 async function done() {
   // Stopping is a navigation too: no pending view or batch response may repaint after it.
   const at = navigate();
-  try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error, at); }
+  viewerClosed = true;
+  try { await api("/api/done", { method: "POST" }); } catch (error) {
+    viewerClosed = false;
+    return fail(error, at);
+  }
   if (at !== navigation) return;
   current = () => view.replaceChildren(el("p", t("done.stopped")));
   current();
 }
+
+window.addEventListener("popstate", (event) => {
+  const state = event.state;
+  if (viewerClosed || !state || state.pctx !== true || !Array.isArray(state.args)) return;
+  const open = { people: showPeople, person: showPerson, sources: showSources,
+    source: showSource, batch: showBatch }[state.page];
+  if (typeof open !== "function") return;
+  Object.assign(peopleFilter, state.filters);
+  restoringHistory = true;
+  try { open(...state.args); } finally { restoringHistory = false; }
+});
 
 document.getElementById("nav-people").addEventListener("click", () => showPeople(null, []));
 document.getElementById("nav-sources").addEventListener("click", () => showSources(null, []));

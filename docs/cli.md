@@ -36,7 +36,7 @@ browser batch review, and M30.3 browser inline edit.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--subject PERSON] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--subject` records the relationship from that existing person instead of you; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Close; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
@@ -578,6 +578,11 @@ without writing anything, when `--output` names the database it is reading or on
 
 ## Local browser viewer
 
+Browser Back and Forward restore the viewer page, list position, and filter choices. Saving a field or
+switching languages refreshes the current page without adding a history step. History keeps view ids,
+cursors, and filter choices in the tab; the launch token and full records are not added to it. Close stops
+the local viewer; history navigation after closing does not restart it.
+
 ```bash
 uv run pctx browse
 uv run pctx browse --open --port 8766
@@ -616,7 +621,7 @@ summary, time, channel, and sensitivity can be corrected; its participants canno
 interaction also has **Remove**, which asks for confirmation and then forgets the record through the same use case
 as the `forget` MCP tool: it is deleted and its audit and replay history redacted, not kept as a before-and-after,
 and a shared interaction is removed for every participant. A record the view's disclosure hides is refused as
-`record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or
+`record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Close button, leaves no daemon, PID file, or
 configuration, and two launches are two unrelated processes.
 
 The page is in English or Simplified Chinese. It opens in the first of `--lang`, the `PEOPLE_CONTEXT_BROWSE_LANG`

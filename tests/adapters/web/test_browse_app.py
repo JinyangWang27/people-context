@@ -851,7 +851,28 @@ const ids = {};
 globalThis.document = { getElementById: (id) => (ids[id] ??= new El(id)), createElement: (t) => new El(t),
   createTextNode: (text) => ({ text }) };
 globalThis.location = { search: "?token=t" };
-globalThis.history = { replaceState() {} };
+const windowEvents = {};
+globalThis.window = { addEventListener: (name, listener) => { windowEvents[name] = listener; } };
+const historyEntries = [{state: null, url: "/?token=t"}];
+let historyIndex = 0;
+globalThis.history = {
+  get state() { return historyEntries[historyIndex].state; },
+  get length() { return historyEntries.length; },
+  replaceState(state, title, url) {
+    historyEntries[historyIndex] = {state: structuredClone(state), url: url || historyEntries[historyIndex].url};
+  },
+  pushState(state, title, url) {
+    historyEntries.splice(historyIndex + 1);
+    historyEntries.push({state: structuredClone(state), url: url || historyEntries[historyIndex].url});
+    historyIndex += 1;
+  },
+  back() { if (historyIndex > 0) {
+    historyIndex -= 1; if (windowEvents.popstate) windowEvents.popstate({state: this.state});
+  } },
+  forward() { if (historyIndex + 1 < historyEntries.length) {
+    historyIndex += 1; if (windowEvents.popstate) windowEvents.popstate({state: this.state});
+  } },
+};
 const posts = []; const releases = []; const heldGets = []; let holdGets = false;
 const review = { batch_id: "B", batch_digest: "d1", candidates: [
   { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
@@ -2735,4 +2756,149 @@ def test_the_preserved_name_draft_can_be_cancelled(db_file: Path, tmp_path: Path
         "keptAfterSave": "张",
         "keptAfterLanguage": "张",
         "posts": [["/api/person/edit", {"person_id": "P", "given_name": "小亮"}]],
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+def test_people_page_buttons_walk_real_api_cursors_both_directions(
+    db_file: Path, tmp_path: Path, language: str
+) -> None:
+    conn = open_db(db_file)
+    try:
+        repo = SqlitePeopleRepository(conn)
+        for index in range(101):
+            repo.save_person(Person(canonical_name=f"Person {index:03d}"))
+    finally:
+        conn.close()
+    pages = {}
+    cursor = ""
+    with _client(db_file) as client:
+        while True:
+            response = client.get("/api/people", params={"cursor": cursor} if cursor else {})
+            assert response.status_code == 200
+            document = response.json()
+            pages[cursor] = document
+            cursor = document["next_cursor"]
+            if not cursor:
+                break
+    scenario = r"""
+    (async () => {
+      const pages = __PAGES__;
+      const originalFetch = fetch;
+      globalThis.fetch = async (path, options) => {
+        if (!path.startsWith("/api/people")) return originalFetch(path, options);
+        const key = new URL(path, "http://127.0.0.1").searchParams.get("cursor") || "";
+        if (!(key in pages)) throw new Error("unexpected cursor");
+        return {ok: true, json: async () => pages[key]};
+      };
+      const names = () => view.all().filter((n) => n.tag === "button" && n.className === "link")
+        .map((n) => n.textContent);
+      const click = async (key) => view.all().find(
+        (n) => n.tag === "button" && n.textContent === t(key)).listeners.click();
+      await showPeople(null, []);
+      const first = names();
+      await click("pager.next"); const second = names();
+      await click("pager.next"); const third = names();
+      await click("pager.previous"); const backSecond = names();
+      await click("pager.previous"); const backFirst = names();
+      console.log(JSON.stringify({first, second, third, backSecond, backFirst}));
+    })();
+    """.replace("__PAGES__", json.dumps(pages))
+    result = _run_page(db_file, tmp_path, scenario, language=language)
+    first = [f"Person {index:03d}" for index in range(50)]
+    second = [f"Person {index:03d}" for index in range(50, 100)]
+    assert result == {
+        "first": first,
+        "second": second,
+        "third": ["Person 100"],
+        "backSecond": second,
+        "backFirst": first,
+    }
+
+
+_BROWSER_HISTORY = r"""
+(async () => {
+  const originalFetch = fetch;
+  globalThis.fetch = async (path, options) => {
+    if (path.startsWith("/api/sources")) {
+      gets.push(path); return {ok: true, json: async () => ({sources: [], next_cursor: null})};
+    }
+    if (path.startsWith("/api/source?")) {
+      gets.push(path); return {ok: true, json: async () => ({source: {
+        id: "S", source_kind: "agent", label: "Notes", status: "staged", batch_id: "B"},
+        staged_total: 1, staged_by_status: {pending: 1}})};
+    }
+    return originalFetch(path, options);
+  };
+  const person = {id: "P", canonical_name: "Alice", aliases: [], emails: []};
+  globalThis.peopleDoc = {people: [person], next_cursor: null};
+  globalThis.personDoc = {person, disclosure: {context: "ordinary"}, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: [], alias_details: []};
+  await showPeople(null, []);
+  await view.all().find((n) => n.tag === "button" && n.textContent === "Alice").listeners.click();
+  await showSources(null, []);
+  await showSource("S", null, []);
+  await showBatch("B");
+  const count = history.length;
+  const backward = [], forward = [];
+  for (let step = 0; step < 4; step++) { history.back(); await tick(); backward.push(view.children[0].textContent); }
+  for (let step = 0; step < 4; step++) { history.forward(); await tick(); forward.push(view.children[0].textContent); }
+  const stableCount = history.length;
+  const urls = historyEntries.map((entry) => entry.url);
+  const closing = done(); releases.forEach((r) => r()); await closing;
+  const beforeBack = gets.length;
+  history.back(); await tick();
+  console.log(JSON.stringify({count, stableCount, backward, forward, urls,
+    readsAfterClose: gets.length - beforeBack, stopped: view.children[0].textContent}));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_back_forward_restore_all_views_without_reopening_closed_viewer(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _BROWSER_HISTORY)
+    assert outcome == {
+        "count": 5,
+        "stableCount": 5,
+        "backward": ["Import source", "Import sources", "Alice", "People"],
+        "forward": ["Alice", "Import sources", "Import source", "Import batch"],
+        "urls": ["/"] * 5,
+        "readsAfterClose": 0,
+        "stopped": "pctx browse has stopped. You can close this tab.",
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_history_restores_filters_and_does_not_add_refresh_steps(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.peopleDoc = {people: [], next_cursor: "C2"};
+      globalThis.personDoc = {person: {id: "P", canonical_name: "Alice", aliases: [], emails: []},
+        disclosure: {context: "ordinary"}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        alias_details: [], alias_kinds: []};
+      await showPeople(null, []);
+      Object.assign(peopleFilter, {q: "Alice", sort: "updated", organization: "O", group: "G"});
+      await showPeople("C1", [null]);
+      await showPerson("P", "C1", [null]);
+      const beforeRefresh = history.length;
+      await current();
+      document.getElementById("nav-lang").listeners.click(); await tick();
+      const afterRefresh = history.length;
+      Object.assign(peopleFilter, {q: "Other", sort: "name", organization: "", group: ""});
+      await showPeople(null, []);
+      history.back(); await tick();
+      const restored = {...peopleFilter};
+      history.back(); await tick();
+      console.log(JSON.stringify({beforeRefresh, afterRefresh, restored, request: gets.at(-1),
+        length: history.length, url: historyEntries[historyIndex].url}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario) == {
+        "beforeRefresh": 3,
+        "afterRefresh": 3,
+        "restored": {"q": "Alice", "sort": "updated", "organization": "O", "group": "G"},
+        "request": "/api/people?cursor=C1&q=Alice&sort=updated&organization=O&group=G",
+        "length": 4,
+        "url": "/",
     }

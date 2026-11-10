@@ -200,3 +200,25 @@ def test_switching_language_rebuilds_an_open_form_in_place_keeping_what_was_type
     assert ["nickname", "昵称"] in outcome["kinds"]
     # Only what the reviewer changed is sent: the untouched summary and alias list stay out.
     assert outcome["patch"] == {"name": "Elena Marshe", "matched_person_id": "person-2"}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(("language", "label"), [("en", "Close"), ("zh-CN", "关闭")])
+def test_close_button_names_and_ends_the_viewer_session(
+    db_file: Path, tmp_path: Path, language: str, label: str
+) -> None:
+    scenario = r"""
+    (async () => {
+      await tick();
+      const control = document.getElementById("nav-done");
+      const label = control.textContent;
+      const closing = control.listeners.click();
+      releases.forEach((r) => r()); await closing;
+      console.log(JSON.stringify({label, posts: posts.map((p) => p.path), text: view.children[0].textContent}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario, language=language) == {
+        "label": label,
+        "posts": ["/api/done"],
+        "text": MESSAGES[language]["done.stopped"],
+    }
