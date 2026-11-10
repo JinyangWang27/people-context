@@ -94,14 +94,14 @@ def resolve_person(runtime: ApplicationRuntime, reference: str) -> tuple[Person 
 
 
 def cmd_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
-    """Edit a person's canonical name or summary."""
+    """Edit a person's name fields or summary."""
     names = {
         field: value
-        for field in ("preferred_name", "given_name", "family_name")
+        for field in ("preferred_name", "given_name", "family_name", "family_name_first")
         if (value := getattr(args, field, None)) is not None
     }
     if args.name is None and args.summary is None and not names:
-        print("edit requires --name, --summary, --preferred-name, --given-name, or --family-name.", file=sys.stderr)
+        print("edit requires a name, summary, or name-order option.", file=sys.stderr)
         return 2
     person, exit_code = resolve_person(runtime, args.person)
     if person is None:

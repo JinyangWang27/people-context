@@ -35,7 +35,7 @@ def _people(conn: sqlite3.Connection) -> tuple[Person, Person]:
 
 def test_a_fresh_database_is_seeded_with_the_vocabulary() -> None:
     fresh = open_db(":memory:")
-    assert fresh.execute("PRAGMA user_version").fetchone()[0] == 11
+    assert fresh.execute("PRAGMA user_version").fetchone()[0] == 12
     assert fresh.execute("SELECT COUNT(*) FROM relationship_types").fetchone()[0] == 14
     inverse = fresh.execute("SELECT inverse FROM relationship_types WHERE type = 'reports_to'").fetchone()[0]
     assert inverse == "manages"

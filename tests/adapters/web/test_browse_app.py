@@ -1095,9 +1095,11 @@ _CONTACT_IS_NOT_A_NAME = r"""
     interactions: [], reminders: [], traits: [], alias_kinds: ["nickname", "handle"],
     alias_details: [{ value: "Jordy", kind: "nickname" }, { value: "jordan@example.com", kind: "handle" }] };
   await showPerson("P", null, []);
-  const terms = view.all().filter((n) => n.tag === "dd");
-  // The identity list runs Name, Aliases, Contact.
-  console.log(JSON.stringify({ row: texts(row), aliases: texts(terms[1]), contact: texts(terms[2]) }));
+  const metadata = view.children.filter((n) => n.tag === "dl")[1];
+  const valueFor = (label) => metadata.children[metadata.children.findIndex(
+    (n) => n.tag === "dt" && n.textContent === label) + 1];
+  console.log(JSON.stringify({ row: texts(row), aliases: texts(valueFor("Aliases")),
+    contact: texts(valueFor("Contact")) }));
 })();
 """
 
@@ -2216,7 +2218,7 @@ _EDIT_A_FACT = r"""
 """
 
 
-_EDIT_NAME_AND_SUMMARY = r"""
+_EDIT_SUMMARY = r"""
 (async () => {
   const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
   const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
@@ -2225,36 +2227,24 @@ _EDIT_NAME_AND_SUMMARY = r"""
     disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
     alias_kinds: [], alias_details: [], record_fields: {} };
   await showPerson("P", null, []);
-  labelled("Edit name").listeners.click();
+  labelled("Edit summary").listeners.click();
   find("Save").listeners.click();
   const unchanged = posts.length;
-  labelled("Edit name").listeners.click();
-  labelled("name").value = "  ";
-  find("Save").listeners.click();
-  const blank = posts.length;
-  labelled("name").value = "Jordan A. Lee";
-  find("Save").listeners.click();
-  releases.forEach((r) => r()); await tick();
   labelled("Edit summary").listeners.click();
   labelled("summary").value = "";
   find("Save").listeners.click();
   releases.forEach((r) => r()); await tick();
-  console.log(JSON.stringify({ unchanged, blank, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+  console.log(JSON.stringify({ unchanged, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
 })();
 """
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_the_name_and_summary_rows_send_only_a_moved_value(db_file: Path, tmp_path: Path) -> None:
-    outcome = _run_page(db_file, tmp_path, _EDIT_NAME_AND_SUMMARY)
+def test_summary_edit_sends_only_a_moved_value(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _EDIT_SUMMARY)
     assert outcome == {
         "unchanged": 0,
-        "blank": 0,
-        "posts": [
-            ["/api/person/edit", {"person_id": "P", "name": "Jordan A. Lee"}],
-            # An emptied summary is sent as "", which clears it; null would mean "unchanged".
-            ["/api/person/edit", {"person_id": "P", "summary": ""}],
-        ],
+        "posts": [["/api/person/edit", {"person_id": "P", "summary": ""}]],
     }
 
 
@@ -2552,12 +2542,15 @@ def test_explicit_person_names_can_be_edited_and_cleared_in_browse(db_file: Path
                 "preferred_name": "Pri",
                 "given_name": "Priya",
                 "family_name": "Sharma",
+                "family_name_first": True,
             },
         )
         assert response.status_code == 200
         person = client.get("/api/person", params={"id": person_id}).json()["person"]
         assert person["display_name"] == "Pri"
         assert person["canonical_name"] == "Priya Sharma"
+        assert person["full_name"] == "Sharma Priya"
+        assert person["family_name_first"] is True
         assert client.post("/api/person/edit", json={"person_id": person_id, "preferred_name": ""}).status_code == 200
         person = client.get("/api/person", params={"id": person_id}).json()["person"]
         assert person["preferred_name"] is None
@@ -2594,3 +2587,66 @@ def test_preferred_name_heading_and_clear_action(db_file: Path, tmp_path: Path) 
         "title": "Jordy",
         "posts": [["/api/person/edit", {"person_id": "P", "preferred_name": ""}]],
     }
+
+
+_NAME_DETAILS = r"""
+(async () => {
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Wang Xiaoming", full_name: "王小明",
+    display_name: "小明", preferred_name: "小明", given_name: "小明", family_name: "王", family_name_first: true,
+    aliases: ["Xiaoming"], emails: [] }, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: ["transliteration"],
+    alias_details: [{value: "Xiaoming", kind: "transliteration"}], record_fields: {} };
+  await showPerson("P", null, []);
+  const identity = view.children.find((n) => n.tag === "dl");
+  const details = view.children.find((n) => n.tag === "details");
+  if (!details) { console.log(JSON.stringify({ details: false })); return; }
+  const terms = identity.children.filter((n) => n.tag === "dt").map((n) => n.textContent);
+  const values = identity.children.filter((n) => n.tag === "dd");
+  const order = details.all().find((n) => n.type === "checkbox");
+  const state = { terms, full: values[1].textContent, collapsed: !details.open,
+    summary: details.children[0].textContent, order: order.checked,
+    nameEditors: identity.all().filter((n) => n.tag === "button").length,
+    parts: details.all().filter((n) => n.tag === "dt").map((n) => n.textContent) };
+  order.checked = false; order.listeners.change();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ ...state, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("language", "terms", "summary", "parts"),
+    [
+        ("en", ["Preferred name", "Full name"], "Name details", ["Given name", "Family name"]),
+        ("zh-CN", ["称呼名", "完整姓名"], "姓名详情", ["名", "姓"]),
+    ],
+)
+def test_name_details_keep_full_name_read_only_and_edit_order(
+    db_file: Path, tmp_path: Path, language: str, terms: list[str], summary: str, parts: list[str]
+) -> None:
+    result = _run_page(db_file, tmp_path, _NAME_DETAILS, language=language)
+    assert result == {
+        "terms": terms,
+        "full": "王小明",
+        "collapsed": True,
+        "summary": summary,
+        "order": True,
+        "nameEditors": 1,
+        "parts": parts,
+        "posts": [["/api/person/edit", {"person_id": "P", "family_name_first": False}]],
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_reviewed_boolean_control_submits_false_as_boolean(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (() => {
+      const control = buildControl({name: "family_name_first", control: "boolean"},
+        {candidate: {family_name_first: true}}, {});
+      const untouched = control.read() === undefined;
+      control.node.value = "false";
+      console.log(JSON.stringify({untouched, submitted: control.read()}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario) == {"untouched": True, "submitted": False}

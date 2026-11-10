@@ -64,6 +64,7 @@ def _document() -> dict[str, Any]:
                     "preferred_name": None,
                     "given_name": None,
                     "family_name": None,
+                    "family_name_first": False,
                     "is_self": False,
                     "summary": None,
                     "aliases": [
@@ -1090,7 +1091,7 @@ def test_the_current_version_accepts_a_rejected_staging_row() -> None:
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 8
+    assert document.version == SYNC_BUNDLE_VERSION == 9
     assert document.imports.staging[0].status == "rejected"
 
 
@@ -1219,7 +1220,7 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 8
+    assert document.version == SYNC_BUNDLE_VERSION == 9
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1304,7 +1305,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 1, 6, 7, 9, "8"])
+@pytest.mark.parametrize("version", [0, 1, 6, 7, 8, 10, "9"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version

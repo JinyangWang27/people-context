@@ -28,6 +28,11 @@ _PAGE_ORDER: dict[str, tuple[str, str]] = {
 #: The sensitivities a group filter counts without the operator's elevation.
 _ORDINARY_SENSITIVITIES = (Sensitivity.PUBLIC.value, Sensitivity.PERSONAL.value)
 
+_FULL_NAME_SEARCH = (
+    "replace(CASE WHEN p.family_name_first THEN p.family_name_normalized || p.given_name_normalized"
+    " ELSE p.given_name_normalized || p.family_name_normalized END, ' ', '')"
+)
+
 # Modest fixed scores for the non-FTS substring fallback path.
 _LIKE_SCORE_CANONICAL = 0.5
 _LIKE_SCORE_ALIAS = 0.4
@@ -82,11 +87,11 @@ class SqlitePeopleRepository:
                 """
                 INSERT INTO persons (
                     id, canonical_name, canonical_name_normalized, is_self,
-                    summary, created_at, updated_at, deleted_at,
+                    summary, created_at, updated_at, deleted_at, family_name_first,
                     preferred_name, given_name, family_name,
                     preferred_name_normalized, given_name_normalized, family_name_normalized
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     canonical_name = excluded.canonical_name,
                     canonical_name_normalized = excluded.canonical_name_normalized,
@@ -95,6 +100,7 @@ class SqlitePeopleRepository:
                     created_at = excluded.created_at,
                     updated_at = excluded.updated_at,
                     deleted_at = excluded.deleted_at,
+                    family_name_first = excluded.family_name_first,
                     preferred_name = excluded.preferred_name,
                     given_name = excluded.given_name,
                     family_name = excluded.family_name,
@@ -111,6 +117,7 @@ class SqlitePeopleRepository:
                     person.created_at.isoformat(),
                     person.updated_at.isoformat(),
                     person.deleted_at.isoformat() if person.deleted_at else None,
+                    int(person.family_name_first),
                     person.preferred_name,
                     person.given_name,
                     person.family_name,
@@ -197,9 +204,10 @@ class SqlitePeopleRepository:
                 " OR instr(coalesce(p.preferred_name_normalized, ''), ?) > 0"
                 " OR instr(coalesce(p.given_name_normalized, ''), ?) > 0"
                 " OR instr(coalesce(p.family_name_normalized, ''), ?) > 0"
+                f" OR instr({_FULL_NAME_SEARCH}, ?) > 0"
                 " OR EXISTS (SELECT 1 FROM aliases a WHERE a.person_id = p.id AND instr(a.value_normalized, ?) > 0))"
             )
-            params += [where.text] * 6
+            params += [where.text] * 5 + [where.text.replace(" ", ""), where.text]
         if where.organization_id is not None:
             conditions.append("EXISTS (SELECT 1 FROM affiliations f WHERE f.person_id = p.id AND f.org_id = ?)")
             params.append(where.organization_id)
@@ -378,21 +386,31 @@ class SqlitePeopleRepository:
     def _like_search(self, normalized_query: str, limit: int) -> list[SearchHit]:
         pattern = f"%{_escape_like(normalized_query)}%"
         rows = self._conn.execute(
-            """
+            f"""
             SELECT p.id AS person_id, p.canonical_name AS name,
                    ? AS score
             FROM persons p
             WHERE p.deleted_at IS NULL AND (p.canonical_name_normalized LIKE ? ESCAPE '\\'
               OR p.preferred_name_normalized LIKE ? ESCAPE '\\'
               OR p.given_name_normalized LIKE ? ESCAPE '\\'
-              OR p.family_name_normalized LIKE ? ESCAPE '\\')
+              OR p.family_name_normalized LIKE ? ESCAPE '\\'
+              OR {_FULL_NAME_SEARCH} LIKE ? ESCAPE '\\')
             UNION ALL
             SELECT a.person_id AS person_id, a.value AS name, ? AS score
             FROM aliases a
             JOIN persons p ON p.id = a.person_id
             WHERE p.deleted_at IS NULL AND a.value_normalized LIKE ? ESCAPE '\\'
             """,
-            (_LIKE_SCORE_CANONICAL, pattern, pattern, pattern, pattern, _LIKE_SCORE_ALIAS, pattern),
+            (
+                _LIKE_SCORE_CANONICAL,
+                pattern,
+                pattern,
+                pattern,
+                pattern,
+                pattern.replace(" ", ""),
+                _LIKE_SCORE_ALIAS,
+                pattern,
+            ),
         ).fetchall()
         scored = [(row["name"], row["person_id"], float(row["score"])) for row in rows]
         scored.sort(key=lambda item: item[2], reverse=True)
@@ -437,6 +455,7 @@ class SqlitePeopleRepository:
             preferred_name=row["preferred_name"],
             given_name=row["given_name"],
             family_name=row["family_name"],
+            family_name_first=bool(row["family_name_first"]),
             is_self=bool(row["is_self"]),
             summary=row["summary"],
             aliases=aliases,

@@ -32,6 +32,7 @@ def _snapshot(**overrides: Any) -> ExportSnapshot:
                 "preferred_name": None,
                 "given_name": None,
                 "family_name": None,
+                "family_name_first": False,
                 "is_self": False,
                 "summary": None,
                 "aliases": [],

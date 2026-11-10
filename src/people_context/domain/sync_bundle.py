@@ -48,7 +48,7 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: The only version this release emits and restores. The bundle is deliberately not additively
 #: extensible within a version — a reader that accepts a field must understand it — so new primary
 #: state, a new candidate type, or a new status value takes a new version.
-SYNC_BUNDLE_VERSION = 8
+SYNC_BUNDLE_VERSION = 9
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -143,6 +143,7 @@ class BundlePerson(StrictBundleModel):
     preferred_name: str | None
     given_name: str | None
     family_name: str | None
+    family_name_first: bool
     is_self: bool
     summary: str | None
     aliases: list[BundleAlias]
@@ -572,7 +573,7 @@ class SyncBundleDocument(StrictBundleModel):
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[8]
+    version: Literal[9]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark

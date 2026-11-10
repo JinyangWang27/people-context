@@ -1253,7 +1253,7 @@ class CommitImport:
                 summary=candidate.get("summary"),
                 **{
                     field: candidate[field]
-                    for field in ("preferred_name", "given_name", "family_name")
+                    for field in ("preferred_name", "given_name", "family_name", "family_name_first")
                     if field in candidate
                 },
                 source=row.source,

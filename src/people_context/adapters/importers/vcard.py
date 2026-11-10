@@ -179,6 +179,12 @@ def _card_candidates(index: int, name: str, properties: dict[str, list[_Property
         candidates[0]["given_name"] = given.strip()
     if family.strip() and not is_email_shaped(family):
         candidates[0]["family_name"] = family.strip()
+    if (
+        given.strip()
+        and family.strip()
+        and name in (family.strip() + given.strip(), family.strip() + " " + given.strip())
+    ):
+        candidates[0]["family_name_first"] = True
     orgs = properties.get("ORG", [])
     titles = properties.get("TITLE", [])
     if orgs and titles:

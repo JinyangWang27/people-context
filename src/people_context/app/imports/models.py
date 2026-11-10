@@ -303,6 +303,7 @@ class PersonCandidateInput(BaseModel):
     preferred_name: OptionalName = None
     given_name: OptionalName = None
     family_name: OptionalName = None
+    family_name_first: bool | None = None
     aliases: list[CandidateAlias] = Field(default_factory=list)
     summary: str | None = None
     message_id: str | None = None

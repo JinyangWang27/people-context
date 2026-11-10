@@ -138,6 +138,8 @@ class MergePeople:
             known.add(normalized)
             primary.aliases.append(alias.model_copy(deep=True))
             aliases_added.append(alias.value)
+        if not primary.given_name and not primary.family_name:
+            primary.family_name_first = duplicate.family_name_first
         for field in ("preferred_name", "given_name", "family_name"):
             if not getattr(primary, field):
                 setattr(primary, field, getattr(duplicate, field))

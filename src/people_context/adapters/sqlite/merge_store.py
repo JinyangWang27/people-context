@@ -352,7 +352,7 @@ class SqliteMergeStore:
         self._conn.execute(
             """UPDATE persons SET canonical_name = ?, canonical_name_normalized = ?, is_self = ?,
                summary = ?, updated_at = ?, deleted_at = NULL,
-               preferred_name = ?, given_name = ?, family_name = ?,
+               preferred_name = ?, given_name = ?, family_name = ?, family_name_first = ?,
                preferred_name_normalized = ?, given_name_normalized = ?, family_name_normalized = ? WHERE id = ?""",
             (
                 person.canonical_name,
@@ -363,6 +363,7 @@ class SqliteMergeStore:
                 person.preferred_name,
                 person.given_name,
                 person.family_name,
+                int(person.family_name_first),
                 *(
                     normalize_name(name) if name else None
                     for name in (person.preferred_name, person.given_name, person.family_name)

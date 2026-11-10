@@ -41,7 +41,7 @@ browser batch review, and M30.3 browser inline edit.
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
-| `edit PERSON [--name NAME] [--summary TEXT] [--preferred-name NAME] [--given-name NAME] [--family-name NAME]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
+| `edit PERSON [--name NAME] [--summary TEXT] [--preferred-name NAME] [--given-name NAME] [--family-name NAME] [--family-name-first | --no-family-name-first]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. An email address is accepted only with `--kind handle`. |
 | `remove-alias PERSON VALUE` | Remove one alias, matched by normalized value; exits 1 when it is not an alias. |
 | `update-alias PERSON VALUE [--to NEW] [--kind KIND] [--lang LANG] [--script SCRIPT]` | Correct one alias in place; exits 1 on an unknown alias or a clashing new value. |
@@ -589,9 +589,9 @@ brief, the import sources with each receipt's staged counts, and review and edit
 fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
 review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`,
 `pctx remove-alias`, `pctx edit`, and the `set_affiliation`, `record_fact`, `record_interaction`, `correct_record`,
-and `forget` MCP tools already call; it writes only through the last twelve. The person's **Name** and **Summary** each have Edit, through the same use case as `pctx edit`: a rename keeps
-the old name as an alias, a name another person already holds is refused as `name_conflict`, an email address as
-`name_is_email`, and emptying the summary clears it. The people list shows each person's name, organizations (any affiliation, ended ones included), aliases, and
+and `forget` MCP tools already call; it writes only through the last twelve. The person's **Preferred name** and **Summary** each have Edit, through the same use case as `pctx edit`: Full name is read-only and generated from the components in Name details, which also holds the name-order
+checkbox. Emptying an optional name clears it, email-shaped names are refused, and emptying the summary clears it.
+The CLI canonical-name editor still preserves a replaced name as an alias. The people list shows each person's name, organizations (any affiliation, ended ones included), aliases, and
 summary; email addresses appear only under Contact on the person view. It has a search box that keeps the people whose name, an alias, or the summary contains the text
 (compared case- and accent-insensitively; press Enter), an order (name, recently added, or recently edited), and,
 once there is something to choose, an organization and a group filter. A group counts only memberships of
@@ -732,16 +732,20 @@ did not produce, and nothing on the page edits a durable record.
 ## Person index
 
 Browse displays and sorts its first column by preferred name, falling back to given name and then canonical
-name. The full name remains in a separate column for disambiguation. All three optional components have Edit
-controls on the person page in both English and Simplified Chinese. For example:
+name. The full name remains in a separate column for disambiguation. Preferred name appears first on the person view, followed by a read-only Full name. Given/family editors and
+the Family name first checkbox live under expandable Name details in both languages. For example:
 
 ```bash
-pctx edit PERSON_ID --preferred-name Ming --given-name Xiaoming --family-name Wang
+pctx edit PERSON_ID --preferred-name 小明 --given-name 小明 --family-name 王 --family-name-first
 pctx edit PERSON_ID --preferred-name ""
 ```
 
 An empty component clears it; omitted components stay unchanged. Existing canonical names are never split.
-Person index and brief JSON add `preferred_name`, `given_name`, `family_name`, and resolved `display_name` fields
+The full name is generated when both components are known, using the explicit name order (given first by
+default). Han-only components join without a space; other components use one space. Incomplete components
+retain the original full name as fallback. `--no-family-name-first` explicitly restores given-first order.
+Person index and brief JSON add `preferred_name`, `given_name`, `family_name`, `family_name_first`, derived
+`full_name`, and resolved `display_name` fields
 without changing their version-1 envelopes. Unpaged person indexes retain their canonical-name ordering;
 the paginated browser list uses display-name ordering.
 
@@ -1027,7 +1031,7 @@ stores (see the birthday note below).
 The mapping is deliberately non-heuristic, and everything it emits reads back through the bundled vCard importer
 unchanged:
 
-- `FN` is the canonical name. When explicit given/family components exist, `N` uses them;
+- `FN` is the generated full name, or the preserved canonical name when components are incomplete. When explicit given/family components exist, `N` uses them;
   otherwise `N` repeats that whole name in the family-name component
   (`N:<canonical name>;;;;`). Without explicit components, splitting the name on whitespace would invent a boundary.
 - `NICKNAME` comes from nickname aliases and `EMAIL` from handle aliases that actually parse as mail addresses.

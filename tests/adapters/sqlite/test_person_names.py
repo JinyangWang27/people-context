@@ -43,7 +43,7 @@ def test_names_edit_search_sort_and_restore(tmp_path: Path) -> None:
         with pytest.raises(PersonIndexError):
             use_cases.list_person_index.page(limit=1, cursor=cursor)
         bundle = use_cases.export_sync_bundle.execute()
-        assert bundle.version == 8
+        assert bundle.version == 9
         edits = [entry for entry in bundle.changelog if "preferred_name" in entry.changed_fields]
         assert any(entry.payload["preferred_name"] is None for entry in edits)
     finally:
@@ -77,7 +77,7 @@ def test_version_10_migration_preserves_existing_identity(tmp_path: Path) -> Non
         assert person is not None
         assert person.canonical_name == person.display_name == "王小明"
         assert (person.preferred_name, person.given_name, person.family_name) == (None, None, None)
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 12
         assert upgraded.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
         assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
     finally:
@@ -91,13 +91,16 @@ def test_merge_keeps_primary_names_and_fills_missing_components(tmp_path: Path) 
             RememberPersonInput(name="Alice Zhang", preferred_name="Ali")
         ).person
         duplicate = runtime.use_cases.remember_person.execute(
-            RememberPersonInput(name="A. Zhang", preferred_name="Ally", given_name="Alice", family_name="Zhang")
+            RememberPersonInput(
+                name="A. Zhang", preferred_name="Ally", given_name="Alice", family_name="Zhang", family_name_first=True
+            )
         ).person
         runtime.use_cases.merge_people.execute(primary.id, duplicate.id)
         person = runtime.repo.get(primary.id)
         assert person is not None
         assert (person.preferred_name, person.given_name, person.family_name) == ("Ali", "Alice", "Zhang")
         assert "Ally" in person.all_names()
+        assert person.family_name_first is True
         assert runtime.repo.search_names("Ali")[0].person.id == primary.id
     finally:
         runtime.close()
@@ -131,3 +134,92 @@ def test_duplicate_preferred_names_page_once_and_search_normalized_components(tm
             assert {p.id for p in runtime.use_cases.list_person_index.page(query=query).people} == ids
     finally:
         runtime.close()
+
+
+def test_chinese_name_is_found_by_explicit_pinyin_alias_without_changing_display(tmp_path: Path) -> None:
+    from people_context.app.capture import QuickCaptureInput
+    from people_context.app.people import AliasInput
+    from people_context.domain.person import AliasKind
+
+    runtime = build_runtime(tmp_path / "chinese-names.db")
+    try:
+        person = runtime.use_cases.remember_person.execute(
+            RememberPersonInput(
+                name="王小明",
+                preferred_name="小明",
+                given_name="小明",
+                family_name="王",
+                aliases=[
+                    AliasInput(value="Xiaoming", kind=AliasKind.TRANSLITERATION),
+                    AliasInput(value="Wang Xiaoming", kind=AliasKind.TRANSLITERATION),
+                ],
+            )
+        ).person
+        for reference in ("Xiaoming", "Wang Xiaoming", "王小明"):
+            result = runtime.use_cases.resolve_person.execute(reference)
+            assert result.ambiguous is False
+            assert result.candidates[0].person_id == person.id
+            assert result.candidates[0].match_reason == "exact"
+        capture = runtime.use_cases.quick_capture.execute(
+            QuickCaptureInput(person="Xiaoming", note="moved to Shanghai")
+        )
+        assert capture.status == "recorded" and capture.person_id == person.id
+        assert capture.created is False
+        assert runtime.repo.get(person.id).display_name == "小明"
+        assert runtime.use_cases.list_person_index.page(query="xiaoming").people[0].display_name == "小明"
+        other = runtime.use_cases.remember_person.execute(
+            RememberPersonInput(
+                name="李晓明",
+                preferred_name="晓明",
+                aliases=[AliasInput(value="Xiaoming", kind=AliasKind.TRANSLITERATION)],
+            )
+        ).person
+        result = runtime.use_cases.resolve_person.execute("Xiaoming")
+        assert result.ambiguous is True
+        assert {candidate.person_id for candidate in result.candidates} == {person.id, other.id}
+        capture = runtime.use_cases.quick_capture.execute(QuickCaptureInput(person="Xiaoming", note="moved to Beijing"))
+        assert capture.status == "ambiguous" and capture.recorded == []
+    finally:
+        runtime.close()
+
+
+def test_family_name_order_survives_edit_omission_and_restore(tmp_path: Path) -> None:
+    from people_context.adapters.importers.vcard import VCardImportExtractor
+
+    runtime = build_runtime(tmp_path / "order.db")
+    try:
+        person = runtime.use_cases.remember_person.execute(
+            RememberPersonInput(
+                name="Wang Xiaoming",
+                preferred_name="小明",
+                given_name="小明",
+                family_name="王",
+                family_name_first=True,
+            )
+        ).person
+        assert runtime.repo.get(person.id).full_name == "王小明"
+        runtime.use_cases.edit_person.execute(EditPersonInput(person_id=person.id, summary="Friend"))
+        assert runtime.repo.get(person.id).family_name_first is True
+        entry = runtime.use_cases.list_person_index.page().people[0]
+        assert entry.full_name == "王小明" and entry.family_name_first is True
+        assert runtime.use_cases.list_person_index.page(query="王小明").people[0].id == person.id
+        assert runtime.repo.search_names("王小明")[0].person.id == person.id
+        vcard = runtime.use_cases.export_vcard.execute().document
+        assert "FN:王小明\r\n" in vcard
+        reimported = VCardImportExtractor().extract("vcard", content=vcard, path=None, self_addresses=set())
+        assert reimported.candidates[0]["family_name_first"] is True
+        assert reimported.candidates[0]["given_name"] == "小明"
+        assert reimported.candidates[0]["family_name"] == "王"
+        bundle = runtime.use_cases.export_sync_bundle.execute()
+        assert bundle.snapshot.people[0].family_name_first is True
+        runtime.use_cases.edit_person.execute(EditPersonInput(person_id=person.id, family_name_first=False))
+        assert runtime.repo.get(person.id).full_name == "小明王"
+    finally:
+        runtime.close()
+    target = build_runtime(tmp_path / "restored-order.db")
+    try:
+        target.use_cases.restore_sync_bundle.execute(bundle)
+        restored = target.repo.get(person.id)
+        assert restored.family_name_first is True and restored.full_name == "王小明"
+    finally:
+        target.close()

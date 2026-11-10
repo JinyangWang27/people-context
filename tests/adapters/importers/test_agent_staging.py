@@ -323,6 +323,7 @@ def test_reviewed_person_names_reach_storage_and_explicit_blanks_clear() -> None
                 "preferred_name": "Ali",
                 "given_name": "Alice",
                 "family_name": "Zhang",
+                "family_name_first": True,
             }
         ],
     )
@@ -346,3 +347,5 @@ def test_reviewed_person_names_reach_storage_and_explicit_blanks_clear() -> None
     person = people.get(person.id)
     assert person.preferred_name is None
     assert person.display_name == "Alice"
+    assert person.family_name_first is True
+    assert person.full_name == "Zhang Alice"

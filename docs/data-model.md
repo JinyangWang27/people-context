@@ -58,6 +58,20 @@ retains a conflicting preferred name as a nickname alias.
 the database rows. `forget` is different: it hard-deletes the selected record/person graph, redacts covered
 audit/changelog payloads, and emits an ID-only durable tombstone.
 
+Migration `012_family_name_order.sql` adds `family_name_first` (false by default). Full name is a derived
+property when both given and family names are known. The flag selects their order; Han-only components join
+without a space, while other components join with one space. Incomplete components use the preserved canonical
+name. The generated full name is not a stored column. Merge copies the duplicate's order when the primary had
+no name components; otherwise the primary's order wins.
+
+### Chinese names and conversational references
+
+Keep the full name in its recorded script and order: for example, full name `王小明`, given name `小明`,
+family name `王`, preferred name `小明`, and `family_name_first=true`. Add explicit `transliteration` aliases `Xiaoming` and
+`Wang Xiaoming` when those are names used in conversation. Browse continues displaying `小明`, while
+resolution and conversational capture accept the stored aliases. A shared `Xiaoming` alias remains
+ambiguous; capture records nothing until the identity is resolved. Pinyin is never generated automatically.
+
 ### Relationships
 
 `relationships` stores `id`, `subject_id`, `object_id`, normalized `type`, optional `label`, validity bounds,

@@ -1082,8 +1082,9 @@ the trusted snapshot/restore protocol deferred to M7.
 
 ## Explicit person names
 
-Person candidates optionally carry `preferred_name`, `given_name`, and `family_name`. These survive staging,
-review, amendment, and commit. Omitted fields preserve existing components; explicit blank or null clears one.
+Person candidates optionally carry `preferred_name`, `given_name`, `family_name`, and `family_name_first`. These survive staging,
+review, amendment, and commit. Omitted fields preserve existing components and order; explicit blank or null clears a name component.
+The order flag defaults to false for new people; explicit false updates an existing order, while null leaves it unchanged.
 They do not alter identity matching. vCard extraction retains explicit given/family values from `N` alongside
 `FN` and aliases; it does not choose a preferred name from the nickname list. vCard export writes known
 components into `N` without guessing a split. Preferred-name preference is retained in JSON export and sync

@@ -15,7 +15,7 @@ def test_fresh_database_creates_sync_schema_and_one_stable_device(tmp_path: Path
         first = conn.execute("SELECT * FROM devices WHERE retired_at IS NULL").fetchall()
         assert {"devices", "changelog", "sync_conflicts"} <= tables
         assert "sync_peer_cursors" not in tables
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 12
         assert len(first) == 1
         assert len(first[0]["id"]) == 26
         assert first[0]["display_name"]

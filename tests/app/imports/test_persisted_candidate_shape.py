@@ -94,6 +94,7 @@ def _every_type() -> list[dict[str, Any]]:
             "preferred_name": "Ali",
             "given_name": "Alice",
             "family_name": "Ahmed",
+            "family_name_first": False,
             "aliases": [{"value": "alice@example.com", "kind": "handle"}],
             "summary": "Met at the Berlin offsite.",
             "message_id": "<msg-1@example.com>",

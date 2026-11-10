@@ -35,6 +35,7 @@ class EditPersonInput(BaseModel):
     preferred_name: OptionalName = None
     given_name: OptionalName = None
     family_name: OptionalName = None
+    family_name_first: bool | None = None
     summary: str | None = None
     source: str = "cli"
 
@@ -69,6 +70,8 @@ class EditPerson:
             field for field in ("preferred_name", "given_name", "family_name") if field in data.model_fields_set
         ]
         fields.extend(name_fields)
+        if data.family_name_first is not None:
+            fields.append("family_name_first")
         if not fields:
             raise ValueError("at least one person field is required")
         before = snapshot(person)
@@ -86,6 +89,8 @@ class EditPerson:
                 raise PersonNameCollisionError(data.name, collision.id)
             _keep_former_name(person, normalized)
             person.canonical_name = data.name
+        if data.family_name_first is not None:
+            person.family_name_first = data.family_name_first
         for field in name_fields:
             setattr(person, field, getattr(data, field))
         if data.summary is not None:

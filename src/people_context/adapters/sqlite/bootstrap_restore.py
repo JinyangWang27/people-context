@@ -287,6 +287,7 @@ class SqliteBootstrapRestorer:
                 "preferred_name",
                 "given_name",
                 "family_name",
+                "family_name_first",
                 "preferred_name_normalized",
                 "given_name_normalized",
                 "family_name_normalized",
@@ -304,6 +305,7 @@ class SqliteBootstrapRestorer:
                     row.preferred_name,
                     row.given_name,
                     row.family_name,
+                    int(row.family_name_first),
                     *(
                         normalize_name(name) if name else None
                         for name in (row.preferred_name, row.given_name, row.family_name)

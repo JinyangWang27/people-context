@@ -123,7 +123,7 @@ class ExportVCard:
         skipped_unparseable_birthdays = 0
 
         for person in _export_order(Person.model_validate(row) for row in snapshot.people):
-            full_name = person.canonical_name.strip()
+            full_name = person.full_name.strip()
             if not full_name:
                 # A card without a usable `FN` is refused by the importer, so exporting one
                 # would produce a card that cannot come back.

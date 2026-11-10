@@ -15,7 +15,7 @@
 - Preserve existing canonical names, aliases, and ids; do not guess components.
 - Ordinary mutations remain audited; no personal data or network access during checks.
 - Empty optional input clears it; omitted input preserves it.
-- Sync bundle version 8 is strict; integration JSON additions retain version 1.
+- Sync bundle version 9 is strict; integration JSON additions retain version 1.
 
 ## Review Focus
 
@@ -53,3 +53,17 @@ Task 2 verification: Ruff sorted imports and formatted at line length 120 (90 fi
 Ruff lint/format checks and mypy passed. The post-format suite passed: 3,804 tests, 16 skips,
 one existing AnyIO/Pytest deprecation warning. Offline source/wheel builds passed. Python ASTs match the
 feature commit across all 455 tracked Python files after ignoring docstring edge whitespace.
+
+## Task 3: Approved name presentation follow-up
+
+- [x] Add failing tests for explicit order, Han/Latin spacing, fallback, persisted order, and bilingual detail controls.
+- [x] Add `family_name_first` through audited writes, migration 012, merges, CLI/MCP, reviewed candidates and sync v9.
+- [x] Expose derived `full_name`; put Preferred name first, read-only Full name second, and editors/order under Name details.
+- [x] Test explicit pinyin aliases through resolution and conversational capture, including shared-alias ambiguity.
+- [x] Verify the delta, run all checks, and prepare the update to PR #257.
+
+Task 3 verification: 3,817 tests passed, 16 skipped, one existing AnyIO/Pytest warning. A final focused run
+covering browser and vCard round trips passed 230 tests. Ruff lint/format, mypy, and offline source/wheel builds
+passed. Independent delta review found no material defects; explicit false, omitted order, fallback and
+malformed bundle order were checked. Native browser visual testing remains unavailable after the earlier
+browser approval rejection; local HTTP and Node DOM checks cover both languages and name-order writes.

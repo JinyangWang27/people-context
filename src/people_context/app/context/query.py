@@ -34,6 +34,8 @@ class PersonIdentity(BaseModel):
     preferred_name: str | None = None
     given_name: str | None = None
     family_name: str | None = None
+    family_name_first: bool = False
+    full_name: str = ""
     display_name: str = ""
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
@@ -232,6 +234,8 @@ def _identity(person: Person) -> PersonIdentity:
         preferred_name=person.preferred_name,
         given_name=person.given_name,
         family_name=person.family_name,
+        family_name_first=person.family_name_first,
+        full_name=person.full_name,
         display_name=person.display_name,
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,

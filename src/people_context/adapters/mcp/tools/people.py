@@ -149,6 +149,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         preferred_name: str | None = None,
         given_name: str | None = None,
         family_name: str | None = None,
+        family_name_first: bool | None = None,
     ) -> dict[str, Any]:
         """Create a new person or update the existing one matching `name`.
 
@@ -159,7 +160,9 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         alias, never as `name`. Set `summary` to describe who they are, and `is_self=True`
         only for the user themselves. Optional preferred/given/family names are explicit, never
         guessed from name. Preferred name defaults in displays to given name, then name; an empty
-        string clears a component. Returns the person and whether it was created.
+        string clears a component. `family_name_first` selects generated full-name order; omit it
+        to preserve the order, or explicitly pass false for given-first order. New people default
+        to given-first order. Returns the person and whether it was created.
         """
         alias_inputs = [AliasInput.model_validate(alias) for alias in (aliases or [])]
         data = RememberPersonInput(
@@ -174,6 +177,7 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                     ("preferred_name", preferred_name),
                     ("given_name", given_name),
                     ("family_name", family_name),
+                    ("family_name_first", family_name_first),
                 )
                 if value is not None
             },

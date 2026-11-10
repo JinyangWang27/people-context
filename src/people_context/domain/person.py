@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated
@@ -102,6 +103,7 @@ class Person(BaseModel):
     preferred_name: OptionalName = None
     given_name: OptionalName = None
     family_name: OptionalName = None
+    family_name_first: bool = False
     is_self: bool = False
     summary: str | None = None
     aliases: list[Alias] = Field(default_factory=list)
@@ -110,9 +112,21 @@ class Person(BaseModel):
     deleted_at: datetime | None = None
 
     @property
+    def full_name(self) -> str:
+        """Derive a complete name only when both components are explicit."""
+        if not self.given_name or not self.family_name:
+            return self.canonical_name
+        parts = (self.family_name, self.given_name) if self.family_name_first else (self.given_name, self.family_name)
+        han_only = all(
+            unicodedata.name(char, "").startswith(("CJK UNIFIED IDEOGRAPH-", "CJK COMPATIBILITY IDEOGRAPH-"))
+            for char in self.given_name + self.family_name
+        )
+        return ("" if han_only else " ").join(parts)
+
+    @property
     def display_name(self) -> str:
         """The explicit way to address someone, without guessing name boundaries."""
-        return self.preferred_name or self.given_name or self.canonical_name
+        return self.preferred_name or self.given_name or self.full_name
 
     def searchable_names(self) -> list[str]:
         """Name components are searchable, but are not automatic identity matching keys."""
@@ -120,6 +134,7 @@ class Person(BaseModel):
             dict.fromkeys(
                 [
                     *self.all_names(),
+                    self.full_name,
                     *(name for name in (self.preferred_name, self.given_name, self.family_name) if name),
                 ]
             )

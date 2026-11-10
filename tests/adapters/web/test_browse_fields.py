@@ -27,7 +27,17 @@ from people_context.domain.import_provenance import (
 from people_context.domain.staged_candidate import STAGED_CANDIDATE_MODELS, StagedAlias
 
 _CONTROLS = frozenset(
-    {"text", "date", "number", "select", "alias_list", "readonly", "candidate_select", "candidate_multiselect"}
+    {
+        "text",
+        "date",
+        "number",
+        "select",
+        "boolean",
+        "alias_list",
+        "readonly",
+        "candidate_select",
+        "candidate_multiselect",
+    }
 )
 
 

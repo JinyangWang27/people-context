@@ -138,6 +138,7 @@ class StagedPerson(StrictStagedModel):
     preferred_name: OptionalName = None
     given_name: OptionalName = None
     family_name: OptionalName = None
+    family_name_first: bool | None = None
     aliases: list[StagedAlias]
     summary: str | None = None
     message_id: str | None = None

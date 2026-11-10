@@ -118,6 +118,8 @@ def test_list_json_emits_the_versioned_person_index(tmp_path: Path, capsys: pyte
             "given_name": None,
             "family_name": None,
             "display_name": "Alice Wonderland",
+            "full_name": "Alice Wonderland",
+            "family_name_first": False,
             "aliases": [],
             "summary": "A curious person from the story.",
             "is_self": False,
@@ -497,14 +499,30 @@ def test_edit_sets_and_clears_explicit_names(tmp_path: Path, capsys: pytest.Capt
     db_file = tmp_path / "names.db"
     person = _seed(db_file, "Alice Zhang")
     prefix = ["--db", str(db_file), "edit", person.id]
-    assert cli.main([*prefix, "--preferred-name", "Ali", "--given-name", "Alice", "--family-name", "Zhang"]) == 0
+    assert (
+        cli.main(
+            [
+                *prefix,
+                "--preferred-name",
+                "Ali",
+                "--given-name",
+                "Alice",
+                "--family-name",
+                "Zhang",
+                "--family-name-first",
+            ]
+        )
+        == 0
+    )
     assert cli.main([*prefix, "--preferred-name", ""]) == 0
+    assert cli.main([*prefix, "--no-family-name-first"]) == 0
     capsys.readouterr()
     conn = open_db(db_file)
     try:
         stored = SqlitePeopleRepository(conn).get(person.id)
         assert stored is not None
         assert (stored.preferred_name, stored.given_name, stored.family_name) == (None, "Alice", "Zhang")
-        assert stored.canonical_name == "Alice Zhang"
+        assert stored.family_name_first is False
+        assert stored.full_name == stored.canonical_name == "Alice Zhang"
     finally:
         conn.close()

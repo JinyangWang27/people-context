@@ -115,6 +115,8 @@ def test_identity_is_narrow_and_active_context_is_outside_zero_budget() -> None:
         "given_name": None,
         "family_name": None,
         "display_name": "Alice",
+        "full_name": "Alice",
+        "family_name_first": False,
         "aliases": ["Ally"],
         "summary": "A trusted colleague",
         "is_self": False,

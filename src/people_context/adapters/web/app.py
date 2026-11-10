@@ -151,6 +151,7 @@ class _EditPersonAction(BaseModel):
     preferred_name: str | None = None
     given_name: str | None = None
     family_name: str | None = None
+    family_name_first: bool | None = None
     # An empty summary clears it.
     summary: str | None = None
 
@@ -429,6 +430,7 @@ def create_browse_app(
             data.name is None
             and data.summary is None
             and not ({"preferred_name", "given_name", "family_name"} & data.model_fields_set)
+            and data.family_name_first is None
         ):
             return _error("invalid_request", 400)
         try:

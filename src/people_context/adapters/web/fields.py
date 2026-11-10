@@ -100,6 +100,8 @@ def _descriptor(field_name: str, annotation: Any) -> dict[str, Any]:
     if options is not None:
         return {"name": field_name, "control": "select", "options": options}
     scalar = _scalar_type(annotation)
+    if scalar is bool:
+        return {"name": field_name, "control": "boolean"}
     if scalar is float:
         return {"name": field_name, "control": "number", "min": 0.0, "max": 1.0, "step": 0.01}
     if scalar is date:

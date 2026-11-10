@@ -328,7 +328,7 @@ async function showPeople(cursor, back) {
     const emails = person.emails || [];
     return [
       button(person.display_name || person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
-      person.canonical_name,
+      person.full_name || person.canonical_name,
       (organizations[person.id] || []).join(", "),
       // Email addresses are contact information, shown on the person view rather than as names here.
       person.aliases.filter((alias) => !emails.includes(alias)).join(", "),
@@ -628,8 +628,7 @@ function interactionAdder(personId, reopen) {
   ], reopen);
 }
 
-// The person's name or summary, edited through the same `EditPerson` as `pctx edit`. A rename keeps
-// the old name as an alias; emptying the summary clears it, while a name cannot be emptied.
+// Optional name components and summary, edited through the same `EditPerson` as `pctx edit`.
 function personFieldRow(personId, field, stored, reopen) {
   const row = el("div", null, "alias");
   const message = el("span", null, "error");
@@ -645,10 +644,6 @@ function personFieldRow(personId, field, stored, reopen) {
     const save = () => {
       const value = control.read();
       if (value === undefined) return idle();
-      if (field === "name" && (value === null || !value.trim())) {
-        message.textContent = t("person.enter_name");
-        return;
-      }
       aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, reopen);
     };
     row.replaceChildren(control.node, button(t("common.save"), save), button(t("common.cancel"), idle), message);
@@ -678,19 +673,35 @@ async function showPerson(personId, cursor, back) {
   aliases.append(aliasEditor(doc.person.id, doc, reopen, false), aliasAdder(doc.person.id, kinds, reopen, false));
   const contact = el("dd");
   contact.append(aliasEditor(doc.person.id, doc, reopen, true), aliasAdder(doc.person.id, kinds, reopen, true));
-  const name = el("dd");
-  name.append(personFieldRow(doc.person.id, "name", doc.person.canonical_name, reopen));
-  const summary = el("dd");
-  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen));
-  identity.append(el("dt", t("person.name")), name, el("dt", t("person.aliases")), aliases,
-    el("dt", t("person.contact")), contact, el("dt", t("person.summary")), summary,
-    el("dt", t("person.disclosure")), el("dd", valueLabel(doc.disclosure.context)));
-  for (const field of ["preferred_name", "given_name", "family_name"]) {
+  const preferred = el("dd");
+  preferred.append(personFieldRow(doc.person.id, "preferred_name", doc.person.preferred_name, reopen));
+  identity.append(el("dt", t("person.preferred_name")), preferred,
+    el("dt", t("person.name")), el("dd", doc.person.full_name || doc.person.canonical_name));
+  const details = el("details");
+  const components = el("dl");
+  for (const field of ["given_name", "family_name"]) {
     const value = el("dd");
     value.append(personFieldRow(doc.person.id, field, doc.person[field], reopen));
-    identity.append(el("dt", t("person." + field)), value);
+    components.append(el("dt", t("person." + field)), value);
   }
-  const nodes = [identity, el("p", t("person.name_fallback"), "notice")];
+  const orderLabel = el("label", t("person.family_name_first"));
+  const order = el("input");
+  order.type = "checkbox";
+  order.checked = Boolean(doc.person.family_name_first);
+  const orderError = el("span", null, "error");
+  order.addEventListener("change", () => aliasWrite("/api/person/edit",
+    { person_id: doc.person.id, family_name_first: order.checked }, orderError, reopen));
+  orderLabel.append(order);
+  details.append(el("summary", t("person.name_details")), components, orderLabel, orderError,
+    el("p", t("person.name_fallback"), "notice"));
+  const metadata = el("dl");
+  aliases.append(el("p", t("person.alias_help"), "notice"));
+  const summary = el("dd");
+  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen));
+  metadata.append(el("dt", t("person.aliases")), aliases,
+    el("dt", t("person.contact")), contact, el("dt", t("person.summary")), summary,
+    el("dt", t("person.disclosure")), el("dd", valueLabel(doc.disclosure.context)));
+  const nodes = [identity, details, metadata];
   if (doc.truncated) {
     nodes.push(el("p", t("person.truncated"), "notice"));
   }
@@ -1150,7 +1161,11 @@ function selectControl(descriptor, staged, options, draft) {
   optionList(select, options, seed);
   select.value = draft === undefined ? seed : seedText(draft);
   select.setAttribute("aria-label", fieldAria(descriptor.name));
-  return { node: select, read: () => (select.value === seed ? undefined : submitted(select.value, false)) };
+  return { node: select, read: () => {
+    const value = select.value === seed ? undefined : submitted(select.value, false);
+    return descriptor.control === "boolean" && typeof value === "string" ? value === "true" : value;
+  } };
+
 }
 
 // An enum field's options, each sent as its stored value and shown as this language labels it.
@@ -1276,6 +1291,11 @@ function buildControl(descriptor, row, draft) {
   if (descriptor.control === "candidate_multiselect") return multiControl(descriptor, staged, opening);
   if (descriptor.control === "candidate_select") {
     return selectControl(descriptor, staged, referenceOptionsFor(descriptor), opening);
+  }
+  if (descriptor.control === "boolean") {
+    return selectControl(descriptor, staged, [
+      { value: "true", label: t("common.yes") }, { value: "false", label: t("common.no") },
+    ], opening);
   }
   if (descriptor.control === "select") {
     return selectControl(descriptor, staged, enumOptions(descriptor), opening);

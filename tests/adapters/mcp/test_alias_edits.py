@@ -115,15 +115,20 @@ def test_name_fields_are_available_through_existing_write_tools(tmp_path: Path) 
                 "preferred_name": "Ali",
                 "given_name": "Alice",
                 "family_name": "Zhang",
+                "family_name_first": True,
             },
         )
         assert created.is_error is False
         person = created.structured_content["person"]
         assert (person["preferred_name"], person["given_name"], person["family_name"]) == ("Ali", "Alice", "Zhang")
-        edited = await client.call_tool("rename_person", {"person_id": person["id"], "preferred_name": ""})
+        assert person["family_name_first"] is True
+        edited = await client.call_tool(
+            "rename_person", {"person_id": person["id"], "preferred_name": "", "family_name_first": False}
+        )
         assert edited.is_error is False
         assert edited.structured_content["preferred_name"] is None
         assert edited.structured_content["given_name"] == "Alice"
+        assert edited.structured_content["family_name_first"] is False
         refused = await client.call_tool("rename_person", {"person_id": person["id"]})
         assert refused.is_error is True
         assert refused.structured_content["error"] == "invalid_request"
