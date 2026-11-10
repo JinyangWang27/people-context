@@ -7,10 +7,11 @@ use cases `pctx import` calls, always with the digest of the review the page dis
 correction, and removal on a person page, through the same use cases as `pctx add-alias`,
 `pctx update-alias`, and `pctx remove-alias`; a rename or summary change through the same `EditPerson` as
 `pctx edit`; a new affiliation, fact, or interaction through the same `SetAffiliation`, `RecordFact`, and
-`RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools; in-place
-correction of an affiliation, fact, interaction, trait, or reminder the page displays, through the same
-`CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, or interaction the page
-displays, through the same `Forget` as the `forget` MCP tool.
+`RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools;
+relationship assertions through `SetRelationship` as the `set_relationship` MCP tool; in-place
+correction of an affiliation, fact, interaction, trait, reminder, or relationship the page displays, through the same
+`CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, interaction, or relationship
+the page displays, through the same `Forget` as the `forget` MCP tool.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
@@ -84,6 +85,7 @@ from people_context.app.records import (
     RecordNotFoundError,
     SetAffiliationInput,
 )
+from people_context.app.relationships.commands import SetRelationshipInput
 from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, NAME_IS_EMAIL, AliasKind
 from people_context.domain.shared import Sensitivity, ValidityPeriod
 
@@ -148,6 +150,10 @@ class _EditPersonAction(BaseModel):
 
     person_id: _NonBlank
     name: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")] | None = None
+    preferred_name: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    family_name_first: bool | None = None
     # An empty summary clears it.
     summary: str | None = None
 
@@ -162,6 +168,17 @@ class _AddAffiliationAction(BaseModel):
     role: Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
     valid_from: date | None = None
     valid_to: date | None = None
+
+
+class _AddRelationshipAction(BaseModel):
+    """Assert an edge from the displayed person to another known person."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    other_person_id: _NonBlank
+    type: _Visible
+    label: _Visible | None = None
 
 
 class _AddFactAction(BaseModel):
@@ -193,7 +210,7 @@ class _CorrectRecordAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "interaction", "trait", "reminder"]
+    entity_type: Literal["affiliation", "fact", "interaction", "trait", "reminder", "relationship"]
     entity_id: _NonBlank
     fields: dict[str, Any]
 
@@ -203,7 +220,7 @@ class _RemoveRecordAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "interaction"]
+    entity_type: Literal["affiliation", "fact", "interaction", "relationship"]
     entity_id: _NonBlank
 
 
@@ -351,7 +368,9 @@ def create_browse_app(
         # contain `/`, which a decoded path would split.
         person_id = request.query_params.get("id", "")
         document = (
-            runtime.use_cases.compose_person_brief.execute(person_id, include_sensitive=include_sensitive)
+            runtime.use_cases.compose_person_brief.execute(
+                person_id, include_sensitive=include_sensitive, include_history=True
+            )
             if person_id
             else None
         )
@@ -405,9 +424,7 @@ def create_browse_app(
         runtime: ApplicationRuntime = request.state.runtime
         try:
             action = await _read_action(request, _UpdateAliasAction)
-            result = runtime.use_cases.update_alias.execute(
-                UpdateAliasInput(**action.model_dump(), source="browser")
-            )
+            result = runtime.use_cases.update_alias.execute(UpdateAliasInput(**action.model_dump(), source="browser"))
         except _RequestRefused as exc:
             return _error(exc.code, exc.status)
         except (PersonNotFoundError, AliasNotFoundError, AliasConflictError) as exc:
@@ -418,13 +435,18 @@ def create_browse_app(
         runtime: ApplicationRuntime = request.state.runtime
         try:
             action = await _read_action(request, _EditPersonAction)
-            data = EditPersonInput(**action.model_dump(), source="browser")
+            data = EditPersonInput(**action.model_dump(exclude_unset=True), source="browser")
         except _RequestRefused as exc:
             return _error(exc.code, exc.status)
         except ValidationError:
             # The action already passed its strict schema, so the input's one remaining rule failed.
             return _error(NAME_IS_EMAIL, 400)
-        if data.name is None and data.summary is None:
+        if (
+            data.name is None
+            and data.summary is None
+            and not ({"preferred_name", "given_name", "family_name"} & data.model_fields_set)
+            and data.family_name_first is None
+        ):
             return _error("invalid_request", 400)
         try:
             person = runtime.use_cases.edit_person.execute(data)
@@ -457,6 +479,28 @@ def create_browse_app(
             # An organization given by an id that is not stored, never created under that id.
             return _error("unknown_organization", 404)
         return _json(json.dumps({"affiliation_id": affiliation.id}) + "\n")
+
+    async def add_relationship(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AddRelationshipAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        try:
+            edge = runtime.use_cases.set_relationship.execute(
+                SetRelationshipInput(
+                    subject_id=action.person_id,
+                    object_id=action.other_person_id,
+                    type=action.type,
+                    label=action.label,
+                    source="browser",
+                )
+            )
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        except ValueError:
+            return _error("invalid_correction", 400)
+        return _json(json.dumps({"relationship_id": edge.id}) + "\n")
 
     async def add_fact(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
@@ -511,9 +555,7 @@ def create_browse_app(
         if not displayed(runtime, action.entity_type, action.entity_id):
             return _error("record_not_found", 404)
         try:
-            runtime.use_cases.correct_record.execute(
-                CorrectRecordInput(**action.model_dump(), source="browser")
-            )
+            runtime.use_cases.correct_record.execute(CorrectRecordInput(**action.model_dump(), source="browser"))
         except InvalidCorrectionError as exc:
             # Only declared field names, which the page already holds: an unknown key is the caller's
             # own text, so it is never echoed, and neither is any submitted value.
@@ -650,6 +692,7 @@ def create_browse_app(
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
             Route("/api/person/edit", edit_person, methods=["POST"]),
             Route("/api/person/affiliation/add", add_affiliation, methods=["POST"]),
+            Route("/api/person/relationship/add", add_relationship, methods=["POST"]),
             Route("/api/person/fact/add", add_fact, methods=["POST"]),
             Route("/api/person/interaction/add", add_interaction, methods=["POST"]),
             Route("/api/record/correct", correct_record, methods=["POST"]),

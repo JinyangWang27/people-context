@@ -103,6 +103,12 @@ def test_entry_carries_identity_only() -> None:
     assert entry.model_dump() == {
         "id": person.id,
         "canonical_name": "Alice Zhang",
+        "preferred_name": None,
+        "given_name": None,
+        "family_name": None,
+        "display_name": "Alice Zhang",
+        "full_name": "Alice Zhang",
+        "family_name_first": False,
         "aliases": ["Ali", "a@example.com"],
         "summary": "A friend",
         "is_self": True,

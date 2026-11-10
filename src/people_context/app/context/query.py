@@ -31,6 +31,12 @@ class PersonIdentity(BaseModel):
 
     id: str
     canonical_name: str
+    preferred_name: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    family_name_first: bool = False
+    full_name: str = ""
+    display_name: str = ""
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
     is_self: bool
@@ -225,6 +231,12 @@ def _identity(person: Person) -> PersonIdentity:
     return PersonIdentity(
         id=person.id,
         canonical_name=person.canonical_name,
+        preferred_name=person.preferred_name,
+        given_name=person.given_name,
+        family_name=person.family_name,
+        family_name_first=person.family_name_first,
+        full_name=person.full_name,
+        display_name=person.display_name,
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,
         is_self=person.is_self,
@@ -234,4 +246,3 @@ def _identity(person: Person) -> PersonIdentity:
 
 def _can_disclose(sensitivity: Sensitivity, include_sensitive: bool) -> bool:
     return include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL)
-

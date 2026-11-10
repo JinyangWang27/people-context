@@ -49,10 +49,7 @@ class SqliteTraitEvidenceStore:
             """INSERT INTO trait_evidence (trait_id, evidence_type, evidence_id, created_at)
                VALUES (?, ?, ?, ?)
                ON CONFLICT(trait_id, evidence_type, evidence_id) DO NOTHING""",
-            [
-                (link.trait_id, link.evidence_type, link.evidence_id, link.created_at.isoformat())
-                for link in links
-            ],
+            [(link.trait_id, link.evidence_type, link.evidence_id, link.created_at.isoformat()) for link in links],
         )
 
     def list_links(self, trait_id: str) -> list[TraitEvidenceLink]:

@@ -34,6 +34,7 @@ from people_context.domain.import_provenance import (
 )
 from people_context.domain.interaction import Interaction
 from people_context.domain.organization import Affiliation
+from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder
 from people_context.domain.staged_candidate import STAGED_CANDIDATE_MODELS, StagedAlias
 from people_context.domain.trait import Trait
@@ -100,6 +101,8 @@ def _descriptor(field_name: str, annotation: Any) -> dict[str, Any]:
     if options is not None:
         return {"name": field_name, "control": "select", "options": options}
     scalar = _scalar_type(annotation)
+    if scalar is bool:
+        return {"name": field_name, "control": "boolean"}
     if scalar is float:
         return {"name": field_name, "control": "number", "min": 0.0, "max": 1.0, "step": 0.01}
     if scalar is date:
@@ -130,6 +133,7 @@ ALIAS_FIELDS: list[dict[str, Any]] = _fields(StagedAlias, skip=frozenset())
 
 #: The stored record types the person view lists and lets a reviewer correct in place.
 _RECORD_MODELS: dict[str, Any] = {
+    "relationship": Relationship,
     "affiliation": Affiliation,
     "fact": Fact,
     "interaction": Interaction,

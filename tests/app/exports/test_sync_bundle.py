@@ -29,6 +29,10 @@ def _snapshot(**overrides: Any) -> ExportSnapshot:
             {
                 "id": _PERSON_ID,
                 "canonical_name": "Alice",
+                "preferred_name": None,
+                "given_name": None,
+                "family_name": None,
+                "family_name_first": False,
                 "is_self": False,
                 "summary": None,
                 "aliases": [],

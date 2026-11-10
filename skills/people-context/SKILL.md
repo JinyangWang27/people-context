@@ -100,8 +100,8 @@ statements in conversation. **Not for extracted/inferred material from transcrip
 
 ```python
 call("remember", {"person": "Alice Ng", "note": "prefers short emails", "org": "Acme", "role": "CTO"})
-call("remember", {"person": "Bob",      "kind": "affiliation", "org": "Etihad", "role": "Fleet Manager"})
-call("remember", {"person": "Jiaxin",   "relationship": "spouse"})
+call("remember", {"person": "Bob", "kind": "affiliation", "org": "Etihad", "role": "Fleet Manager"})
+call("remember", {"person": "Jiaxin", "relationship": "spouse"})
 ```
 
 Check `status` — **nothing is written when status ≠ `recorded`**:
@@ -123,8 +123,7 @@ whatever `kind` says. All rows share one `transaction_id`; any failure rolls bac
 ## 6. remember_person + add_alias
 
 ```python
-call("remember_person", {"name": "Jinyang Wang", "is_self": True,
-    "summary": "PhD physicist, AI engineer."})
+call("remember_person", {"name": "Jinyang Wang", "is_self": True, "summary": "PhD physicist, AI engineer."})
 # Do NOT fold affiliations/facts into summary. Do NOT pass aliases here.
 ```
 
@@ -140,8 +139,15 @@ An email address is an alias only with `kind: "handle"`; any other kind is refus
 
 ```python
 call("set_relationship", {"subject_id": pid_a, "object_id": pid_b, "type": "spouse"})
-call("set_affiliation",  {"person_id": pid, "org": "Etihad Airways",  # "org", NOT "org_name"
-    "role": "Employee", "valid_from": "2026-09-01"})
+call(
+    "set_affiliation",
+    {
+        "person_id": pid,
+        "org": "Etihad Airways",  # "org", NOT "org_name"
+        "role": "Employee",
+        "valid_from": "2026-09-01",
+    },
+)
 ```
 
 ---
@@ -159,7 +165,7 @@ On error, returns a structured payload (not an exception):
 
 ```python
 r = call("get_person_context", {"person_id": pid, "include_communication": True})
-person = r["***"]           # ← "***", not "person"
+person = r["***"]  # ← "***", not "person"
 # r["truncated"] == True means facts/interactions budget was hit
 ```
 
@@ -173,17 +179,29 @@ Put every candidate from one source in one `stage_candidates` call. `aliases` on
 when present, entries are objects, not strings: `{"value": "Al", "kind": "nickname"}`. `label` needs `source_kind`.
 
 ```python
-bid = call("stage_candidates", {
-    "source": "levey-2026-09-03",
-    "candidates": [
-        {"type": "person", "ref": "jiaxin", "name": "Jiaxin",
-         "aliases": [{"value": "Jiaxin Wang", "kind": "other"}]},
-        {"type": "affiliation", "person_ref": "jiaxin",
-         "org": "Etihad Airways", "role": "Flight Attendant", "valid_from": "2026-08-01"},
-    ],
-})["batch_id"]
+bid = call(
+    "stage_candidates",
+    {
+        "source": "levey-2026-09-03",
+        "candidates": [
+            {
+                "type": "person",
+                "ref": "jiaxin",
+                "name": "Jiaxin",
+                "aliases": [{"value": "Jiaxin Wang", "kind": "other"}],
+            },
+            {
+                "type": "affiliation",
+                "person_ref": "jiaxin",
+                "org": "Etihad Airways",
+                "role": "Flight Attendant",
+                "valid_from": "2026-08-01",
+            },
+        ],
+    },
+)["batch_id"]
 
-call("review_import", {"batch_id": bid})            # read-only, no approval needed
+call("review_import", {"batch_id": bid})  # read-only, no approval needed
 r = call("commit_import", {"batch_id": bid, "accepted_ids": [cid, ...]})  # user-approved only
 ```
 
@@ -265,24 +283,41 @@ BASE = "http://127.0.0.1:8765/mcp"
 HEADERS = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
 _id = 0
 
+
 def _post(payload, session_id=None):
     h = {**HEADERS, **({"mcp-session-id": session_id} if session_id else {})}
     req = urllib.request.Request(BASE, json.dumps(payload).encode(), h, method="POST")
     with urllib.request.urlopen(req) as r:
         sid = r.headers.get("mcp-session-id")
         for line in r.read().decode().splitlines():
-            if line.startswith("data:"): return json.loads(line[5:]), sid
+            if line.startswith("data:"):
+                return json.loads(line[5:]), sid
     return None, sid
 
-resp, S = _post({"jsonrpc":"2.0","id":1,"method":"initialize",
-    "params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"levey","version":"1.0"}}})
+
+resp, S = _post(
+    {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "levey", "version": "1.0"},
+        },
+    }
+)
 _id = 1
 
+
 def call(name, args):
-    global _id; _id += 1
-    r, _ = _post({"jsonrpc":"2.0","id":_id,"method":"tools/call","params":{"name":name,"arguments":args}}, S)
-    res = r["result"]; text = res.get("content",[{}])[0].get("text","")
-    if res.get("isError"): raise RuntimeError(f"{name} failed: {text}")
+    global _id
+    _id += 1
+    r, _ = _post({"jsonrpc": "2.0", "id": _id, "method": "tools/call", "params": {"name": name, "arguments": args}}, S)
+    res = r["result"]
+    text = res.get("content", [{}])[0].get("text", "")
+    if res.get("isError"):
+        raise RuntimeError(f"{name} failed: {text}")
     parsed = json.loads(text) if text else res.get("structuredContent")
     if isinstance(parsed, dict) and parsed.get("error"):  # servers <= 1.1.0 left isError unset
         raise RuntimeError(f"{name} refused: {parsed.get('message', parsed['error'])}")

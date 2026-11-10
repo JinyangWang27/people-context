@@ -36,12 +36,12 @@ browser batch review, and M30.3 browser inline edit.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--subject PERSON] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--subject` records the relationship from that existing person instead of you; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Done; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Close; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
 | `export [--output FILE]` | Full portable JSON envelope, unchanged by M7. |
-| `edit PERSON [--name NAME] [--summary TEXT]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
+| `edit PERSON [--name NAME] [--summary TEXT] [--preferred-name NAME] [--given-name NAME] [--family-name NAME] [--family-name-first | --no-family-name-first]` | Edit canonical identity fields. A new name keeps the old one as an alias (a `handle` when it is an email address); an email address as the new name exits 1. |
 | `add-alias PERSON VALUE [--kind KIND] [--lang LANG] [--script SCRIPT]` | Add an alias. An email address is accepted only with `--kind handle`. |
 | `remove-alias PERSON VALUE` | Remove one alias, matched by normalized value; exits 1 when it is not an alias. |
 | `update-alias PERSON VALUE [--to NEW] [--kind KIND] [--lang LANG] [--script SCRIPT]` | Correct one alias in place; exits 1 on an unknown alias or a clashing new value. |
@@ -578,6 +578,14 @@ without writing anything, when `--output` names the database it is reading or on
 
 ## Local browser viewer
 
+The person view shows active relationships, including reporting lines, with links to the other person.
+Relationship direction comes from the existing brief (for example, reports to versus manages).
+
+Browser Back and Forward restore the viewer page, list position, and filter choices. Saving a field or
+switching languages refreshes the current page without adding a history step. History keeps view ids,
+cursors, and filter choices in the tab; the launch token and full records are not added to it. Close stops
+the local viewer; history navigation after closing does not restart it.
+
 ```bash
 uv run pctx browse
 uv run pctx browse --open --port 8766
@@ -589,9 +597,10 @@ brief, the import sources with each receipt's staged counts, and review and edit
 fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
 review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`,
 `pctx remove-alias`, `pctx edit`, and the `set_affiliation`, `record_fact`, `record_interaction`, `correct_record`,
-and `forget` MCP tools already call; it writes only through the last twelve. The person's **Name** and **Summary** each have Edit, through the same use case as `pctx edit`: a rename keeps
-the old name as an alias, a name another person already holds is refused as `name_conflict`, an email address as
-`name_is_email`, and emptying the summary clears it. The people list shows each person's name, organizations (any affiliation, ended ones included), aliases, and
+and `forget` MCP tools already call, plus `set_relationship`; all writes use those existing mutation use cases.
+The person's **Preferred name** and **Summary** each have Edit, through the same use case as `pctx edit`: Full name
+is read-only and generated from the components in Name details, which also holds the name-order checkbox. Emptying an optional name clears it, email-shaped names are refused, and emptying the summary clears it.
+The CLI canonical-name editor still preserves a replaced name as an alias. The people list shows each person's name, organizations (any affiliation, ended ones included), aliases, and
 summary; email addresses appear only under Contact on the person view. It has a search box that keeps the people whose name, an alias, or the summary contains the text
 (compared case- and accent-insensitively; press Enter), an order (name, recently added, or recently edited), and,
 once there is something to choose, an organization and a group filter. A group counts only memberships of
@@ -607,17 +616,28 @@ value, with optional start and end dates, through the same use case as the `reco
 interaction** under Interactions records a summary with an optional channel and day (now, if none is given),
 through the same use case as `record_interaction`, with the displayed person as its one participant. Both are
 recorded with `personal` sensitivity, and an end date before the start is `invalid_period`. Each affiliation, fact,
-interaction, trait, and reminder has **Edit**, a form of exactly the fields `CorrectRecord` accepts for that type (an
-affiliation's organization is not one of them), which corrects the record in place, sending only the fields that
+interaction, trait, reminder, and relationship has **Edit**, a form of exactly the fields `CorrectRecord` accepts
+for that type (an affiliation's organization is not one of them), which corrects the record in place, sending only the fields that
 changed; an emptied field is sent as `null`, which clears an optional value such as an end date and is refused for
 a required one. A correction fixes what was recorded wrongly: the audit log keeps the before and after, but the
 brief shows only the corrected value, so a change over time belongs in `supersede_fact` instead. An interaction's
-summary, time, channel, and sensitivity can be corrected; its participants cannot. Each affiliation, fact, and
-interaction also has **Remove**, which asks for confirmation and then forgets the record through the same use case
+summary, time, channel, and sensitivity can be corrected; its participants cannot. Each affiliation, fact, interaction, and
+relationship also has **Remove**, which asks for confirmation and then forgets the record through the same use case
 as the `forget` MCP tool: it is deleted and its audit and replay history redacted, not kept as a before-and-after,
 and a shared interaction is removed for every participant. A record the view's disclosure hides is refused as
-`record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Done button, leaves no daemon, PID file, or
+`record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Close button, leaves no daemon, PID file, or
 configuration, and two launches are two unrelated processes.
+
+Relationships link to the other person's page. **Add relationship** searches for a known person and requires an
+explicit selection; its type is from the displayed person's perspective (for example, `reports_to`). Existing
+relationships offer the same correction fields as `correct_record`, with the stored direction shown explicitly;
+setting an end date preserves the record and removes it from the active list. **Remove** asks for confirmation,
+then permanently deletes the relationship from both people and redacts its stored history through `Forget`.
+All changes are audited.
+**Communication** appears collapsed when recorded traits or a communication philosophy exist, with ordinary
+disclosure even in an elevated session. **History** is a collapsed, bounded newest-first timeline of stored records,
+including ended relationships, with each entry's date basis and a notice when older entries were omitted. It is
+not the mutation audit log.
 
 The page is in English or Simplified Chinese. It opens in the first of `--lang`, the `PEOPLE_CONTEXT_BROWSE_LANG`
 environment variable, and `browse_lang` in `config.toml` (the same file as `db_path`, below) that is set, and in
@@ -730,6 +750,27 @@ made. There is no form for authoring a candidate the importer
 did not produce, and nothing on the page edits a durable record.
 
 ## Person index
+
+Browse displays and sorts its first column by preferred name, falling back to given name and then canonical
+name. The full name remains in a separate column for disambiguation. Preferred name appears first on the person view, followed by a read-only Full name. Given/family editors and
+the Family name first checkbox live under expandable Name details in both languages. Its open/closed state
+is preserved after saves and language changes; a manual collapse during a save is respected. Open preferred,
+given/family name and summary editors also retain their unsaved text when another field is saved or the
+language changes. Save submits only that field; Cancel discards only that field's draft. For example:
+
+```bash
+pctx edit PERSON_ID --preferred-name 小明 --given-name 小明 --family-name 王 --family-name-first
+pctx edit PERSON_ID --preferred-name ""
+```
+
+An empty component clears it; omitted components stay unchanged. Existing canonical names are never split.
+The full name is generated when both components are known, using the explicit name order (given first by
+default). Han-only components join without a space; other components use one space. Incomplete components
+retain the original full name as fallback. `--no-family-name-first` explicitly restores given-first order.
+Person index and brief JSON add `preferred_name`, `given_name`, `family_name`, `family_name_first`, derived
+`full_name`, and resolved `display_name` fields
+without changing their version-1 envelopes. Unpaged person indexes retain their canonical-name ordering;
+the paginated browser list uses display-name ordering.
 
 ```bash
 uv run pctx list --json
@@ -1013,9 +1054,9 @@ stores (see the birthday note below).
 The mapping is deliberately non-heuristic, and everything it emits reads back through the bundled vCard importer
 unchanged:
 
-- `FN` is the canonical name, and `N` repeats that whole name in the family-name component
-  (`N:<canonical name>;;;;`). The store never recorded a given/family boundary, so splitting the name on
-  whitespace would invent one.
+- `FN` is the generated full name, or the preserved canonical name when components are incomplete. When explicit given/family components exist, `N` uses them;
+  otherwise `N` repeats that whole name in the family-name component
+  (`N:<canonical name>;;;;`). Without explicit components, splitting the name on whitespace would invent a boundary.
 - `NICKNAME` comes from nickname aliases and `EMAIL` from handle aliases that actually parse as mail addresses.
   A handle that is not an address — `@alice`, say — is not exported as one.
 - One `ORG`/`TITLE` pair is emitted, chosen by normalized organization name, then normalized role, then

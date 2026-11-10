@@ -230,14 +230,14 @@ def test_a_partial_schema_is_not_this_project_either(tmp_path: Path) -> None:
 def test_opening_a_database_older_than_the_baseline_refuses_without_migrating(tmp_path: Path) -> None:
     """Releases before the single-schema baseline stepped through 001-010; that chain is gone."""
     db_file = tmp_path / "people.db"
-    _legacy_database(db_file, through=latest_schema_version() - 1)
+    _legacy_database(db_file, through=9)
 
-    with pytest.raises(UnsupportedSchemaError, match=f"schema version {latest_schema_version() - 1}"):
+    with pytest.raises(UnsupportedSchemaError, match=f"schema version {9}"):
         open_db(db_file)
 
     conn = sqlite3.connect(db_file)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == latest_schema_version() - 1
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 9
         assert conn.execute("SELECT COUNT(*) FROM devices").fetchone()[0] == 0
     finally:
         conn.close()

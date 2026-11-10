@@ -168,7 +168,5 @@ class SqliteBundleReader:
         ]
 
     def _relationship_synonyms(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute(
-            "SELECT synonym, type FROM relationship_type_synonyms ORDER BY synonym"
-        ).fetchall()
+        rows = self._conn.execute("SELECT synonym, type FROM relationship_type_synonyms ORDER BY synonym").fetchall()
         return [{"synonym": row["synonym"], "type": row["type"]} for row in rows]

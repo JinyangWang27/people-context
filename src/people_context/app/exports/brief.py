@@ -174,9 +174,7 @@ class ComposePersonBrief:
         # Guidance is called without the flag at all: its use case has no such parameter, and
         # that is exactly the ordinary-disclosure contract the brief labels and preserves.
         guidance = self._guidance.execute(person_id)
-        reminders = self._reminders.execute(
-            ListRemindersInput(person_id=person_id, status=ReminderStatus.ACTIVE)
-        )
+        reminders = self._reminders.execute(ListRemindersInput(person_id=person_id, status=ReminderStatus.ACTIVE))
         level = DisclosureLevel.SENSITIVE if include_sensitive else DisclosureLevel.ORDINARY
         history = None
         if include_history:
@@ -207,10 +205,7 @@ class ComposePersonBrief:
             traits=sorted(context.traits, key=_trait_key),
             reminders=sorted(reminders, key=_reminder_key),
             guidance=BriefGuidance(
-                traits={
-                    category: sorted(items, key=_trait_key)
-                    for category, items in guidance.traits.items()
-                },
+                traits={category: sorted(items, key=_trait_key) for category, items in guidance.traits.items()},
                 friction_notes=list(guidance.friction_notes),
                 communication_philosophy=guidance.communication_philosophy,
             ),
@@ -292,11 +287,7 @@ def render_brief_markdown(document: PersonBriefDocument) -> str:
     lines.extend(
         _section(
             "Guidance traits",
-            [
-                f"{category}: {trait.value}"
-                for category, traits in guidance.traits.items()
-                for trait in traits
-            ],
+            [f"{category}: {trait.value}" for category, traits in guidance.traits.items() for trait in traits],
             level=3,
         )
     )

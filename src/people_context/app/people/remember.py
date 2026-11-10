@@ -15,6 +15,7 @@ from people_context.domain.person import (
     NAME_IS_EMAIL_MESSAGE,
     Alias,
     AliasKind,
+    OptionalName,
     Person,
     check_alias_kind,
     is_email_shaped,
@@ -79,6 +80,10 @@ class RememberPersonInput(BaseModel):
     """
 
     name: str
+    preferred_name: OptionalName = None
+    given_name: OptionalName = None
+    family_name: OptionalName = None
+    family_name_first: bool | None = None
     aliases: list[AliasInput] = Field(default_factory=list)
     summary: str | None = None
     is_self: bool = False
@@ -149,6 +154,11 @@ class RememberPerson:
             person.aliases.append(Alias(value=alias.value, kind=alias.kind, lang=alias.lang, script=alias.script))
             added += 1
 
+        for field in ("preferred_name", "given_name", "family_name"):
+            if field in data.model_fields_set:
+                setattr(person, field, getattr(data, field))
+        if data.family_name_first is not None:
+            person.family_name_first = data.family_name_first
         if data.summary is not None:
             person.summary = data.summary
         if data.is_self:
@@ -179,6 +189,10 @@ class RememberPerson:
         ]
         person = Person(
             canonical_name=data.name,
+            preferred_name=data.preferred_name,
+            given_name=data.given_name,
+            family_name=data.family_name,
+            family_name_first=data.family_name_first if data.family_name_first is not None else False,
             is_self=data.is_self,
             summary=data.summary,
             aliases=aliases,

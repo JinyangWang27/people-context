@@ -154,7 +154,7 @@ def test_export_emits_the_current_version_with_import_state(tmp_path: Path) -> N
 
     document = origin.export()
 
-    assert document.version == SYNC_BUNDLE_VERSION == 7
+    assert document.version == SYNC_BUNDLE_VERSION == 9
     assert [session.id for session in document.imports.source_sessions] == [batch.source_session_id]
     assert len(document.imports.candidate_mappings) == 1
     # The batch is only partially committed, so its reviewable rows travel.
@@ -468,7 +468,7 @@ def test_attribution_on_a_reviewable_staging_row_survives_a_real_round_trip(tmp_
     origin.commit.execute(batch.batch_id, [next(row.id for row in rows if row.candidate["type"] == "person")])
 
     document = _round_trip(origin.export())
-    assert document.version == SYNC_BUNDLE_VERSION == 7
+    assert document.version == SYNC_BUNDLE_VERSION == 9
 
     conn, outcome = _restore(document, tmp_path / "destination.db")
     try:
@@ -508,14 +508,12 @@ def test_a_withdrawn_candidate_and_its_pending_dependents_survive_a_real_round_t
     origin.withdraw.execute(batch.batch_id, [withdrawn])
 
     document = _round_trip(origin.export())
-    assert document.version == SYNC_BUNDLE_VERSION == 7
+    assert document.version == SYNC_BUNDLE_VERSION == 9
 
     conn, outcome = _restore(document, tmp_path / "destination.db")
     try:
         assert outcome.staged_candidates == len(rows)
-        restored = conn.execute(
-            "SELECT id, status FROM import_staging ORDER BY created_at, id"
-        ).fetchall()
+        restored = conn.execute("SELECT id, status FROM import_staging ORDER BY created_at, id").fetchall()
         assert [(row["id"], row["status"]) for row in restored] == [
             (row.id, "rejected" if row.id == withdrawn else "pending") for row in rows
         ]
@@ -544,5 +542,3 @@ def test_a_withdrawn_receipt_survives_a_real_round_trip_carrying_no_staging(tmp_
         assert conn.execute("SELECT COUNT(*) AS total FROM import_staging").fetchone()["total"] == 0
     finally:
         conn.close()
-
-

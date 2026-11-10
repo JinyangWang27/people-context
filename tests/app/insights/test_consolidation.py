@@ -761,9 +761,7 @@ def test_the_read_performs_no_mutation() -> None:
     """A report path must not write; the use case is given no writer to write with."""
     repo = FakePeopleRepository()
     repo.save_person(ALICE)
-    reader = FakePersonConsolidationReader(
-        [_fact("f1")], [_trait("t1")], [_observation("o1")], [_affiliation("a1")]
-    )
+    reader = FakePersonConsolidationReader([_fact("f1")], [_trait("t1")], [_observation("o1")], [_affiliation("a1")])
     use_case = GetConsolidationContext(repo, reader)
     before = repo.list_people()
 

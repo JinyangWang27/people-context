@@ -18,7 +18,7 @@ from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime
 from typing import Annotated, Any, ClassVar, Literal
 
-from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from people_context.domain.group import MAX_GROUP_NAME_CHARS, GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.import_provenance import (
@@ -37,7 +37,7 @@ from people_context.domain.import_provenance import (
     staged_evidence_references,
     staged_group_references,
 )
-from people_context.domain.person import AliasKind
+from people_context.domain.person import AliasKind, check_person_name
 from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
 from people_context.domain.reminder import ReminderKind, ReminderStatus
 from people_context.domain.shared import Confidence, Sensitivity
@@ -48,7 +48,7 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: The only version this release emits and restores. The bundle is deliberately not additively
 #: extensible within a version — a reader that accepts a field must understand it — so new primary
 #: state, a new candidate type, or a new status value takes a new version.
-SYNC_BUNDLE_VERSION = 7
+SYNC_BUNDLE_VERSION = 9
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -140,12 +140,25 @@ class BundlePerson(StrictBundleModel):
 
     id: Identifier
     canonical_name: str
+    preferred_name: str | None
+    given_name: str | None
+    family_name: str | None
+    family_name_first: bool
     is_self: bool
     summary: str | None
     aliases: list[BundleAlias]
     created_at: UtcDatetime
     updated_at: UtcDatetime
     deleted_at: UtcDatetime | None
+
+    @field_validator("preferred_name", "given_name", "family_name")
+    @classmethod
+    def _name_component_is_verbatim(cls, value: str | None) -> str | None:
+        if value is not None:
+            check_person_name(value)
+            if not value or value != value.strip():
+                raise ValueError("name components must be trimmed and nonblank, or null")
+        return value
 
 
 class BundleOrganization(StrictBundleModel):
@@ -560,7 +573,7 @@ class SyncBundleDocument(StrictBundleModel):
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[7]
+    version: Literal[9]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark
@@ -743,8 +756,7 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         staged_type = staged_type_of.get(mapping.candidate_id)
         if staged_type is not None and staged_type != mapping.entity_type:
             details.append(
-                f"candidate mapping {mapping.candidate_id} claims a {mapping.entity_type} for a "
-                f"{staged_type} candidate"
+                f"candidate mapping {mapping.candidate_id} claims a {mapping.entity_type} for a {staged_type} candidate"
             )
         if mapping.disposition != "entity":
             continue
@@ -995,9 +1007,7 @@ def _duplicate_details(document: SyncBundleDocument) -> list[str]:
     ]
     details = [detail for label, values in collections for detail in _repeated(label, values)]
     for interaction in snapshot.interactions:
-        details.extend(
-            _repeated(f"participant of interaction {interaction.id}", interaction.participant_ids)
-        )
+        details.extend(_repeated(f"participant of interaction {interaction.id}", interaction.participant_ids))
     return details
 
 
@@ -1095,7 +1105,5 @@ def _reference_details(document: SyncBundleDocument) -> list[str]:
 
 def _missing(entity: str, pairs: Iterable[tuple[str, str]], known: set[str], reference: str) -> list[str]:
     return [
-        f"{entity} {owner} references an unknown {reference}: {value}"
-        for owner, value in pairs
-        if value not in known
+        f"{entity} {owner} references an unknown {reference}: {value}" for owner, value in pairs if value not in known
     ]

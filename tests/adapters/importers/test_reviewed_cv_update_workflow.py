@@ -162,9 +162,7 @@ class _Harness:
         return person_id
 
     def fact(self, predicate: str) -> Any:
-        return self.conn.execute(
-            "SELECT * FROM facts WHERE predicate = ? ORDER BY valid_from", (predicate,)
-        ).fetchall()
+        return self.conn.execute("SELECT * FROM facts WHERE predicate = ? ORDER BY valid_from", (predicate,)).fetchall()
 
     def affiliation(self, role: str) -> Any:
         return self.conn.execute("SELECT * FROM affiliations WHERE role = ?", (role,)).fetchone()
@@ -346,9 +344,7 @@ def test_an_inexact_date_yields_no_transition_boundary(guessed: date, reason: st
     stored = harness.fact("city")[0]
 
     with pytest.raises(InvalidSupersessionError) as raised:
-        harness.supersede.execute(
-            SupersedeFactInput(fact_id=stored["id"], new_value="Leeds", effective_from=guessed)
-        )
+        harness.supersede.execute(SupersedeFactInput(fact_id=stored["id"], new_value="Leeds", effective_from=guessed))
 
     assert raised.value.reason == reason
     # Refused means unresolved, not "try another date until one is accepted".
@@ -516,7 +512,7 @@ def test_a_separately_supported_new_role_does_not_close_the_old_one() -> None:
 
 
 def test_a_month_only_role_keeps_its_imprecision_and_opens_no_affiliation() -> None:
-    """"March 2026" is not a date. An affiliation would have to invent the day it omits.
+    """ "March 2026" is not a date. An affiliation would have to invent the day it omits.
 
     The same rule capture applies to a year-only degree applies here: the uncertainty survives in
     the claim text, where a reader can see it, rather than being flattened into a `valid_from` that
@@ -534,8 +530,7 @@ def test_a_month_only_role_keeps_its_imprecision_and_opens_no_affiliation() -> N
                     "person_ref": "nadia",
                     "predicate": "role",
                     "value": (
-                        "Revised CV reports Principal Data Engineer at Riverside Systems "
-                        "from March 2026; day unknown"
+                        "Revised CV reports Principal Data Engineer at Riverside Systems from March 2026; day unknown"
                     ),
                     "stated_by": _REVISED_ATTRIBUTION,
                     "confidence": 0.6,
@@ -606,17 +601,13 @@ def test_a_target_that_changed_after_review_is_caught_by_the_reread() -> None:
         )
     )
 
-    reread = next(
-        fact for fact in harness.consolidation.execute(person_id).facts if fact.predicate == "city"
-    )
+    reread = next(fact for fact in harness.consolidation.execute(person_id).facts if fact.predicate == "city")
     assert reread.valid_to == date(2026, 6, 30), "the reread sees a different record than was accepted"
 
     # Applying the stale acceptance anyway is refused rather than silently retargeted.
     with pytest.raises(InvalidSupersessionError) as raised:
         harness.supersede.execute(
-            SupersedeFactInput(
-                fact_id=reviewed_city.fact_id, new_value="Leeds", effective_from=date(2026, 9, 1)
-            )
+            SupersedeFactInput(fact_id=reviewed_city.fact_id, new_value="Leeds", effective_from=date(2026, 9, 1))
         )
 
     assert raised.value.reason == REASON_AFTER_VALID_TO

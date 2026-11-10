@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 from pydantic_core import PydanticCustomError
 
 from people_context.domain.shared import new_id, utc_now
@@ -60,6 +62,18 @@ def kind_for_name(name: str, default: AliasKind) -> AliasKind:
     return AliasKind.HANDLE if is_email_shaped(name) else default
 
 
+def normalize_optional_name(value: str | None) -> str | None:
+    """Keep explicit name components; whitespace-only input clears one."""
+    if value is None or not value.strip():
+        return None
+    value = value.strip()
+    check_person_name(value)
+    return value
+
+
+OptionalName = Annotated[str | None, AfterValidator(normalize_optional_name)]
+
+
 class AliasKind(StrEnum):
     """Category of an alternate name for a person."""
 
@@ -86,12 +100,45 @@ class Person(BaseModel):
 
     id: str = Field(default_factory=new_id)
     canonical_name: str
+    preferred_name: OptionalName = None
+    given_name: OptionalName = None
+    family_name: OptionalName = None
+    family_name_first: bool = False
     is_self: bool = False
     summary: str | None = None
     aliases: list[Alias] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
     deleted_at: datetime | None = None
+
+    @property
+    def full_name(self) -> str:
+        """Derive a complete name only when both components are explicit."""
+        if not self.given_name or not self.family_name:
+            return self.canonical_name
+        parts = (self.family_name, self.given_name) if self.family_name_first else (self.given_name, self.family_name)
+        han_only = all(
+            unicodedata.name(char, "").startswith(("CJK UNIFIED IDEOGRAPH-", "CJK COMPATIBILITY IDEOGRAPH-"))
+            for char in self.given_name + self.family_name
+        )
+        return ("" if han_only else " ").join(parts)
+
+    @property
+    def display_name(self) -> str:
+        """The explicit way to address someone, without guessing name boundaries."""
+        return self.preferred_name or self.given_name or self.full_name
+
+    def searchable_names(self) -> list[str]:
+        """Name components are searchable, but are not automatic identity matching keys."""
+        return list(
+            dict.fromkeys(
+                [
+                    *self.all_names(),
+                    self.full_name,
+                    *(name for name in (self.preferred_name, self.given_name, self.family_name) if name),
+                ]
+            )
+        )
 
     def all_names(self) -> list[str]:
         """Return the canonical name plus alias values, deduped, order-preserving."""

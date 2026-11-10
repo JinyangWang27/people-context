@@ -477,9 +477,7 @@ def test_a_longer_history_reports_its_truncation_in_both_renderings() -> None:
     harness = _Harness()
     person = harness.add_person()
     for index in range(3):
-        harness.timeline.rows.append(
-            _timeline_row(f"t{index}", _NOW - timedelta(days=index), summary=f"Row {index}")
-        )
+        harness.timeline.rows.append(_timeline_row(f"t{index}", _NOW - timedelta(days=index), summary=f"Row {index}"))
 
     document = harness.brief.execute(person.id, include_history=True, history_limit=2)
 

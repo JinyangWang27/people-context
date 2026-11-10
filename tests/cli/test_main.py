@@ -114,6 +114,12 @@ def test_list_json_emits_the_versioned_person_index(tmp_path: Path, capsys: pyte
         {
             "id": live.id,
             "canonical_name": "Alice Wonderland",
+            "preferred_name": None,
+            "given_name": None,
+            "family_name": None,
+            "display_name": "Alice Wonderland",
+            "full_name": "Alice Wonderland",
+            "family_name_first": False,
             "aliases": [],
             "summary": "A curious person from the story.",
             "is_self": False,
@@ -487,3 +493,36 @@ def test_add_alias_refuses_an_email_unless_it_is_a_handle(tmp_path: Path, capsys
     assert cli.main([*base, "add-alias", person.id, "ann@example.com"]) == 1
     assert "--kind handle" in capsys.readouterr().err
     assert cli.main([*base, "add-alias", person.id, "ann@example.com", "--kind", "handle"]) == 0
+
+
+def test_edit_sets_and_clears_explicit_names(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    db_file = tmp_path / "names.db"
+    person = _seed(db_file, "Alice Zhang")
+    prefix = ["--db", str(db_file), "edit", person.id]
+    assert (
+        cli.main(
+            [
+                *prefix,
+                "--preferred-name",
+                "Ali",
+                "--given-name",
+                "Alice",
+                "--family-name",
+                "Zhang",
+                "--family-name-first",
+            ]
+        )
+        == 0
+    )
+    assert cli.main([*prefix, "--preferred-name", ""]) == 0
+    assert cli.main([*prefix, "--no-family-name-first"]) == 0
+    capsys.readouterr()
+    conn = open_db(db_file)
+    try:
+        stored = SqlitePeopleRepository(conn).get(person.id)
+        assert stored is not None
+        assert (stored.preferred_name, stored.given_name, stored.family_name) == (None, "Alice", "Zhang")
+        assert stored.family_name_first is False
+        assert stored.full_name == stored.canonical_name == "Alice Zhang"
+    finally:
+        conn.close()

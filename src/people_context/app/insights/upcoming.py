@@ -147,9 +147,7 @@ class ListUpcomingDates:
             occurrence = _next_occurrence(month_day, today)
             if occurrence is None or occurrence > window_end:
                 continue
-            rows.append(
-                _row(person, UpcomingDateKind.BIRTHDAY, occurrence, BIRTHDAY_LABEL, fact.id)
-            )
+            rows.append(_row(person, UpcomingDateKind.BIRTHDAY, occurrence, BIRTHDAY_LABEL, fact.id))
         return rows, skipped
 
     def _reminder_entries(
@@ -160,9 +158,7 @@ class ListUpcomingDates:
         window_end: date,
     ) -> list[tuple[_SortKey, UpcomingDateEntry]]:
         rows: list[tuple[_SortKey, UpcomingDateEntry]] = []
-        reminders = self._reminders.execute(
-            ListRemindersInput(person_id=person_id, status=ReminderStatus.ACTIVE)
-        )
+        reminders = self._reminders.execute(ListRemindersInput(person_id=person_id, status=ReminderStatus.ACTIVE))
         for reminder in reminders:
             person = targets.get(reminder.person_id)
             if person is None:
@@ -170,9 +166,7 @@ class ListUpcomingDates:
             due_on = _due_date(reminder)
             if due_on is None or due_on < today or due_on > window_end:
                 continue
-            rows.append(
-                _row(person, UpcomingDateKind.REMINDER, due_on, reminder.text, reminder.id)
-            )
+            rows.append(_row(person, UpcomingDateKind.REMINDER, due_on, reminder.text, reminder.id))
         return rows
 
 

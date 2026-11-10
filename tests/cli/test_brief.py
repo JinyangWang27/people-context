@@ -82,12 +82,8 @@ def _record_extra_fact(db_path: Path, person_id: str) -> None:
     """Add a second ordinary fact, so a one-entry history page has something to truncate."""
     conn = open_db(db_path)
     try:
-        record_fact = RecordFact(
-            SqlitePeopleRepository(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock()
-        )
-        record_fact.execute(
-            RecordFactInput(person_id=person_id, predicate="city", value="Berlin", source="cli")
-        )
+        record_fact = RecordFact(SqlitePeopleRepository(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock())
+        record_fact.execute(RecordFactInput(person_id=person_id, predicate="city", value="Berlin", source="cli"))
     finally:
         conn.close()
 
@@ -347,9 +343,7 @@ def test_a_brief_cut_at_its_bound_says_so_in_json_and_text(
     person_id = _seed(db_path)
     conn = open_db(db_path)
     try:
-        record_fact = RecordFact(
-            SqlitePeopleRepository(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock()
-        )
+        record_fact = RecordFact(SqlitePeopleRepository(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), _Clock())
         for index in range(BRIEF_CONTEXT_ITEMS):
             record_fact.execute(
                 RecordFactInput(person_id=person_id, predicate=f"note_{index:02d}", value="x", source="cli")

@@ -111,7 +111,7 @@ def cmd_browse(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
 
     print(url, flush=True)
     print(f"Warning: {REVIEW_DISCLOSURE_WARNING}", file=sys.stderr)
-    print("Serving on loopback only. Press Ctrl-C, or Done in the page, to stop.", file=sys.stderr, flush=True)
+    print("Serving on loopback only. Press Ctrl-C, or Close in the page, to stop.", file=sys.stderr, flush=True)
     if args.open:
         # A text-mode browser blocks `webbrowser.open` until it exits, so it must not hold up the
         # server it is about to talk to; the socket is already listening and queues its request.

@@ -278,4 +278,3 @@ def _ordered(rows: list[TimelineRow]) -> list[TimelineRow]:
     """
     by_identity = sorted(rows, key=lambda row: (row.entry_type, row.entry_id))
     return sorted(by_identity, key=lambda row: as_utc(row.effective_at), reverse=True)
-

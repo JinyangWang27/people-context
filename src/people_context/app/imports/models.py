@@ -16,7 +16,7 @@ from people_context.domain.group import (
     check_temporal_basis,
     resolve_temporal_basis,
 )
-from people_context.domain.person import AliasKind, check_alias_kind, check_person_name
+from people_context.domain.person import AliasKind, OptionalName, check_alias_kind, check_person_name
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
@@ -224,6 +224,8 @@ RelationshipTypeText = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RELATIONSHIP_TYPE_CHARS),
     AfterValidator(_normalizable_relationship_type),
 ]
+
+
 def _non_blank_token(value: str) -> str:
     """Accept one opaque token, checking it is not blank without rewriting it.
 
@@ -298,6 +300,10 @@ class PersonCandidateInput(BaseModel):
     type: Literal["person"]
     ref: NonBlank
     name: NonBlank
+    preferred_name: OptionalName = None
+    given_name: OptionalName = None
+    family_name: OptionalName = None
+    family_name_first: bool | None = None
     aliases: list[CandidateAlias] = Field(default_factory=list)
     summary: str | None = None
     message_id: str | None = None
@@ -560,9 +566,7 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
 #: does not. Groups and memberships belong here because they are distilled from unstructured
 #: material exactly as an observation is, and an unbounded batch of them would be the one
 #: extraction path the budgets do not reach.
-EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
-    {"observation", "trait", "relationship", "group", "group_membership"}
-)
+EXTRACTION_CANDIDATE_TYPES: Final = frozenset({"observation", "trait", "relationship", "group", "group_membership"})
 
 
 def contains_extraction_candidate(candidates: list[Any]) -> bool:
@@ -572,6 +576,5 @@ def contains_extraction_candidate(candidates: list[Any]) -> bool:
     ones that must hold *before* anything parses or stages an oversized payload.
     """
     return any(
-        isinstance(candidate, dict) and candidate.get("type") in EXTRACTION_CANDIDATE_TYPES
-        for candidate in candidates
+        isinstance(candidate, dict) and candidate.get("type") in EXTRACTION_CANDIDATE_TYPES for candidate in candidates
     )

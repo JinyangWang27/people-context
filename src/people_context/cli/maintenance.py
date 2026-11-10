@@ -232,8 +232,7 @@ def _render_storage(report: StatsReport) -> str:
         # Never a zero here: an unmeasurable database is not an empty one.
         return f"{storage.storage_kind} (no measurable file)"
     return (
-        f"{storage.database_bytes} bytes "
-        f"(main {storage.main_bytes}, wal {storage.wal_bytes}, shm {storage.shm_bytes})"
+        f"{storage.database_bytes} bytes (main {storage.main_bytes}, wal {storage.wal_bytes}, shm {storage.shm_bytes})"
     )
 
 

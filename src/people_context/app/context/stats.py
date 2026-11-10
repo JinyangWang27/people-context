@@ -113,9 +113,7 @@ class ReportStoreStats:
             ),
             # Every documented table appears, including the ones holding nothing: a table
             # missing from the list would be indistinguishable from a table with no rows.
-            tables=[
-                CountEntry(key=table, count=inventory.table_rows.get(table, 0)) for table in DOCUMENTED_TABLES
-            ],
+            tables=[CountEntry(key=table, count=inventory.table_rows.get(table, 0)) for table in DOCUMENTED_TABLES],
             alias_kinds=_distribution(inventory.alias_kinds),
             fact_sensitivity=_distribution(inventory.fact_sensitivity),
             observation_sensitivity=_distribution(inventory.observation_sensitivity),
@@ -148,7 +146,4 @@ def _distribution(counts: Mapping[str, int]) -> list[CountEntry]:
     could swap places between runs over unchanged data, purely on the storage engine's
     grouping order.
     """
-    return [
-        CountEntry(key=key, count=counts[key])
-        for key in sorted(counts, key=lambda key: (-counts[key], key))
-    ]
+    return [CountEntry(key=key, count=counts[key]) for key in sorted(counts, key=lambda key: (-counts[key], key))]

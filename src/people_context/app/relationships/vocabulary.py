@@ -55,9 +55,7 @@ class AddRelationshipType:
         type_name = normalize_relationship_type(data.type)
         category = normalize_relationship_type(data.category)
         inverse = normalize_relationship_type(data.inverse) if data.inverse else None
-        synonyms = sorted(
-            {normalized for value in data.synonyms if (normalized := normalize_relationship_type(value))}
-        )
+        synonyms = sorted({normalized for value in data.synonyms if (normalized := normalize_relationship_type(value))})
         candidates = [type_name, *synonyms]
         if inverse is not None:
             candidates.append(inverse)

@@ -143,7 +143,7 @@ amendment surface, also accepts a person the possible-match rule lists.
 | Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
 | Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
 | Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `7` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `9` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -210,7 +210,7 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 7** and `pctx sync pull` accepts **only version 7**. Earlier bundle versions
+  `pctx sync push` emits **version 9** and `pctx sync pull` accepts **only version 9**. Earlier bundle versions
   are refused; re-export from a current release to move data. A new field, collection, candidate type, or status
   value all advance the version, because a strict reader cannot fail closed on any of them.
 
@@ -252,3 +252,16 @@ scraped Markdown or table output.
 A change that breaks one of the guarantees above without a major version is a bug. Report it through the issue
 process in [CONTRIBUTING.md](../CONTRIBUTING.md), including the release that worked, the release that did not,
 and the tool, command, or document involved.
+
+### Explicit name components
+
+Migration 011 adds nullable preferred/given/family names without splitting or rewriting existing names.
+Identity/context, person-index, and brief JSON gain additive optional name fields and a resolved `display_name`.
+Sync bundles advance from version 7 to **9** because person snapshots now carry the three components
+explicitly, including nulls, and the `family_name_first` flag. Version-8 and older bundles are refused; export a fresh bundle with the updated
+source installation before restoring onto another installation. Ordinary mutations retain full audit/replay
+snapshots. Existing database backups remain usable through the forward migration.
+
+Migration 012 adds the explicit order flag, default false. Full name is derived from complete given/family
+components with the selected order and spacing, otherwise the original canonical name is used. Index/context
+and brief documents add `full_name` and `family_name_first` without changing their version-1 envelopes.

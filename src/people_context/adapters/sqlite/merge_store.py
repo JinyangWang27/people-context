@@ -351,13 +351,23 @@ class SqliteMergeStore:
     def _save_primary(self, person: Person, duplicate_id: str) -> None:
         self._conn.execute(
             """UPDATE persons SET canonical_name = ?, canonical_name_normalized = ?, is_self = ?,
-               summary = ?, updated_at = ?, deleted_at = NULL WHERE id = ?""",
+               summary = ?, updated_at = ?, deleted_at = NULL,
+               preferred_name = ?, given_name = ?, family_name = ?, family_name_first = ?,
+               preferred_name_normalized = ?, given_name_normalized = ?, family_name_normalized = ? WHERE id = ?""",
             (
                 person.canonical_name,
                 normalize_name(person.canonical_name),
                 int(person.is_self),
                 person.summary,
                 person.updated_at.isoformat(),
+                person.preferred_name,
+                person.given_name,
+                person.family_name,
+                int(person.family_name_first),
+                *(
+                    normalize_name(name) if name else None
+                    for name in (person.preferred_name, person.given_name, person.family_name)
+                ),
                 person.id,
             ),
         )
@@ -381,7 +391,7 @@ class SqliteMergeStore:
         self._conn.execute("DELETE FROM person_search WHERE person_id = ?", (person.id,))
         self._conn.executemany(
             "INSERT INTO person_search (name, person_id) VALUES (?, ?)",
-            [(name, person.id) for name in person.all_names()],
+            [(name, person.id) for name in person.searchable_names()],
         )
 
     def _ids_for_person(self, table: str, person_id: str) -> list[str]:

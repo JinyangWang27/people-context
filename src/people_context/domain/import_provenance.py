@@ -219,9 +219,7 @@ def check_contract_revision(value: str) -> str:
 def staged_candidate_references(candidate: dict[str, Any]) -> set[str]:
     """Return every batch-local candidate id one persisted candidate canonically names."""
     references = {
-        value
-        for field_name in STAGED_REFERENCE_FIELDS
-        if isinstance(value := candidate.get(field_name), str)
+        value for field_name in STAGED_REFERENCE_FIELDS if isinstance(value := candidate.get(field_name), str)
     }
     for field_name in STAGED_REFERENCE_LIST_FIELDS:
         references |= identifier_list(candidate.get(field_name))
@@ -239,9 +237,7 @@ def staged_evidence_references(candidate: dict[str, Any]) -> set[str]:
 def staged_group_references(candidate: dict[str, Any]) -> set[str]:
     """Return the batch-local group candidate ids one persisted candidate names."""
     return {
-        value
-        for field_name in STAGED_GROUP_REFERENCE_FIELDS
-        if isinstance(value := candidate.get(field_name), str)
+        value for field_name in STAGED_GROUP_REFERENCE_FIELDS if isinstance(value := candidate.get(field_name), str)
     }
 
 
@@ -255,11 +251,7 @@ def staged_durable_references(candidate: dict[str, Any]) -> set[str]:
 
 def staged_durable_group_references(candidate: dict[str, Any]) -> set[str]:
     """Return the durable group ids one persisted candidate names directly."""
-    return {
-        value
-        for field_name in STAGED_DURABLE_GROUP_FIELDS
-        if isinstance(value := candidate.get(field_name), str)
-    }
+    return {value for field_name in STAGED_DURABLE_GROUP_FIELDS if isinstance(value := candidate.get(field_name), str)}
 
 
 def identifier_list(value: Any) -> set[str]:

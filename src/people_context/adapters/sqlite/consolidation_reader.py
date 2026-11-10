@@ -52,9 +52,7 @@ from people_context.ports.timeline import (
 # A fact is placed by the date it asserts it began to hold, and by the time it was recorded when it
 # asserts none — the same placement the M19.1 timeline uses, so one `limit` describes one window
 # across both reads instead of two a caller has to reconcile.
-_FACT_ORDER_COLUMN = (
-    f"CASE WHEN f.valid_from IS NULL THEN f.recorded_at ELSE f.valid_from || '{DATE_START_OF_DAY}' END"
-)
+_FACT_ORDER_COLUMN = f"CASE WHEN f.valid_from IS NULL THEN f.recorded_at ELSE f.valid_from || '{DATE_START_OF_DAY}' END"
 
 _FACTS_SQL = f"""
 SELECT f.id AS fact_id,

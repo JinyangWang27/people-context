@@ -49,16 +49,13 @@ VCARD_WARNING = (
 # printed in this order.
 _VCARD_OMISSION_MESSAGES: dict[str, str] = {
     "omitted_affiliations": (
-        "Omitted {count} additional active affiliation(s); "
-        "a card carries one ORG/TITLE pair the importer reads back."
+        "Omitted {count} additional active affiliation(s); a card carries one ORG/TITLE pair the importer reads back."
     ),
     "omitted_birthdays": "Omitted {count} additional full-date birthday(s); a card carries one BDAY.",
     "skipped_partial_birthdays": (
         "Skipped {count} recurring --MM-DD birthday value(s), which have no portable vCard spelling."
     ),
-    "skipped_unparseable_birthdays": (
-        "Skipped {count} birthday value(s) that are not a full calendar date."
-    ),
+    "skipped_unparseable_birthdays": ("Skipped {count} birthday value(s) that are not a full calendar date."),
 }
 
 
@@ -98,9 +95,7 @@ def cmd_brief(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             person.id,
             include_sensitive=args.include_sensitive,
             include_history=args.include_history,
-            history_limit=(
-                DEFAULT_TIMELINE_LIMIT if args.history_limit is None else args.history_limit
-            ),
+            history_limit=(DEFAULT_TIMELINE_LIMIT if args.history_limit is None else args.history_limit),
         )
     except PersonTimelineError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -201,9 +196,7 @@ def _vcard_summary(result: VCardExportResult, destination: Path | None) -> list[
     # stream as a disclosed birth date. Reporting order follows this table.
     counts = result.model_dump(include=set(_VCARD_OMISSION_MESSAGES))
     lines.extend(
-        message.format(count=counts[field])
-        for field, message in _VCARD_OMISSION_MESSAGES.items()
-        if counts[field]
+        message.format(count=counts[field]) for field, message in _VCARD_OMISSION_MESSAGES.items() if counts[field]
     )
     return lines
 

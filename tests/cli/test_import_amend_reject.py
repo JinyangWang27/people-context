@@ -41,9 +41,17 @@ def _input(tmp_path: Path, candidates: list[dict[str, object]] | None = None) ->
 def _stage(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> tuple[str, list[str]]:
     code = cli.main(
         [
-            "--db", str(db_file), "import", "stage-candidates",
-            "--source", "review", "--input", str(_input(tmp_path)),
-            "--source-kind", "notes", "--json",
+            "--db",
+            str(db_file),
+            "import",
+            "stage-candidates",
+            "--source",
+            "review",
+            "--input",
+            str(_input(tmp_path)),
+            "--source-kind",
+            "notes",
+            "--json",
         ]
     )
     assert code == 0
@@ -76,9 +84,7 @@ def _statuses(db_file: Path) -> list[tuple[str, str]]:
         conn.close()
 
 
-def test_amend_prints_the_whole_refreshed_review_document(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_amend_prints_the_whole_refreshed_review_document(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
 
@@ -144,16 +150,12 @@ def test_a_refused_amendment_leaves_stdout_empty_and_the_row_unchanged(
     assert _statuses(db_file) == [(ids[0], "pending"), (ids[1], "pending")]
 
 
-def test_a_refusal_never_prints_an_undeclared_patch_key(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_refusal_never_prints_an_undeclared_patch_key(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
     private = "Nadia is being treated at the Mayo Clinic"
 
-    code = cli.main(
-        ["--db", str(db_file), "import", "amend", batch_id, ids[1], "--patch", json.dumps({private: "x"})]
-    )
+    code = cli.main(["--db", str(db_file), "import", "amend", batch_id, ids[1], "--patch", json.dumps({private: "x"})])
 
     assert code == 1
     captured = capsys.readouterr()
@@ -161,9 +163,7 @@ def test_a_refusal_never_prints_an_undeclared_patch_key(
     assert "(redacted)" in captured.err
 
 
-def test_reject_withdraws_several_candidates_at_once(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_reject_withdraws_several_candidates_at_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
 
@@ -174,9 +174,7 @@ def test_reject_withdraws_several_candidates_at_once(
     assert [row["status"] for row in document["candidates"]] == ["rejected", "rejected"]
 
 
-def test_a_withdrawn_candidate_stays_listed_by_review(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_withdrawn_candidate_stays_listed_by_review(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
     assert cli.main(["--db", str(db_file), "import", "reject", batch_id, ids[1]]) == 0
@@ -188,9 +186,7 @@ def test_a_withdrawn_candidate_stays_listed_by_review(
     assert [row["status"] for row in document["candidates"]] == ["pending", "rejected"]
 
 
-def test_commit_all_skips_a_withdrawn_candidate(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_commit_all_skips_a_withdrawn_candidate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
     assert cli.main(["--db", str(db_file), "import", "reject", batch_id, ids[1]]) == 0
@@ -259,9 +255,7 @@ def test_amending_an_unknown_batch_refuses_rather_than_creating_one(
     db_file = tmp_path / "people.db"
     _stage(db_file, tmp_path, capsys)
 
-    code = cli.main(
-        ["--db", str(db_file), "import", "amend", "01JUNKNOTABATCH0000000000", "c1", "--patch", "{}"]
-    )
+    code = cli.main(["--db", str(db_file), "import", "amend", "01JUNKNOTABATCH0000000000", "c1", "--patch", "{}"])
 
     assert code == 1
     assert capsys.readouterr().out == ""
@@ -278,9 +272,18 @@ def test_reimporting_a_withdrawn_source_does_not_call_its_candidates_committed(
     db_file = tmp_path / "people.db"
     digest = "a" * 64
     stage = [
-        "--db", str(db_file), "import", "stage-candidates",
-        "--source", "review", "--input", str(_input(tmp_path)),
-        "--source-kind", "notes", "--content-digest", digest,
+        "--db",
+        str(db_file),
+        "import",
+        "stage-candidates",
+        "--source",
+        "review",
+        "--input",
+        str(_input(tmp_path)),
+        "--source-kind",
+        "notes",
+        "--content-digest",
+        digest,
     ]
     assert cli.main([*stage, "--json"]) == 0
     batch_id = str(json.loads(capsys.readouterr().out)["batch_id"])
@@ -296,15 +299,22 @@ def test_reimporting_a_withdrawn_source_does_not_call_its_candidates_committed(
     assert "committed" not in out
 
 
-def test_reimporting_a_committed_source_still_says_so(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_reimporting_a_committed_source_still_says_so(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     digest = "b" * 64
     stage = [
-        "--db", str(db_file), "import", "stage-candidates",
-        "--source", "review", "--input", str(_input(tmp_path)),
-        "--source-kind", "notes", "--content-digest", digest,
+        "--db",
+        str(db_file),
+        "import",
+        "stage-candidates",
+        "--source",
+        "review",
+        "--input",
+        str(_input(tmp_path)),
+        "--source-kind",
+        "notes",
+        "--content-digest",
+        digest,
     ]
     assert cli.main([*stage, "--json"]) == 0
     batch_id = str(json.loads(capsys.readouterr().out)["batch_id"])
@@ -372,9 +382,7 @@ def test_a_patch_on_stdin_that_is_not_utf8_is_refused(
     assert "not valid UTF-8" in capsys.readouterr().err
 
 
-def test_an_oversized_inline_patch_is_refused(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_an_oversized_inline_patch_is_refused(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
     oversized = json.dumps({"role": "x" * (MAX_CLI_CANDIDATE_JSON_BYTES + 10)})

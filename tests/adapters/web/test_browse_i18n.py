@@ -24,7 +24,7 @@ _OTHER_LANGUAGES = [code for code in BROWSE_LANGUAGES if code != "en"]
 #: Keys the page builds from a prefix and a known suffix rather than naming whole.
 _COMPOSED_KEYS = {
     *(f"people.sort.{value}" for value in ("name", "created", "updated")),
-    *(f"people.column.{column}" for column in ("name", "organization", "aliases", "summary")),
+    *(f"people.column.{column}" for column in ("preferred_name", "name", "organization", "aliases", "summary")),
     *(f"sources.column.{column}" for column in ("kind", "label", "status", "batch")),
     *(f"batch.column.{column}" for column in ("status", "proposal", "identity", "staged")),
     *(
@@ -36,8 +36,13 @@ _COMPOSED_KEYS = {
         f"adder.{name}"
         for name in ("organization", "role", "from", "to", "predicate", "value", "summary", "channel", "on")
     ),
-    "person.edit_name",
     "person.edit_summary",
+    "person.edit_preferred_name",
+    "person.edit_given_name",
+    "person.edit_family_name",
+    "person.preferred_name",
+    "person.given_name",
+    "person.family_name",
 }
 
 
@@ -143,14 +148,14 @@ def test_the_page_opens_in_chinese_and_the_toggle_switches_in_place(db_file: Pat
     scenario = _CHINESE_AND_TOGGLE.replace("__RECORD_FIELDS__", json.dumps(RECORD_FIELDS))
     outcome = _run_page(db_file, tmp_path, scenario, language="zh-CN")
     assert outcome["opening"] == {"title": "People Context", "people": "联系人", "toggle": "EN"}
-    assert outcome["headings"] == ["所属机构", "事实", "互动记录", "提醒", "特质"]
+    assert outcome["headings"] == ["人际关系", "所属机构", "事实", "互动记录", "提醒", "特质"]
     assert outcome["prompt"] == "永久删除 role: {label}？此操作无法撤销。"
     # Options are sent as their stored values and labelled in the language on screen.
     assert ["personal", "个人"] in outcome["options"] and ["sensitive", "敏感"] in outcome["options"]
     assert outcome["english"] == {
         "people": "People",
         "toggle": "中文",
-        "headings": ["Affiliations", "Facts", "Interactions", "Reminders", "Traits"],
+        "headings": ["Relationships", "Affiliations", "Facts", "Interactions", "Reminders", "Traits"],
         "affiliation": True,
     }
     assert (outcome["back"], outcome["affiliation"]) == ("联系人", True)
@@ -195,3 +200,25 @@ def test_switching_language_rebuilds_an_open_form_in_place_keeping_what_was_type
     assert ["nickname", "昵称"] in outcome["kinds"]
     # Only what the reviewer changed is sent: the untouched summary and alias list stay out.
     assert outcome["patch"] == {"name": "Elena Marshe", "matched_person_id": "person-2"}
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(("language", "label"), [("en", "Close"), ("zh-CN", "关闭")])
+def test_close_button_names_and_ends_the_viewer_session(
+    db_file: Path, tmp_path: Path, language: str, label: str
+) -> None:
+    scenario = r"""
+    (async () => {
+      await tick();
+      const control = document.getElementById("nav-done");
+      const label = control.textContent;
+      const closing = control.listeners.click();
+      releases.forEach((r) => r()); await closing;
+      console.log(JSON.stringify({label, posts: posts.map((p) => p.path), text: view.children[0].textContent}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario, language=language) == {
+        "label": label,
+        "posts": ["/api/done"],
+        "text": MESSAGES[language]["done.stopped"],
+    }

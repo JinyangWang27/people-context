@@ -714,6 +714,13 @@ and the patch payload is never echoed.
 
 ## Person context compatibility
 
+Context identity, index entries, and briefs add nullable `preferred_name`, `given_name`, and `family_name`,
+plus `family_name_first`, derived `full_name`, and `display_name` resolved as preferred, given, then full name.
+Full name uses the explicit component order (given first by default), no space for Han-only components,
+and one space for other components. Incomplete components fall back to the preserved canonical name. Preferred name means how the user
+addresses the person, independent of alias kind. Name components remain optional and are searchable, but do
+not become new automatic identity-matching keys. Existing canonical-name and alias resolution is preserved.
+
 M7 does not change existing relationship fields. Each hydrated relationship object adds one field:
 
 ```json
@@ -743,9 +750,9 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | Tool | Purpose |
 |---|---|
 | `remember` | One statement about one person in one call: resolve, create if new, record a fact/trait/interaction/affiliation/relationship, commit once. |
-| `remember_person` | Create/update a person and merge aliases/summary. |
+| `remember_person` | Create/update a person and merge aliases/summary. Optional `preferred_name`, `given_name`, and `family_name` store explicit components; `family_name_first` controls generated full-name order (default false); omitted values preserve them, empty strings clear them. |
 | `add_alias` | Add a normalized-deduplicated alias. `kind` is the `AliasKind` enum (`nickname`, `native_script`, `transliteration`, `handle`, `former_name`, `other`; default `other`), published in the tool schema. An email address is accepted only with kind `handle`, the material import identity matching reads; any other kind is refused with `alias_email_not_handle`. The same rule applies to aliases in `remember_person` and `stage_candidates`. |
-| `rename_person` | Replace a person's canonical name. The old name is kept as a `former_name` alias, or as a `handle` when it is an email address, and an alias equal to the new name stops being one. Returns the person. An email-shaped new name is refused (`validation_error` with detail type `name_is_email`); a name another active person holds is refused with `name_conflict`. The MCP counterpart of `pctx edit --name`. |
+| `rename_person` | Edit a person's optional `preferred_name`, `given_name`, or `family_name`, and/or replace their canonical `name`. `family_name_first` is also editable, including explicit false. At least one name field or order is required. Omitted components stay unchanged; empty strings clear them. Names are never automatically split. The old name is kept as a `former_name` alias, or as a `handle` when it is an email address, and an alias equal to the new name stops being one. Returns the person. An email-shaped new name is refused (`validation_error` with detail type `name_is_email`); a name another active person holds is refused with `name_conflict`. The MCP counterpart of `pctx edit --name`. |
 | `remove_alias` | Remove one alias, matched by normalized value; the person and their other records stay intact. Returns `{person_id, alias, removed}`; an absent alias is `removed: false` and changes nothing. The canonical name is refused with `alias_conflict` (`reason: canonical_name`). Annotated destructive and idempotent. |
 | `update_alias` | Change one alias's `value`, `kind`, `lang`, or `script` in place, keeping its id; omitted fields stay unchanged. Returns `{person_id, alias, changed}`. An unknown alias is refused with `alias_not_found`; a new value matching the canonical name or another alias is refused with `alias_conflict` (`reason: duplicate_name`). An update whose result is an email address of a kind other than `handle` is refused with `alias_conflict` (`reason: alias_email_not_handle`), so setting `kind: handle` is how an email stored as a name is fixed. |
 | `set_relationship` | Normalize vocabulary/direction and create or update one canonical active edge. |

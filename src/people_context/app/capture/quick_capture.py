@@ -131,6 +131,7 @@ class QuickCaptureInput(BaseModel):
         if not stripped:
             raise ValueError("person must not be blank")
         return stripped
+
     note: str | None = None
     kind: CaptureKind = "auto"
     occurred_at: datetime | None = None
@@ -361,9 +362,7 @@ class QuickCapture:
             )
         return subject
 
-    def _identify(
-        self, data: QuickCaptureInput, transaction_id: str
-    ) -> tuple[str, str, bool] | QuickCaptureResult:
+    def _identify(self, data: QuickCaptureInput, transaction_id: str) -> tuple[str, str, bool] | QuickCaptureResult:
         # The relationship hint scores links to the user, so it only applies when the user is the subject.
         relationship_hint = data.relationship if data.subject is None else None
         hints = ResolutionHints(org=data.org, role=data.role, relationship=relationship_hint)

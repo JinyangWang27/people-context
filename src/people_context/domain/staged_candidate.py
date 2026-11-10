@@ -59,12 +59,13 @@ from people_context.domain.group import (
     TemporalBasis,
     check_temporal_basis,
 )
-from people_context.domain.person import AliasKind
+from people_context.domain.person import AliasKind, OptionalName
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
 NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
 
 def _non_blank_token(value: str) -> str:
     """Accept one opaque identity token, checking it is not blank without rewriting it.
@@ -134,6 +135,10 @@ class StagedPerson(StrictStagedModel):
 
     type: Literal["person"]
     name: NonBlank
+    preferred_name: OptionalName = None
+    given_name: OptionalName = None
+    family_name: OptionalName = None
+    family_name_first: bool | None = None
     aliases: list[StagedAlias]
     summary: str | None = None
     message_id: str | None = None

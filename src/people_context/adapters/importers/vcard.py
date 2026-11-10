@@ -141,6 +141,7 @@ def _card_candidates(index: int, name: str, properties: dict[str, list[_Property
     ref = f"card-{index}"
     aliases: list[dict[str, str]] = []
     structured_name = ""
+    given = family = ""
     structured = properties.get("N", [])
     if structured:
         parts = _split_escaped(_decode_raw(structured[0]), ";")
@@ -174,6 +175,16 @@ def _card_candidates(index: int, name: str, properties: dict[str, list[_Property
             "date": None,
         }
     ]
+    if given.strip() and not is_email_shaped(given):
+        candidates[0]["given_name"] = given.strip()
+    if family.strip() and not is_email_shaped(family):
+        candidates[0]["family_name"] = family.strip()
+    if (
+        given.strip()
+        and family.strip()
+        and name in (family.strip() + given.strip(), family.strip() + " " + given.strip())
+    ):
+        candidates[0]["family_name_first"] = True
     orgs = properties.get("ORG", [])
     titles = properties.get("TITLE", [])
     if orgs and titles:

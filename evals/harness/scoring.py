@@ -98,9 +98,7 @@ def evaluate_criterion(criterion: Criterion, answer: str, database: Path | None 
     if isinstance(criterion, MatchesCriterion):
         return re.search(criterion.pattern, folded, re.IGNORECASE) is not None
     if isinstance(criterion, LineMatchesCriterion):
-        matched = sum(
-            1 for line in normalize_lines(answer) if re.search(criterion.pattern, line, re.IGNORECASE)
-        )
+        matched = sum(1 for line in normalize_lines(answer) if re.search(criterion.pattern, line, re.IGNORECASE))
         return matched >= criterion.min_lines
     raise EvalHarnessError(f"unsupported criterion kind: {type(criterion).__name__}")
 

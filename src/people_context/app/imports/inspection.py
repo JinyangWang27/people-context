@@ -168,9 +168,7 @@ class ListImportSources:
         if cursor is not None:
             after = self._reader.sort_key_for_session(_decoded(cursor, SOURCE_LIST_SCOPE))
             if after is None:
-                raise SourceInspectionError(
-                    "this cursor no longer names a source", code=INVALID_SOURCE_CURSOR
-                )
+                raise SourceInspectionError("this cursor no longer names a source", code=INVALID_SOURCE_CURSOR)
         rows = self._reader.list_sessions(limit=page_limit, after=after)
         page, next_row = _split(rows, page_limit)
         return SourceListResult(
@@ -220,17 +218,13 @@ class ShowImportSource:
             counts=_counts(self._reader.count_source_candidates(session.id, session.batch_id)),
             limit=page_limit,
             mappings=[_mapping_entry(row) for row in page],
-            next_cursor=(
-                None if next_row is None else encode_cursor(mapping_scope(session.id), page[-1].candidate_id)
-            ),
+            next_cursor=(None if next_row is None else encode_cursor(mapping_scope(session.id), page[-1].candidate_id)),
         )
 
 
 def _checked_limit(limit: int) -> int:
     if limit < MIN_SOURCE_PAGE_LIMIT or limit > MAX_SOURCE_PAGE_LIMIT:
-        raise SourceInspectionError(
-            f"limit must be between {MIN_SOURCE_PAGE_LIMIT} and {MAX_SOURCE_PAGE_LIMIT}"
-        )
+        raise SourceInspectionError(f"limit must be between {MIN_SOURCE_PAGE_LIMIT} and {MAX_SOURCE_PAGE_LIMIT}")
     return limit
 
 

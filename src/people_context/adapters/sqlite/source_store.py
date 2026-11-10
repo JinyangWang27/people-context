@@ -29,9 +29,7 @@ _SESSION_COLUMNS = (
     "extraction_contract_revision, claim_key, batch_id, status, created_at"
 )
 
-_MAPPING_COLUMNS = (
-    "candidate_id, batch_id, source_session_id, disposition, entity_type, entity_id, created_at"
-)
+_MAPPING_COLUMNS = "candidate_id, batch_id, source_session_id, disposition, entity_type, entity_id, created_at"
 
 
 class SqliteImportSourceStore:

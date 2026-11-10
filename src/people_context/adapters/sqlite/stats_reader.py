@@ -51,9 +51,7 @@ _ALIAS_KINDS_SQL = "SELECT kind AS bucket, COUNT(*) AS total FROM aliases GROUP 
 
 _FACT_SENSITIVITY_SQL = "SELECT sensitivity AS bucket, COUNT(*) AS total FROM facts GROUP BY sensitivity"
 
-_OBSERVATION_SENSITIVITY_SQL = (
-    "SELECT sensitivity AS bucket, COUNT(*) AS total FROM observations GROUP BY sensitivity"
-)
+_OBSERVATION_SENSITIVITY_SQL = "SELECT sensitivity AS bucket, COUNT(*) AS total FROM observations GROUP BY sensitivity"
 
 # A stored type with no vocabulary row has no category at all, which is exactly the drift
 # `pctx normalize-relationships` exists to resolve; the NULL is bucketed rather than silently
@@ -107,9 +105,7 @@ class SqliteStatsReader:
                 alias_kinds=self._buckets(_ALIAS_KINDS_SQL),
                 fact_sensitivity=self._buckets(_FACT_SENSITIVITY_SQL),
                 observation_sensitivity=self._buckets(_OBSERVATION_SENSITIVITY_SQL),
-                relationship_categories=self._buckets(
-                    _RELATIONSHIP_CATEGORIES_SQL, bucket=_relationship_category
-                ),
+                relationship_categories=self._buckets(_RELATIONSHIP_CATEGORIES_SQL, bucket=_relationship_category),
                 audit_operations=self._buckets(_AUDIT_OPERATIONS_SQL, bucket=_audit_operation),
                 changelog_devices=self._devices(),
                 storage=self._storage(),

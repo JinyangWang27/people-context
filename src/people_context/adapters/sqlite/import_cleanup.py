@@ -410,9 +410,7 @@ class ImportProvenanceCleaner:
 def _references(candidate: dict[str, object]) -> set[str]:
     """Return every batch-local candidate id one staged candidate canonically names."""
     references = {
-        value
-        for field_name in _CANDIDATE_REFERENCE_FIELDS
-        if isinstance(value := candidate.get(field_name), str)
+        value for field_name in _CANDIDATE_REFERENCE_FIELDS if isinstance(value := candidate.get(field_name), str)
     }
     for field_name in _CANDIDATE_REFERENCE_LISTS:
         references |= _as_ids(candidate.get(field_name))

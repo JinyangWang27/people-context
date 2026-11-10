@@ -83,9 +83,7 @@ def _cli_json(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, Any]:
     return document
 
 
-def _seed_committed_source(
-    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], *receipt: str
-) -> str:
+def _seed_committed_source(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], *receipt: str) -> str:
     """Stage and commit a receipt-backed batch that produced a sensitive fact; return the source id."""
     candidates = [
         {"type": "person", "ref": "ida", "name": "Ida Kerr", "aliases": []},
@@ -190,9 +188,7 @@ def db_file(tmp_path: Path) -> Path:
         ("/api/nowhere", {TOKEN_HEADER: ""}),
     ],
 )
-def test_every_failed_check_gets_the_same_generic_refusal(
-    db_file: Path, path: str, headers: dict[str, str]
-) -> None:
+def test_every_failed_check_gets_the_same_generic_refusal(db_file: Path, path: str, headers: dict[str, str]) -> None:
     _seed_people(db_file)
     with _client(db_file) as client:
         response = client.get(path, headers=headers)
@@ -239,15 +235,11 @@ def test_the_people_list_pages_the_person_index(db_file: Path, capsys: pytest.Ca
         first = client.get("/api/people", params={"limit": "1"})
         cursor = first.json()["next_cursor"]
         second = client.get("/api/people", params={"limit": "1", "cursor": cursor})
-        refusals = [
-            client.get("/api/people", params={"limit": limit}).json() for limit in ("0", "201", "many")
-        ]
+        refusals = [client.get("/api/people", params={"limit": limit}).json() for limit in ("0", "201", "many")]
         stale = client.get("/api/people", params={"cursor": "garbage"})
     _assert_security_headers(first.headers)
     listing = _cli_json(capsys, "--db", str(db_file), "list", "--json")
-    assert [p["id"] for p in first.json()["people"] + second.json()["people"]] == [
-        p["id"] for p in listing["people"]
-    ]
+    assert [p["id"] for p in first.json()["people"] + second.json()["people"]] == [p["id"] for p in listing["people"]]
     assert first.json()["people"][0].keys() == listing["people"][0].keys()
     assert second.json()["next_cursor"] is None
     assert refusals == [{"error": "invalid_person_page_limit"}] * 3
@@ -361,9 +353,7 @@ def test_sensitive_records_follow_the_process_elevation_only(db_file: Path) -> N
     assert elevated.json()["disclosure"]["context"] == "sensitive"
 
 
-def test_the_person_view_carries_the_brief_truncation_flag(
-    db_file: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_person_view_carries_the_brief_truncation_flag(db_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
     ids = _seed_people(db_file)
     with _client(db_file) as client:
         over = client.get("/api/person", params={"id": ids["toma"]}).json()
@@ -372,7 +362,7 @@ def test_the_person_view_carries_the_brief_truncation_flag(
     assert over["truncated"] is True and len(over["facts"]) == BRIEF_CONTEXT_ITEMS
     assert under["truncated"] is False
     assert missing.status_code == 404 and missing.json() == {"error": "unknown_person"}
-    cli_brief = _cli_json(capsys, "--db", str(db_file), "brief", ids["toma"], "--json")
+    cli_brief = _cli_json(capsys, "--db", str(db_file), "brief", ids["toma"], "--json", "--include-history")
     # The page's view is the brief exactly, plus the editor keys that ride beside it.
     page_only = {"generated_at", "alias_details", "alias_kinds", "record_fields"}
     assert {k: v for k, v in cli_brief.items() if k != "generated_at"} == {
@@ -441,9 +431,7 @@ def test_an_unknown_route_is_only_reported_after_the_guard(db_file: Path) -> Non
     _assert_security_headers(response.headers)
 
 
-def test_an_internal_error_is_generic_and_carries_no_detail(
-    db_file: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_internal_error_is_generic_and_carries_no_detail(db_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ids = _seed_people(db_file)
 
     def explode(*_args: object, **_kwargs: object) -> None:
@@ -501,8 +489,16 @@ def _stage(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], ca
     input_path = tmp_path / "batch.json"
     input_path.write_text(json.dumps(candidates), encoding="utf-8")
     staged = _cli_json(
-        capsys, "--db", str(db_file), "import", "stage-candidates", "--source", "allotment meeting",
-        "--input", str(input_path), "--json",
+        capsys,
+        "--db",
+        str(db_file),
+        "import",
+        "stage-candidates",
+        "--source",
+        "allotment meeting",
+        "--input",
+        str(input_path),
+        "--json",
     )
     batch_id = staged["batch_id"]
     assert isinstance(batch_id, str)
@@ -517,8 +513,13 @@ def _elena_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[st
         capsys,
         [
             {"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []},
-            {"type": "fact", "person_ref": "elena", "predicate": "health", "value": _SENSITIVE_VALUE,
-             "sensitivity": "sensitive"},
+            {
+                "type": "fact",
+                "person_ref": "elena",
+                "predicate": "health",
+                "value": _SENSITIVE_VALUE,
+                "sensitivity": "sensitive",
+            },
             {"type": "fact", "person_ref": "elena", "predicate": "role", "value": _MARKUP_NAME},
             {"type": "fact", "person_ref": "elena", "predicate": "note", "value": "Drop this one"},
         ],
@@ -531,9 +532,7 @@ def _cli_review(capsys: pytest.CaptureFixture[str], db_file: Path, batch_id: str
 
 def _ids(review: dict[str, Any]) -> dict[str, str]:
     """Candidate ids by person name or fact predicate."""
-    return {
-        row["candidate"].get("predicate") or row["candidate"]["name"]: row["id"] for row in review["candidates"]
-    }
+    return {row["candidate"].get("predicate") or row["candidate"]["name"]: row["id"] for row in review["candidates"]}
 
 
 def _action(client: TestClient, verb: str, batch_id: str, ids: list[str], digest: str) -> Any:
@@ -648,7 +647,10 @@ def test_committing_reports_the_use_case_counts_and_matches_a_fresh_review(
     assert reloaded == fresh
     statuses = {row["id"]: row["status"] for row in fresh["candidates"]}
     assert [statuses[ids[key]] for key in ("Elena Marsh", "role", "health", "note")] == [
-        "committed", "committed", "pending", "pending",
+        "committed",
+        "committed",
+        "pending",
+        "pending",
     ]
 
 
@@ -736,9 +738,7 @@ def test_a_malformed_action_is_refused_without_echoing_it(db_file: Path, body: b
         assert response.status_code == 400 and response.json() == {"error": "invalid_request"}
 
 
-def test_an_oversized_action_is_refused_before_it_is_parsed(
-    db_file: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_oversized_action_is_refused_before_it_is_parsed(db_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(web_app, "MAX_BATCH_ACTION_BYTES", 64)
     body = json.dumps({"batch_id": "b", "candidate_ids": ["x" * 100], "expected_batch_digest": "d"})
     with _client(db_file) as client:
@@ -851,7 +851,28 @@ const ids = {};
 globalThis.document = { getElementById: (id) => (ids[id] ??= new El(id)), createElement: (t) => new El(t),
   createTextNode: (text) => ({ text }) };
 globalThis.location = { search: "?token=t" };
-globalThis.history = { replaceState() {} };
+const windowEvents = {};
+globalThis.window = { addEventListener: (name, listener) => { windowEvents[name] = listener; } };
+const historyEntries = [{state: null, url: "/?token=t"}];
+let historyIndex = 0;
+globalThis.history = {
+  get state() { return historyEntries[historyIndex].state; },
+  get length() { return historyEntries.length; },
+  replaceState(state, title, url) {
+    historyEntries[historyIndex] = {state: structuredClone(state), url: url || historyEntries[historyIndex].url};
+  },
+  pushState(state, title, url) {
+    historyEntries.splice(historyIndex + 1);
+    historyEntries.push({state: structuredClone(state), url: url || historyEntries[historyIndex].url});
+    historyIndex += 1;
+  },
+  back() { if (historyIndex > 0) {
+    historyIndex -= 1; if (windowEvents.popstate) windowEvents.popstate({state: this.state});
+  } },
+  forward() { if (historyIndex + 1 < historyEntries.length) {
+    historyIndex += 1; if (windowEvents.popstate) windowEvents.popstate({state: this.state});
+  } },
+};
 const posts = []; const releases = []; const heldGets = []; let holdGets = false;
 const review = { batch_id: "B", batch_digest: "d1", candidates: [
   { id: "p1", status: "pending", ordinal: 1, candidate: { type: "person", name: "Elena Marsh" } }] };
@@ -1095,9 +1116,11 @@ _CONTACT_IS_NOT_A_NAME = r"""
     interactions: [], reminders: [], traits: [], alias_kinds: ["nickname", "handle"],
     alias_details: [{ value: "Jordy", kind: "nickname" }, { value: "jordan@example.com", kind: "handle" }] };
   await showPerson("P", null, []);
-  const terms = view.all().filter((n) => n.tag === "dd");
-  // The identity list runs Name, Aliases, Contact.
-  console.log(JSON.stringify({ row: texts(row), aliases: texts(terms[1]), contact: texts(terms[2]) }));
+  const metadata = view.children.filter((n) => n.tag === "dl")[1];
+  const valueFor = (label) => metadata.children[metadata.children.findIndex(
+    (n) => n.tag === "dt" && n.textContent === label) + 1];
+  console.log(JSON.stringify({ row: texts(row), aliases: texts(valueFor("Aliases")),
+    contact: texts(valueFor("Contact")) }));
 })();
 """
 
@@ -1109,7 +1132,7 @@ def test_email_addresses_are_shown_as_contact_rather_than_aliases(db_file: Path,
     assert "Jordy" in " ".join(outcome["aliases"])
     assert "jordan@example.com" in " ".join(outcome["contact"])
     # The people list has no contact column; the address appears only under Contact on the person view.
-    assert outcome["row"] == ["Jordan Lee", "Acme, Presight", "Jordy"]
+    assert outcome["row"] == ["Jordan Lee", "Jordan Lee", "Acme, Presight", "Jordy"]
 
 
 def _run_page(db_file: Path, tmp_path: Path, scenario: str, *, language: str = "en") -> Any:
@@ -1150,9 +1173,7 @@ def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_p
 # --- M30.3 inline edit ------------------------------------------------------------------------
 
 
-def _amend(
-    client: TestClient, batch_id: str, candidate_id: str, patch: dict[str, Any], digest: str
-) -> Any:
+def _amend(client: TestClient, batch_id: str, candidate_id: str, patch: dict[str, Any], digest: str) -> Any:
     return client.post(
         "/api/batch/amend",
         json={
@@ -1168,21 +1189,28 @@ def _amend(
 def _candidates(review: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Stored candidates by the same key `_ids` uses."""
     return {
-        row["candidate"].get("predicate") or row["candidate"].get("name") or row["candidate"]["type"]:
-        row["candidate"]
+        row["candidate"].get("predicate") or row["candidate"].get("name") or row["candidate"]["type"]: row["candidate"]
         for row in review["candidates"]
     }
 
 
-def _tracked_batch(
-    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], candidates: list[Any]
-) -> str:
+def _tracked_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], candidates: list[Any]) -> str:
     """Stage a source-tracked batch, which same-batch evidence citation requires."""
     input_path = tmp_path / "tracked.json"
     input_path.write_text(json.dumps(candidates), encoding="utf-8")
     staged = _cli_json(
-        capsys, "--db", str(db_file), "import", "stage-candidates", "--source", "allotment meeting",
-        "--input", str(input_path), "--source-kind", "meeting_transcript", "--json",
+        capsys,
+        "--db",
+        str(db_file),
+        "import",
+        "stage-candidates",
+        "--source",
+        "allotment meeting",
+        "--input",
+        str(input_path),
+        "--source-kind",
+        "meeting_transcript",
+        "--json",
     )
     batch_id = staged["batch_id"]
     assert isinstance(batch_id, str)
@@ -1277,7 +1305,9 @@ def test_editing_one_alias_leaves_another_alias_language_and_script_alone(
     db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     batch_id = _stage(
-        db_file, tmp_path, capsys,
+        db_file,
+        tmp_path,
+        capsys,
         [
             {
                 "type": "person",
@@ -1306,16 +1336,29 @@ def test_participants_and_evidence_references_can_be_corrected_within_the_batch(
     db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     batch_id = _tracked_batch(
-        db_file, tmp_path, capsys,
+        db_file,
+        tmp_path,
+        capsys,
         [
             {"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []},
             {"type": "person", "ref": "toma", "name": "Toma Ibarra", "aliases": []},
-            {"type": "interaction", "evidence_ref": "meet", "summary": "Allotment rota",
-             "participant_refs": ["elena"], "date": "2026-06-01T10:00:00Z"},
-            {"type": "observation", "evidence_ref": "seen", "person_ref": "elena",
-             "text": "Brought seedlings"},
-            {"type": "trait", "person_ref": "elena", "category": "preference", "value": "Mornings",
-             "evidence_note": "Said so", "confidence": 0.6, "evidence_refs": ["seen"]},
+            {
+                "type": "interaction",
+                "evidence_ref": "meet",
+                "summary": "Allotment rota",
+                "participant_refs": ["elena"],
+                "date": "2026-06-01T10:00:00Z",
+            },
+            {"type": "observation", "evidence_ref": "seen", "person_ref": "elena", "text": "Brought seedlings"},
+            {
+                "type": "trait",
+                "person_ref": "elena",
+                "category": "preference",
+                "value": "Mornings",
+                "evidence_note": "Said so",
+                "confidence": 0.6,
+                "evidence_refs": ["seen"],
+            },
         ],
     )
     before = _cli_review(capsys, db_file, batch_id)
@@ -1327,14 +1370,19 @@ def test_participants_and_evidence_references_can_be_corrected_within_the_batch(
         )
         after_participants = client.get("/api/batch", params={"id": batch_id}).json()["review"]
         evidence = _amend(
-            client, batch_id, ids["trait"],
+            client,
+            batch_id,
+            ids["trait"],
             {"evidence_candidate_ids": [ids["interaction"], ids["observation"]]},
             after_participants["batch_digest"],
         )
         after_evidence = client.get("/api/batch", params={"id": batch_id}).json()["review"]
         # A reference of the wrong type is what the selector never offers, and the use case refuses.
         wrong = _amend(
-            client, batch_id, ids["trait"], {"evidence_candidate_ids": [ids["person"]]},
+            client,
+            batch_id,
+            ids["trait"],
+            {"evidence_candidate_ids": [ids["person"]]},
             after_evidence["batch_digest"],
         )
     assert both.status_code == 200 and evidence.status_code == 200
@@ -1352,10 +1400,21 @@ def test_an_edit_from_a_stale_view_is_refused_and_changes_nothing(
     with _client(db_file) as client:
         shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
         # Another client amends a different row between the page's read and its save.
-        assert cli.main([
-            "--db", str(db_file), "import", "amend", batch_id, _ids(shown)["note"],
-            "--patch", json.dumps({"value": "Keep this one"}),
-        ]) == 0
+        assert (
+            cli.main(
+                [
+                    "--db",
+                    str(db_file),
+                    "import",
+                    "amend",
+                    batch_id,
+                    _ids(shown)["note"],
+                    "--patch",
+                    json.dumps({"value": "Keep this one"}),
+                ]
+            )
+            == 0
+        )
         capsys.readouterr()
         elsewhere = _cli_review(capsys, db_file, batch_id)
         response = _amend(
@@ -1373,9 +1432,11 @@ def test_a_closed_row_is_not_editable(
     batch_id = _elena_batch(db_file, tmp_path, capsys)
     review = _cli_review(capsys, db_file, batch_id)
     target = _ids(review)["note"] if closed == "rejected" else _ids(review)["Elena Marsh"]
-    verb = ["import", "reject", batch_id, target] if closed == "rejected" else [
-        "import", "commit", batch_id, "--accept", target
-    ]
+    verb = (
+        ["import", "reject", batch_id, target]
+        if closed == "rejected"
+        else ["import", "commit", batch_id, "--accept", target]
+    )
     assert cli.main(["--db", str(db_file), *verb]) == 0
     capsys.readouterr()
     before = _cli_review(capsys, db_file, batch_id)
@@ -1398,7 +1459,9 @@ def _ambiguous_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixtur
     finally:
         conn.close()
     return _stage(
-        db_file, tmp_path, capsys,
+        db_file,
+        tmp_path,
+        capsys,
         [{"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []}],
     )
 
@@ -1416,9 +1479,7 @@ def test_the_ambiguity_picker_records_its_choice_through_amendment(
         chosen = row["match_candidates"][1]["id"]
         response = _amend(client, batch_id, row["id"], {"matched_person_id": chosen}, shown["batch_digest"])
         after = client.get("/api/batch", params={"id": batch_id}).json()["review"]
-        stranger = _amend(
-            client, batch_id, row["id"], {"matched_person_id": "person-nobody"}, after["batch_digest"]
-        )
+        stranger = _amend(client, batch_id, row["id"], {"matched_person_id": "person-nobody"}, after["batch_digest"])
     assert response.status_code == 200
     fresh = _cli_review(capsys, db_file, batch_id)
     assert fresh["candidates"][0]["candidate"]["matched_person_id"] == chosen
@@ -1439,7 +1500,8 @@ def test_the_ambiguity_picker_records_its_choice_through_amendment(
 def test_a_malformed_edit_is_refused_without_echoing_it(db_file: Path, body: bytes) -> None:
     with _client(db_file) as client:
         response = client.post(
-            "/api/batch/amend", content=body,
+            "/api/batch/amend",
+            content=body,
             headers={**_SAME_ORIGIN, "content-type": "application/json"},
         )
     assert response.status_code == 400
@@ -1505,9 +1567,7 @@ def test_the_edit_endpoint_applies_the_cli_review_ceiling_first(
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_saving_one_field_sends_only_that_field_with_the_displayed_digest(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_saving_one_field_sends_only_that_field_with_the_displayed_digest(db_file: Path, tmp_path: Path) -> None:
     """The form is generated from the real descriptors, so this exercises the page's own controls."""
     outcome = _run_page(db_file, tmp_path, _EDIT_ONE_FIELD)
     assert outcome == {
@@ -1565,9 +1625,7 @@ def test_a_markup_value_reaches_the_edit_form_as_data(
 
 
 @pytest.mark.parametrize("verb", ["amend", "withdraw", "commit"])
-def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
-    db_file: Path, verb: str
-) -> None:
+def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(db_file: Path, verb: str) -> None:
     """A streamed body carries no `Content-Length`, so the ceiling has to hold as it arrives."""
 
     def chunks() -> Iterator[bytes]:
@@ -1576,7 +1634,8 @@ def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
 
     with _client(db_file) as client:
         response = client.post(
-            f"/api/batch/{verb}", content=chunks(),
+            f"/api/batch/{verb}",
+            content=chunks(),
             headers={**_SAME_ORIGIN, "content-type": "application/json"},
         )
     assert response.status_code == 413
@@ -1584,9 +1643,7 @@ def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_a_stale_edit_refusal_reloads_the_batch_rather_than_keeping_the_form(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_a_stale_edit_refusal_reloads_the_batch_rather_than_keeping_the_form(db_file: Path, tmp_path: Path) -> None:
     """`batch_changed` is not a correction the open form can make: its digest is already obsolete."""
     outcome = _run_page(db_file, tmp_path, _STALE_EDIT_RELOADS)
     assert outcome["refetched"] == 1
@@ -1621,9 +1678,7 @@ def test_a_pasted_person_id_travels_exactly_as_it_was_entered(db_file: Path, tmp
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_a_multiline_value_is_neither_flattened_nor_patched_by_an_unrelated_edit(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_a_multiline_value_is_neither_flattened_nor_patched_by_an_unrelated_edit(db_file: Path, tmp_path: Path) -> None:
     """An `<input type="text">` drops CR and LF, which would read back as an edit nobody made."""
     outcome = _run_page(db_file, tmp_path, _MULTILINE_SURVIVES)
     assert outcome["tag"] == "textarea"
@@ -1653,9 +1708,7 @@ def test_one_save_carries_both_the_match_and_the_field_edits(db_file: Path, tmp_
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_accepting_rows_does_not_discard_an_open_form_s_unsaved_edits(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_accepting_rows_does_not_discard_an_open_form_s_unsaved_edits(db_file: Path, tmp_path: Path) -> None:
     """Accepting writes nothing, so it must not cost the reviewer what they have typed."""
     outcome = _run_page(db_file, tmp_path, _ACCEPT_KEEPS_THE_OPEN_FORM)
     assert outcome["kept"] == "Elena Marshe"
@@ -2127,12 +2180,10 @@ def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path)
     stored = next(row for row in after["facts"] if row["id"] == ids["fact"])
     assert (stored["value"], stored["period"]["valid_from"]) == ("Head gardener", "2024-03-01")
     assert after["affiliations"][0]["affiliation"]["role"] == "Engineer"
-    assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder"}
+    assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder", "relationship"}
     conn = open_db(db_file)
     try:
-        ops = conn.execute(
-            "SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'"
-        ).fetchall()
+        ops = conn.execute("SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'").fetchall()
     finally:
         conn.close()
     assert sorted(row[0] for row in ops) == sorted([ids["fact"], ids["affiliation"]])
@@ -2188,7 +2239,7 @@ _EDIT_A_FACT = r"""
 """
 
 
-_EDIT_NAME_AND_SUMMARY = r"""
+_EDIT_SUMMARY = r"""
 (async () => {
   const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
   const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
@@ -2197,36 +2248,24 @@ _EDIT_NAME_AND_SUMMARY = r"""
     disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
     alias_kinds: [], alias_details: [], record_fields: {} };
   await showPerson("P", null, []);
-  labelled("Edit name").listeners.click();
+  labelled("Edit summary").listeners.click();
   find("Save").listeners.click();
   const unchanged = posts.length;
-  labelled("Edit name").listeners.click();
-  labelled("name").value = "  ";
-  find("Save").listeners.click();
-  const blank = posts.length;
-  labelled("name").value = "Jordan A. Lee";
-  find("Save").listeners.click();
-  releases.forEach((r) => r()); await tick();
   labelled("Edit summary").listeners.click();
   labelled("summary").value = "";
   find("Save").listeners.click();
   releases.forEach((r) => r()); await tick();
-  console.log(JSON.stringify({ unchanged, blank, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+  console.log(JSON.stringify({ unchanged, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
 })();
 """
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_the_name_and_summary_rows_send_only_a_moved_value(db_file: Path, tmp_path: Path) -> None:
-    outcome = _run_page(db_file, tmp_path, _EDIT_NAME_AND_SUMMARY)
+def test_summary_edit_sends_only_a_moved_value(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _EDIT_SUMMARY)
     assert outcome == {
         "unchanged": 0,
-        "blank": 0,
-        "posts": [
-            ["/api/person/edit", {"person_id": "P", "name": "Jordan A. Lee"}],
-            # An emptied summary is sent as "", which clears it; null would mean "unchanged".
-            ["/api/person/edit", {"person_id": "P", "summary": ""}],
-        ],
+        "posts": [["/api/person/edit", {"person_id": "P", "summary": ""}]],
     }
 
 
@@ -2512,3 +2551,565 @@ def test_the_person_view_adds_edits_and_removes_after_confirmation(db_file: Path
         ["/api/person/interaction/add", {"person_id": "P", "summary": "Call about seeds", "occurred_on": "2026-09-01"}],
         ["/api/record/correct", {"entity_type": "interaction", "entity_id": "I1", "fields": {"summary": "Long lunch"}}],
     ]
+
+
+def test_explicit_person_names_can_be_edited_and_cleared_in_browse(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post(
+            "/api/person/edit",
+            json={
+                "person_id": person_id,
+                "preferred_name": "Pri",
+                "given_name": "Priya",
+                "family_name": "Sharma",
+                "family_name_first": True,
+            },
+        )
+        assert response.status_code == 200
+        person = client.get("/api/person", params={"id": person_id}).json()["person"]
+        assert person["display_name"] == "Pri"
+        assert person["canonical_name"] == "Priya Sharma"
+        assert person["full_name"] == "Sharma Priya"
+        assert person["family_name_first"] is True
+        assert client.post("/api/person/edit", json={"person_id": person_id, "preferred_name": ""}).status_code == 200
+        person = client.get("/api/person", params={"id": person_id}).json()["person"]
+        assert person["preferred_name"] is None
+        assert person["display_name"] == "Priya"
+        assert person["family_name"] == "Sharma"
+        assert client.post("/api/person/edit", json={"person_id": person_id, "given_name": "p@example.org"}).json() == {
+            "error": "name_is_email",
+        }
+
+
+_EDIT_PREFERRED_NAME = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (label) => view.all().find((n) => (n.attrs || {})["aria-label"] === label);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", display_name: "Jordy",
+    preferred_name: "Jordy", given_name: "Jordan", family_name: "Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+    alias_kinds: [], alias_details: [], record_fields: {} };
+  await showPerson("P", null, []);
+  const title = view.children[0].textContent;
+  labelled("Edit preferred name").listeners.click();
+  labelled("preferred_name").value = "";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ title, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_preferred_name_heading_and_clear_action(db_file: Path, tmp_path: Path) -> None:
+    result = _run_page(db_file, tmp_path, _EDIT_PREFERRED_NAME)
+    assert result == {
+        "title": "Jordy",
+        "posts": [["/api/person/edit", {"person_id": "P", "preferred_name": ""}]],
+    }
+
+
+_NAME_DETAILS = r"""
+(async () => {
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Wang Xiaoming", full_name: "王小明",
+    display_name: "小明", preferred_name: "小明", given_name: "小明", family_name: "王", family_name_first: true,
+    aliases: ["Xiaoming"], emails: [] }, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: ["transliteration"],
+    alias_details: [{value: "Xiaoming", kind: "transliteration"}], record_fields: {} };
+  await showPerson("P", null, []);
+  const identity = view.children.find((n) => n.tag === "dl");
+  const details = view.children.find((n) => n.tag === "details");
+  if (!details) { console.log(JSON.stringify({ details: false })); return; }
+  const terms = identity.children.filter((n) => n.tag === "dt").map((n) => n.textContent);
+  const values = identity.children.filter((n) => n.tag === "dd");
+  const order = details.all().find((n) => n.type === "checkbox");
+  const state = { terms, full: values[1].textContent, collapsed: !details.open,
+    summary: details.children[0].textContent, order: order.checked,
+    nameEditors: identity.all().filter((n) => n.tag === "button").length,
+    parts: details.all().filter((n) => n.tag === "dt").map((n) => n.textContent) };
+  details.open = true;
+  details.all().find((n) => n.tag === "button"
+    && n.attrs["aria-label"] === t("person.edit_given_name")).listeners.click();
+  details.all().find((n) => n.attrs && n.attrs["aria-label"] === fieldAria("given_name")).value = "小亮";
+  details.all().find((n) => n.tag === "button" && n.textContent === t("common.save")).listeners.click();
+  releases.forEach((r) => r()); await tick();
+  const openAfterSave = Boolean(view.children.find((n) => n.tag === "details").open);
+  document.getElementById("nav-lang").listeners.click(); await tick();
+  const refreshed = view.children.find((n) => n.tag === "details");
+  const openAfterLanguage = Boolean(refreshed.open);
+  const changedOrder = refreshed.all().find((n) => n.type === "checkbox");
+  holdGets = true;
+  changedOrder.checked = false; changedOrder.listeners.change();
+  releases.forEach((r) => r()); await tick();
+  refreshed.open = false;
+  holdGets = false; heldGets.forEach((r) => r()); await tick();
+  const closedAfterSave = !view.children.find((n) => n.tag === "details").open;
+  console.log(JSON.stringify({ ...state, openAfterSave, openAfterLanguage, closedAfterSave,
+    posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("language", "terms", "summary", "parts"),
+    [
+        ("en", ["Preferred name", "Full name"], "Name details", ["Given name", "Family name"]),
+        ("zh-CN", ["称呼名", "完整姓名"], "姓名详情", ["名", "姓"]),
+    ],
+)
+def test_name_details_keep_full_name_read_only_and_edit_order(
+    db_file: Path, tmp_path: Path, language: str, terms: list[str], summary: str, parts: list[str]
+) -> None:
+    result = _run_page(db_file, tmp_path, _NAME_DETAILS, language=language)
+    assert result == {
+        "terms": terms,
+        "full": "王小明",
+        "collapsed": True,
+        "summary": summary,
+        "order": True,
+        "nameEditors": 1,
+        "parts": parts,
+        "openAfterSave": True,
+        "openAfterLanguage": True,
+        "closedAfterSave": True,
+        "posts": [
+            ["/api/person/edit", {"person_id": "P", "given_name": "小亮"}],
+            ["/api/person/edit", {"person_id": "P", "family_name_first": False}],
+        ],
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_reviewed_boolean_control_submits_false_as_boolean(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (() => {
+      const control = buildControl({name: "family_name_first", control: "boolean"},
+        {candidate: {family_name_first: true}}, {});
+      const untouched = control.read() === undefined;
+      control.node.value = "false";
+      console.log(JSON.stringify({untouched, submitted: control.read()}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario) == {"untouched": True, "submitted": False}
+
+
+_CONCURRENT_NAME_EDITS = r"""
+(async () => {
+  globalThis.personDoc = { person: { id: "P", canonical_name: "王小明", full_name: "王小明",
+    display_name: "小明", preferred_name: "小明", given_name: "小明", family_name: "王", family_name_first: true,
+    aliases: [], emails: [] }, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: [], alias_details: [], record_fields: {} };
+  const fields = __FIELDS_TO_EDIT__;
+  const drafts = {given_name: "小亮", family_name: "张"};
+  const input = (field) => view.all().find((n) => n.attrs && n.attrs["aria-label"] === fieldAria(field));
+  const row = (field) => view.all().find((n) => n.tag === "div" && n.children.includes(input(field)));
+  const action = (field, key) => row(field).children.find(
+    (n) => n.tag === "button" && n.textContent === t(key)).listeners.click();
+  await showPerson("P", null, []);
+  view.children.find((n) => n.tag === "details").open = true;
+  for (const field of fields) {
+    view.all().find((n) => n.attrs && n.attrs["aria-label"] === t("person.edit_" + field)).listeners.click();
+    input(field).value = drafts[field];
+  }
+  action(fields[0], "common.save");
+  personDoc.person[fields[0]] = drafts[fields[0]];
+  releases.forEach((r) => r()); await tick();
+  const keptAfterSave = input(fields[1]) ? input(fields[1]).value : null;
+  document.getElementById("nav-lang").listeners.click(); await tick();
+  const keptAfterLanguage = input(fields[1]) ? input(fields[1]).value : null;
+  if (!input(fields[1])) {
+    console.log(JSON.stringify({keptAfterSave, keptAfterLanguage})); return;
+  }
+  action(fields[1], __SECOND_ACTION__);
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({keptAfterSave, keptAfterLanguage,
+    posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+@pytest.mark.parametrize("fields", [["given_name", "family_name"], ["family_name", "given_name"]])
+def test_saving_either_name_keeps_the_other_draft(
+    db_file: Path, tmp_path: Path, language: str, fields: list[str]
+) -> None:
+    scenario = _CONCURRENT_NAME_EDITS.replace("__FIELDS_TO_EDIT__", json.dumps(fields)).replace(
+        "__SECOND_ACTION__", json.dumps("common.save")
+    )
+    drafts = {"given_name": "小亮", "family_name": "张"}
+    assert _run_page(db_file, tmp_path, scenario, language=language) == {
+        "keptAfterSave": drafts[fields[1]],
+        "keptAfterLanguage": drafts[fields[1]],
+        "posts": [["/api/person/edit", {"person_id": "P", field: drafts[field]}] for field in fields],
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_preserved_name_draft_can_be_cancelled(db_file: Path, tmp_path: Path) -> None:
+    scenario = _CONCURRENT_NAME_EDITS.replace("__FIELDS_TO_EDIT__", json.dumps(["given_name", "family_name"])).replace(
+        "__SECOND_ACTION__", json.dumps("common.cancel")
+    )
+    assert _run_page(db_file, tmp_path, scenario) == {
+        "keptAfterSave": "张",
+        "keptAfterLanguage": "张",
+        "posts": [["/api/person/edit", {"person_id": "P", "given_name": "小亮"}]],
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+def test_people_page_buttons_walk_real_api_cursors_both_directions(
+    db_file: Path, tmp_path: Path, language: str
+) -> None:
+    conn = open_db(db_file)
+    try:
+        repo = SqlitePeopleRepository(conn)
+        for index in range(101):
+            repo.save_person(Person(canonical_name=f"Person {index:03d}"))
+    finally:
+        conn.close()
+    pages = {}
+    cursor = ""
+    with _client(db_file) as client:
+        while True:
+            response = client.get("/api/people", params={"cursor": cursor} if cursor else {})
+            assert response.status_code == 200
+            document = response.json()
+            pages[cursor] = document
+            cursor = document["next_cursor"]
+            if not cursor:
+                break
+    scenario = r"""
+    (async () => {
+      const pages = __PAGES__;
+      const originalFetch = fetch;
+      globalThis.fetch = async (path, options) => {
+        if (!path.startsWith("/api/people")) return originalFetch(path, options);
+        const key = new URL(path, "http://127.0.0.1").searchParams.get("cursor") || "";
+        if (!(key in pages)) throw new Error("unexpected cursor");
+        return {ok: true, json: async () => pages[key]};
+      };
+      const names = () => view.all().filter((n) => n.tag === "button" && n.className === "link")
+        .map((n) => n.textContent);
+      const click = async (key) => view.all().find(
+        (n) => n.tag === "button" && n.textContent === t(key)).listeners.click();
+      await showPeople(null, []);
+      const first = names();
+      await click("pager.next"); const second = names();
+      await click("pager.next"); const third = names();
+      await click("pager.previous"); const backSecond = names();
+      await click("pager.previous"); const backFirst = names();
+      console.log(JSON.stringify({first, second, third, backSecond, backFirst}));
+    })();
+    """.replace("__PAGES__", json.dumps(pages))
+    result = _run_page(db_file, tmp_path, scenario, language=language)
+    first = [f"Person {index:03d}" for index in range(50)]
+    second = [f"Person {index:03d}" for index in range(50, 100)]
+    assert result == {
+        "first": first,
+        "second": second,
+        "third": ["Person 100"],
+        "backSecond": second,
+        "backFirst": first,
+    }
+
+
+_BROWSER_HISTORY = r"""
+(async () => {
+  const originalFetch = fetch;
+  globalThis.fetch = async (path, options) => {
+    if (path.startsWith("/api/sources")) {
+      gets.push(path); return {ok: true, json: async () => ({sources: [], next_cursor: null})};
+    }
+    if (path.startsWith("/api/source?")) {
+      gets.push(path); return {ok: true, json: async () => ({source: {
+        id: "S", source_kind: "agent", label: "Notes", status: "staged", batch_id: "B"},
+        staged_total: 1, staged_by_status: {pending: 1}})};
+    }
+    return originalFetch(path, options);
+  };
+  const person = {id: "P", canonical_name: "Alice", aliases: [], emails: []};
+  globalThis.peopleDoc = {people: [person], next_cursor: null};
+  globalThis.personDoc = {person, disclosure: {context: "ordinary"}, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: [], alias_details: []};
+  await showPeople(null, []);
+  await view.all().find((n) => n.tag === "button" && n.textContent === "Alice").listeners.click();
+  await showSources(null, []);
+  await showSource("S", null, []);
+  await showBatch("B");
+  const count = history.length;
+  const backward = [], forward = [];
+  for (let step = 0; step < 4; step++) { history.back(); await tick(); backward.push(view.children[0].textContent); }
+  for (let step = 0; step < 4; step++) { history.forward(); await tick(); forward.push(view.children[0].textContent); }
+  const stableCount = history.length;
+  const urls = historyEntries.map((entry) => entry.url);
+  const closing = done(); releases.forEach((r) => r()); await closing;
+  const beforeBack = gets.length;
+  history.back(); await tick();
+  console.log(JSON.stringify({count, stableCount, backward, forward, urls,
+    readsAfterClose: gets.length - beforeBack, stopped: view.children[0].textContent}));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_back_forward_restore_all_views_without_reopening_closed_viewer(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _BROWSER_HISTORY)
+    assert outcome == {
+        "count": 5,
+        "stableCount": 5,
+        "backward": ["Import source", "Import sources", "Alice", "People"],
+        "forward": ["Alice", "Import sources", "Import source", "Import batch"],
+        "urls": ["/"] * 5,
+        "readsAfterClose": 0,
+        "stopped": "pctx browse has stopped. You can close this tab.",
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_browser_history_restores_filters_and_does_not_add_refresh_steps(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.peopleDoc = {people: [], next_cursor: "C2"};
+      globalThis.personDoc = {person: {id: "P", canonical_name: "Alice", aliases: [], emails: []},
+        disclosure: {context: "ordinary"}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        alias_details: [], alias_kinds: []};
+      await showPeople(null, []);
+      Object.assign(peopleFilter, {q: "Alice", sort: "updated", organization: "O", group: "G"});
+      await showPeople("C1", [null]);
+      await showPerson("P", "C1", [null]);
+      const beforeRefresh = history.length;
+      await current();
+      document.getElementById("nav-lang").listeners.click(); await tick();
+      const afterRefresh = history.length;
+      Object.assign(peopleFilter, {q: "Other", sort: "name", organization: "", group: ""});
+      await showPeople(null, []);
+      history.back(); await tick();
+      const restored = {...peopleFilter};
+      history.back(); await tick();
+      console.log(JSON.stringify({beforeRefresh, afterRefresh, restored, request: gets.at(-1),
+        length: history.length, url: historyEntries[historyIndex].url}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario) == {
+        "beforeRefresh": 3,
+        "afterRefresh": 3,
+        "restored": {"q": "Alice", "sort": "updated", "organization": "O", "group": "G"},
+        "request": "/api/people?cursor=C1&q=Alice&sort=updated&organization=O&group=G",
+        "length": 4,
+        "url": "/",
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("language", "heading", "relation"), [("en", "Relationships", "reports to"), ("zh-CN", "人际关系", "汇报给")]
+)
+def test_person_relationships_show_direction_and_link_to_other_person(
+    db_file: Path, tmp_path: Path, language: str, heading: str, relation: str
+) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.personDoc = {person: {id: "P", canonical_name: "Alice", aliases: [], emails: []},
+        disclosure: {context: "ordinary"}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        relationships: [{display_type: "reports_to", other_person_name: "Manager <name>", other_person_id: "M",
+          relationship: {label: "Project lead"}}], alias_details: [], alias_kinds: []};
+      await showPerson("P", null, []);
+      const heading = view.all().filter((n) => n.tag === "h3").map((n) => n.textContent);
+      const link = view.all().find((n) => n.tag === "button" && n.textContent === "Manager <name>");
+      const text = view.all().map((n) => n.textContent || n.text).filter((v) => typeof v === "string");
+      if (link) { await link.listeners.click(); }
+      console.log(JSON.stringify({heading, linked: Boolean(link), text, request: gets.at(-1)}));
+    })();
+    """
+    result = _run_page(db_file, tmp_path, scenario, language=language)
+    assert heading in result["heading"]
+    assert result["linked"] is True
+    assert any(relation in text for text in result["text"])
+    assert any("Project lead" in text for text in result["text"])
+    assert result["request"] == "/api/person?id=M"
+
+
+def test_browser_relationship_add_correct_and_end_are_audited(db_file: Path) -> None:
+    ids = _seed_people(db_file)
+    with _client(db_file) as client:
+        response = client.post(
+            "/api/person/relationship/add",
+            json={
+                "person_id": ids["elena"],
+                "other_person_id": ids["toma"],
+                "type": "reports_to",
+                "label": "Team lead",
+            },
+        )
+        assert response.status_code == 200
+        edge_id = response.json()["relationship_id"]
+        corrected = client.post(
+            "/api/record/correct",
+            json={
+                "entity_type": "relationship",
+                "entity_id": edge_id,
+                "fields": {"label": "Former lead", "valid_to": "2020-01-01"},
+            },
+        )
+        assert corrected.status_code == 200
+        assert client.get("/api/person", params={"id": ids["elena"]}).json()["relationships"] == []
+        history = client.get("/api/person", params={"id": ids["elena"]}).json()["history"]
+        assert history["entries"]
+        assert any(item["entry_type"] == "relationship" for item in history["entries"])
+        assert (
+            client.post(
+                "/api/person/relationship/add",
+                json={"person_id": ids["elena"], "other_person_id": "missing", "type": "reports_to"},
+            ).status_code
+            == 404
+        )
+    runtime = build_runtime(db_file)
+    try:
+        edge = runtime.records.get_record("relationship", edge_id)
+        assert edge is not None and edge.label == "Former lead"
+        assert str(edge.period.valid_to) == "2020-01-01"
+        rows = runtime.conn.execute("SELECT op, source FROM audit_log WHERE entity_id = ?", (edge_id,)).fetchall()
+        assert [(row["op"], row["source"]) for row in rows] == [("create", "browser"), ("correct", "browser")]
+    finally:
+        runtime.close()
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_person_shows_optional_communication_and_bounded_history(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.personDoc = {person: {id: 'P', canonical_name: 'Alice', aliases: [], emails: []},
+        disclosure: {context: 'ordinary'}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        alias_details: [], alias_kinds: []};
+      await showPerson('P', null, []);
+      const empty = view.all().filter(n => n.tag === 'summary').map(n => n.textContent);
+      personDoc.guidance = {communication_philosophy: 'Be direct <please>', traits: {}, friction_notes: []};
+      personDoc.history = {limit: 50, truncated: true, entries: [{entry_type: 'fact',
+        effective_at: '2026-01-02T00:00:00Z', basis: 'created_at', summary: 'Likes tea <green>'}]};
+      await current();
+      const summaries = view.all().filter(n => n.tag === 'summary').map(n => n.textContent);
+      const text = view.all().map(n => n.textContent || '').join('|');
+      console.log(JSON.stringify({empty, summaries, text}));
+    })();
+    """
+    result = _run_page(db_file, tmp_path, scenario)
+    assert "Communication" not in result["empty"] and "History" not in result["empty"]
+    assert "Communication" in result["summaries"] and "History" in result["summaries"]
+    assert "Be direct <please>" in result["text"] and "Likes tea <green>" in result["text"]
+    assert "Older entries" in result["text"] and "created at" in result["text"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_relationship_search_selection_and_correction_use_existing_writes(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.peopleDoc = {people: [{id: 'P', canonical_name: 'Alice'}, {id: 'M', canonical_name: 'Morgan'}]};
+      globalThis.personDoc = {person: {id: 'P', canonical_name: 'Alice', aliases: [], emails: []},
+        disclosure: {context: 'ordinary'}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        relationships: [{display_type: 'manages', other_person_name: 'Morgan', other_person_id: 'M',
+          relationship: {id: 'R', subject_id: 'M', object_id: 'P', type: 'reports_to', label: 'Team lead'}}],
+        record_fields: {relationship: [{name: 'label', control: 'text'}, {name: 'valid_to', control: 'date'}]},
+        alias_details: [], alias_kinds: []};
+      await showPerson('P', null, []);
+      const findButton = (text) => view.all().find(n => n.tag === 'button' && n.textContent === text);
+      findButton('Add relationship').listeners.click();
+      findButton('Add').listeners.click();
+      const missingBlocked = posts.length === 0;
+      view.all().find(n => n.attrs?.['aria-label'] === 'Find a person').value = 'Morgan';
+      await findButton('Search').listeners.click();
+      const select = view.all().find(n => n.tag === 'select');
+      const choices = select.children.map(n => n.value);
+      select.value = 'M';
+      const type = view.all().find(n => n.tag === 'input'
+        && n.attrs?.['aria-label']?.startsWith('Relationship from this person'));
+      type.value = 'colleague_of';
+      findButton('Add').listeners.click();
+      const add = JSON.parse(posts[0].body);
+      releases.shift()(); await tick();
+      const direction = view.all().find(n => n.textContent === 'Stored direction: Morgan → Alice');
+      const row = view.all().find(n => n.tag === 'li' && n.children.includes(direction));
+      row.all().find(n => n.tag === 'button' && n.textContent === 'Edit').listeners.click();
+      const date = view.all().find(n => n.tag === 'input' && n.type === 'date'); date.value = '2020-01-01';
+      findButton('Save').listeners.click();
+      const correction = JSON.parse(posts[1].body);
+      console.log(JSON.stringify({missingBlocked, choices, add, correction,
+        request: gets.find(u => u.includes('q='))}));
+    })();
+    """
+    result = _run_page(db_file, tmp_path, scenario)
+    assert result["missingBlocked"]
+    assert result["choices"] == ["", "M"]
+    assert result["add"] == {"person_id": "P", "other_person_id": "M", "type": "colleague_of"}
+    assert result["correction"] == {
+        "entity_type": "relationship",
+        "entity_id": "R",
+        "fields": {"valid_to": "2020-01-01"},
+    }
+    assert result["request"] == "/api/people?q=Morgan"
+
+
+def test_removing_a_relationship_removes_both_views_and_history(db_file: Path) -> None:
+    ids = _seed_people(db_file)
+    with _client(db_file) as client:
+        added = client.post(
+            "/api/person/relationship/add",
+            json={
+                "person_id": ids["elena"],
+                "other_person_id": ids["toma"],
+                "type": "reports_to",
+                "label": "Team lead",
+            },
+        )
+        edge_id = added.json()["relationship_id"]
+        removed = client.post("/api/record/remove", json={"entity_type": "relationship", "entity_id": edge_id})
+        assert removed.status_code == 200 and removed.json() == {"removed": "relationship"}
+        for person_id in ids.values():
+            doc = client.get("/api/person", params={"id": person_id}).json()
+            assert doc["relationships"] == []
+            assert all(entry["entry_id"] != edge_id for entry in doc["history"]["entries"])
+        again = client.post("/api/record/remove", json={"entity_type": "relationship", "entity_id": edge_id})
+        assert again.status_code == 404 and again.json() == {"error": "record_not_found"}
+    assert len(_browser_ops(db_file, "forget")) == 1
+    conn = open_db(db_file)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM relationships WHERE id = ?", (edge_id,)).fetchone()[0] == 0
+        payload = conn.execute("SELECT payload_json FROM audit_log WHERE entity_id = ?", (edge_id,)).fetchone()[0]
+        assert json.loads(payload) == {"redacted": True}
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+def test_relationship_removal_requires_confirmation_and_cancel_sends_nothing(
+    db_file: Path, tmp_path: Path, language: str
+) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.personDoc = {person: {id: 'P', canonical_name: 'Alice', aliases: [], emails: []},
+        disclosure: {context: 'ordinary'}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        relationships: [{display_type: 'reports_to', other_person_name: 'Morgan', other_person_id: 'M',
+          relationship: {id: 'R', subject_id: 'P', object_id: 'M', type: 'reports_to'}}],
+        alias_details: [], alias_kinds: []};
+      await showPerson('P', null, []);
+      const find = key => view.all().find(n => n.tag === 'button' && n.textContent === t(key));
+      find('common.remove').listeners.click();
+      const prompt = view.all().some(n => n.textContent === t('record.remove.prompt',
+        {label: t('person.relationship_direction', {subject: 'Alice', object: 'Morgan'})}));
+      find('common.cancel').listeners.click();
+      const cancelled = posts.length;
+      find('common.remove').listeners.click();
+      find('common.remove').listeners.click();
+      releases.forEach(r => r()); await tick();
+      console.log(JSON.stringify({prompt, cancelled, posts: posts.map(p => [p.path, JSON.parse(p.body)])}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario, language=language) == {
+        "prompt": True,
+        "cancelled": 0,
+        "posts": [["/api/record/remove", {"entity_type": "relationship", "entity_id": "R"}]],
+    }

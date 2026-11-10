@@ -196,10 +196,7 @@ def test_the_matching_queries_use_both_normalized_name_indexes(conn: sqlite3.Con
     batch. Asserting the plan is the only way to keep that from coming back unnoticed.
     """
     tokens = json.dumps(["a", "b"])
-    plan = [
-        row["detail"]
-        for row in conn.execute("EXPLAIN QUERY PLAN " + matching_people_sql(), (tokens, tokens))
-    ]
+    plan = [row["detail"] for row in conn.execute("EXPLAIN QUERY PLAN " + matching_people_sql(), (tokens, tokens))]
 
     assert any("idx_persons_canonical_norm" in step for step in plan), plan
     assert any("idx_aliases_value_norm" in step for step in plan), plan
@@ -243,9 +240,7 @@ def test_one_person_matched_by_both_a_name_and_an_alias_counts_once(conn: sqlite
 
 
 @pytest.mark.parametrize("tokens", [[], ["   "], ["", "\t"]])
-def test_a_token_set_that_normalizes_to_nothing_matches_nobody(
-    conn: sqlite3.Connection, tokens: list[str]
-) -> None:
+def test_a_token_set_that_normalizes_to_nothing_matches_nobody(conn: sqlite3.Connection, tokens: list[str]) -> None:
     """An empty token set is not a wildcard, and must never be sent to the reader as one.
 
     These helpers take arbitrary tokens, so the guard is the contract rather than a formality:

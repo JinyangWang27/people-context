@@ -182,7 +182,7 @@ Prefer a table to a terminal? `pctx browse --open` opens a local page over the s
 
 It binds `127.0.0.1` only, every request needs the per-launch token printed in its URL, and every write goes
 through the same audited use cases as the CLI and MCP tools. Sensitive records stay hidden unless the operator
-enables them. It runs until you press Done or Ctrl-C. The page is in English or Simplified Chinese: the
+enables them. It runs until you press Close or Ctrl-C. The page is in English or Simplified Chinese: the
 **中文 / EN** button switches while it is open, and `--lang zh-CN`, `PEOPLE_CONTEXT_BROWSE_LANG`, or
 `browse_lang = "zh-CN"` in `config.toml` sets the language it opens in. See
 [docs/cli.md](docs/cli.md#local-browser-viewer).

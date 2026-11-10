@@ -119,16 +119,8 @@ def _person_disposition(candidate: dict[str, object]) -> str:
 
 def import_review_lines(rows: list[ImportReviewRow]) -> list[str]:
     """Return one `#n  status  type  detail  id` line per row, resolving names across the whole batch."""
-    person_names = {
-        row.id: str(row.candidate["name"])
-        for row in rows
-        if row.candidate["type"] == "person"
-    }
-    group_names = {
-        row.id: str(row.candidate["name"])
-        for row in rows
-        if row.candidate["type"] == "group"
-    }
+    person_names = {row.id: str(row.candidate["name"]) for row in rows if row.candidate["type"] == "person"}
+    group_names = {row.id: str(row.candidate["name"]) for row in rows if row.candidate["type"] == "group"}
     lines = []
     for row in rows:
         candidate = row.candidate
@@ -294,9 +286,6 @@ def print_demo_instructions(demo_path: Path, people: dict[str, Person]) -> None:
     print(f"Start MCP server: people-context-mcp --db {shlex.quote(str(demo_path))}")
     print(f'resolve_person {{"query": "{people["amina"].canonical_name}"}}')
     print(f'get_relationship_graph {{"person_id": "{people["amina"].id}", "depth": 2}}')
-    print(
-        f'find_connection {{"person_a": "{people["self"].id}", '
-        f'"person_b": "{people["sofia"].id}"}}'
-    )
+    print(f'find_connection {{"person_a": "{people["self"].id}", "person_b": "{people["sofia"].id}"}}')
     print()
     print(STAR_HINT)

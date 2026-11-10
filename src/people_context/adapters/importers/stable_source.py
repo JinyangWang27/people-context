@@ -228,8 +228,7 @@ class VerifiedSnapshotExtractor:
                 return StableExtraction(content_digest=after_digest, extracted=extracted)
         raise ImportExtractionError(
             SOURCE_CHANGED_DURING_IMPORT,
-            "source changed while it was being imported; "
-            f"nothing was staged after {MAX_STABLE_PASS_ATTEMPTS} attempts",
+            f"source changed while it was being imported; nothing was staged after {MAX_STABLE_PASS_ATTEMPTS} attempts",
         )
 
 

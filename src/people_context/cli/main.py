@@ -152,11 +152,11 @@ def main(argv: list[str] | None = None) -> int:
         try:
             refusal = _unreadable_stats_target(args)
         except (
-        MissingDatabaseKeyError,
-        EncryptedDatabaseError,
-        UnsafeDatabasePathError,
-        UnsupportedSchemaError,
-    ) as exc:
+            MissingDatabaseKeyError,
+            EncryptedDatabaseError,
+            UnsafeDatabasePathError,
+            UnsupportedSchemaError,
+        ) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
         if refusal is not None:

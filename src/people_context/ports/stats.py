@@ -63,9 +63,7 @@ UNCATEGORIZED_RELATIONSHIP = "uncategorized"
 CUSTOM_RELATIONSHIP_CATEGORY = "custom"
 
 #: Categories this release seeds, derived from the vocabulary itself so the two cannot drift.
-SEEDED_RELATIONSHIP_CATEGORIES: frozenset[str] = frozenset(
-    row.category for row in SEEDED_RELATIONSHIP_TYPES.values()
-)
+SEEDED_RELATIONSHIP_CATEGORIES: frozenset[str] = frozenset(row.category for row in SEEDED_RELATIONSHIP_TYPES.values())
 
 #: Bucket used for an audit operation outside `KNOWN_AUDIT_OPERATIONS`. Restore carries an
 #: origin's audit rows verbatim, and their `op` is only as constrained as that origin was, so

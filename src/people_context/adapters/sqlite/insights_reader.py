@@ -16,6 +16,7 @@ def _as_utc(value: datetime) -> datetime:
     """
     return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
+
 # Ordinary disclosure levels. Elevated interactions must not shift recency, so the
 # filter lives in SQL: a person with only sensitive/restricted interactions has to
 # aggregate to exactly the same row as a person with none at all.

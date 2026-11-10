@@ -116,9 +116,7 @@ def review_payload_bytes(rows: Sequence[ImportReviewRow]) -> int:
     )
 
 
-def review_document_edits(
-    rendered: dict[str, Any], edited: object, *, projections_current: bool = True
-) -> ReviewEdits:
+def review_document_edits(rendered: dict[str, Any], edited: object, *, projections_current: bool = True) -> ReviewEdits:
     """Return the edits an edited review document expresses, or refuse the whole document.
 
     `rendered` is the document as this process rendered it for the same batch. Rows are addressed

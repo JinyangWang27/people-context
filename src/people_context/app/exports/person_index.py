@@ -55,6 +55,12 @@ class PersonIndexEntry(BaseModel):
 
     id: str
     canonical_name: str
+    preferred_name: str | None = None
+    given_name: str | None = None
+    family_name: str | None = None
+    family_name_first: bool = False
+    full_name: str = ""
+    display_name: str = ""
     aliases: list[str] = Field(default_factory=list)
     summary: str | None = None
     is_self: bool = False
@@ -208,7 +214,7 @@ def _scope(sort: str) -> str:
 def _key_digest(person: Person, sort: str) -> str:
     """Return a fixed-width fingerprint of the ordering key a cursor was issued under."""
     if sort == "name":
-        key = normalize_name(person.canonical_name)
+        key = normalize_name(person.display_name)
     else:
         key = (person.created_at if sort == "created" else person.updated_at).isoformat()
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:_NAME_DIGEST_CHARS]
@@ -218,6 +224,12 @@ def _entry(person: Person) -> PersonIndexEntry:
     return PersonIndexEntry(
         id=person.id,
         canonical_name=person.canonical_name,
+        preferred_name=person.preferred_name,
+        given_name=person.given_name,
+        family_name=person.family_name,
+        family_name_first=person.family_name_first,
+        full_name=person.full_name,
+        display_name=person.display_name,
         aliases=[alias.value for alias in person.aliases],
         summary=person.summary,
         is_self=person.is_self,

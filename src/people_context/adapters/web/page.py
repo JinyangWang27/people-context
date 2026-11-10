@@ -98,7 +98,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 <nav>
 <button type="button" id="nav-people">People</button>
 <button type="button" id="nav-sources">Import sources</button>
-<button type="button" id="nav-done">Done</button>
+<button type="button" id="nav-done">Close</button>
 <button type="button" id="nav-lang"></button>
 </nav>
 </header>
@@ -264,6 +264,17 @@ function pager(back, cursor, nextCursor, open) {
 // the same narrowed list; changing any of them starts again from the first page.
 const peopleFilter = { q: "", sort: "name", organization: "", group: "" };
 
+let restoringHistory = false;
+let viewerClosed = false;
+
+function rememberPage(page, args) {
+  if (restoringHistory || viewerClosed) return;
+  const state = { pctx: true, page, args, filters: { ...peopleFilter } };
+  if (JSON.stringify(history.state) === JSON.stringify(state)) return;
+  if (history.state && history.state.pctx) history.pushState(state, "");
+  else history.replaceState(state, "");
+}
+
 const PEOPLE_SORTS = ["name", "created", "updated"];
 
 function peopleControls(filters) {
@@ -318,6 +329,7 @@ function peopleControls(filters) {
 }
 
 async function showPeople(cursor, back) {
+  rememberPage("people", [cursor, back]);
   current = () => showPeople(cursor, back);
   const at = navigate();
   let doc;
@@ -327,7 +339,8 @@ async function showPeople(cursor, back) {
   const rows = doc.people.map((person) => {
     const emails = person.emails || [];
     return [
-      button(person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      button(person.display_name || person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      person.full_name || person.canonical_name,
       (organizations[person.id] || []).join(", "),
       // Email addresses are contact information, shown on the person view rather than as names here.
       person.aliases.filter((alias) => !emails.includes(alias)).join(", "),
@@ -339,7 +352,8 @@ async function showPeople(cursor, back) {
     t("people.title"),
     peopleControls(doc.filters || {}),
     doc.people.length
-      ? table(["name", "organization", "aliases", "summary"].map((column) => t("people.column." + column)), rows)
+      ? table(["preferred_name", "name", "organization", "aliases", "summary"].map(
+        (column) => t("people.column." + column)), rows)
       : el("p", t(narrowed ? "people.none_match" : "people.none"), "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );
@@ -496,7 +510,7 @@ function aliasEditor(personId, doc, reopen, contact) {
 }
 
 // The record types the person view can remove, through the same `Forget` as the `forget` MCP tool.
-const REMOVABLE = new Set(["affiliation", "fact", "interaction"]);
+const REMOVABLE = new Set(["affiliation", "fact", "interaction", "relationship"]);
 
 // One stored record with an Edit form built from the fields `CorrectRecord` accepts for its type.
 // Saving corrects the record in place — fixing what was recorded wrongly, with the before and after
@@ -552,6 +566,54 @@ function recordRow(type, record, label, descriptors, reopen) {
     };
     row.replaceChildren(el("span", label), grid, button(t("common.save"), save), button(t("common.cancel"), idle),
       message);
+  }
+  idle();
+  return row;
+}
+
+// Search explicitly before choosing an endpoint; never resolve an ambiguous name silently.
+function relationshipAdder(personId, reopen) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  function idle() { row.replaceChildren(button(t("adder.relationship"), adding), message); }
+  function adding() {
+    const search = el("input"), target = el("select"), type = el("input"), label = el("input");
+    for (const [node, key] of [[search, "adder.relationship_search"], [target, "adder.relationship_choose"],
+      [type, "adder.relationship_type"], [label, "adder.relationship_label"]]) {
+      node.setAttribute("aria-label", t(key));
+      if (node !== target) node.placeholder = t(key);
+    }
+    function choices(people) {
+      const blank = el("option", t("adder.relationship_choose")); blank.value = "";
+      target.replaceChildren(blank);
+      for (const person of people) {
+        if (person.id === personId) continue;
+        const option = el("option", (person.display_name || person.canonical_name) + " — "
+          + (person.full_name || person.canonical_name));
+        option.value = person.id;
+        target.append(option);
+      }
+      target.value = "";
+    }
+    choices([]);
+    let searchVersion = 0;
+    const find = async () => {
+      const version = ++searchVersion;
+      choices([]);
+      message.textContent = "";
+      try {
+        const result = await api("/api/people" + query({q: search.value.trim()}));
+        if (version === searchVersion) choices(result.people);
+      } catch (error) { if (version === searchVersion) message.textContent = aliasRefusal(error); }
+    };
+    const save = () => {
+      if (!target.value || !type.value.trim()) { message.textContent = t("adder.relationship_missing"); return; }
+      const body = {person_id: personId, other_person_id: target.value, type: type.value.trim()};
+      if (label.value.trim()) body.label = label.value.trim();
+      aliasWrite("/api/person/relationship/add", body, message, reopen);
+    };
+    row.replaceChildren(search, button(t("adder.relationship_search_button"), find), target, type, label,
+      button(t("common.add"), save), button(t("common.cancel"), idle), message);
   }
   idle();
   return row;
@@ -626,32 +688,34 @@ function interactionAdder(personId, reopen) {
   ], reopen);
 }
 
-// The person's name or summary, edited through the same `EditPerson` as `pctx edit`. A rename keeps
-// the old name as an alias; emptying the summary clears it, while a name cannot be emptied.
-function personFieldRow(personId, field, stored, reopen) {
+// Optional name components and summary, edited through the same `EditPerson` as `pctx edit`.
+function personFieldRow(personId, field, stored, reopen, pendingEdits) {
   const row = el("div", null, "alias");
   const message = el("span", null, "error");
   function idle() {
+    pendingEdits.delete(field);
     message.textContent = "";
-    const edit = button(t("common.edit"), editing);
+    const edit = button(t("common.edit"), () => editing());
     edit.setAttribute("aria-label", t("person.edit_" + field));
     row.replaceChildren(el("span", stored || t("common.none")), " ", edit, message);
   }
-  function editing() {
+  function editing(draft) {
     message.textContent = "";
-    const control = textControl({ name: field, control: "text" }, stored || "");
+    const control = textControl({ name: field, control: "text" }, stored || "", draft);
+    pendingEdits.set(field, () => control.node.value);
     const save = () => {
       const value = control.read();
       if (value === undefined) return idle();
-      if (field === "name" && (value === null || !value.trim())) {
-        message.textContent = t("person.enter_name");
-        return;
-      }
-      aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, reopen);
+      aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, () => {
+        pendingEdits.delete(field);
+        reopen();
+      });
     };
     row.replaceChildren(control.node, button(t("common.save"), save), button(t("common.cancel"), idle), message);
   }
-  idle();
+  const readDraft = pendingEdits.get(field);
+  if (readDraft) editing(readDraft());
+  else idle();
   return row;
 }
 
@@ -663,33 +727,77 @@ function recordList(type, entries, descriptors, reopen) {
 }
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
-async function showPerson(personId, cursor, back) {
-  current = () => showPerson(personId, cursor, back);
+async function showPerson(personId, cursor, back, previousNameDetails = null, pendingEdits = new Map()) {
+  rememberPage("person", [personId, cursor, back]);
+  current = () => showPerson(personId, cursor, back, previousNameDetails, pendingEdits);
   const at = navigate();
   let doc;
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const identity = el("dl");
-  const reopen = () => showPerson(personId, cursor, back);
+  const reopen = () => showPerson(personId, cursor, back, details, pendingEdits);
   const aliases = el("dd");
   const kinds = doc.alias_kinds || [];
   aliases.append(aliasEditor(doc.person.id, doc, reopen, false), aliasAdder(doc.person.id, kinds, reopen, false));
   const contact = el("dd");
   contact.append(aliasEditor(doc.person.id, doc, reopen, true), aliasAdder(doc.person.id, kinds, reopen, true));
-  const name = el("dd");
-  name.append(personFieldRow(doc.person.id, "name", doc.person.canonical_name, reopen));
+  const preferred = el("dd");
+  preferred.append(personFieldRow(doc.person.id, "preferred_name", doc.person.preferred_name, reopen, pendingEdits));
+  identity.append(el("dt", t("person.preferred_name")), preferred,
+    el("dt", t("person.name")), el("dd", doc.person.full_name || doc.person.canonical_name));
+  const details = el("details");
+  details.open = Boolean(previousNameDetails && previousNameDetails.open);
+  previousNameDetails = null;
+  current = reopen;
+  const components = el("dl");
+  for (const field of ["given_name", "family_name"]) {
+    const value = el("dd");
+    value.append(personFieldRow(doc.person.id, field, doc.person[field], reopen, pendingEdits));
+    components.append(el("dt", t("person." + field)), value);
+  }
+  const orderLabel = el("label", t("person.family_name_first"));
+  const order = el("input");
+  order.type = "checkbox";
+  order.checked = Boolean(doc.person.family_name_first);
+  const orderError = el("span", null, "error");
+  order.addEventListener("change", () => aliasWrite("/api/person/edit",
+    { person_id: doc.person.id, family_name_first: order.checked }, orderError, reopen));
+  orderLabel.append(order);
+  details.append(el("summary", t("person.name_details")), components, orderLabel, orderError,
+    el("p", t("person.name_fallback"), "notice"));
+  const metadata = el("dl");
+  aliases.append(el("p", t("person.alias_help"), "notice"));
   const summary = el("dd");
-  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen));
-  identity.append(el("dt", t("person.name")), name, el("dt", t("person.aliases")), aliases,
+  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen, pendingEdits));
+  metadata.append(el("dt", t("person.aliases")), aliases,
     el("dt", t("person.contact")), contact, el("dt", t("person.summary")), summary,
     el("dt", t("person.disclosure")), el("dd", valueLabel(doc.disclosure.context)));
-  const nodes = [identity];
+  const nodes = [identity, details, metadata];
   if (doc.truncated) {
     nodes.push(el("p", t("person.truncated"), "notice"));
   }
   const forms = doc.record_fields || {};
   const editable = (type, entries) => recordList(type, entries, forms[type] || [], reopen);
+  const relationships = el("ul");
+  for (const record of doc.relationships || []) {
+    const row = el("li");
+    row.append(el("span", valueLabel(record.display_type).replaceAll("_", " ") + ": "),
+      button(record.other_person_name, () => showPerson(record.other_person_id, cursor, back), "link"));
+    if (record.relationship.label) row.append(el("span", " (" + record.relationship.label + ")"));
+    const subject = record.relationship.subject_id === doc.person.id
+      ? doc.person.canonical_name : record.other_person_name;
+    const object = record.relationship.object_id === doc.person.id
+      ? doc.person.canonical_name : record.other_person_name;
+    const editor = el("ul");
+    editor.append(recordRow("relationship", record.relationship,
+      t("person.relationship_direction", {subject, object}), forms.relationship || [], reopen));
+    row.append(editor);
+    relationships.append(row);
+  }
   nodes.push(
+    el("h3", t("person.relationships")),
+    relationships.children.length ? relationships : el("p", t("common.none_recorded"), "notice"),
+    relationshipAdder(doc.person.id, reopen),
     el("h3", t("person.affiliations")),
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
       t("person.affiliation_label", { role: a.affiliation.role, organization: a.organization_name })])),
@@ -707,11 +815,35 @@ async function showPerson(personId, cursor, back) {
     el("h3", t("person.traits")),
     editable("trait", doc.traits.map((trait) => [trait, valueLabel(trait.category) + ": " + trait.value])),
   );
+  const guidance = doc.guidance || {};
+  const signals = Object.values(guidance.traits || {}).flat();
+  if (guidance.communication_philosophy || signals.length) {
+    const communication = el("details");
+    communication.append(el("summary", t("person.communication")));
+    if (guidance.communication_philosophy) communication.append(el("p", guidance.communication_philosophy));
+    const list = el("ul");
+    for (const trait of signals) list.append(el("li", valueLabel(trait.category) + ": " + trait.value));
+    communication.append(list);
+    nodes.push(communication);
+  }
+  if (doc.history && doc.history.entries.length) {
+    const history = el("details"), entries = el("ul");
+    history.append(el("summary", t("person.history")));
+    for (const entry of doc.history.entries) {
+      entries.append(el("li", String(entry.effective_at).slice(0, 10) + " · "
+        + valueLabel(entry.entry_type) + " · " + fieldLabel(entry.basis, entry.basis.replaceAll("_", " "))
+        + ": " + entry.summary));
+    }
+    history.append(entries);
+    if (doc.history.truncated) history.append(el("p", t("person.history_more"), "notice"));
+    nodes.push(history);
+  }
   nodes.push(button(t("person.back"), () => showPeople(cursor, back)));
-  show(doc.person.canonical_name, ...nodes);
+  show(doc.person.display_name || doc.person.canonical_name, ...nodes);
 }
 
 async function showSources(cursor, back) {
+  rememberPage("sources", [cursor, back]);
   current = () => showSources(cursor, back);
   const at = navigate();
   let doc;
@@ -742,6 +874,7 @@ async function showSources(cursor, back) {
 }
 
 async function showSource(sourceId, cursor, back) {
+  rememberPage("source", [sourceId, cursor, back]);
   current = () => showSource(sourceId, cursor, back);
   const at = navigate();
   let doc;
@@ -892,6 +1025,7 @@ function labelled(node, label) {
 // `baseline` is the digest the kept acceptances were made against: the one on screen, or the one
 // this page's own withdrawal produced. Any other digest means another client changed the batch.
 async function showBatch(batchId, message, baseline) {
+  rememberPage("batch", [batchId]);
   if (batchState.id !== batchId) {
     batchState.accepted = new Set();
     batchState.editing = null;
@@ -1143,7 +1277,11 @@ function selectControl(descriptor, staged, options, draft) {
   optionList(select, options, seed);
   select.value = draft === undefined ? seed : seedText(draft);
   select.setAttribute("aria-label", fieldAria(descriptor.name));
-  return { node: select, read: () => (select.value === seed ? undefined : submitted(select.value, false)) };
+  return { node: select, read: () => {
+    const value = select.value === seed ? undefined : submitted(select.value, false);
+    return descriptor.control === "boolean" && typeof value === "string" ? value === "true" : value;
+  } };
+
 }
 
 // An enum field's options, each sent as its stored value and shown as this language labels it.
@@ -1269,6 +1407,11 @@ function buildControl(descriptor, row, draft) {
   if (descriptor.control === "candidate_multiselect") return multiControl(descriptor, staged, opening);
   if (descriptor.control === "candidate_select") {
     return selectControl(descriptor, staged, referenceOptionsFor(descriptor), opening);
+  }
+  if (descriptor.control === "boolean") {
+    return selectControl(descriptor, staged, [
+      { value: "true", label: t("common.yes") }, { value: "false", label: t("common.no") },
+    ], opening);
   }
   if (descriptor.control === "select") {
     return selectControl(descriptor, staged, enumOptions(descriptor), opening);
@@ -1528,11 +1671,26 @@ async function commitAccepted() {
 async function done() {
   // Stopping is a navigation too: no pending view or batch response may repaint after it.
   const at = navigate();
-  try { await api("/api/done", { method: "POST" }); } catch (error) { return fail(error, at); }
+  viewerClosed = true;
+  try { await api("/api/done", { method: "POST" }); } catch (error) {
+    viewerClosed = false;
+    return fail(error, at);
+  }
   if (at !== navigation) return;
   current = () => view.replaceChildren(el("p", t("done.stopped")));
   current();
 }
+
+window.addEventListener("popstate", (event) => {
+  const state = event.state;
+  if (viewerClosed || !state || state.pctx !== true || !Array.isArray(state.args)) return;
+  const open = { people: showPeople, person: showPerson, sources: showSources,
+    source: showSource, batch: showBatch }[state.page];
+  if (typeof open !== "function") return;
+  Object.assign(peopleFilter, state.filters);
+  restoringHistory = true;
+  try { open(...state.args); } finally { restoringHistory = false; }
+});
 
 document.getElementById("nav-people").addEventListener("click", () => showPeople(null, []));
 document.getElementById("nav-sources").addEventListener("click", () => showSources(null, []));

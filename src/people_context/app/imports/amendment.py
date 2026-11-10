@@ -462,6 +462,11 @@ def _check_persisted_shape(row: StagedImportRow, merged: dict[str, Any], kind: s
             "the amended candidate is not a valid staged candidate",
         ) from exc
     normalized: dict[str, Any] = model.model_dump(mode="json", exclude_none=True)
+    normalized.update(
+        model.model_dump(
+            include={"preferred_name", "given_name", "family_name"} & model.model_fields_set,
+        )
+    )
     for field_name in _MATCH_OUTCOME_FIELDS:
         if field_name in merged:
             normalized[field_name] = merged[field_name]
@@ -502,17 +507,13 @@ def _check_input_rules(row: StagedImportRow, merged: dict[str, Any], kind: str) 
         # `RecordInteractionInput` requires at least one participant, and the staging model does
         # not, so an interaction amended down to nobody would persist and then raise from inside
         # the commit transaction — a validation traceback where commit owes a resolution.
-        raise _amendment_refusal(
-            row, "participant_candidate_ids", "an interaction needs at least one participant"
-        )
+        raise _amendment_refusal(row, "participant_candidate_ids", "an interaction needs at least one participant")
     if kind == "relationship" and merged.get("from_candidate_id") == merged.get("to_candidate_id"):
         # The stager owns this one rather than the model, because at request time it is a rule
         # about two batch-local labels. Here it is a rule about two candidate ids, and it matters
         # just as much: an edge from someone to themselves is the self-loop `merge_people` exists
         # to clean up, and commit would leave it unresolved forever rather than write it.
-        raise _amendment_refusal(
-            row, "to_candidate_id", "a relationship's two ends must be different candidates"
-        )
+        raise _amendment_refusal(row, "to_candidate_id", "a relationship's two ends must be different candidates")
 
 
 #: How each persisted reference field is spelled in the request the stager validated.
@@ -586,12 +587,8 @@ def _check_batch_references(rows: list[StagedImportRow]) -> None:
             (person_references & known) - people,
             "names a candidate that is not a person",
         )
-        _refuse_references(
-            row, (evidence_references & known) - evidence, "cites a candidate that is not evidence"
-        )
-        _refuse_references(
-            row, (group_references & known) - groups, "names a candidate that is not a group"
-        )
+        _refuse_references(row, (evidence_references & known) - evidence, "cites a candidate that is not evidence")
+        _refuse_references(row, (group_references & known) - groups, "names a candidate that is not a group")
 
 
 def _refuse_references(row: StagedImportRow, offending: set[str], reason: str) -> None:
@@ -654,8 +651,7 @@ def _remeasure_batch(rows: list[StagedImportRow], budget: ImportBudget) -> None:
     if limit is None:
         return
     payload = sum(
-        len(row.source.encode("utf-8"))
-        + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
+        len(row.source.encode("utf-8")) + len(json.dumps(row.candidate, ensure_ascii=False).encode("utf-8"))
         for row in rows
     )
     if payload > limit:
@@ -702,7 +698,6 @@ def _safe_field(location: tuple[Any, ...]) -> str:
     # names neither of them, and saying `(redacted)` would suggest the patch carried something
     # unprintable when it did not. The candidate as a whole is the honest location.
     return WHOLE_CANDIDATE
-
 
 
 def _amendment_refusal(row: StagedImportRow, field_name: str, message: str) -> ImportPipelineError:

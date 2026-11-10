@@ -64,9 +64,7 @@ class ExportSyncBundle:
             ],
             imports=BundleImportState(
                 source_sessions=[BundleSourceSession.model_validate(row) for row in source.source_sessions],
-                candidate_mappings=[
-                    BundleCandidateMapping.model_validate(row) for row in source.candidate_mappings
-                ],
+                candidate_mappings=[BundleCandidateMapping.model_validate(row) for row in source.candidate_mappings],
                 staging=[BundleStagingRow.model_validate(row) for row in source.staging],
             ),
             trait_evidence=[BundleTraitEvidence.model_validate(row) for row in source.trait_evidence],

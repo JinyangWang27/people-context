@@ -589,11 +589,11 @@ vocabulary tables, every changelog entry, the referenced device rows, and the or
   without minting new audit or changelog entries. Forgotten-record redaction therefore stays redacted, and
   nothing is reconstructed or enriched.
 - Semantic vectors are not transferred. They are rebuildable cache data; run `pctx reindex --semantic` locally.
-- The bundle (version 7) carries import receipts, every durable candidate commit mapping, the staging rows of
+- The bundle (version 9) carries import receipts, every durable candidate commit mapping, the staging rows of
   batches that are still reviewable, trait-evidence links, and groups and memberships with their own sensitivity
   verbatim; a refusal about groups names ids only, never a group name. Staged fact and affiliation candidates
   may name who asserted them; that attribution is bounded, distilled text, never a copied document passage, and
-  it travels only inside a staging row a still-reviewable batch already carried. Restore accepts only version 7,
+  it travels only inside a staging row a still-reviewable batch already carried. Restore accepts only version 9,
   validated against its strict shape, and every table joins the baseline-empty rule — freshness is a property of
   the destination, not of the document. A terminal `redacted` receipt travels as the minimal claim it was reduced
   to; a bundle that tried to reattach cleared caller metadata to one is refused. An evidence link is validated

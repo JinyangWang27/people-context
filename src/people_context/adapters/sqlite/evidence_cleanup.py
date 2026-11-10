@@ -47,8 +47,7 @@ class EvidenceCleanupPlan:
         history, and what keeps two links that differ only by evidence type distinguishable.
         """
         return [
-            AffectedEntity(entity_type="trait_evidence", entity_id=trait_evidence_key(*link))
-            for link in self.links
+            AffectedEntity(entity_type="trait_evidence", entity_id=trait_evidence_key(*link)) for link in self.links
         ]
 
 

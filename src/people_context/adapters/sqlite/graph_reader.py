@@ -58,9 +58,7 @@ class SqliteGraphReader:
             frontier = next_frontier
         return None
 
-    def subgraph(
-        self, person_ids: list[str], depth: int, node_budget: int | None = None
-    ) -> RelationshipSubgraph:
+    def subgraph(self, person_ids: list[str], depth: int, node_budget: int | None = None) -> RelationshipSubgraph:
         """Breadth-first expansion bounded by `depth` and, optionally, a node budget.
 
         The budget bounds the work, not the disclosure: callers cap what they return

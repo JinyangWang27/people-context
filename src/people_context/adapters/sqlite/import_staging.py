@@ -24,6 +24,7 @@ def json_text_fragment(value: str) -> str:
     """
     return json.dumps(value, ensure_ascii=False)[1:-1]
 
+
 #: Measures the batch a bounded caller is about to read without loading a single candidate
 #: body. `LENGTH(CAST(... AS BLOB))` is the stored UTF-8 byte count, which is exactly what a
 #: reader has to materialize, and the inner `LIMIT` stops the scan one row past the caller's

@@ -320,9 +320,7 @@ def _fact_findings(assertions: Iterable[FactAssertion]) -> list[DoctorFinding]:
 def _fact_finding(predicate: str, first: FactAssertion, second: FactAssertion) -> DoctorFinding:
     return DoctorFinding(
         code=FindingCode.CONTRADICTORY_FACT.value,
-        message=(
-            f"Two facts with predicate {predicate!r} assert different values over overlapping periods."
-        ),
+        message=(f"Two facts with predicate {predicate!r} assert different values over overlapping periods."),
         people=[_finding_person(first.person)],
         predicate=predicate,
         facts=[_fact_evidence(first), _fact_evidence(second)],
@@ -432,9 +430,7 @@ def _email_name_findings(usages: Iterable[NameUsage]) -> list[DoctorFinding]:
             names=[NameEvidence(person_id=usage.person.person_id, value=usage.value, source=usage.source)],
             actions=[
                 CliAction(argv=["pctx", "show", usage.person.person_id]),
-                McpAction(
-                    tool="rename_person", arguments={"person_id": usage.person.person_id}, requires=["name"]
-                ),
+                McpAction(tool="rename_person", arguments={"person_id": usage.person.person_id}, requires=["name"]),
             ],
         )
         for usage in usages
@@ -497,6 +493,5 @@ def _finding_sort_key(finding: DoctorFinding) -> tuple[int, str, str, tuple[str,
         FINDING_CODES.index(finding.code),
         finding.normalized_name or "",
         finding.predicate or "",
-        tuple(person.person_id for person in finding.people)
-        + tuple(fact.fact_id for fact in finding.facts),
+        tuple(person.person_id for person in finding.people) + tuple(fact.fact_id for fact in finding.facts),
     )

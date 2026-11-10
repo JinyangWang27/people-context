@@ -224,7 +224,7 @@ class SqliteRecordStore:
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self._conn.execute(
             f"""SELECT * FROM reminders {where}
-                ORDER BY due_at IS NULL, {sort_key('due_at')} ASC, created_at DESC, id""",
+                ORDER BY due_at IS NULL, {sort_key("due_at")} ASC, created_at DESC, id""",
             params,
         ).fetchall()
         return [_reminder(row) for row in rows]
