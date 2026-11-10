@@ -2672,3 +2672,67 @@ def test_reviewed_boolean_control_submits_false_as_boolean(db_file: Path, tmp_pa
     })();
     """
     assert _run_page(db_file, tmp_path, scenario) == {"untouched": True, "submitted": False}
+
+
+_CONCURRENT_NAME_EDITS = r"""
+(async () => {
+  globalThis.personDoc = { person: { id: "P", canonical_name: "王小明", full_name: "王小明",
+    display_name: "小明", preferred_name: "小明", given_name: "小明", family_name: "王", family_name_first: true,
+    aliases: [], emails: [] }, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: [], alias_details: [], record_fields: {} };
+  const fields = __FIELDS_TO_EDIT__;
+  const drafts = {given_name: "小亮", family_name: "张"};
+  const input = (field) => view.all().find((n) => n.attrs && n.attrs["aria-label"] === fieldAria(field));
+  const row = (field) => view.all().find((n) => n.tag === "div" && n.children.includes(input(field)));
+  const action = (field, key) => row(field).children.find(
+    (n) => n.tag === "button" && n.textContent === t(key)).listeners.click();
+  await showPerson("P", null, []);
+  view.children.find((n) => n.tag === "details").open = true;
+  for (const field of fields) {
+    view.all().find((n) => n.attrs && n.attrs["aria-label"] === t("person.edit_" + field)).listeners.click();
+    input(field).value = drafts[field];
+  }
+  action(fields[0], "common.save");
+  personDoc.person[fields[0]] = drafts[fields[0]];
+  releases.forEach((r) => r()); await tick();
+  const keptAfterSave = input(fields[1]) ? input(fields[1]).value : null;
+  document.getElementById("nav-lang").listeners.click(); await tick();
+  const keptAfterLanguage = input(fields[1]) ? input(fields[1]).value : null;
+  if (!input(fields[1])) {
+    console.log(JSON.stringify({keptAfterSave, keptAfterLanguage})); return;
+  }
+  action(fields[1], __SECOND_ACTION__);
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({keptAfterSave, keptAfterLanguage,
+    posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+@pytest.mark.parametrize("fields", [["given_name", "family_name"], ["family_name", "given_name"]])
+def test_saving_either_name_keeps_the_other_draft(
+    db_file: Path, tmp_path: Path, language: str, fields: list[str]
+) -> None:
+    scenario = _CONCURRENT_NAME_EDITS.replace("__FIELDS_TO_EDIT__", json.dumps(fields)).replace(
+        "__SECOND_ACTION__", json.dumps("common.save")
+    )
+    drafts = {"given_name": "小亮", "family_name": "张"}
+    assert _run_page(db_file, tmp_path, scenario, language=language) == {
+        "keptAfterSave": drafts[fields[1]],
+        "keptAfterLanguage": drafts[fields[1]],
+        "posts": [["/api/person/edit", {"person_id": "P", field: drafts[field]}] for field in fields],
+    }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_preserved_name_draft_can_be_cancelled(db_file: Path, tmp_path: Path) -> None:
+    scenario = _CONCURRENT_NAME_EDITS.replace("__FIELDS_TO_EDIT__", json.dumps(["given_name", "family_name"])).replace(
+        "__SECOND_ACTION__", json.dumps("common.cancel")
+    )
+    assert _run_page(db_file, tmp_path, scenario) == {
+        "keptAfterSave": "张",
+        "keptAfterLanguage": "张",
+        "posts": [["/api/person/edit", {"person_id": "P", "given_name": "小亮"}]],
+    }

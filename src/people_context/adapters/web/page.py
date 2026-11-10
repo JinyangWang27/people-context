@@ -629,26 +629,33 @@ function interactionAdder(personId, reopen) {
 }
 
 // Optional name components and summary, edited through the same `EditPerson` as `pctx edit`.
-function personFieldRow(personId, field, stored, reopen) {
+function personFieldRow(personId, field, stored, reopen, pendingEdits) {
   const row = el("div", null, "alias");
   const message = el("span", null, "error");
   function idle() {
+    pendingEdits.delete(field);
     message.textContent = "";
-    const edit = button(t("common.edit"), editing);
+    const edit = button(t("common.edit"), () => editing());
     edit.setAttribute("aria-label", t("person.edit_" + field));
     row.replaceChildren(el("span", stored || t("common.none")), " ", edit, message);
   }
-  function editing() {
+  function editing(draft) {
     message.textContent = "";
-    const control = textControl({ name: field, control: "text" }, stored || "");
+    const control = textControl({ name: field, control: "text" }, stored || "", draft);
+    pendingEdits.set(field, () => control.node.value);
     const save = () => {
       const value = control.read();
       if (value === undefined) return idle();
-      aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, reopen);
+      aliasWrite("/api/person/edit", { person_id: personId, [field]: value === null ? "" : value }, message, () => {
+        pendingEdits.delete(field);
+        reopen();
+      });
     };
     row.replaceChildren(control.node, button(t("common.save"), save), button(t("common.cancel"), idle), message);
   }
-  idle();
+  const readDraft = pendingEdits.get(field);
+  if (readDraft) editing(readDraft());
+  else idle();
   return row;
 }
 
@@ -660,21 +667,21 @@ function recordList(type, entries, descriptors, reopen) {
 }
 
 // `cursor` and `back` are the people page this was opened from, so Back returns to it.
-async function showPerson(personId, cursor, back, previousNameDetails = null) {
-  current = () => showPerson(personId, cursor, back, previousNameDetails);
+async function showPerson(personId, cursor, back, previousNameDetails = null, pendingEdits = new Map()) {
+  current = () => showPerson(personId, cursor, back, previousNameDetails, pendingEdits);
   const at = navigate();
   let doc;
   try { doc = await api("/api/person" + query({ id: personId })); } catch (error) { return fail(error, at); }
   if (at !== navigation) return;
   const identity = el("dl");
-  const reopen = () => showPerson(personId, cursor, back, details);
+  const reopen = () => showPerson(personId, cursor, back, details, pendingEdits);
   const aliases = el("dd");
   const kinds = doc.alias_kinds || [];
   aliases.append(aliasEditor(doc.person.id, doc, reopen, false), aliasAdder(doc.person.id, kinds, reopen, false));
   const contact = el("dd");
   contact.append(aliasEditor(doc.person.id, doc, reopen, true), aliasAdder(doc.person.id, kinds, reopen, true));
   const preferred = el("dd");
-  preferred.append(personFieldRow(doc.person.id, "preferred_name", doc.person.preferred_name, reopen));
+  preferred.append(personFieldRow(doc.person.id, "preferred_name", doc.person.preferred_name, reopen, pendingEdits));
   identity.append(el("dt", t("person.preferred_name")), preferred,
     el("dt", t("person.name")), el("dd", doc.person.full_name || doc.person.canonical_name));
   const details = el("details");
@@ -684,7 +691,7 @@ async function showPerson(personId, cursor, back, previousNameDetails = null) {
   const components = el("dl");
   for (const field of ["given_name", "family_name"]) {
     const value = el("dd");
-    value.append(personFieldRow(doc.person.id, field, doc.person[field], reopen));
+    value.append(personFieldRow(doc.person.id, field, doc.person[field], reopen, pendingEdits));
     components.append(el("dt", t("person." + field)), value);
   }
   const orderLabel = el("label", t("person.family_name_first"));
@@ -700,7 +707,7 @@ async function showPerson(personId, cursor, back, previousNameDetails = null) {
   const metadata = el("dl");
   aliases.append(el("p", t("person.alias_help"), "notice"));
   const summary = el("dd");
-  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen));
+  summary.append(personFieldRow(doc.person.id, "summary", doc.person.summary, reopen, pendingEdits));
   metadata.append(el("dt", t("person.aliases")), aliases,
     el("dt", t("person.contact")), contact, el("dt", t("person.summary")), summary,
     el("dt", t("person.disclosure")), el("dd", valueLabel(doc.disclosure.context)));

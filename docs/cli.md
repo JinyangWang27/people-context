@@ -734,7 +734,9 @@ did not produce, and nothing on the page edits a durable record.
 Browse displays and sorts its first column by preferred name, falling back to given name and then canonical
 name. The full name remains in a separate column for disambiguation. Preferred name appears first on the person view, followed by a read-only Full name. Given/family editors and
 the Family name first checkbox live under expandable Name details in both languages. Its open/closed state
-is preserved after saves and language changes; a manual collapse during a save is respected. For example:
+is preserved after saves and language changes; a manual collapse during a save is respected. Open preferred,
+given/family name and summary editors also retain their unsaved text when another field is saved or the
+language changes. Save submits only that field; Cancel discards only that field's draft. For example:
 
 ```bash
 pctx edit PERSON_ID --preferred-name 小明 --given-name 小明 --family-name 王 --family-name-first
