@@ -571,6 +571,54 @@ function recordRow(type, record, label, descriptors, reopen) {
   return row;
 }
 
+// Search explicitly before choosing an endpoint; never resolve an ambiguous name silently.
+function relationshipAdder(personId, reopen) {
+  const row = el("div", null, "alias");
+  const message = el("span", null, "error");
+  function idle() { row.replaceChildren(button(t("adder.relationship"), adding), message); }
+  function adding() {
+    const search = el("input"), target = el("select"), type = el("input"), label = el("input");
+    for (const [node, key] of [[search, "adder.relationship_search"], [target, "adder.relationship_choose"],
+      [type, "adder.relationship_type"], [label, "adder.relationship_label"]]) {
+      node.setAttribute("aria-label", t(key));
+      if (node !== target) node.placeholder = t(key);
+    }
+    function choices(people) {
+      const blank = el("option", t("adder.relationship_choose")); blank.value = "";
+      target.replaceChildren(blank);
+      for (const person of people) {
+        if (person.id === personId) continue;
+        const option = el("option", (person.display_name || person.canonical_name) + " — "
+          + (person.full_name || person.canonical_name));
+        option.value = person.id;
+        target.append(option);
+      }
+      target.value = "";
+    }
+    choices([]);
+    let searchVersion = 0;
+    const find = async () => {
+      const version = ++searchVersion;
+      choices([]);
+      message.textContent = "";
+      try {
+        const result = await api("/api/people" + query({q: search.value.trim()}));
+        if (version === searchVersion) choices(result.people);
+      } catch (error) { if (version === searchVersion) message.textContent = aliasRefusal(error); }
+    };
+    const save = () => {
+      if (!target.value || !type.value.trim()) { message.textContent = t("adder.relationship_missing"); return; }
+      const body = {person_id: personId, other_person_id: target.value, type: type.value.trim()};
+      if (label.value.trim()) body.label = label.value.trim();
+      aliasWrite("/api/person/relationship/add", body, message, reopen);
+    };
+    row.replaceChildren(search, button(t("adder.relationship_search_button"), find), target, type, label,
+      button(t("common.add"), save), button(t("common.cancel"), idle), message);
+  }
+  idle();
+  return row;
+}
+
 // A form that records one new record for the person. `fields` are [key, label, type, required],
 // the label a key of `adder.`; text is sent trimmed, and an optional field left blank is not sent.
 function recordAdder(personId, noun, path, fields, reopen) {
@@ -736,11 +784,20 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
     row.append(el("span", valueLabel(record.display_type).replaceAll("_", " ") + ": "),
       button(record.other_person_name, () => showPerson(record.other_person_id, cursor, back), "link"));
     if (record.relationship.label) row.append(el("span", " (" + record.relationship.label + ")"));
+    const subject = record.relationship.subject_id === doc.person.id
+      ? doc.person.canonical_name : record.other_person_name;
+    const object = record.relationship.object_id === doc.person.id
+      ? doc.person.canonical_name : record.other_person_name;
+    const editor = el("ul");
+    editor.append(recordRow("relationship", record.relationship,
+      t("person.relationship_direction", {subject, object}), forms.relationship || [], reopen));
+    row.append(editor);
     relationships.append(row);
   }
   nodes.push(
     el("h3", t("person.relationships")),
     relationships.children.length ? relationships : el("p", t("common.none_recorded"), "notice"),
+    relationshipAdder(doc.person.id, reopen),
     el("h3", t("person.affiliations")),
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
       t("person.affiliation_label", { role: a.affiliation.role, organization: a.organization_name })])),
@@ -758,6 +815,29 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
     el("h3", t("person.traits")),
     editable("trait", doc.traits.map((trait) => [trait, valueLabel(trait.category) + ": " + trait.value])),
   );
+  const guidance = doc.guidance || {};
+  const signals = Object.values(guidance.traits || {}).flat();
+  if (guidance.communication_philosophy || signals.length) {
+    const communication = el("details");
+    communication.append(el("summary", t("person.communication")));
+    if (guidance.communication_philosophy) communication.append(el("p", guidance.communication_philosophy));
+    const list = el("ul");
+    for (const trait of signals) list.append(el("li", valueLabel(trait.category) + ": " + trait.value));
+    communication.append(list);
+    nodes.push(communication);
+  }
+  if (doc.history && doc.history.entries.length) {
+    const history = el("details"), entries = el("ul");
+    history.append(el("summary", t("person.history")));
+    for (const entry of doc.history.entries) {
+      entries.append(el("li", String(entry.effective_at).slice(0, 10) + " · "
+        + valueLabel(entry.entry_type) + " · " + fieldLabel(entry.basis, entry.basis.replaceAll("_", " "))
+        + ": " + entry.summary));
+    }
+    history.append(entries);
+    if (doc.history.truncated) history.append(el("p", t("person.history_more"), "notice"));
+    nodes.push(history);
+  }
   nodes.push(button(t("person.back"), () => showPeople(cursor, back)));
   show(doc.person.display_name || doc.person.canonical_name, ...nodes);
 }

@@ -34,6 +34,7 @@ from people_context.domain.import_provenance import (
 )
 from people_context.domain.interaction import Interaction
 from people_context.domain.organization import Affiliation
+from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder
 from people_context.domain.staged_candidate import STAGED_CANDIDATE_MODELS, StagedAlias
 from people_context.domain.trait import Trait
@@ -132,6 +133,7 @@ ALIAS_FIELDS: list[dict[str, Any]] = _fields(StagedAlias, skip=frozenset())
 
 #: The stored record types the person view lists and lets a reviewer correct in place.
 _RECORD_MODELS: dict[str, Any] = {
+    "relationship": Relationship,
     "affiliation": Affiliation,
     "fact": Fact,
     "interaction": Interaction,

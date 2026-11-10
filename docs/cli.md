@@ -597,8 +597,9 @@ brief, the import sources with each receipt's staged counts, and review and edit
 fourth client of the use cases `pctx list --json`, `pctx brief`, `pctx sources`, `pctx source show`, `pctx import
 review`, `pctx import amend`, `pctx import reject`, `pctx import commit`, `pctx add-alias`, `pctx update-alias`,
 `pctx remove-alias`, `pctx edit`, and the `set_affiliation`, `record_fact`, `record_interaction`, `correct_record`,
-and `forget` MCP tools already call; it writes only through the last twelve. The person's **Preferred name** and **Summary** each have Edit, through the same use case as `pctx edit`: Full name is read-only and generated from the components in Name details, which also holds the name-order
-checkbox. Emptying an optional name clears it, email-shaped names are refused, and emptying the summary clears it.
+and `forget` MCP tools already call, plus `set_relationship`; all writes use those existing mutation use cases.
+The person's **Preferred name** and **Summary** each have Edit, through the same use case as `pctx edit`: Full name
+is read-only and generated from the components in Name details, which also holds the name-order checkbox. Emptying an optional name clears it, email-shaped names are refused, and emptying the summary clears it.
 The CLI canonical-name editor still preserves a replaced name as an alias. The people list shows each person's name, organizations (any affiliation, ended ones included), aliases, and
 summary; email addresses appear only under Contact on the person view. It has a search box that keeps the people whose name, an alias, or the summary contains the text
 (compared case- and accent-insensitively; press Enter), an order (name, recently added, or recently edited), and,
@@ -615,8 +616,8 @@ value, with optional start and end dates, through the same use case as the `reco
 interaction** under Interactions records a summary with an optional channel and day (now, if none is given),
 through the same use case as `record_interaction`, with the displayed person as its one participant. Both are
 recorded with `personal` sensitivity, and an end date before the start is `invalid_period`. Each affiliation, fact,
-interaction, trait, and reminder has **Edit**, a form of exactly the fields `CorrectRecord` accepts for that type (an
-affiliation's organization is not one of them), which corrects the record in place, sending only the fields that
+interaction, trait, reminder, and relationship has **Edit**, a form of exactly the fields `CorrectRecord` accepts
+for that type (an affiliation's organization is not one of them), which corrects the record in place, sending only the fields that
 changed; an emptied field is sent as `null`, which clears an optional value such as an end date and is refused for
 a required one. A correction fixes what was recorded wrongly: the audit log keeps the before and after, but the
 brief shows only the corrected value, so a change over time belongs in `supersede_fact` instead. An interaction's
@@ -626,6 +627,15 @@ as the `forget` MCP tool: it is deleted and its audit and replay history redacte
 and a shared interaction is removed for every participant. A record the view's disclosure hides is refused as
 `record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Close button, leaves no daemon, PID file, or
 configuration, and two launches are two unrelated processes.
+
+Relationships link to the other person's page. **Add relationship** searches for a known person and requires an
+explicit selection; its type is from the displayed person's perspective (for example, `reports_to`). Existing
+relationships offer the same correction fields as `correct_record`, with the stored direction shown explicitly;
+setting an end date preserves the record and removes it from the active list. All changes are audited.
+**Communication** appears collapsed when recorded traits or a communication philosophy exist, with ordinary
+disclosure even in an elevated session. **History** is a collapsed, bounded newest-first timeline of stored records,
+including ended relationships, with each entry's date basis and a notice when older entries were omitted. It is
+not the mutation audit log.
 
 The page is in English or Simplified Chinese. It opens in the first of `--lang`, the `PEOPLE_CONTEXT_BROWSE_LANG`
 environment variable, and `browse_lang` in `config.toml` (the same file as `db_path`, below) that is set, and in

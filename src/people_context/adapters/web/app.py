@@ -7,8 +7,9 @@ use cases `pctx import` calls, always with the digest of the review the page dis
 correction, and removal on a person page, through the same use cases as `pctx add-alias`,
 `pctx update-alias`, and `pctx remove-alias`; a rename or summary change through the same `EditPerson` as
 `pctx edit`; a new affiliation, fact, or interaction through the same `SetAffiliation`, `RecordFact`, and
-`RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools; in-place
-correction of an affiliation, fact, interaction, trait, or reminder the page displays, through the same
+`RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools;
+relationship assertions through `SetRelationship` as the `set_relationship` MCP tool; in-place
+correction of an affiliation, fact, interaction, trait, reminder, or relationship the page displays, through the same
 `CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, or interaction the page
 displays, through the same `Forget` as the `forget` MCP tool.
 
@@ -84,6 +85,7 @@ from people_context.app.records import (
     RecordNotFoundError,
     SetAffiliationInput,
 )
+from people_context.app.relationships.commands import SetRelationshipInput
 from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, NAME_IS_EMAIL, AliasKind
 from people_context.domain.shared import Sensitivity, ValidityPeriod
 
@@ -168,6 +170,17 @@ class _AddAffiliationAction(BaseModel):
     valid_to: date | None = None
 
 
+class _AddRelationshipAction(BaseModel):
+    """Assert an edge from the displayed person to another known person."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    person_id: _NonBlank
+    other_person_id: _NonBlank
+    type: _Visible
+    label: _Visible | None = None
+
+
 class _AddFactAction(BaseModel):
     """Record one fact, of ordinary sensitivity, about the person the page displayed."""
 
@@ -197,7 +210,7 @@ class _CorrectRecordAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "interaction", "trait", "reminder"]
+    entity_type: Literal["affiliation", "fact", "interaction", "trait", "reminder", "relationship"]
     entity_id: _NonBlank
     fields: dict[str, Any]
 
@@ -355,7 +368,9 @@ def create_browse_app(
         # contain `/`, which a decoded path would split.
         person_id = request.query_params.get("id", "")
         document = (
-            runtime.use_cases.compose_person_brief.execute(person_id, include_sensitive=include_sensitive)
+            runtime.use_cases.compose_person_brief.execute(
+                person_id, include_sensitive=include_sensitive, include_history=True
+            )
             if person_id
             else None
         )
@@ -464,6 +479,28 @@ def create_browse_app(
             # An organization given by an id that is not stored, never created under that id.
             return _error("unknown_organization", 404)
         return _json(json.dumps({"affiliation_id": affiliation.id}) + "\n")
+
+    async def add_relationship(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _AddRelationshipAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        try:
+            edge = runtime.use_cases.set_relationship.execute(
+                SetRelationshipInput(
+                    subject_id=action.person_id,
+                    object_id=action.other_person_id,
+                    type=action.type,
+                    label=action.label,
+                    source="browser",
+                )
+            )
+        except PersonNotFoundError:
+            return _error("unknown_person", 404)
+        except ValueError:
+            return _error("invalid_correction", 400)
+        return _json(json.dumps({"relationship_id": edge.id}) + "\n")
 
     async def add_fact(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
@@ -655,6 +692,7 @@ def create_browse_app(
             Route("/api/person/alias/update", update_alias, methods=["POST"]),
             Route("/api/person/edit", edit_person, methods=["POST"]),
             Route("/api/person/affiliation/add", add_affiliation, methods=["POST"]),
+            Route("/api/person/relationship/add", add_relationship, methods=["POST"]),
             Route("/api/person/fact/add", add_fact, methods=["POST"]),
             Route("/api/person/interaction/add", add_interaction, methods=["POST"]),
             Route("/api/record/correct", correct_record, methods=["POST"]),

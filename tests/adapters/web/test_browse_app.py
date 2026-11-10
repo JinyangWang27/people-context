@@ -362,7 +362,7 @@ def test_the_person_view_carries_the_brief_truncation_flag(db_file: Path, capsys
     assert over["truncated"] is True and len(over["facts"]) == BRIEF_CONTEXT_ITEMS
     assert under["truncated"] is False
     assert missing.status_code == 404 and missing.json() == {"error": "unknown_person"}
-    cli_brief = _cli_json(capsys, "--db", str(db_file), "brief", ids["toma"], "--json")
+    cli_brief = _cli_json(capsys, "--db", str(db_file), "brief", ids["toma"], "--json", "--include-history")
     # The page's view is the brief exactly, plus the editor keys that ride beside it.
     page_only = {"generated_at", "alias_details", "alias_kinds", "record_fields"}
     assert {k: v for k, v in cli_brief.items() if k != "generated_at"} == {
@@ -2180,7 +2180,7 @@ def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path)
     stored = next(row for row in after["facts"] if row["id"] == ids["fact"])
     assert (stored["value"], stored["period"]["valid_from"]) == ("Head gardener", "2024-03-01")
     assert after["affiliations"][0]["affiliation"]["role"] == "Engineer"
-    assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder"}
+    assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder", "relationship"}
     conn = open_db(db_file)
     try:
         ops = conn.execute("SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'").fetchall()
@@ -2931,3 +2931,122 @@ def test_person_relationships_show_direction_and_link_to_other_person(
     assert any(relation in text for text in result["text"])
     assert any("Project lead" in text for text in result["text"])
     assert result["request"] == "/api/person?id=M"
+
+
+def test_browser_relationship_add_correct_and_end_are_audited(db_file: Path) -> None:
+    ids = _seed_people(db_file)
+    with _client(db_file) as client:
+        response = client.post(
+            "/api/person/relationship/add",
+            json={
+                "person_id": ids["elena"],
+                "other_person_id": ids["toma"],
+                "type": "reports_to",
+                "label": "Team lead",
+            },
+        )
+        assert response.status_code == 200
+        edge_id = response.json()["relationship_id"]
+        corrected = client.post(
+            "/api/record/correct",
+            json={
+                "entity_type": "relationship",
+                "entity_id": edge_id,
+                "fields": {"label": "Former lead", "valid_to": "2020-01-01"},
+            },
+        )
+        assert corrected.status_code == 200
+        assert client.get("/api/person", params={"id": ids["elena"]}).json()["relationships"] == []
+        history = client.get("/api/person", params={"id": ids["elena"]}).json()["history"]
+        assert history["entries"]
+        assert any(item["entry_type"] == "relationship" for item in history["entries"])
+        assert (
+            client.post(
+                "/api/person/relationship/add",
+                json={"person_id": ids["elena"], "other_person_id": "missing", "type": "reports_to"},
+            ).status_code
+            == 404
+        )
+    runtime = build_runtime(db_file)
+    try:
+        edge = runtime.records.get_record("relationship", edge_id)
+        assert edge is not None and edge.label == "Former lead"
+        assert str(edge.period.valid_to) == "2020-01-01"
+        rows = runtime.conn.execute("SELECT op, source FROM audit_log WHERE entity_id = ?", (edge_id,)).fetchall()
+        assert [(row["op"], row["source"]) for row in rows] == [("create", "browser"), ("correct", "browser")]
+    finally:
+        runtime.close()
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_person_shows_optional_communication_and_bounded_history(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.personDoc = {person: {id: 'P', canonical_name: 'Alice', aliases: [], emails: []},
+        disclosure: {context: 'ordinary'}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        alias_details: [], alias_kinds: []};
+      await showPerson('P', null, []);
+      const empty = view.all().filter(n => n.tag === 'summary').map(n => n.textContent);
+      personDoc.guidance = {communication_philosophy: 'Be direct <please>', traits: {}, friction_notes: []};
+      personDoc.history = {limit: 50, truncated: true, entries: [{entry_type: 'fact',
+        effective_at: '2026-01-02T00:00:00Z', basis: 'created_at', summary: 'Likes tea <green>'}]};
+      await current();
+      const summaries = view.all().filter(n => n.tag === 'summary').map(n => n.textContent);
+      const text = view.all().map(n => n.textContent || '').join('|');
+      console.log(JSON.stringify({empty, summaries, text}));
+    })();
+    """
+    result = _run_page(db_file, tmp_path, scenario)
+    assert "Communication" not in result["empty"] and "History" not in result["empty"]
+    assert "Communication" in result["summaries"] and "History" in result["summaries"]
+    assert "Be direct <please>" in result["text"] and "Likes tea <green>" in result["text"]
+    assert "Older entries" in result["text"] and "created at" in result["text"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_relationship_search_selection_and_correction_use_existing_writes(db_file: Path, tmp_path: Path) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.peopleDoc = {people: [{id: 'P', canonical_name: 'Alice'}, {id: 'M', canonical_name: 'Morgan'}]};
+      globalThis.personDoc = {person: {id: 'P', canonical_name: 'Alice', aliases: [], emails: []},
+        disclosure: {context: 'ordinary'}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        relationships: [{display_type: 'manages', other_person_name: 'Morgan', other_person_id: 'M',
+          relationship: {id: 'R', subject_id: 'M', object_id: 'P', type: 'reports_to', label: 'Team lead'}}],
+        record_fields: {relationship: [{name: 'label', control: 'text'}, {name: 'valid_to', control: 'date'}]},
+        alias_details: [], alias_kinds: []};
+      await showPerson('P', null, []);
+      const findButton = (text) => view.all().find(n => n.tag === 'button' && n.textContent === text);
+      findButton('Add relationship').listeners.click();
+      findButton('Add').listeners.click();
+      const missingBlocked = posts.length === 0;
+      view.all().find(n => n.attrs?.['aria-label'] === 'Find a person').value = 'Morgan';
+      await findButton('Search').listeners.click();
+      const select = view.all().find(n => n.tag === 'select');
+      const choices = select.children.map(n => n.value);
+      select.value = 'M';
+      const type = view.all().find(n => n.tag === 'input'
+        && n.attrs?.['aria-label']?.startsWith('Relationship from this person'));
+      type.value = 'colleague_of';
+      findButton('Add').listeners.click();
+      const add = JSON.parse(posts[0].body);
+      releases.shift()(); await tick();
+      const direction = view.all().find(n => n.textContent === 'Stored direction: Morgan → Alice');
+      const row = view.all().find(n => n.tag === 'li' && n.children.includes(direction));
+      row.all().find(n => n.tag === 'button' && n.textContent === 'Edit').listeners.click();
+      const date = view.all().find(n => n.tag === 'input' && n.type === 'date'); date.value = '2020-01-01';
+      findButton('Save').listeners.click();
+      const correction = JSON.parse(posts[1].body);
+      console.log(JSON.stringify({missingBlocked, choices, add, correction,
+        request: gets.find(u => u.includes('q='))}));
+    })();
+    """
+    result = _run_page(db_file, tmp_path, scenario)
+    assert result["missingBlocked"]
+    assert result["choices"] == ["", "M"]
+    assert result["add"] == {"person_id": "P", "other_person_id": "M", "type": "colleague_of"}
+    assert result["correction"] == {
+        "entity_type": "relationship",
+        "entity_id": "R",
+        "fields": {"valid_to": "2020-01-01"},
+    }
+    assert result["request"] == "/api/people?q=Morgan"
