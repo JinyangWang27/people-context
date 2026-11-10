@@ -242,4 +242,3 @@ def _identity(person: Person) -> PersonIdentity:
 
 def _can_disclose(sensitivity: Sensitivity, include_sensitive: bool) -> bool:
     return include_sensitive or sensitivity in (Sensitivity.PUBLIC, Sensitivity.PERSONAL)
-

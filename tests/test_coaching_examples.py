@@ -128,9 +128,7 @@ def test_both_languages_appear_in_the_examples() -> None:
 
 def test_the_drafts_are_quoted_rather_than_described() -> None:
     """The rubric grades usefulness and voice, which needs text on the page to grade."""
-    chinese_quoted = [
-        line for line in _read(EXAMPLES_PATH).splitlines() if line.startswith("> ") and _CJK.search(line)
-    ]
+    chinese_quoted = [line for line in _read(EXAMPLES_PATH).splitlines() if line.startswith("> ") and _CJK.search(line)]
 
     assert chinese_quoted, "no Chinese draft is quoted"
 

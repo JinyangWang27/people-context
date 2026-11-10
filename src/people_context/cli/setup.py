@@ -77,6 +77,7 @@ def default_scope(client: str) -> str:
     """The scope to use when the operator did not name one."""
     return _DEFAULT_SCOPES.get(client, "user")
 
+
 #: Suffix of the copy kept beside a configuration file before it is rewritten.
 BACKUP_SUFFIX = ".bak"
 

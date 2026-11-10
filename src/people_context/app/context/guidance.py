@@ -105,9 +105,7 @@ class GetCommunicationGuidance:
         traits = self._context.list_traits(person_id)
         for category in TraitCategory:
             category_traits = [
-                trait
-                for trait in traits
-                if trait.category == category and _can_disclose(trait.sensitivity)
+                trait for trait in traits if trait.category == category and _can_disclose(trait.sensitivity)
             ]
             if category_traits:
                 grouped[category.value] = category_traits

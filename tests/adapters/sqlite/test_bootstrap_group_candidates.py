@@ -63,9 +63,7 @@ _BATCH = [
 
 
 def _stage(runtime: ApplicationRuntime) -> str:
-    return runtime.use_cases.stage_candidates.execute(
-        "classroom-chat", _BATCH, source_kind="conversation"
-    ).batch_id
+    return runtime.use_cases.stage_candidates.execute("classroom-chat", _BATCH, source_kind="conversation").batch_id
 
 
 def _staged(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
@@ -319,9 +317,7 @@ def test_a_bundle_carrying_a_reversed_membership_period_is_refused(runtime: Appl
     payload = json.loads(render_bundle_json(runtime.use_cases.export_sync_bundle.execute()))
     for row in payload["imports"]["staging"]:
         if row["candidate"]["type"] == "group_membership":
-            row["candidate"].update(
-                {"valid_from": "2016-06-30", "valid_to": "2015-09-01", "temporal_basis": "period"}
-            )
+            row["candidate"].update({"valid_from": "2016-06-30", "valid_to": "2015-09-01", "temporal_basis": "period"})
 
     with pytest.raises(ValidationError):
         parse_bundle_payload(payload)

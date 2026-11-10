@@ -72,9 +72,7 @@ _CLASSMATES = [
 
 
 def _stage(runtime: ApplicationRuntime, candidates: list[dict[str, Any]]) -> str:
-    return runtime.use_cases.stage_candidates.execute(
-        "classroom-chat", candidates, source_kind="conversation"
-    ).batch_id
+    return runtime.use_cases.stage_candidates.execute("classroom-chat", candidates, source_kind="conversation").batch_id
 
 
 def _rows(runtime: ApplicationRuntime, batch_id: str) -> list[Any]:
@@ -178,9 +176,7 @@ def test_a_later_pass_resolves_its_group_through_the_stored_mapping(runtime: App
 
 
 def test_an_explicit_group_id_records_into_that_group_instead_of_creating_one(runtime: ApplicationRuntime) -> None:
-    existing = runtime.use_cases.create_group.execute(
-        CreateGroupInput(name="Class 1, Grade 6", kind=GroupKind.CLASS)
-    )
+    existing = runtime.use_cases.create_group.execute(CreateGroupInput(name="Class 1, Grade 6", kind=GroupKind.CLASS))
     batch = _stage(runtime, [_person("alice", "Alice Ahmed"), _group(group_id=existing.id), _membership("alice")])
 
     runtime.use_cases.commit_import.execute(batch, [row.id for row in _rows(runtime, batch)])
@@ -285,9 +281,7 @@ def test_an_organization_that_no_longer_resolves_leaves_the_group_unresolved(
 
 def test_a_group_id_carrying_whitespace_still_finds_its_group(runtime: ApplicationRuntime) -> None:
     """Whatever `find_groups` returned is what commit must match against, character for character."""
-    existing = runtime.use_cases.create_group.execute(
-        CreateGroupInput(name="Class 1, Grade 6", kind=GroupKind.CLASS)
-    )
+    existing = runtime.use_cases.create_group.execute(CreateGroupInput(name="Class 1, Grade 6", kind=GroupKind.CLASS))
     padded = f" {existing.id} "
     batch = _stage(runtime, [_person("alice", "Alice Ahmed"), _group(group_id=padded), _membership("alice")])
 

@@ -39,4 +39,3 @@ def test_ordinals_follow_created_at_then_id_whatever_order_the_store_returns() -
         (2, "a", "pending"),
         (3, "b", "pending"),
     ]
-

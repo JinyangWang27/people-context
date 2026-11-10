@@ -269,10 +269,7 @@ def build_runtime(
     try:
         semantic_updater = create_local_semantic_updater(conn)
     except Exception as exc:  # noqa: BLE001 - optional derived index cannot block primary operations
-        warn(
-            f"Semantic index maintenance is unavailable: {exc}. "
-            "Run `uv run pctx reindex --semantic`."
-        )
+        warn(f"Semantic index maintenance is unavailable: {exc}. Run `uv run pctx reindex --semantic`.")
         semantic_updater = None
     if semantic_updater is not None:
         repo = IndexingPeopleRepository(repo, semantic_updater, warn)
@@ -429,9 +426,7 @@ def build_runtime(
         withdraw_staged_candidates=WithdrawStagedCandidates(
             import_staging, review_import, repo, import_sources, audit, runtime_clock
         ),
-        apply_review_edits=ApplyReviewEdits(
-            import_staging, review_import, repo, import_sources, audit, runtime_clock
-        ),
+        apply_review_edits=ApplyReviewEdits(import_staging, review_import, repo, import_sources, audit, runtime_clock),
         commit_import=CommitImport(
             repo,
             import_staging,

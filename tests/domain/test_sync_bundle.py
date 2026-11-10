@@ -61,9 +61,9 @@ def _document() -> dict[str, Any]:
                 {
                     "id": _PERSON_ID,
                     "canonical_name": "Alice",
-                "preferred_name": None,
-                "given_name": None,
-                "family_name": None,
+                    "preferred_name": None,
+                    "given_name": None,
+                    "family_name": None,
                     "is_self": False,
                     "summary": None,
                     "aliases": [

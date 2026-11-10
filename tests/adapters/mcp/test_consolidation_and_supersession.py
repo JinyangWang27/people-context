@@ -199,9 +199,7 @@ class TestConsolidationTool:
         assert payload["signals"] == []
         assert payload["affiliations_truncated"] is False
 
-    def test_the_affiliation_page_takes_the_shared_limit_and_truncates_on_its_own(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_affiliation_page_takes_the_shared_limit_and_truncates_on_its_own(self, tmp_path: Path) -> None:
         server = build_server(tmp_path / "affiliation-bound.db")
 
         async def flow(client: Client) -> dict[str, Any]:
@@ -219,9 +217,7 @@ class TestConsolidationTool:
         # A dense professional history does not crowd out another collection.
         assert (len(payload["facts"]), payload["facts_truncated"]) == (1, False)
 
-    def test_existing_collections_keep_their_shape_when_affiliations_are_present(
-        self, tmp_path: Path
-    ) -> None:
+    def test_existing_collections_keep_their_shape_when_affiliations_are_present(self, tmp_path: Path) -> None:
         """The collection is additive: nothing already returned changes meaning."""
         server = build_server(tmp_path / "additive.db")
 

@@ -504,9 +504,7 @@ def cmd_import_edit(runtime: ApplicationRuntime, args: argparse.Namespace) -> in
         print(f"Nothing committed. Commit with: pctx import commit {batch_id} --all")
         return 0
     try:
-        result = runtime.use_cases.commit_import.execute(
-            batch_id, pending, expected_batch_digest=revised.batch_digest
-        )
+        result = runtime.use_cases.commit_import.execute(batch_id, pending, expected_batch_digest=revised.batch_digest)
     except ImportPipelineError as exc:
         return _refuse(f"import commit failed: {exc.code}: {exc}")
     print_import_commit(result)

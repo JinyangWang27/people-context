@@ -224,6 +224,8 @@ RelationshipTypeText = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1, max_length=MAX_RELATIONSHIP_TYPE_CHARS),
     AfterValidator(_normalizable_relationship_type),
 ]
+
+
 def _non_blank_token(value: str) -> str:
     """Accept one opaque token, checking it is not blank without rewriting it.
 
@@ -563,9 +565,7 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
 #: does not. Groups and memberships belong here because they are distilled from unstructured
 #: material exactly as an observation is, and an unbounded batch of them would be the one
 #: extraction path the budgets do not reach.
-EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
-    {"observation", "trait", "relationship", "group", "group_membership"}
-)
+EXTRACTION_CANDIDATE_TYPES: Final = frozenset({"observation", "trait", "relationship", "group", "group_membership"})
 
 
 def contains_extraction_candidate(candidates: list[Any]) -> bool:
@@ -575,6 +575,5 @@ def contains_extraction_candidate(candidates: list[Any]) -> bool:
     ones that must hold *before* anything parses or stages an oversized payload.
     """
     return any(
-        isinstance(candidate, dict) and candidate.get("type") in EXTRACTION_CANDIDATE_TYPES
-        for candidate in candidates
+        isinstance(candidate, dict) and candidate.get("type") in EXTRACTION_CANDIDATE_TYPES for candidate in candidates
     )

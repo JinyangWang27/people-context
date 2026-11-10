@@ -456,8 +456,13 @@ class TestReviewedCvUpdate:
         assert "an outcome can change when fresh evidence arrives" in lowered
         # The prohibition that still holds absolutely.
         assert "never happen is one proposal carrying two outcomes" in lowered
-        for outcome in ("| Add |", "| Already represented |", "| Correct an error |",
-                        "| Record a supported temporal transition |", "| Leave unresolved |"):
+        for outcome in (
+            "| Add |",
+            "| Already represented |",
+            "| Correct an error |",
+            "| Record a supported temporal transition |",
+            "| Leave unresolved |",
+        ):
             assert outcome in body, outcome
 
     def test_every_proposed_mutation_names_its_target_and_its_call(self) -> None:
@@ -530,7 +535,7 @@ class TestReviewedCvUpdate:
         assert "reopen the original source and confirm" in lowered
 
     def test_keeping_a_conflict_means_recording_the_incoming_half(self) -> None:
-        """"Leave unresolved" changes nothing, so on its own it loses the claim that disagreed.
+        """ "Leave unresolved" changes nothing, so on its own it loses the claim that disagreed.
 
         The document does not persist and the store keeps no copy of it, so a review that only
         declines to act keeps the stored assertion and quietly drops the incoming one — the opposite

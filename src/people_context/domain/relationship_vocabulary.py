@@ -88,9 +88,7 @@ _SEEDED_TYPES: tuple[RelationshipType, ...] = (
 #: target still carries only seeded reference rows, and treats these types as resolvable
 #: even when a bundle omits them. A real database is the authority on the seeded rows; the
 #: adapter test suite asserts this mapping stays byte-identical to a freshly migrated store.
-SEEDED_RELATIONSHIP_TYPES: Mapping[str, RelationshipType] = MappingProxyType(
-    {row.type: row for row in _SEEDED_TYPES}
-)
+SEEDED_RELATIONSHIP_TYPES: Mapping[str, RelationshipType] = MappingProxyType({row.type: row for row in _SEEDED_TYPES})
 
 #: Seeded synonym rows, keyed by synonym, in the same authority relationship as the types above.
 SEEDED_RELATIONSHIP_SYNONYMS: Mapping[str, str] = MappingProxyType(

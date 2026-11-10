@@ -125,4 +125,3 @@ class NormalizeRelationships:
                     changed_fields=["deleted"],
                     source=source,
                 )
-

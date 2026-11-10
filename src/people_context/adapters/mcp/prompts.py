@@ -110,7 +110,7 @@ def register_prompts(mcp: MCPServer, people: PersonReader, tool_set: ToolSet = T
             "matters — on a `note` only. Affiliations and relationships carry no sensitivity level and "
             "every ordinary read discloses them, so an elevated `sensitivity` combined with `org` or "
             "`relationship` is refused: record such a statement as a note instead (for example "
-            "`note: \"patient at Mayo Clinic\"` rather than `org: \"Mayo Clinic\"`). A `status` of "
+            '`note: "patient at Mayo Clinic"` rather than `org: "Mayo Clinic"`). A `status` of '
             "`ambiguous`, `unconfirmed`, or `invalid_request` means nothing was recorded: show the "
             "candidates or the message, ask, and call again.\n\n"
             "If the material was extracted or inferred from earlier conversation, a transcript, or notes, "
@@ -118,7 +118,7 @@ def register_prompts(mcp: MCPServer, people: PersonReader, tool_set: ToolSet = T
             "the user the batch is pending review. Never call `commit_import` automatically, speculatively, or in "
             "the same turn as staging.\n\n"
             "Present a staged batch as a numbered list, one short line each, with the candidate id at the "
-            "end of the line. Turn \"change the third one\" into `amend_candidate` and \"drop that one\" into "
+            'end of the line. Turn "change the third one" into `amend_candidate` and "drop that one" into '
             "`withdraw_candidates`, then re-present the revised batch and ask again. Confirming an "
             "amendment is not acceptance of the batch: call `commit_import` only when the user accepts the "
             "revised batch itself.\n"
@@ -191,9 +191,7 @@ def register_prompts(mcp: MCPServer, people: PersonReader, tool_set: ToolSet = T
             "`match_reason` starts with `fuzzy` — maintaining the wrong person's records is worse than none.\n"
             + reads
             + "4. Propose structured actions by id: `correct_record` for a value that was wrong, "
-            "`supersede_fact` for a value that was right and then changed"
-            + merge
-            + ".\n"
+            "`supersede_fact` for a value that was right and then changed" + merge + ".\n"
             "5. Wait for explicit approval per proposal before calling any mutation tool; then re-read and "
             "report the resulting state.\n"
         )

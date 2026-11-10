@@ -89,9 +89,16 @@ def test_an_empty_projection_renders_an_empty_document() -> None:
 
 
 def test_explicit_name_components_survive_vcard_round_trip() -> None:
-    text = _render(_projection(VCardContact(
-        person_id="P", full_name="王小明", given_name="小明", family_name="王",
-    )))
+    text = _render(
+        _projection(
+            VCardContact(
+                person_id="P",
+                full_name="王小明",
+                given_name="小明",
+                family_name="王",
+            )
+        )
+    )
     assert "N:王;小明;;;\r\n" in text
     candidate = _reimport(text).candidates[0]
     assert (candidate["given_name"], candidate["family_name"]) == ("小明", "王")

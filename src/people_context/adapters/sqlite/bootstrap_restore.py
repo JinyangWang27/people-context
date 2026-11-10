@@ -160,10 +160,7 @@ class SqliteBootstrapRestorer:
             key: (row.inverse, row.symmetric, row.category, row.canonical)
             for key, row in SEEDED_RELATIONSHIP_TYPES.items()
         }
-        synonyms = {
-            row["synonym"]: row["type"]
-            for row in self._conn.execute(_SYNONYM_COLUMNS_SQL)
-        }
+        synonyms = {row["synonym"]: row["type"] for row in self._conn.execute(_SYNONYM_COLUMNS_SQL)}
         details: list[str] = []
         drifted_types = _difference_count(types, seeded_types)
         if drifted_types:
@@ -196,9 +193,7 @@ class SqliteBootstrapRestorer:
     def _reject_device_collision(self, document: SyncBundleDocument, local_device_id: str) -> None:
         """Never retire or overwrite the destination's own identity."""
         if any(device.id == local_device_id for device in document.devices):
-            raise InvalidBundleError(
-                [f"bundle carries the destination's own active device id: {local_device_id}"]
-            )
+            raise InvalidBundleError([f"bundle carries the destination's own active device id: {local_device_id}"])
 
     # -- writes ----------------------------------------------------------
 
@@ -321,88 +316,207 @@ class SqliteBootstrapRestorer:
             "aliases",
             ("id", "person_id", "value", "value_normalized", "kind", "lang", "script"),
             (
-                (alias.id, person.id, alias.value, normalize_name(alias.value), alias.kind.value, alias.lang,
-                 alias.script)
+                (
+                    alias.id,
+                    person.id,
+                    alias.value,
+                    normalize_name(alias.value),
+                    alias.kind.value,
+                    alias.lang,
+                    alias.script,
+                )
                 for person in snapshot.people
                 for alias in person.aliases
             ),
         )
         self._insert_many(
             "affiliations",
-            ("id", "person_id", "org_id", "role", "valid_from", "valid_to", "confidence",
-             "provenance_source", "provenance_session", "provenance_stated_by", "created_at"),
             (
-                (row.id, row.person_id, row.org_id, row.role, *_period(row.period), row.confidence,
-                 *_provenance(row.provenance), row.created_at.isoformat())
+                "id",
+                "person_id",
+                "org_id",
+                "role",
+                "valid_from",
+                "valid_to",
+                "confidence",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+                "created_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.person_id,
+                    row.org_id,
+                    row.role,
+                    *_period(row.period),
+                    row.confidence,
+                    *_provenance(row.provenance),
+                    row.created_at.isoformat(),
+                )
                 for row in snapshot.affiliations
             ),
         )
         self._insert_many(
             "relationships",
-            ("id", "subject_id", "object_id", "type", "label", "valid_from", "valid_to", "confidence",
-             "provenance_source", "provenance_session", "provenance_stated_by", "created_at"),
             (
-                (row.id, row.subject_id, row.object_id, row.type, row.label, *_period(row.period), row.confidence,
-                 *_provenance(row.provenance), row.created_at.isoformat())
+                "id",
+                "subject_id",
+                "object_id",
+                "type",
+                "label",
+                "valid_from",
+                "valid_to",
+                "confidence",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+                "created_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.subject_id,
+                    row.object_id,
+                    row.type,
+                    row.label,
+                    *_period(row.period),
+                    row.confidence,
+                    *_provenance(row.provenance),
+                    row.created_at.isoformat(),
+                )
                 for row in snapshot.relationships
             ),
         )
         self._insert_many(
             "facts",
-            ("id", "person_id", "predicate", "value", "valid_from", "valid_to", "recorded_at", "confidence",
-             "sensitivity", "provenance_source", "provenance_session", "provenance_stated_by"),
             (
-                (row.id, row.person_id, row.predicate, row.value, *_period(row.period),
-                 row.recorded_at.isoformat(), row.confidence, row.sensitivity.value, *_provenance(row.provenance))
+                "id",
+                "person_id",
+                "predicate",
+                "value",
+                "valid_from",
+                "valid_to",
+                "recorded_at",
+                "confidence",
+                "sensitivity",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+            ),
+            (
+                (
+                    row.id,
+                    row.person_id,
+                    row.predicate,
+                    row.value,
+                    *_period(row.period),
+                    row.recorded_at.isoformat(),
+                    row.confidence,
+                    row.sensitivity.value,
+                    *_provenance(row.provenance),
+                )
                 for row in snapshot.facts
             ),
         )
         self._insert_many(
             "observations",
-            ("id", "person_id", "text", "observed_at", "sensitivity",
-             "provenance_source", "provenance_session", "provenance_stated_by"),
             (
-                (row.id, row.person_id, row.text, row.observed_at.isoformat(), row.sensitivity.value,
-                 *_provenance(row.provenance))
+                "id",
+                "person_id",
+                "text",
+                "observed_at",
+                "sensitivity",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+            ),
+            (
+                (
+                    row.id,
+                    row.person_id,
+                    row.text,
+                    row.observed_at.isoformat(),
+                    row.sensitivity.value,
+                    *_provenance(row.provenance),
+                )
                 for row in snapshot.observations
             ),
         )
         self._insert_many(
             "traits",
-            ("id", "person_id", "category", "value", "evidence_note", "confidence", "sensitivity",
-             "provenance_source", "provenance_session", "provenance_stated_by", "updated_at"),
             (
-                (row.id, row.person_id, row.category.value, row.value, row.evidence_note, row.confidence,
-                 row.sensitivity.value, *_provenance(row.provenance), row.updated_at.isoformat())
+                "id",
+                "person_id",
+                "category",
+                "value",
+                "evidence_note",
+                "confidence",
+                "sensitivity",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+                "updated_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.person_id,
+                    row.category.value,
+                    row.value,
+                    row.evidence_note,
+                    row.confidence,
+                    row.sensitivity.value,
+                    *_provenance(row.provenance),
+                    row.updated_at.isoformat(),
+                )
                 for row in snapshot.traits
             ),
         )
         self._insert_many(
             "interactions",
-            ("id", "summary", "occurred_at", "channel", "sensitivity",
-             "provenance_source", "provenance_session", "provenance_stated_by"),
             (
-                (row.id, row.summary, row.occurred_at.isoformat(), row.channel, row.sensitivity.value,
-                 *_provenance(row.provenance))
+                "id",
+                "summary",
+                "occurred_at",
+                "channel",
+                "sensitivity",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+            ),
+            (
+                (
+                    row.id,
+                    row.summary,
+                    row.occurred_at.isoformat(),
+                    row.channel,
+                    row.sensitivity.value,
+                    *_provenance(row.provenance),
+                )
                 for row in snapshot.interactions
             ),
         )
         self._insert_many(
             "interaction_participants",
             ("interaction_id", "person_id"),
-            (
-                (row.id, person_id)
-                for row in snapshot.interactions
-                for person_id in row.participant_ids
-            ),
+            ((row.id, person_id) for row in snapshot.interactions for person_id in row.participant_ids),
         )
         self._insert_many(
             "reminders",
             ("id", "person_id", "text", "kind", "due_at", "recurrence", "status", "created_at"),
             (
-                (row.id, row.person_id, row.text, row.kind.value,
-                 row.due_at.isoformat() if row.due_at else None, row.recurrence, row.status.value,
-                 row.created_at.isoformat())
+                (
+                    row.id,
+                    row.person_id,
+                    row.text,
+                    row.kind.value,
+                    row.due_at.isoformat() if row.due_at else None,
+                    row.recurrence,
+                    row.status.value,
+                    row.created_at.isoformat(),
+                )
                 for row in snapshot.reminders
             ),
         )
@@ -418,8 +532,15 @@ class SqliteBootstrapRestorer:
             "audit_log",
             ("id", "ts", "op", "entity_type", "entity_id", "payload_json", "source"),
             (
-                (row.id, row.ts.isoformat(), row.op, row.entity_type, row.entity_id,
-                 json.dumps(row.payload, ensure_ascii=False, sort_keys=True), row.source)
+                (
+                    row.id,
+                    row.ts.isoformat(),
+                    row.op,
+                    row.entity_type,
+                    row.entity_id,
+                    json.dumps(row.payload, ensure_ascii=False, sort_keys=True),
+                    row.source,
+                )
                 for row in snapshot.audit_log
             ),
         )
@@ -437,22 +558,62 @@ class SqliteBootstrapRestorer:
         # row already written.
         self._insert_many(
             "identified_groups",
-            ("id", "name", "name_normalized", "kind", "organization_id", "sensitivity",
-             "provenance_source", "provenance_session", "provenance_stated_by", "created_at"),
             (
-                (row.id, row.name, normalize_name(row.name), row.kind.value, row.organization_id,
-                 row.sensitivity.value, *_provenance(row.provenance), row.created_at.isoformat())
+                "id",
+                "name",
+                "name_normalized",
+                "kind",
+                "organization_id",
+                "sensitivity",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+                "created_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.name,
+                    normalize_name(row.name),
+                    row.kind.value,
+                    row.organization_id,
+                    row.sensitivity.value,
+                    *_provenance(row.provenance),
+                    row.created_at.isoformat(),
+                )
                 for row in document.groups
             ),
         )
         self._insert_many(
             "group_memberships",
-            ("id", "person_id", "group_id", "role", "valid_from", "valid_to", "temporal_basis", "confidence",
-             "sensitivity", "provenance_source", "provenance_session", "provenance_stated_by", "created_at"),
             (
-                (row.id, row.person_id, row.group_id, row.role.value, *_period(row.period),
-                 row.temporal_basis.value, row.confidence, row.sensitivity.value, *_provenance(row.provenance),
-                 row.created_at.isoformat())
+                "id",
+                "person_id",
+                "group_id",
+                "role",
+                "valid_from",
+                "valid_to",
+                "temporal_basis",
+                "confidence",
+                "sensitivity",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+                "created_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.person_id,
+                    row.group_id,
+                    row.role.value,
+                    *_period(row.period),
+                    row.temporal_basis.value,
+                    row.confidence,
+                    row.sensitivity.value,
+                    *_provenance(row.provenance),
+                    row.created_at.isoformat(),
+                )
                 for row in document.group_memberships
             ),
         )
@@ -462,22 +623,49 @@ class SqliteBootstrapRestorer:
         imports = document.imports
         self._insert_many(
             "import_source_sessions",
-            ("id", "source_kind", "label", "external_source_id", "content_digest", "extraction_fingerprint",
-             "extraction_contract_revision", "claim_key", "batch_id", "status", "created_at"),
             (
-                (row.id, row.source_kind, row.label, row.external_source_id, row.content_digest,
-                 row.extraction_fingerprint, row.extraction_contract_revision, row.claim_key, row.batch_id,
-                 row.status, row.created_at.isoformat())
+                "id",
+                "source_kind",
+                "label",
+                "external_source_id",
+                "content_digest",
+                "extraction_fingerprint",
+                "extraction_contract_revision",
+                "claim_key",
+                "batch_id",
+                "status",
+                "created_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.source_kind,
+                    row.label,
+                    row.external_source_id,
+                    row.content_digest,
+                    row.extraction_fingerprint,
+                    row.extraction_contract_revision,
+                    row.claim_key,
+                    row.batch_id,
+                    row.status,
+                    row.created_at.isoformat(),
+                )
                 for row in imports.source_sessions
             ),
         )
         self._insert_many(
             "import_candidate_mappings",
-            ("candidate_id", "batch_id", "source_session_id", "disposition", "entity_type", "entity_id",
-             "created_at"),
+            ("candidate_id", "batch_id", "source_session_id", "disposition", "entity_type", "entity_id", "created_at"),
             (
-                (row.candidate_id, row.batch_id, row.source_session_id, row.disposition, row.entity_type,
-                 row.entity_id, row.created_at.isoformat())
+                (
+                    row.candidate_id,
+                    row.batch_id,
+                    row.source_session_id,
+                    row.disposition,
+                    row.entity_type,
+                    row.entity_id,
+                    row.created_at.isoformat(),
+                )
                 for row in imports.candidate_mappings
             ),
         )
@@ -485,8 +673,14 @@ class SqliteBootstrapRestorer:
             "import_staging",
             ("id", "batch_id", "source", "candidate_json", "status", "created_at"),
             (
-                (row.id, row.batch_id, row.source, json.dumps(row.candidate, ensure_ascii=False, sort_keys=True),
-                 row.status, row.created_at.isoformat())
+                (
+                    row.id,
+                    row.batch_id,
+                    row.source,
+                    json.dumps(row.candidate, ensure_ascii=False, sort_keys=True),
+                    row.status,
+                    row.created_at.isoformat(),
+                )
                 for row in imports.staging
             ),
         )
@@ -494,16 +688,37 @@ class SqliteBootstrapRestorer:
     def _insert_changelog(self, document: SyncBundleDocument) -> None:
         self._insert_many(
             "changelog",
-            ("op_id", "device_id", "hlc_physical_ms", "hlc_logical", "transaction_id", "entity_type",
-             "entity_id", "op_kind", "payload_json", "changed_fields_json", "actor_json", "schema_version",
-             "inserted_at"),
             (
-                (row.op_id, row.device_id, row.hlc_physical_ms, row.hlc_logical, row.transaction_id,
-                 row.entity_type, row.entity_id, row.op_kind,
-                 json.dumps(row.payload, ensure_ascii=False, sort_keys=True),
-                 json.dumps(row.changed_fields, ensure_ascii=False),
-                 json.dumps(row.actor, ensure_ascii=False, sort_keys=True),
-                 row.schema_version, row.inserted_at.isoformat())
+                "op_id",
+                "device_id",
+                "hlc_physical_ms",
+                "hlc_logical",
+                "transaction_id",
+                "entity_type",
+                "entity_id",
+                "op_kind",
+                "payload_json",
+                "changed_fields_json",
+                "actor_json",
+                "schema_version",
+                "inserted_at",
+            ),
+            (
+                (
+                    row.op_id,
+                    row.device_id,
+                    row.hlc_physical_ms,
+                    row.hlc_logical,
+                    row.transaction_id,
+                    row.entity_type,
+                    row.entity_id,
+                    row.op_kind,
+                    json.dumps(row.payload, ensure_ascii=False, sort_keys=True),
+                    json.dumps(row.changed_fields, ensure_ascii=False),
+                    json.dumps(row.actor, ensure_ascii=False, sort_keys=True),
+                    row.schema_version,
+                    row.inserted_at.isoformat(),
+                )
                 for row in document.changelog
             ),
         )
@@ -514,6 +729,7 @@ class SqliteBootstrapRestorer:
             f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})",  # noqa: S608 - fixed constants
             list(rows),
         )
+
 
 def _difference_count(actual: dict[str, Any], expected: dict[str, Any]) -> int:
     return len({key for key in actual.keys() | expected.keys() if actual.get(key) != expected.get(key)})

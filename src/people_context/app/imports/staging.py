@@ -223,10 +223,7 @@ class CandidateStager:
         """
         if tracked:
             return
-        if not any(
-            isinstance(candidate, TraitCandidateInput) and candidate.evidence_refs
-            for candidate in candidates
-        ):
+        if not any(isinstance(candidate, TraitCandidateInput) and candidate.evidence_refs for candidate in candidates):
             return
         raise ImportPipelineError(
             "evidence_requires_source_tracking",
@@ -370,9 +367,11 @@ class CandidateStager:
         row_id = references.row_ids[index]
         if isinstance(candidate, PersonCandidateInput):
             # Explicit nulls clear components; omitted fields leave existing names alone.
-            staged.update(candidate.model_dump(
-                include={"preferred_name", "given_name", "family_name"} & candidate.model_fields_set,
-            ))
+            staged.update(
+                candidate.model_dump(
+                    include={"preferred_name", "given_name", "family_name"} & candidate.model_fields_set,
+                )
+            )
             staged.pop("ref")
             handles = [alias.value for alias in candidate.aliases if alias.kind == AliasKind.HANDLE]
             tokens = [*handles, candidate.name]

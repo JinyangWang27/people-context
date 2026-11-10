@@ -287,9 +287,10 @@ def test_participation_alone_produces_no_promise_and_no_attribution() -> None:
         assert count == 0, f"attendance created a {table} row"
 
     # She is in the interaction, which is the only thing attendance supports.
-    assert harness.conn.execute(
-        "SELECT COUNT(*) FROM interaction_participants WHERE person_id = ?", (dana,)
-    ).fetchone()[0] == 1
+    assert (
+        harness.conn.execute("SELECT COUNT(*) FROM interaction_participants WHERE person_id = ?", (dana,)).fetchone()[0]
+        == 1
+    )
     attributions = {
         row["provenance_stated_by"] for row in harness.conn.execute("SELECT provenance_stated_by FROM facts")
     }
@@ -359,9 +360,7 @@ def test_an_ambiguous_name_commits_nothing_and_creates_no_person() -> None:
     """A first name two people answer to is a question for the user, not a candidate to pick."""
     harness = _Harness()
     for full in ("Sam Ekwueme", "Sam Okafor"):
-        harness.people.save_person(
-            Person(canonical_name=full, aliases=[Alias(value="Sam", kind=AliasKind.NICKNAME)])
-        )
+        harness.people.save_person(Person(canonical_name=full, aliases=[Alias(value="Sam", kind=AliasKind.NICKNAME)]))
 
     batch = harness.stage(
         [
@@ -459,7 +458,7 @@ def test_a_follow_up_has_no_candidate_type_to_be_staged_as() -> None:
 
 
 def test_a_month_only_start_stays_in_claim_text_rather_than_opening_an_affiliation() -> None:
-    """"Since June" is not a date. `valid_from` has no way to hold one without choosing a day.
+    """ "Since June" is not a date. `valid_from` has no way to hold one without choosing a day.
 
     The same rule the CV capture follows for a year-only period: the uncertainty lives in the
     value, and nothing invents a 1 June to fill the field.

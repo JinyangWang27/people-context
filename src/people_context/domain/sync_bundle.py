@@ -755,8 +755,7 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
         staged_type = staged_type_of.get(mapping.candidate_id)
         if staged_type is not None and staged_type != mapping.entity_type:
             details.append(
-                f"candidate mapping {mapping.candidate_id} claims a {mapping.entity_type} for a "
-                f"{staged_type} candidate"
+                f"candidate mapping {mapping.candidate_id} claims a {mapping.entity_type} for a {staged_type} candidate"
             )
         if mapping.disposition != "entity":
             continue
@@ -1007,9 +1006,7 @@ def _duplicate_details(document: SyncBundleDocument) -> list[str]:
     ]
     details = [detail for label, values in collections for detail in _repeated(label, values)]
     for interaction in snapshot.interactions:
-        details.extend(
-            _repeated(f"participant of interaction {interaction.id}", interaction.participant_ids)
-        )
+        details.extend(_repeated(f"participant of interaction {interaction.id}", interaction.participant_ids))
     return details
 
 
@@ -1107,7 +1104,5 @@ def _reference_details(document: SyncBundleDocument) -> list[str]:
 
 def _missing(entity: str, pairs: Iterable[tuple[str, str]], known: set[str], reference: str) -> list[str]:
     return [
-        f"{entity} {owner} references an unknown {reference}: {value}"
-        for owner, value in pairs
-        if value not in known
+        f"{entity} {owner} references an unknown {reference}: {value}" for owner, value in pairs if value not in known
     ]

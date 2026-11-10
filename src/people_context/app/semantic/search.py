@@ -109,11 +109,7 @@ class SemanticSearch:
             vector = provider.embed([query.strip()])[0]
             if len(vector) != self._current_dimension:
                 raise ValueError("embedding provider returned an unexpected vector dimension")
-            hits = [
-                hit
-                for kind in selected_kinds
-                for hit in self._search_kind(index, vector, kind, limit)
-            ]
+            hits = [hit for kind in selected_kinds for hit in self._search_kind(index, vector, kind, limit)]
         except Exception as exc:  # noqa: BLE001 - optional package/model/index failures are result states
             return SemanticSearchNotAvailable(reason=str(exc) or exc.__class__.__name__)
         hits.sort(key=lambda hit: (-hit.score, hit.kind, hit.entity_id))

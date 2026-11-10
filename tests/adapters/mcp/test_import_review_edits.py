@@ -118,9 +118,7 @@ def test_a_refusal_reaches_the_client_as_a_tool_error_with_its_own_code(
         batch_id, rows = await _staged(client)
         affiliation = next(row for row in rows if row["candidate"]["type"] == "affiliation")
         target = (
-            {"candidate_id": affiliation["id"]}
-            if tool == "amend_candidate"
-            else {"candidate_ids": [affiliation["id"]]}
+            {"candidate_id": affiliation["id"]} if tool == "amend_candidate" else {"candidate_ids": [affiliation["id"]]}
         )
         return await client.call_tool(tool, {"batch_id": batch_id, **target, **arguments})
 
@@ -154,9 +152,7 @@ def test_commit_import_refuses_a_withdrawn_candidate_and_a_stale_digest(tmp_path
     async def flow(client: Client) -> tuple[Any, Any, Any]:
         batch_id, rows = await _staged(client)
         ids = [row["id"] for row in rows]
-        stale = (await client.call_tool("review_import", {"batch_id": batch_id})).structured_content[
-            "batch_digest"
-        ]
+        stale = (await client.call_tool("review_import", {"batch_id": batch_id})).structured_content["batch_digest"]
         await client.call_tool("withdraw_candidates", {"batch_id": batch_id, "candidate_ids": [ids[1]]})
         named = await client.call_tool("commit_import", {"batch_id": batch_id, "accepted_ids": ids})
         outdated = await client.call_tool(
@@ -197,9 +193,7 @@ def test_an_ambiguous_row_offers_the_people_it_could_be(tmp_path: Path) -> None:
                 "source_kind": "notes",
             },
         )
-        return await client.call_tool(
-            "review_import", {"batch_id": batch.structured_content["batch_id"]}
-        )
+        return await client.call_tool("review_import", {"batch_id": batch.structured_content["batch_id"]})
 
     review = _run(server, flow)
 

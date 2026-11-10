@@ -192,20 +192,14 @@ def _export_order(people: Iterable[Person]) -> list[Person]:
 def _nicknames(person: Person) -> tuple[str, ...]:
     """Return deduplicated nickname aliases, excluding one that only repeats the name."""
     canonical = normalize_name(person.canonical_name)
-    values = [
-        alias
-        for alias in _alias_order(person, AliasKind.NICKNAME)
-        if normalize_name(alias.value) != canonical
-    ]
+    values = [alias for alias in _alias_order(person, AliasKind.NICKNAME) if normalize_name(alias.value) != canonical]
     return tuple(_dedupe(alias.value.strip() for alias in values))
 
 
 def _emails(person: Person) -> tuple[str, ...]:
     """Return deduplicated handle aliases that actually parse as mail addresses."""
     values = [
-        alias
-        for alias in _alias_order(person, AliasKind.HANDLE)
-        if _EMAIL_RE.fullmatch(normalize_name(alias.value))
+        alias for alias in _alias_order(person, AliasKind.HANDLE) if _EMAIL_RE.fullmatch(normalize_name(alias.value))
     ]
     return tuple(_dedupe(alias.value.strip() for alias in values))
 

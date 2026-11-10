@@ -603,8 +603,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--extraction-fingerprint",
         default=None,
         metavar="SHA256",
-        help="Optional 64-hex fingerprint of your own extraction configuration; omit it rather "
-        "than inventing one.",
+        help="Optional 64-hex fingerprint of your own extraction configuration; omit it rather than inventing one.",
     )
     import_stage_candidates.add_argument(
         "--label",

@@ -245,10 +245,7 @@ class SqlitePersonTimelineReader:
         levels = _levels(sensitivities)
         parameters: dict[str, object] = {"trait_id": trait_id, "limit": limit + 1, **levels}
         rows = self._conn.execute(_TRAIT_EVIDENCE_SQL.format(levels=_placeholders(levels)), parameters).fetchall()
-        return [
-            TimelineEvidenceRow(evidence_type=row["evidence_type"], evidence_id=row["evidence_id"])
-            for row in rows
-        ]
+        return [TimelineEvidenceRow(evidence_type=row["evidence_type"], evidence_id=row["evidence_id"]) for row in rows]
 
 
 def _row(row: sqlite3.Row) -> TimelineRow:

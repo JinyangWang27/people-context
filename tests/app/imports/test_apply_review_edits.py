@@ -225,9 +225,10 @@ def test_a_batch_amended_elsewhere_refuses_and_keeps_the_newer_amendment(runtime
         _apply(runtime, rendered, edited)
 
     assert raised.value.code == "batch_changed"
-    assert next(row for row in _document(runtime, batch_id)["candidates"] if row["id"] == target)[
-        "candidate"
-    ]["value"] == "newer"
+    assert (
+        next(row for row in _document(runtime, batch_id)["candidates"] if row["id"] == target)["candidate"]["value"]
+        == "newer"
+    )
 
 
 def test_withdrawing_every_row_settles_the_receipt_with_an_audit_entry(runtime: ApplicationRuntime) -> None:
@@ -258,8 +259,10 @@ def test_growth_past_the_ceiling_is_refused_by_remeasurement(runtime: Applicatio
     payload = runtime.use_cases.preflight_import_batch.execute(batch_id).payload_bytes
     alias = {"value": "a", "kind": "other"}
     grown_by_one = len(json.dumps([alias], ensure_ascii=False)) - len("[]")
-    staging, review, people = runtime.use_cases.amend_staged_candidate._staging, runtime.use_cases.review_import, (
-        runtime.use_cases.amend_staged_candidate._people
+    staging, review, people = (
+        runtime.use_cases.amend_staged_candidate._staging,
+        runtime.use_cases.review_import,
+        (runtime.use_cases.amend_staged_candidate._people),
     )
     apply = ApplyReviewEdits(
         staging, review, people, budget=ImportBudget(max_staged_payload_bytes=payload + grown_by_one)
@@ -290,8 +293,13 @@ _PERSON = {"type": "person", "name": "N", "aliases": [], "matched_person_id": No
 _ALIASED = {**_PERSON, "aliases": [{"value": "a", "kind": "other"}]}
 _INTERACTION = {"type": "interaction", "summary": "s", "participant_candidate_ids": [], "date": "2026-01-01T00:00:00Z"}
 _TRAIT = {
-    "type": "trait", "person_candidate_id": "p", "category": "style", "value": "v", "evidence_note": "n",
-    "confidence": 0.5, "evidence_ids": [],
+    "type": "trait",
+    "person_candidate_id": "p",
+    "category": "style",
+    "value": "v",
+    "evidence_note": "n",
+    "confidence": 0.5,
+    "evidence_ids": [],
 }
 
 
@@ -373,7 +381,11 @@ def test_a_saved_document_with_larger_stale_projections_fits_its_read_bound(id_c
 
     def document(projection: list[dict[str, Any]]) -> bytes:
         entry = ImportReviewCandidateEntry(
-            id="c", source="s", status="pending", candidate=person, ordinal=1,
+            id="c",
+            source="s",
+            status="pending",
+            candidate=person,
+            ordinal=1,
             match_candidates=[MatchCandidate.model_validate(item) for item in projection],
             match_candidates_truncated=bool(projection),
         )

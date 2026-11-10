@@ -107,9 +107,14 @@ def test_duplicate_preferred_names_page_once_and_search_normalized_components(tm
     runtime = build_runtime(tmp_path / "paging.db")
     try:
         ids = {
-            runtime.use_cases.remember_person.execute(RememberPersonInput(
-                name=name, preferred_name="Álex", given_name="Émile", family_name="Björk",
-            )).person.id
+            runtime.use_cases.remember_person.execute(
+                RememberPersonInput(
+                    name=name,
+                    preferred_name="Álex",
+                    given_name="Émile",
+                    family_name="Björk",
+                )
+            ).person.id
             for name in ("Alpha Jones", "Zoe Smith", "Morgan Lee")
         }
         seen = []

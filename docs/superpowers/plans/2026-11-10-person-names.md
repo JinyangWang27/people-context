@@ -45,6 +45,11 @@ Browser visual QA was denied by the browser approval gate; local HTTP and Node D
 
 ## Task 2: Repository formatting (added at the user's request)
 
-- [ ] Run Ruff formatting with line length 120 and sort imports across the repository.
-- [ ] Verify formatting, lint, types, and the complete suite; commit separately from Task 1.
-- [ ] Publish the requested pull request against the latest main.
+- [x] Run Ruff formatting with line length 120 and sort imports across the repository.
+- [x] Verify formatting, lint, types, and the complete suite; commit separately from Task 1.
+- Publish the requested pull request against the latest main.
+
+Task 2 verification: Ruff sorted imports and formatted at line length 120 (90 files reformatted).
+Ruff lint/format checks and mypy passed. The post-format suite passed: 3,804 tests, 16 skips,
+one existing AnyIO/Pytest deprecation warning. Offline source/wheel builds passed. Python ASTs match the
+feature commit across all 455 tracked Python files after ignoring docstring edge whitespace.

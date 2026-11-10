@@ -42,7 +42,7 @@ REQUIRED_SCENARIOS: tuple[tuple[str, str], ...] = (
     ("known disjoint periods", "Dana left in August 2020 and Marcus joined in April 2022"),
     ("teacher and pupil roles", "a teacher and a pupil sharing a room aren't peers"),
     ("cross-company team", "creates no employment, no department membership"),
-    ("an employer is not a group", "inventing \"the Globex engineering team\" to hold them"),
+    ("an employer is not a group", 'inventing "the Globex engineering team" to hold them'),
     ("a role pairing without dates", "the roles were right and the timing was unknown"),
     ("confirmed cohort continuity", "not a generator for a row per academic year"),
     ("a year is not a date", "a guess wearing the clothes of a record"),
@@ -262,7 +262,7 @@ def test_the_guidance_keeps_context_label_and_assertion_distinct() -> None:
 
     assert "It is not evidence they know each other, are friends, or ever met." in text
     assert "A teacher and a pupil of one class are not classmates." in text
-    assert "Report `unknown` as unknown rather than as \"probably\"" in text
+    assert 'Report `unknown` as unknown rather than as "probably"' in text
 
 
 def test_the_worked_captures_stage_only_what_the_user_supplied() -> None:

@@ -359,9 +359,7 @@ def test_a_same_batch_evidence_citation_added_to_a_receiptless_batch_is_refused(
     ids = _ids(runtime, batch_id)
 
     with pytest.raises(ImportPipelineError) as raised:
-        runtime.use_cases.amend_staged_candidate.execute(
-            batch_id, ids[2], {"evidence_candidate_ids": [ids[1]]}
-        )
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[2], {"evidence_candidate_ids": [ids[1]]})
 
     assert raised.value.code == "evidence_requires_source_tracking"
 
@@ -397,9 +395,7 @@ def test_an_amendment_pointing_at_a_row_outside_the_batch_is_refused(
 
     for reference in ("01JUNKUNKNOWNCANDIDATEID00", foreign_id):
         with pytest.raises(ImportPipelineError) as raised:
-            runtime.use_cases.amend_staged_candidate.execute(
-                batch_id, ids[1], {"person_candidate_id": reference}
-            )
+            runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[1], {"person_candidate_id": reference})
         assert raised.value.code == "candidate_reference_invalid"
 
 
@@ -432,9 +428,7 @@ def test_a_trait_citing_a_row_that_is_not_evidence_is_refused(runtime: Applicati
     ids = _ids(runtime, batch_id)
 
     with pytest.raises(ImportPipelineError) as raised:
-        runtime.use_cases.amend_staged_candidate.execute(
-            batch_id, ids[2], {"evidence_candidate_ids": [ids[0]]}
-        )
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[2], {"evidence_candidate_ids": [ids[0]]})
 
     assert raised.value.code == "candidate_reference_invalid"
 
@@ -453,9 +447,7 @@ def test_a_membership_placed_in_a_row_that_is_not_a_group_is_refused(
     ids = _ids(runtime, batch_id)
 
     with pytest.raises(ImportPipelineError) as raised:
-        runtime.use_cases.amend_staged_candidate.execute(
-            batch_id, ids[2], {"group_candidate_id": ids[0]}
-        )
+        runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[2], {"group_candidate_id": ids[0]})
 
     assert raised.value.code == "candidate_reference_invalid"
 
@@ -500,9 +492,7 @@ def test_an_oversized_patch_string_is_refused_before_anything_is_written(
 
 
 def _ambiguous_batch(runtime: ApplicationRuntime, collisions: int) -> tuple[str, list[str], list[str]]:
-    people = [
-        _save_person(runtime, f"01M29PERSON{index:015d}", "Priya Sharma") for index in range(collisions)
-    ]
+    people = [_save_person(runtime, f"01M29PERSON{index:015d}", "Priya Sharma") for index in range(collisions)]
     batch_id = _stage(
         runtime,
         [
@@ -702,9 +692,7 @@ def test_rerunning_commit_everything_still_reports_the_rows_an_earlier_pass_comm
 
 
 def _receipt_status(runtime: ApplicationRuntime, batch_id: str) -> str:
-    row = runtime.conn.execute(
-        "SELECT status FROM import_source_sessions WHERE batch_id = ?", (batch_id,)
-    ).fetchone()
+    row = runtime.conn.execute("SELECT status FROM import_source_sessions WHERE batch_id = ?", (batch_id,)).fetchone()
     return str(row["status"])
 
 
@@ -809,9 +797,7 @@ def test_the_digest_ignores_the_read_time_match_projection(runtime: ApplicationR
 
 
 @pytest.mark.parametrize("verb", ["amend", "withdraw", "commit"])
-def test_a_stale_digest_refuses_every_verb_and_writes_nothing(
-    runtime: ApplicationRuntime, verb: str
-) -> None:
+def test_a_stale_digest_refuses_every_verb_and_writes_nothing(runtime: ApplicationRuntime, verb: str) -> None:
     batch_id, ids = _simple_batch(runtime)
     stale = runtime.use_cases.review_import.execute(batch_id).batch_digest
     runtime.use_cases.amend_staged_candidate.execute(batch_id, ids[1], {"role": "Staff Engineer"})
@@ -939,9 +925,7 @@ def test_a_locked_identity_still_accepts_an_amendment_that_does_not_move_it(
 
 
 @pytest.mark.parametrize("aliases", [None, ["not-an-alias"], [{"kind": "handle"}]])
-def test_a_malformed_alias_patch_refuses_instead_of_raising(
-    runtime: ApplicationRuntime, aliases: object
-) -> None:
+def test_a_malformed_alias_patch_refuses_instead_of_raising(runtime: ApplicationRuntime, aliases: object) -> None:
     """Regression: matching consumed `aliases` before the shape was checked, so these crashed.
 
     A `TypeError` or `AttributeError` escaping here reaches the CLI as a traceback and MCP as a
@@ -1116,12 +1100,8 @@ def test_withdrawing_nothing_is_refused_rather_than_silently_doing_nothing(
     assert raised.value.code == "invalid_candidates"
 
 
-@pytest.mark.parametrize(
-    "use_case", ["amend_staged_candidate", "withdraw_staged_candidates", "review_import"]
-)
-def test_every_edit_surface_reports_an_unknown_batch_the_same_way(
-    runtime: ApplicationRuntime, use_case: str
-) -> None:
+@pytest.mark.parametrize("use_case", ["amend_staged_candidate", "withdraw_staged_candidates", "review_import"])
+def test_every_edit_surface_reports_an_unknown_batch_the_same_way(runtime: ApplicationRuntime, use_case: str) -> None:
     arguments: dict[str, list[object]] = {
         "amend_staged_candidate": ["01JUNKNOTABATCH0000000000", "c1", {}],
         "withdraw_staged_candidates": ["01JUNKNOTABATCH0000000000", ["c1"]],
@@ -1296,9 +1276,9 @@ def test_a_refusal_with_no_details_projects_nothing() -> None:
 
 
 def test_an_entry_with_no_location_is_reported_for_the_candidate() -> None:
-    assert amendment_refusals(
-        ImportPipelineError("invalid_candidates", "refused", details=[{"type": "missing"}])
-    ) == [{"field": WHOLE_CANDIDATE, "message": "missing"}]
-    assert amendment_refusals(
-        ImportPipelineError("invalid_candidates", "refused", details=[{"loc": []}])
-    ) == [{"field": WHOLE_CANDIDATE, "message": "invalid"}]
+    assert amendment_refusals(ImportPipelineError("invalid_candidates", "refused", details=[{"type": "missing"}])) == [
+        {"field": WHOLE_CANDIDATE, "message": "missing"}
+    ]
+    assert amendment_refusals(ImportPipelineError("invalid_candidates", "refused", details=[{"loc": []}])) == [
+        {"field": WHOLE_CANDIDATE, "message": "invalid"}
+    ]

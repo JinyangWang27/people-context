@@ -53,9 +53,7 @@ class _Store:
             self.people.save_person(Person(id=person_id, canonical_name=name))
         self.create = CreateGroup(self.groups, self.organizations, self.audit, self.clock)
         self.add = AddGroupMembership(self.people, self.records, self.groups, self.audit, self.clock)
-        self.explain = ExplainSharedConnections(
-            self.people, self.groups, self.organizations, self.context, self.clock
-        )
+        self.explain = ExplainSharedConnections(self.people, self.groups, self.organizations, self.context, self.clock)
 
     def group(self, name: str, kind: GroupKind = GroupKind.CLASS, **fields: object) -> str:
         return self.create.execute(CreateGroupInput(name=name, kind=kind, **fields)).id  # type: ignore[arg-type]

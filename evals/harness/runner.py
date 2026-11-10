@@ -102,9 +102,7 @@ def resolve_server_argv(server_argv: tuple[str, ...], world_as_of: datetime) -> 
             resolved.append(substitutions[argument])
         elif "{" in argument or "}" in argument:
             expected = ", ".join(sorted(substitutions))
-            raise EvalHarnessError(
-                f"argument {argument!r} is not a whole placeholder; expected one of: {expected}"
-            )
+            raise EvalHarnessError(f"argument {argument!r} is not a whole placeholder; expected one of: {expected}")
         else:
             resolved.append(argument)
     return resolved

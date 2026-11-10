@@ -513,9 +513,7 @@ def test_a_withdrawn_candidate_and_its_pending_dependents_survive_a_real_round_t
     conn, outcome = _restore(document, tmp_path / "destination.db")
     try:
         assert outcome.staged_candidates == len(rows)
-        restored = conn.execute(
-            "SELECT id, status FROM import_staging ORDER BY created_at, id"
-        ).fetchall()
+        restored = conn.execute("SELECT id, status FROM import_staging ORDER BY created_at, id").fetchall()
         assert [(row["id"], row["status"]) for row in restored] == [
             (row.id, "rejected" if row.id == withdrawn else "pending") for row in rows
         ]
@@ -544,5 +542,3 @@ def test_a_withdrawn_receipt_survives_a_real_round_trip_carrying_no_staging(tmp_
         assert conn.execute("SELECT COUNT(*) AS total FROM import_staging").fetchone()["total"] == 0
     finally:
         conn.close()
-
-

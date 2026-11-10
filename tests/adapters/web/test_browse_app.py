@@ -83,9 +83,7 @@ def _cli_json(capsys: pytest.CaptureFixture[str], *argv: str) -> dict[str, Any]:
     return document
 
 
-def _seed_committed_source(
-    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], *receipt: str
-) -> str:
+def _seed_committed_source(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], *receipt: str) -> str:
     """Stage and commit a receipt-backed batch that produced a sensitive fact; return the source id."""
     candidates = [
         {"type": "person", "ref": "ida", "name": "Ida Kerr", "aliases": []},
@@ -190,9 +188,7 @@ def db_file(tmp_path: Path) -> Path:
         ("/api/nowhere", {TOKEN_HEADER: ""}),
     ],
 )
-def test_every_failed_check_gets_the_same_generic_refusal(
-    db_file: Path, path: str, headers: dict[str, str]
-) -> None:
+def test_every_failed_check_gets_the_same_generic_refusal(db_file: Path, path: str, headers: dict[str, str]) -> None:
     _seed_people(db_file)
     with _client(db_file) as client:
         response = client.get(path, headers=headers)
@@ -239,15 +235,11 @@ def test_the_people_list_pages_the_person_index(db_file: Path, capsys: pytest.Ca
         first = client.get("/api/people", params={"limit": "1"})
         cursor = first.json()["next_cursor"]
         second = client.get("/api/people", params={"limit": "1", "cursor": cursor})
-        refusals = [
-            client.get("/api/people", params={"limit": limit}).json() for limit in ("0", "201", "many")
-        ]
+        refusals = [client.get("/api/people", params={"limit": limit}).json() for limit in ("0", "201", "many")]
         stale = client.get("/api/people", params={"cursor": "garbage"})
     _assert_security_headers(first.headers)
     listing = _cli_json(capsys, "--db", str(db_file), "list", "--json")
-    assert [p["id"] for p in first.json()["people"] + second.json()["people"]] == [
-        p["id"] for p in listing["people"]
-    ]
+    assert [p["id"] for p in first.json()["people"] + second.json()["people"]] == [p["id"] for p in listing["people"]]
     assert first.json()["people"][0].keys() == listing["people"][0].keys()
     assert second.json()["next_cursor"] is None
     assert refusals == [{"error": "invalid_person_page_limit"}] * 3
@@ -361,9 +353,7 @@ def test_sensitive_records_follow_the_process_elevation_only(db_file: Path) -> N
     assert elevated.json()["disclosure"]["context"] == "sensitive"
 
 
-def test_the_person_view_carries_the_brief_truncation_flag(
-    db_file: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_person_view_carries_the_brief_truncation_flag(db_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
     ids = _seed_people(db_file)
     with _client(db_file) as client:
         over = client.get("/api/person", params={"id": ids["toma"]}).json()
@@ -441,9 +431,7 @@ def test_an_unknown_route_is_only_reported_after_the_guard(db_file: Path) -> Non
     _assert_security_headers(response.headers)
 
 
-def test_an_internal_error_is_generic_and_carries_no_detail(
-    db_file: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_internal_error_is_generic_and_carries_no_detail(db_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ids = _seed_people(db_file)
 
     def explode(*_args: object, **_kwargs: object) -> None:
@@ -501,8 +489,16 @@ def _stage(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], ca
     input_path = tmp_path / "batch.json"
     input_path.write_text(json.dumps(candidates), encoding="utf-8")
     staged = _cli_json(
-        capsys, "--db", str(db_file), "import", "stage-candidates", "--source", "allotment meeting",
-        "--input", str(input_path), "--json",
+        capsys,
+        "--db",
+        str(db_file),
+        "import",
+        "stage-candidates",
+        "--source",
+        "allotment meeting",
+        "--input",
+        str(input_path),
+        "--json",
     )
     batch_id = staged["batch_id"]
     assert isinstance(batch_id, str)
@@ -517,8 +513,13 @@ def _elena_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[st
         capsys,
         [
             {"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []},
-            {"type": "fact", "person_ref": "elena", "predicate": "health", "value": _SENSITIVE_VALUE,
-             "sensitivity": "sensitive"},
+            {
+                "type": "fact",
+                "person_ref": "elena",
+                "predicate": "health",
+                "value": _SENSITIVE_VALUE,
+                "sensitivity": "sensitive",
+            },
             {"type": "fact", "person_ref": "elena", "predicate": "role", "value": _MARKUP_NAME},
             {"type": "fact", "person_ref": "elena", "predicate": "note", "value": "Drop this one"},
         ],
@@ -531,9 +532,7 @@ def _cli_review(capsys: pytest.CaptureFixture[str], db_file: Path, batch_id: str
 
 def _ids(review: dict[str, Any]) -> dict[str, str]:
     """Candidate ids by person name or fact predicate."""
-    return {
-        row["candidate"].get("predicate") or row["candidate"]["name"]: row["id"] for row in review["candidates"]
-    }
+    return {row["candidate"].get("predicate") or row["candidate"]["name"]: row["id"] for row in review["candidates"]}
 
 
 def _action(client: TestClient, verb: str, batch_id: str, ids: list[str], digest: str) -> Any:
@@ -648,7 +647,10 @@ def test_committing_reports_the_use_case_counts_and_matches_a_fresh_review(
     assert reloaded == fresh
     statuses = {row["id"]: row["status"] for row in fresh["candidates"]}
     assert [statuses[ids[key]] for key in ("Elena Marsh", "role", "health", "note")] == [
-        "committed", "committed", "pending", "pending",
+        "committed",
+        "committed",
+        "pending",
+        "pending",
     ]
 
 
@@ -736,9 +738,7 @@ def test_a_malformed_action_is_refused_without_echoing_it(db_file: Path, body: b
         assert response.status_code == 400 and response.json() == {"error": "invalid_request"}
 
 
-def test_an_oversized_action_is_refused_before_it_is_parsed(
-    db_file: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_oversized_action_is_refused_before_it_is_parsed(db_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(web_app, "MAX_BATCH_ACTION_BYTES", 64)
     body = json.dumps({"batch_id": "b", "candidate_ids": ["x" * 100], "expected_batch_digest": "d"})
     with _client(db_file) as client:
@@ -1150,9 +1150,7 @@ def test_a_double_click_sends_one_withdrawal_and_one_commit(db_file: Path, tmp_p
 # --- M30.3 inline edit ------------------------------------------------------------------------
 
 
-def _amend(
-    client: TestClient, batch_id: str, candidate_id: str, patch: dict[str, Any], digest: str
-) -> Any:
+def _amend(client: TestClient, batch_id: str, candidate_id: str, patch: dict[str, Any], digest: str) -> Any:
     return client.post(
         "/api/batch/amend",
         json={
@@ -1168,21 +1166,28 @@ def _amend(
 def _candidates(review: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Stored candidates by the same key `_ids` uses."""
     return {
-        row["candidate"].get("predicate") or row["candidate"].get("name") or row["candidate"]["type"]:
-        row["candidate"]
+        row["candidate"].get("predicate") or row["candidate"].get("name") or row["candidate"]["type"]: row["candidate"]
         for row in review["candidates"]
     }
 
 
-def _tracked_batch(
-    db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], candidates: list[Any]
-) -> str:
+def _tracked_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], candidates: list[Any]) -> str:
     """Stage a source-tracked batch, which same-batch evidence citation requires."""
     input_path = tmp_path / "tracked.json"
     input_path.write_text(json.dumps(candidates), encoding="utf-8")
     staged = _cli_json(
-        capsys, "--db", str(db_file), "import", "stage-candidates", "--source", "allotment meeting",
-        "--input", str(input_path), "--source-kind", "meeting_transcript", "--json",
+        capsys,
+        "--db",
+        str(db_file),
+        "import",
+        "stage-candidates",
+        "--source",
+        "allotment meeting",
+        "--input",
+        str(input_path),
+        "--source-kind",
+        "meeting_transcript",
+        "--json",
     )
     batch_id = staged["batch_id"]
     assert isinstance(batch_id, str)
@@ -1277,7 +1282,9 @@ def test_editing_one_alias_leaves_another_alias_language_and_script_alone(
     db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     batch_id = _stage(
-        db_file, tmp_path, capsys,
+        db_file,
+        tmp_path,
+        capsys,
         [
             {
                 "type": "person",
@@ -1306,16 +1313,29 @@ def test_participants_and_evidence_references_can_be_corrected_within_the_batch(
     db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     batch_id = _tracked_batch(
-        db_file, tmp_path, capsys,
+        db_file,
+        tmp_path,
+        capsys,
         [
             {"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []},
             {"type": "person", "ref": "toma", "name": "Toma Ibarra", "aliases": []},
-            {"type": "interaction", "evidence_ref": "meet", "summary": "Allotment rota",
-             "participant_refs": ["elena"], "date": "2026-06-01T10:00:00Z"},
-            {"type": "observation", "evidence_ref": "seen", "person_ref": "elena",
-             "text": "Brought seedlings"},
-            {"type": "trait", "person_ref": "elena", "category": "preference", "value": "Mornings",
-             "evidence_note": "Said so", "confidence": 0.6, "evidence_refs": ["seen"]},
+            {
+                "type": "interaction",
+                "evidence_ref": "meet",
+                "summary": "Allotment rota",
+                "participant_refs": ["elena"],
+                "date": "2026-06-01T10:00:00Z",
+            },
+            {"type": "observation", "evidence_ref": "seen", "person_ref": "elena", "text": "Brought seedlings"},
+            {
+                "type": "trait",
+                "person_ref": "elena",
+                "category": "preference",
+                "value": "Mornings",
+                "evidence_note": "Said so",
+                "confidence": 0.6,
+                "evidence_refs": ["seen"],
+            },
         ],
     )
     before = _cli_review(capsys, db_file, batch_id)
@@ -1327,14 +1347,19 @@ def test_participants_and_evidence_references_can_be_corrected_within_the_batch(
         )
         after_participants = client.get("/api/batch", params={"id": batch_id}).json()["review"]
         evidence = _amend(
-            client, batch_id, ids["trait"],
+            client,
+            batch_id,
+            ids["trait"],
             {"evidence_candidate_ids": [ids["interaction"], ids["observation"]]},
             after_participants["batch_digest"],
         )
         after_evidence = client.get("/api/batch", params={"id": batch_id}).json()["review"]
         # A reference of the wrong type is what the selector never offers, and the use case refuses.
         wrong = _amend(
-            client, batch_id, ids["trait"], {"evidence_candidate_ids": [ids["person"]]},
+            client,
+            batch_id,
+            ids["trait"],
+            {"evidence_candidate_ids": [ids["person"]]},
             after_evidence["batch_digest"],
         )
     assert both.status_code == 200 and evidence.status_code == 200
@@ -1352,10 +1377,21 @@ def test_an_edit_from_a_stale_view_is_refused_and_changes_nothing(
     with _client(db_file) as client:
         shown = client.get("/api/batch", params={"id": batch_id}).json()["review"]
         # Another client amends a different row between the page's read and its save.
-        assert cli.main([
-            "--db", str(db_file), "import", "amend", batch_id, _ids(shown)["note"],
-            "--patch", json.dumps({"value": "Keep this one"}),
-        ]) == 0
+        assert (
+            cli.main(
+                [
+                    "--db",
+                    str(db_file),
+                    "import",
+                    "amend",
+                    batch_id,
+                    _ids(shown)["note"],
+                    "--patch",
+                    json.dumps({"value": "Keep this one"}),
+                ]
+            )
+            == 0
+        )
         capsys.readouterr()
         elsewhere = _cli_review(capsys, db_file, batch_id)
         response = _amend(
@@ -1373,9 +1409,11 @@ def test_a_closed_row_is_not_editable(
     batch_id = _elena_batch(db_file, tmp_path, capsys)
     review = _cli_review(capsys, db_file, batch_id)
     target = _ids(review)["note"] if closed == "rejected" else _ids(review)["Elena Marsh"]
-    verb = ["import", "reject", batch_id, target] if closed == "rejected" else [
-        "import", "commit", batch_id, "--accept", target
-    ]
+    verb = (
+        ["import", "reject", batch_id, target]
+        if closed == "rejected"
+        else ["import", "commit", batch_id, "--accept", target]
+    )
     assert cli.main(["--db", str(db_file), *verb]) == 0
     capsys.readouterr()
     before = _cli_review(capsys, db_file, batch_id)
@@ -1398,7 +1436,9 @@ def _ambiguous_batch(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixtur
     finally:
         conn.close()
     return _stage(
-        db_file, tmp_path, capsys,
+        db_file,
+        tmp_path,
+        capsys,
         [{"type": "person", "ref": "elena", "name": "Elena Marsh", "aliases": []}],
     )
 
@@ -1416,9 +1456,7 @@ def test_the_ambiguity_picker_records_its_choice_through_amendment(
         chosen = row["match_candidates"][1]["id"]
         response = _amend(client, batch_id, row["id"], {"matched_person_id": chosen}, shown["batch_digest"])
         after = client.get("/api/batch", params={"id": batch_id}).json()["review"]
-        stranger = _amend(
-            client, batch_id, row["id"], {"matched_person_id": "person-nobody"}, after["batch_digest"]
-        )
+        stranger = _amend(client, batch_id, row["id"], {"matched_person_id": "person-nobody"}, after["batch_digest"])
     assert response.status_code == 200
     fresh = _cli_review(capsys, db_file, batch_id)
     assert fresh["candidates"][0]["candidate"]["matched_person_id"] == chosen
@@ -1439,7 +1477,8 @@ def test_the_ambiguity_picker_records_its_choice_through_amendment(
 def test_a_malformed_edit_is_refused_without_echoing_it(db_file: Path, body: bytes) -> None:
     with _client(db_file) as client:
         response = client.post(
-            "/api/batch/amend", content=body,
+            "/api/batch/amend",
+            content=body,
             headers={**_SAME_ORIGIN, "content-type": "application/json"},
         )
     assert response.status_code == 400
@@ -1505,9 +1544,7 @@ def test_the_edit_endpoint_applies_the_cli_review_ceiling_first(
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_saving_one_field_sends_only_that_field_with_the_displayed_digest(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_saving_one_field_sends_only_that_field_with_the_displayed_digest(db_file: Path, tmp_path: Path) -> None:
     """The form is generated from the real descriptors, so this exercises the page's own controls."""
     outcome = _run_page(db_file, tmp_path, _EDIT_ONE_FIELD)
     assert outcome == {
@@ -1565,9 +1602,7 @@ def test_a_markup_value_reaches_the_edit_form_as_data(
 
 
 @pytest.mark.parametrize("verb", ["amend", "withdraw", "commit"])
-def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
-    db_file: Path, verb: str
-) -> None:
+def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(db_file: Path, verb: str) -> None:
     """A streamed body carries no `Content-Length`, so the ceiling has to hold as it arrives."""
 
     def chunks() -> Iterator[bytes]:
@@ -1576,7 +1611,8 @@ def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
 
     with _client(db_file) as client:
         response = client.post(
-            f"/api/batch/{verb}", content=chunks(),
+            f"/api/batch/{verb}",
+            content=chunks(),
             headers={**_SAME_ORIGIN, "content-type": "application/json"},
         )
     assert response.status_code == 413
@@ -1584,9 +1620,7 @@ def test_a_streamed_body_is_cut_at_the_ceiling_it_declares_no_length_for(
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_a_stale_edit_refusal_reloads_the_batch_rather_than_keeping_the_form(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_a_stale_edit_refusal_reloads_the_batch_rather_than_keeping_the_form(db_file: Path, tmp_path: Path) -> None:
     """`batch_changed` is not a correction the open form can make: its digest is already obsolete."""
     outcome = _run_page(db_file, tmp_path, _STALE_EDIT_RELOADS)
     assert outcome["refetched"] == 1
@@ -1621,9 +1655,7 @@ def test_a_pasted_person_id_travels_exactly_as_it_was_entered(db_file: Path, tmp
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_a_multiline_value_is_neither_flattened_nor_patched_by_an_unrelated_edit(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_a_multiline_value_is_neither_flattened_nor_patched_by_an_unrelated_edit(db_file: Path, tmp_path: Path) -> None:
     """An `<input type="text">` drops CR and LF, which would read back as an edit nobody made."""
     outcome = _run_page(db_file, tmp_path, _MULTILINE_SURVIVES)
     assert outcome["tag"] == "textarea"
@@ -1653,9 +1685,7 @@ def test_one_save_carries_both_the_match_and_the_field_edits(db_file: Path, tmp_
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
-def test_accepting_rows_does_not_discard_an_open_form_s_unsaved_edits(
-    db_file: Path, tmp_path: Path
-) -> None:
+def test_accepting_rows_does_not_discard_an_open_form_s_unsaved_edits(db_file: Path, tmp_path: Path) -> None:
     """Accepting writes nothing, so it must not cost the reviewer what they have typed."""
     outcome = _run_page(db_file, tmp_path, _ACCEPT_KEEPS_THE_OPEN_FORM)
     assert outcome["kept"] == "Elena Marshe"
@@ -2130,9 +2160,7 @@ def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path)
     assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder"}
     conn = open_db(db_file)
     try:
-        ops = conn.execute(
-            "SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'"
-        ).fetchall()
+        ops = conn.execute("SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'").fetchall()
     finally:
         conn.close()
     assert sorted(row[0] for row in ops) == sorted([ids["fact"], ids["affiliation"]])
@@ -2538,7 +2566,6 @@ def test_explicit_person_names_can_be_edited_and_cleared_in_browse(db_file: Path
         assert client.post("/api/person/edit", json={"person_id": person_id, "given_name": "p@example.org"}).json() == {
             "error": "name_is_email",
         }
-
 
 
 _EDIT_PREFERRED_NAME = r"""

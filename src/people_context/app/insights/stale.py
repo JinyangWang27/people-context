@@ -86,9 +86,7 @@ class GetStaleRelationships:
 
 def _validate(threshold_days: int, limit: int) -> None:
     if threshold_days < MIN_THRESHOLD_DAYS or threshold_days > MAX_THRESHOLD_DAYS:
-        raise StaleRelationshipsError(
-            f"threshold_days must be between {MIN_THRESHOLD_DAYS} and {MAX_THRESHOLD_DAYS}"
-        )
+        raise StaleRelationshipsError(f"threshold_days must be between {MIN_THRESHOLD_DAYS} and {MAX_THRESHOLD_DAYS}")
     if limit < MIN_STALE_LIMIT or limit > MAX_STALE_LIMIT:
         raise StaleRelationshipsError(f"limit must be between {MIN_STALE_LIMIT} and {MAX_STALE_LIMIT}")
 

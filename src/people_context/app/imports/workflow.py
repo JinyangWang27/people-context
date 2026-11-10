@@ -358,14 +358,10 @@ class ReviewImport:
         self._charge_worst_case(batch_id, stored, entries, limits)
         people = self._people
         projections = (
-            {row.id: project_match_candidates(people, row.candidate) for row in ambiguous}
-            if people is not None
-            else {}
+            {row.id: project_match_candidates(people, row.candidate) for row in ambiguous} if people is not None else {}
         )
         possible = (
-            {row.id: project_possible_matches(people, row.candidate) for row in unmatched}
-            if people is not None
-            else {}
+            {row.id: project_possible_matches(people, row.candidate) for row in unmatched} if people is not None else {}
         )
         # Rows with no possible match carry no field at all, so a batch of new people costs nothing.
         possible = {row_id: page for row_id, page in possible.items() if page[0]}
@@ -387,9 +383,7 @@ class ReviewImport:
             ],
         )
 
-    def _charge_worst_case(
-        self, batch_id: str, stored: int, entries: int, limits: ImportBudget
-    ) -> None:
+    def _charge_worst_case(self, batch_id: str, stored: int, entries: int, limits: ImportBudget) -> None:
         """Refuse an ambiguous batch too large to render, before reading a single name.
 
         This is the cheap guard: it bounds the reads the projection is about to do, so a batch
@@ -423,8 +417,7 @@ class ReviewImport:
         if limit is None or not projections:
             return
         projected = sum(
-            len(json.dumps(entries, ensure_ascii=False).encode("utf-8"))
-            for entries, _truncated in projections
+            len(json.dumps(entries, ensure_ascii=False).encode("utf-8")) for entries, _truncated in projections
         )
         if stored + projected > limit:
             raise _oversized_review(batch_id, limit)
@@ -449,10 +442,7 @@ def _oversized_review(batch_id: str, limit: int) -> ImportPipelineError:
 
 def _is_ambiguous_person(candidate: dict[str, Any]) -> bool:
     """Whether this row is the one case a reviewer is owed an identity decision on."""
-    return (
-        candidate.get("type") == "person"
-        and candidate.get("match_disposition") == MatchDisposition.AMBIGUOUS.value
-    )
+    return candidate.get("type") == "person" and candidate.get("match_disposition") == MatchDisposition.AMBIGUOUS.value
 
 
 def _is_unmatched_pending_person(row: StagedImportRow) -> bool:
@@ -474,9 +464,7 @@ def _review_row(
     name_is_email: bool = False,
 ) -> ImportReviewRow:
     """Project one staging row for review, attaching its match options only where one is owed."""
-    review = ImportReviewRow(
-        id=row.id, source=row.source, status=row.status, candidate=row.candidate, ordinal=ordinal
-    )
+    review = ImportReviewRow(id=row.id, source=row.source, status=row.status, candidate=row.candidate, ordinal=ordinal)
     if projection is not None:
         entries, truncated = projection
         review.match_candidates = [MatchCandidate.model_validate(entry) for entry in entries]
@@ -599,9 +587,7 @@ class AmendStagedCandidate(_BatchEditor):
         expected_batch_digest: str | None = None,
     ) -> ImportReviewResult:
         rows, session = self._load(batch_id)
-        validated = self._validate(
-            rows, BatchEdit(amendments={candidate_id: patch}), session, expected_batch_digest
-        )
+        validated = self._validate(rows, BatchEdit(amendments={candidate_id: patch}), session, expected_batch_digest)
         for amended_id, candidate in validated.amended.items():
             self._staging.update_candidate(amended_id, candidate)
         return self._review.execute(batch_id, budget=self._budget)
@@ -766,9 +752,7 @@ class CommitImport:
         # Naming a withdrawn candidate refuses the whole commit, as naming an unknown one does.
         # Both mean the same thing — the caller is working from a list that has moved — and
         # committing the part that still resolves would act on a selection nobody made.
-        withdrawn_ids = sorted(
-            {row.id for row in rows if row.id in accepted and row.status == STAGING_STATUS_REJECTED}
-        )
+        withdrawn_ids = sorted({row.id for row in rows if row.id in accepted and row.status == STAGING_STATUS_REJECTED})
         if withdrawn_ids:
             raise ImportPipelineError(
                 "candidate_withdrawn",
@@ -989,9 +973,7 @@ class CommitImport:
             return None
         resolved: list[EvidenceReference] = []
         for reference in references:
-            outcome = _committed_evidence(produced.get(reference)) or _mapped_evidence(
-                stored_mappings.get(reference)
-            )
+            outcome = _committed_evidence(produced.get(reference)) or _mapped_evidence(stored_mappings.get(reference))
             if outcome is None:
                 return None
             resolved.append(outcome)
@@ -1002,9 +984,7 @@ class CommitImport:
             records = resolve_trait_evidence(self._evidence, person_id, resolved)
         except TraitEvidenceError:
             return None
-        return [
-            EvidenceReference(record.evidence_id, record.evidence_type) for record in records
-        ]
+        return [EvidenceReference(record.evidence_id, record.evidence_type) for record in records]
 
     def _commit_trait(
         self,
@@ -1366,11 +1346,7 @@ def _committable(row: StagedImportRow, accepted: set[str], candidate_type: str) 
     committed", so a withdrawn row is skipped here exactly as an already-committed one is: both
     are decisions already taken, and neither is this commit's to revisit.
     """
-    return (
-        row.id in accepted
-        and row.status == STAGING_STATUS_PENDING
-        and row.candidate.get("type") == candidate_type
-    )
+    return row.id in accepted and row.status == STAGING_STATUS_PENDING and row.candidate.get("type") == candidate_type
 
 
 def _session_status(
@@ -1396,9 +1372,7 @@ def _session_status(
     reviewable = [
         row
         for row in rows
-        if row.status == STAGING_STATUS_PENDING
-        and row.id not in newly_committed
-        and row.id not in newly_rejected
+        if row.status == STAGING_STATUS_PENDING and row.id not in newly_committed and row.id not in newly_rejected
     ]
     anything_committed = bool(newly_committed) or any(row.status == "committed" for row in rows)
     if reviewable:

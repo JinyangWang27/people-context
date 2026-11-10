@@ -24,9 +24,7 @@ _CONTINUATION = " "
 
 # RFC 6350 section 3.3 admits no C0 control other than the horizontal tab in a value. CR and LF
 # survive this step because the escaping below turns them into the `\n` the format defines.
-_CONTROL_CHARACTERS = dict.fromkeys(
-    [code for code in range(0x20) if code not in (0x09, 0x0A, 0x0D)] + [0x7F]
-)
+_CONTROL_CHARACTERS = dict.fromkeys([code for code in range(0x20) if code not in (0x09, 0x0A, 0x0D)] + [0x7F])
 
 
 class CanonicalVCardWriter:

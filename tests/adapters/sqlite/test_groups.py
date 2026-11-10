@@ -67,6 +67,7 @@ class TestSchema:
 
         assert {"identified_groups", "group_memberships"} <= tables
 
+
 class TestReads:
     def test_visible_memberships_survive_hidden_neighbours_without_changing_truncation(
         self, runtime: ApplicationRuntime

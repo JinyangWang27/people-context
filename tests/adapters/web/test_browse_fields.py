@@ -50,9 +50,7 @@ def test_every_staged_candidate_type_has_a_form() -> None:
 def test_the_form_offers_exactly_the_patchable_fields(kind: str) -> None:
     """Every declared field except the computed match outcome, which the picker owns."""
     declared = list(STAGED_CANDIDATE_MODELS[kind].model_fields)
-    expected = [
-        name for name in declared if name not in IMMUTABLE_PATCH_FIELDS and name != "matched_person_id"
-    ]
+    expected = [name for name in declared if name not in IMMUTABLE_PATCH_FIELDS and name != "matched_person_id"]
     assert [field["name"] for field in CANDIDATE_FIELDS[kind]] == expected
 
 

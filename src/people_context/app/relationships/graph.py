@@ -105,9 +105,7 @@ class GetRelationshipGraph:
         ]
         selected_edges = candidate_edges[:MAX_GRAPH_EDGES]
         truncated = (
-            raw.truncated
-            or len(candidate_nodes) > len(selected_nodes)
-            or len(candidate_edges) > len(selected_edges)
+            raw.truncated or len(candidate_nodes) > len(selected_nodes) or len(candidate_edges) > len(selected_edges)
         )
         return RelationshipGraphResult(
             nodes=[_person_result(node) for node in selected_nodes],

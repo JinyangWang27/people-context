@@ -548,6 +548,4 @@ def _person_candidate(person: _PersonAccumulator) -> dict[str, object]:
 
 
 def _strip_marks(value: str) -> str:
-    return "".join(
-        " " if char in _NARROW_SPACES else char for char in value if char not in _BIDI_MARKS
-    )
+    return "".join(" " if char in _NARROW_SPACES else char for char in value if char not in _BIDI_MARKS)

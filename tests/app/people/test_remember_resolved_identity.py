@@ -35,9 +35,7 @@ def _remember(conn: sqlite3.Connection) -> tuple[SqlitePeopleRepository, Remembe
 
 
 def _save(people: SqlitePeopleRepository, person_id: str, name: str) -> str:
-    people.save_person(
-        Person(id=person_id, canonical_name=name, aliases=[], created_at=_NOW, updated_at=_NOW)
-    )
+    people.save_person(Person(id=person_id, canonical_name=name, aliases=[], created_at=_NOW, updated_at=_NOW))
     return person_id
 
 
@@ -53,9 +51,7 @@ def test_a_resolved_id_updates_that_person_without_consulting_the_name(
     _save(people, "01M29RESOLVED0000000000002", "Priya Sharma")
     conn.commit()
 
-    result = remember.execute(
-        RememberPersonInput(name="Priya Sharma", person_id=chosen, summary="the one at Acme")
-    )
+    result = remember.execute(RememberPersonInput(name="Priya Sharma", person_id=chosen, summary="the one at Acme"))
 
     assert result.created is False
     assert result.person.id == chosen

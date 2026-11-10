@@ -55,8 +55,17 @@ def _stage(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], ca
     path.write_text(json.dumps(candidates or _CANDIDATES), encoding="utf-8")
     code = cli.main(
         [
-            "--db", str(db_file), "import", "stage-candidates", "--source", "review",
-            "--input", str(path), "--source-kind", "notes", "--json",
+            "--db",
+            str(db_file),
+            "import",
+            "stage-candidates",
+            "--source",
+            "review",
+            "--input",
+            str(path),
+            "--source-kind",
+            "notes",
+            "--json",
         ]
     )
     assert code == 0
@@ -148,9 +157,12 @@ def test_a_batch_changed_between_apply_and_prompt_refuses_the_commit(
     _editor(tmp_path, monkeypatch, "pass")
 
     def amend_elsewhere(prompt: str) -> bool:
-        assert cli.main(
-            ["--db", str(db_file), "import", "amend", batch_id, target, "--patch", '{"value": "coffee"}', "--json"]
-        ) == 0
+        assert (
+            cli.main(
+                ["--db", str(db_file), "import", "amend", batch_id, target, "--patch", '{"value": "coffee"}', "--json"]
+            )
+            == 0
+        )
         return True
 
     monkeypatch.setattr(cli_imports, "_confirm_on_terminal", amend_elsewhere)
@@ -240,9 +252,7 @@ def test_an_editor_exiting_nonzero_applies_nothing(
     assert not Path(json.loads(record.read_text(encoding="utf-8"))["path"]).exists()
 
 
-def test_no_editor_configured_exits_2_naming_both_variables(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_no_editor_configured_exits_2_naming_both_variables(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     batch_id = _stage(db_file, tmp_path, capsys)
 
@@ -297,9 +307,12 @@ def test_from_a_file_rendered_before_another_amendment_refuses_as_batch_changed(
     batch_id = _stage(db_file, tmp_path, capsys)
     doc = _review(db_file, batch_id, capsys)
     target = doc["candidates"][2]["id"]
-    assert cli.main(
-        ["--db", str(db_file), "import", "amend", batch_id, target, "--patch", '{"value": "coffee"}', "--json"]
-    ) == 0
+    assert (
+        cli.main(
+            ["--db", str(db_file), "import", "amend", batch_id, target, "--patch", '{"value": "coffee"}', "--json"]
+        )
+        == 0
+    )
     capsys.readouterr()
     doc["candidates"][1]["candidate"]["role"] = "CTO"
     path = tmp_path / "edited.json"
@@ -372,8 +385,13 @@ def test_an_unchanged_document_with_long_match_candidate_names_applies_back(
             # Two people sharing the candidate's name make it ambiguous; the long tail of the stored
             # name is what `match_candidates` has to cut and the read bound has to admit.
             repository.save_person(
-                Person(id=f"person-{n:02d}-" + "i" * 300, canonical_name="Nadia Okonkwo", aliases=[],
-                       created_at=_NOW, updated_at=_NOW)
+                Person(
+                    id=f"person-{n:02d}-" + "i" * 300,
+                    canonical_name="Nadia Okonkwo",
+                    aliases=[],
+                    created_at=_NOW,
+                    updated_at=_NOW,
+                )
             )
         runtime.conn.commit()
         runtime.conn.execute("UPDATE persons SET canonical_name = canonical_name || ?", (" " + "y" * 5000,))
@@ -395,8 +413,18 @@ def test_a_row_amended_while_the_editor_is_open_refuses_as_batch_changed(
     target = _rows(db_file)[2]["id"]
     patch = json.dumps({"value": "coffee"})
     other_client = [
-        sys.executable, "-c", "from people_context import cli; raise SystemExit(cli.main(__import__('sys').argv[1:]))",
-        "--db", str(db_file), "import", "amend", batch_id, target, "--patch", patch, "--json",
+        sys.executable,
+        "-c",
+        "from people_context import cli; raise SystemExit(cli.main(__import__('sys').argv[1:]))",
+        "--db",
+        str(db_file),
+        "import",
+        "amend",
+        batch_id,
+        target,
+        "--patch",
+        patch,
+        "--json",
     ]
     _editor(
         tmp_path,

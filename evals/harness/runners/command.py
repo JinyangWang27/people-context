@@ -97,9 +97,7 @@ class CommandAgentRunner:
         else:
             answer = stdout.strip()
         if not answer:
-            raise EvalHarnessError(
-                f"agent command produced no answer on task {request.task_id} ({request.condition})"
-            )
+            raise EvalHarnessError(f"agent command produced no answer on task {request.task_id} ({request.condition})")
         return AgentResponse(answer=answer, model_id=self.model_id, tool_calls=tool_calls, usage=usage)
 
     def probe_client_version(self) -> str | None:
@@ -284,9 +282,7 @@ def _reject_unknown_placeholders(argv: tuple[str, ...], allowed: frozenset[str])
             continue
         if _BRACED.search(argument):
             expected = ", ".join(sorted(allowed))
-            raise EvalHarnessError(
-                f"argument {argument!r} is not a whole placeholder; expected one of: {expected}"
-            )
+            raise EvalHarnessError(f"argument {argument!r} is not a whole placeholder; expected one of: {expected}")
 
 
 def _child_environment(passthrough: tuple[str, ...]) -> dict[str, str]:

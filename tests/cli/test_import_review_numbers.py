@@ -32,8 +32,17 @@ def _stage(db_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) ->
     path.write_text(json.dumps(_CANDIDATES), encoding="utf-8")
     code = cli.main(
         [
-            "--db", str(db_file), "import", "stage-candidates",
-            "--source", "review", "--input", str(path), "--source-kind", "notes", "--json",
+            "--db",
+            str(db_file),
+            "import",
+            "stage-candidates",
+            "--source",
+            "review",
+            "--input",
+            str(path),
+            "--source-kind",
+            "notes",
+            "--json",
         ]
     )
     assert code == 0
@@ -109,9 +118,7 @@ def test_commit_accepts_a_mixed_selection_of_ordinals_ranges_and_ids(
     db_file = tmp_path / "people.db"
     batch_id, ids = _stage(db_file, tmp_path, capsys)
 
-    code = cli.main(
-        ["--db", str(db_file), "import", "commit", batch_id, "--accept", f"1,2-3,{ids[4]}", "--json"]
-    )
+    code = cli.main(["--db", str(db_file), "import", "commit", batch_id, "--accept", f"1,2-3,{ids[4]}", "--json"])
 
     assert code == 0
     committed = json.loads(capsys.readouterr().out)["committed_ids"]
@@ -127,7 +134,11 @@ def test_commit_accepts_ordinals_as_separate_tokens(tmp_path: Path, capsys: pyte
 
     statuses = _statuses(db_file)
     assert [statuses[candidate_id] for candidate_id in ids] == [
-        "committed", "pending", "pending", "committed", "committed"
+        "committed",
+        "pending",
+        "pending",
+        "committed",
+        "committed",
     ]
 
 
@@ -195,7 +206,11 @@ def test_interactive_commits_exactly_the_accepted_set(
 
     statuses = _statuses(db_file)
     assert [statuses[candidate_id] for candidate_id in ids] == [
-        "committed", "pending", "rejected", "committed", "pending"
+        "committed",
+        "pending",
+        "rejected",
+        "committed",
+        "pending",
     ]
     assert "Committed 2 candidates" in capsys.readouterr().out
 
@@ -212,7 +227,11 @@ def test_interactive_survives_an_invalid_edit_without_losing_acceptances(
 
     statuses = _statuses(db_file)
     assert [statuses[candidate_id] for candidate_id in ids] == [
-        "committed", "committed", "pending", "pending", "pending"
+        "committed",
+        "committed",
+        "pending",
+        "pending",
+        "pending",
     ]
     assert "import review step failed" in capsys.readouterr().err
     document = _review(db_file, batch_id, capsys)
@@ -243,9 +262,7 @@ def test_interactive_restarts_when_the_batch_changes_elsewhere(
     captured = capsys.readouterr()
     assert "Batch changed elsewhere; discarded 2 accepted candidates" in captured.err
     statuses = _statuses(db_file)
-    assert [statuses[candidate_id] for candidate_id in ids] == [
-        "committed", "pending", "pending", "pending", "pending"
-    ]
+    assert [statuses[candidate_id] for candidate_id in ids] == ["committed", "pending", "pending", "pending", "pending"]
 
 
 def test_interactive_and_json_refuse_together(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

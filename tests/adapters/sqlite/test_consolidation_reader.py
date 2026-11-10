@@ -60,9 +60,7 @@ class _Fixture:
         self.organizations = SqliteOrganizationStore(self.conn)
         self.reader = SqlitePersonConsolidationReader(self.conn)
         self.facts = RecordFact(self.people, self.records, self.audit, self.clock)
-        self.affiliations = SetAffiliation(
-            self.people, self.organizations, self.records, self.audit, self.clock
-        )
+        self.affiliations = SetAffiliation(self.people, self.organizations, self.records, self.audit, self.clock)
         self.observations = RecordObservation(self.people, self.records, self.audit, self.clock)
         self.interactions = RecordInteraction(self.people, self.records, self.audit, self.clock)
         self.traits = RecordTrait(self.people, self.records, self.audit, self.clock, self.trait_evidence)

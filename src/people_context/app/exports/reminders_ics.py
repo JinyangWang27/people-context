@@ -33,9 +33,7 @@ _CONTINUATION = " "
 
 # RFC 5545 section 3.3.11: `TSAFE-CHAR` allows tab among the C0 controls but no other one,
 # and stops below DEL. CR and LF are kept here and escaped as line endings instead.
-_CONTROL_CHARACTERS = dict.fromkeys(
-    [code for code in range(0x20) if code not in (0x09, 0x0A, 0x0D)] + [0x7F]
-)
+_CONTROL_CHARACTERS = dict.fromkeys([code for code in range(0x20) if code not in (0x09, 0x0A, 0x0D)] + [0x7F])
 
 
 class ReminderCalendarResult(BaseModel):
