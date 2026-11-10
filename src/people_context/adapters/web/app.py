@@ -10,8 +10,8 @@ correction, and removal on a person page, through the same use cases as `pctx ad
 `RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools;
 relationship assertions through `SetRelationship` as the `set_relationship` MCP tool; in-place
 correction of an affiliation, fact, interaction, trait, reminder, or relationship the page displays, through the same
-`CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, or interaction the page
-displays, through the same `Forget` as the `forget` MCP tool.
+`CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, interaction, or relationship
+the page displays, through the same `Forget` as the `forget` MCP tool.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
@@ -220,7 +220,7 @@ class _RemoveRecordAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "interaction"]
+    entity_type: Literal["affiliation", "fact", "interaction", "relationship"]
     entity_id: _NonBlank
 
 

@@ -3050,3 +3050,66 @@ def test_relationship_search_selection_and_correction_use_existing_writes(db_fil
         "fields": {"valid_to": "2020-01-01"},
     }
     assert result["request"] == "/api/people?q=Morgan"
+
+
+def test_removing_a_relationship_removes_both_views_and_history(db_file: Path) -> None:
+    ids = _seed_people(db_file)
+    with _client(db_file) as client:
+        added = client.post(
+            "/api/person/relationship/add",
+            json={
+                "person_id": ids["elena"],
+                "other_person_id": ids["toma"],
+                "type": "reports_to",
+                "label": "Team lead",
+            },
+        )
+        edge_id = added.json()["relationship_id"]
+        removed = client.post("/api/record/remove", json={"entity_type": "relationship", "entity_id": edge_id})
+        assert removed.status_code == 200 and removed.json() == {"removed": "relationship"}
+        for person_id in ids.values():
+            doc = client.get("/api/person", params={"id": person_id}).json()
+            assert doc["relationships"] == []
+            assert all(entry["entry_id"] != edge_id for entry in doc["history"]["entries"])
+        again = client.post("/api/record/remove", json={"entity_type": "relationship", "entity_id": edge_id})
+        assert again.status_code == 404 and again.json() == {"error": "record_not_found"}
+    assert len(_browser_ops(db_file, "forget")) == 1
+    conn = open_db(db_file)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM relationships WHERE id = ?", (edge_id,)).fetchone()[0] == 0
+        payload = conn.execute("SELECT payload_json FROM audit_log WHERE entity_id = ?", (edge_id,)).fetchone()[0]
+        assert json.loads(payload) == {"redacted": True}
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize("language", ["en", "zh-CN"])
+def test_relationship_removal_requires_confirmation_and_cancel_sends_nothing(
+    db_file: Path, tmp_path: Path, language: str
+) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.personDoc = {person: {id: 'P', canonical_name: 'Alice', aliases: [], emails: []},
+        disclosure: {context: 'ordinary'}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        relationships: [{display_type: 'reports_to', other_person_name: 'Morgan', other_person_id: 'M',
+          relationship: {id: 'R', subject_id: 'P', object_id: 'M', type: 'reports_to'}}],
+        alias_details: [], alias_kinds: []};
+      await showPerson('P', null, []);
+      const find = key => view.all().find(n => n.tag === 'button' && n.textContent === t(key));
+      find('common.remove').listeners.click();
+      const prompt = view.all().some(n => n.textContent === t('record.remove.prompt',
+        {label: t('person.relationship_direction', {subject: 'Alice', object: 'Morgan'})}));
+      find('common.cancel').listeners.click();
+      const cancelled = posts.length;
+      find('common.remove').listeners.click();
+      find('common.remove').listeners.click();
+      releases.forEach(r => r()); await tick();
+      console.log(JSON.stringify({prompt, cancelled, posts: posts.map(p => [p.path, JSON.parse(p.body)])}));
+    })();
+    """
+    assert _run_page(db_file, tmp_path, scenario, language=language) == {
+        "prompt": True,
+        "cancelled": 0,
+        "posts": [["/api/record/remove", {"entity_type": "relationship", "entity_id": "R"}]],
+    }

@@ -621,8 +621,8 @@ for that type (an affiliation's organization is not one of them), which corrects
 changed; an emptied field is sent as `null`, which clears an optional value such as an end date and is refused for
 a required one. A correction fixes what was recorded wrongly: the audit log keeps the before and after, but the
 brief shows only the corrected value, so a change over time belongs in `supersede_fact` instead. An interaction's
-summary, time, channel, and sensitivity can be corrected; its participants cannot. Each affiliation, fact, and
-interaction also has **Remove**, which asks for confirmation and then forgets the record through the same use case
+summary, time, channel, and sensitivity can be corrected; its participants cannot. Each affiliation, fact, interaction, and
+relationship also has **Remove**, which asks for confirmation and then forgets the record through the same use case
 as the `forget` MCP tool: it is deleted and its audit and replay history redacted, not kept as a before-and-after,
 and a shared interaction is removed for every participant. A record the view's disclosure hides is refused as
 `record_not_found` for both Edit and Remove, exactly as a missing one is. A refusal names a fixed reason, never the value. It is not a service: it runs until Ctrl-C or the page's Close button, leaves no daemon, PID file, or
@@ -631,7 +631,9 @@ configuration, and two launches are two unrelated processes.
 Relationships link to the other person's page. **Add relationship** searches for a known person and requires an
 explicit selection; its type is from the displayed person's perspective (for example, `reports_to`). Existing
 relationships offer the same correction fields as `correct_record`, with the stored direction shown explicitly;
-setting an end date preserves the record and removes it from the active list. All changes are audited.
+setting an end date preserves the record and removes it from the active list. **Remove** asks for confirmation,
+then permanently deletes the relationship from both people and redacts its stored history through `Forget`.
+All changes are audited.
 **Communication** appears collapsed when recorded traits or a communication philosophy exist, with ordinary
 disclosure even in an elevated session. **History** is a collapsed, bounded newest-first timeline of stored records,
 including ended relationships, with each entry's date basis and a notice when older entries were omitted. It is

@@ -510,7 +510,7 @@ function aliasEditor(personId, doc, reopen, contact) {
 }
 
 // The record types the person view can remove, through the same `Forget` as the `forget` MCP tool.
-const REMOVABLE = new Set(["affiliation", "fact", "interaction"]);
+const REMOVABLE = new Set(["affiliation", "fact", "interaction", "relationship"]);
 
 // One stored record with an Edit form built from the fields `CorrectRecord` accepts for its type.
 // Saving corrects the record in place — fixing what was recorded wrongly, with the before and after
