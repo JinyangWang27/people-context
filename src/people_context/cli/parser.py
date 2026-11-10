@@ -246,6 +246,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0,
         help="Loopback port to listen on (default: an ephemeral port). There is no host option.",
     )
+    browse.add_argument(
+        "--lang",
+        default=None,
+        help="Language the page opens in: en or zh-CN (default: PEOPLE_CONTEXT_BROWSE_LANG, then "
+        "browse_lang in config.toml, then en). The page's 中文 / EN button switches it while open.",
+    )
 
     search = subparsers.add_parser("search", help="Ranked search results for a name query.")
     search.add_argument("query")

@@ -11,10 +11,13 @@ from pathlib import Path
 import pytest
 
 from people_context.config import (
+    BROWSE_LANG_ENV,
     DB_KEY_ENV,
     DEFAULT_DB_FILENAME,
+    InvalidBrowseLanguageError,
     MissingDatabaseKeyError,
     describe_resolution,
+    resolve_browse_language,
     resolve_db_key,
     resolve_db_path,
     shared_default_db_path,
@@ -158,3 +161,42 @@ def test_resolve_db_key_ignores_config_files_and_db_path_sources(tmp_path: Path)
 
     with pytest.raises(MissingDatabaseKeyError):
         resolve_db_key(env=env)
+
+
+def _write_browse_lang(env: dict[str, str], line: str) -> None:
+    config_dir = Path(env["XDG_CONFIG_HOME"]) / "people-context"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "config.toml").write_text(line + "\n", encoding="utf-8")
+
+
+def test_browse_language_follows_flag_then_env_then_config_then_english(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    assert resolve_browse_language(None, env) == "en"
+    _write_browse_lang(env, 'browse_lang = "zh-CN"')
+    assert resolve_browse_language(None, env) == "zh-CN"
+    env[BROWSE_LANG_ENV] = "en"
+    assert resolve_browse_language(None, env) == "en"
+    assert resolve_browse_language("zh-CN", env) == "zh-CN"
+
+
+@pytest.mark.parametrize("spelling", ["zh", "ZH-cn", "zh-Hans", " zh-CN "])
+def test_browse_language_accepts_the_usual_spellings_of_chinese(tmp_path: Path, spelling: str) -> None:
+    assert resolve_browse_language(spelling, _base_env(tmp_path)) == "zh-CN"
+
+
+def test_an_unknown_browse_language_is_refused_naming_where_it_came_from(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    _write_browse_lang(env, "browse_lang = 3")
+    with pytest.raises(InvalidBrowseLanguageError, match="config.toml browse_lang"):
+        resolve_browse_language(None, env)
+    env[BROWSE_LANG_ENV] = "fr"
+    with pytest.raises(InvalidBrowseLanguageError, match=BROWSE_LANG_ENV):
+        resolve_browse_language(None, env)
+    with pytest.raises(InvalidBrowseLanguageError, match="--lang"):
+        resolve_browse_language("klingon", env)
+
+
+def test_the_config_file_language_does_not_disturb_the_database_path(tmp_path: Path) -> None:
+    env = _base_env(tmp_path)
+    _write_browse_lang(env, 'browse_lang = "zh-CN"')
+    assert resolve_db_path(None, env) == shared_default_db_path(env)

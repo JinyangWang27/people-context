@@ -131,6 +131,7 @@ def _client(
     on_done: Callable[[], None] = lambda: None,
     port: int = _PORT,
     base_url: str = _ORIGIN,
+    language: str = "en",
 ) -> Iterator[TestClient]:
     @contextmanager
     def open_runtime() -> Iterator[ApplicationRuntime]:
@@ -150,6 +151,7 @@ def _client(
         review_warning=REVIEW_DISCLOSURE_WARNING,
         sources_warning=SOURCES_DISCLOSURE_WARNING,
         review_lines=import_review_lines,
+        language=language,
     )
     with TestClient(app, base_url=base_url, headers={TOKEN_HEADER: _TOKEN}) as client:
         yield client
@@ -227,8 +229,8 @@ def test_the_page_is_one_self_contained_document_under_its_own_nonce(db_file: Pa
     assert page.index("history.replaceState") < page.index("fetch(")
     assert REVIEW_DISCLOSURE_WARNING in page and SOURCES_DISCLOSURE_WARNING in page
     # A detail view's Back returns to the page it was opened from, not to page one.
-    assert 'button("Back to people", () => showPeople(cursor, back))' in page
-    assert 'button("Back to sources", () => showSources(cursor, back))' in page
+    assert 'button(t("person.back"), () => showPeople(cursor, back))' in page
+    assert 'button(t("sources.back"), () => showSources(cursor, back))' in page
 
 
 def test_the_people_list_pages_the_person_index(db_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -789,7 +791,7 @@ def test_the_batch_page_confirms_a_commit_by_count_and_offers_no_select_all(db_f
     with _client(db_file) as client:
         page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
     assert "async function showBatch(" in page
-    assert '"Confirm commit of " + count' in page
+    assert 't("batch.commit_confirm_button", { count })' in page and '"Confirm commit of {count}"' in page
     assert "expected_batch_digest: batchState.review.batch_digest" in page
     # Accepting writes nothing, and nothing selects every row.
     assert "/api/batch/accept" not in page
@@ -1110,9 +1112,9 @@ def test_email_addresses_are_shown_as_contact_rather_than_aliases(db_file: Path,
     assert outcome["row"] == ["Jordan Lee", "Acme, Presight", "Jordy"]
 
 
-def _run_page(db_file: Path, tmp_path: Path, scenario: str) -> Any:
+def _run_page(db_file: Path, tmp_path: Path, scenario: str, *, language: str = "en") -> Any:
     """Run the served page's own script under node with the DOM harness and return its last line."""
-    with _client(db_file) as client:
+    with _client(db_file, language=language) as client:
         page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
     # The page's one inline script, sliced out rather than matched: this reads our own document.
     start = page.index(">", page.index("<script")) + 1
