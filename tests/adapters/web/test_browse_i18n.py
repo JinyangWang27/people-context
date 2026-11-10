@@ -148,14 +148,14 @@ def test_the_page_opens_in_chinese_and_the_toggle_switches_in_place(db_file: Pat
     scenario = _CHINESE_AND_TOGGLE.replace("__RECORD_FIELDS__", json.dumps(RECORD_FIELDS))
     outcome = _run_page(db_file, tmp_path, scenario, language="zh-CN")
     assert outcome["opening"] == {"title": "People Context", "people": "联系人", "toggle": "EN"}
-    assert outcome["headings"] == ["所属机构", "事实", "互动记录", "提醒", "特质"]
+    assert outcome["headings"] == ["人际关系", "所属机构", "事实", "互动记录", "提醒", "特质"]
     assert outcome["prompt"] == "永久删除 role: {label}？此操作无法撤销。"
     # Options are sent as their stored values and labelled in the language on screen.
     assert ["personal", "个人"] in outcome["options"] and ["sensitive", "敏感"] in outcome["options"]
     assert outcome["english"] == {
         "people": "People",
         "toggle": "中文",
-        "headings": ["Affiliations", "Facts", "Interactions", "Reminders", "Traits"],
+        "headings": ["Relationships", "Affiliations", "Facts", "Interactions", "Reminders", "Traits"],
         "affiliation": True,
     }
     assert (outcome["back"], outcome["affiliation"]) == ("联系人", True)

@@ -578,6 +578,9 @@ without writing anything, when `--output` names the database it is reading or on
 
 ## Local browser viewer
 
+The person view shows active relationships, including reporting lines, with links to the other person.
+Relationship direction comes from the existing brief (for example, reports to versus manages).
+
 Browser Back and Forward restore the viewer page, list position, and filter choices. Saving a field or
 switching languages refreshes the current page without adding a history step. History keeps view ids,
 cursors, and filter choices in the tab; the launch token and full records are not added to it. Close stops

@@ -2902,3 +2902,32 @@ def test_browser_history_restores_filters_and_does_not_add_refresh_steps(db_file
         "length": 4,
         "url": "/",
     }
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("language", "heading", "relation"), [("en", "Relationships", "reports to"), ("zh-CN", "人际关系", "汇报给")]
+)
+def test_person_relationships_show_direction_and_link_to_other_person(
+    db_file: Path, tmp_path: Path, language: str, heading: str, relation: str
+) -> None:
+    scenario = r"""
+    (async () => {
+      globalThis.personDoc = {person: {id: "P", canonical_name: "Alice", aliases: [], emails: []},
+        disclosure: {context: "ordinary"}, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+        relationships: [{display_type: "reports_to", other_person_name: "Manager <name>", other_person_id: "M",
+          relationship: {label: "Project lead"}}], alias_details: [], alias_kinds: []};
+      await showPerson("P", null, []);
+      const heading = view.all().filter((n) => n.tag === "h3").map((n) => n.textContent);
+      const link = view.all().find((n) => n.tag === "button" && n.textContent === "Manager <name>");
+      const text = view.all().map((n) => n.textContent || n.text).filter((v) => typeof v === "string");
+      if (link) { await link.listeners.click(); }
+      console.log(JSON.stringify({heading, linked: Boolean(link), text, request: gets.at(-1)}));
+    })();
+    """
+    result = _run_page(db_file, tmp_path, scenario, language=language)
+    assert heading in result["heading"]
+    assert result["linked"] is True
+    assert any(relation in text for text in result["text"])
+    assert any("Project lead" in text for text in result["text"])
+    assert result["request"] == "/api/person?id=M"

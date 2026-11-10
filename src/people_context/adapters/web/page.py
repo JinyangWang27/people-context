@@ -730,7 +730,17 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
   }
   const forms = doc.record_fields || {};
   const editable = (type, entries) => recordList(type, entries, forms[type] || [], reopen);
+  const relationships = el("ul");
+  for (const record of doc.relationships || []) {
+    const row = el("li");
+    row.append(el("span", valueLabel(record.display_type).replaceAll("_", " ") + ": "),
+      button(record.other_person_name, () => showPerson(record.other_person_id, cursor, back), "link"));
+    if (record.relationship.label) row.append(el("span", " (" + record.relationship.label + ")"));
+    relationships.append(row);
+  }
   nodes.push(
+    el("h3", t("person.relationships")),
+    relationships.children.length ? relationships : el("p", t("common.none_recorded"), "notice"),
     el("h3", t("person.affiliations")),
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
       t("person.affiliation_label", { role: a.affiliation.role, organization: a.organization_name })])),
