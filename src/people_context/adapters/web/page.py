@@ -269,6 +269,7 @@ kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; font: 12px/1.5 
 .graph-edge-professional { stroke: var(--graph-professional); stroke-dasharray: 7 4; }
 .graph-edge-social { stroke: var(--graph-social); stroke-dasharray: 1 5; stroke-width: 2.5; }
 .graph-edge-other { stroke: var(--graph-other); stroke-dasharray: 10 3 2 3; }
+.graph-edge-mixed { stroke: var(--fg); stroke-width: 3; }
 .graph-edge.graph-hot { stroke-width: 3.5; }
 .graph-node { cursor: pointer; touch-action: none; outline: none; }
 .graph-dot { fill: var(--bg); stroke: var(--fg); stroke-width: 1.5; }
@@ -2459,6 +2460,13 @@ function graphCategory(category) {
   return Object.hasOwn(GRAPH_CATEGORIES, category) ? category : "other";
 }
 
+// How one drawn line is styled: by its category, or as `mixed` when the two people are related in
+// more than one, so a line never claims a single category the pair's relationships do not share.
+function graphLinkStyle(link) {
+  const categories = new Set(link.edges.map((edge) => graphCategory(edge.category)));
+  return categories.size > 1 ? "mixed" : graphCategory(link.edges[0].category);
+}
+
 function graphTypeLabel(type) {
   return valueLabel(type).replaceAll("_", " ");
 }
@@ -2591,8 +2599,8 @@ function graphLegend(layout) {
     item.append(drawing, el("span", t(key)));
     legend.append(item);
   };
-  const shown = new Set(layout.links.map((link) => graphCategory(link.edges[0].category)));
-  for (const [category, key] of Object.entries(GRAPH_CATEGORIES)) {
+  const shown = new Set(layout.links.map(graphLinkStyle));
+  for (const [category, key] of [...Object.entries(GRAPH_CATEGORIES), ["mixed", "graph.category.mixed"]]) {
     if (!shown.has(category)) continue;
     entry(sample(svgEl("line", { class: "graph-edge graph-edge-" + category, x1: 2, y1: 8, x2: 26, y2: 8 })), key);
   }
@@ -2692,7 +2700,7 @@ async function showGraph(personId, depth, refocus = false) {
   const nodeLayer = svgEl("g");
   const labelLayer = svgEl("g", { "aria-hidden": "true" });
   const lines = layout.links.map((link) => {
-    const base = "graph-edge graph-edge-" + graphCategory(link.edges[0].category);
+    const base = "graph-edge graph-edge-" + graphLinkStyle(link);
     const line = svgEl("line", { class: base });
     const text = svgEl("text", { class: "graph-edge-label", "text-anchor": "middle" });
     text.textContent = link.edges.map((edge) => graphTypeLabel(edge.type)).join(" · ");

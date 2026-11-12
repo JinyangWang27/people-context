@@ -4022,3 +4022,31 @@ def test_the_constellation_speaks_simplified_chinese(db_file: Path, tmp_path: Pa
     assert outcome["nav"] == "关系图"
     assert outcome["heading"] == "Ana Duarte 的关系图"
     assert "Ana Duarte — 汇报给 → Jin Self" in outcome["list"]
+
+
+_GRAPH_MIXED_CATEGORIES = (
+    _GRAPH_DOC
+    + r"""
+(async () => {
+  graphEdges.push({ subject_id: "A", object_id: "M", type: "friend_of", label: null, category: "social" });
+  await showGraph("A", 2);
+  const drawing = view.all().find((n) => n.tag === "svg" && n.attrs.class === "graph-svg");
+  const lines = drawing.all().filter((n) => n.tag === "line").map((n) => n.attrs.class);
+  const legend = view.all().find((n) => n.className === "graph-legend");
+  console.log(JSON.stringify({ lines: lines.sort(), legend: texts(legend) }));
+})();
+"""
+)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_two_people_related_in_two_categories_are_drawn_as_neither_alone(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _GRAPH_MIXED_CATEGORIES)
+    # Ana and Jin are colleagues and friends: one line, styled as mixed, with its own legend entry.
+    assert [line.split()[1] for line in outcome["lines"]] == [
+        "graph-edge-family",
+        "graph-edge-mixed",
+        "graph-edge-social",
+    ]
+    assert outcome["legend"][:3] == ["Family", "Social", "More than one kind"]
+    assert "Work" not in outcome["legend"]

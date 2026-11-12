@@ -582,7 +582,8 @@ without writing anything, when `--output` names the database it is reading or on
 
 **Constellation** draws the people around one person — you, when your own record is set, or whoever's page
 **Show constellation** was pressed on — from the same bounded traversal as the `get_relationship_graph` MCP tool,
-1 to 4 steps out (2 by default). Lines are coloured and dashed by relationship category; hovering or tabbing to a
+1 to 4 steps out (2 by default). Lines are coloured and dashed by relationship category, with a solid line of its own for two people related in
+more than one; hovering or tabbing to a
 person highlights their relationships and names them, clicking or Enter re-centres on them, and the side panel
 opens their page. The same picture is always drawn for the same data, a list of every person and relationship
 sits under it for anyone who cannot use the drawing, and a graph over the traversal's 100-person or 300-edge cap
