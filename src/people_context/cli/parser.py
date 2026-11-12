@@ -312,6 +312,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_STALE_LIMIT,
         help=f"Maximum number of reported people ({MIN_STALE_LIMIT}..{MAX_STALE_LIMIT}).",
     )
+    stale.add_argument(
+        "--interacted-only",
+        action="store_true",
+        help="Leave out people with no ordinary interaction at all.",
+    )
 
     timeline = subparsers.add_parser(
         "timeline",
