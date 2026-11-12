@@ -2058,8 +2058,10 @@ function personCards(nodes) {
 let overlay = null;
 
 function openOverlay(kind, dialog, focusTarget) {
+  // An overlay that replaces another returns focus to where the first was opened from: by now the
+  // focused element is inside the overlay about to be removed.
+  const returnTo = overlay ? overlay.returnTo : document.activeElement;
   closeOverlay(false);
-  const returnTo = document.activeElement;
   const backdrop = el("div", null, "overlay");
   backdrop.addEventListener("mousedown", (event) => { if (event.target === backdrop) closeOverlay(true); });
   backdrop.append(dialog);
@@ -2139,7 +2141,9 @@ function paletteTyped() {
   const version = ++palette.version;
   clearTimeout(palette.timer);
   Object.assign(palette, { active: 0, failed: null, runWhenReady: false, searching: Boolean(text) });
-  if (!text) palette.people = [];
+  // The people found for the previous text are dropped at once, so none can be opened under a
+  // query they were not found for while the new search is on its way.
+  palette.people = [];
   paletteRender();
   if (!text) return;
   palette.timer = setTimeout(async () => {

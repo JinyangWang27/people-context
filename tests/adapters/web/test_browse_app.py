@@ -3620,3 +3620,43 @@ def test_the_palette_speaks_chinese_and_still_finds_english_command_names(db_fil
     assert outcome["placeholder"] == "搜索联系人或输入命令"
     assert outcome["title"] == "导入来源"
     assert outcome["hint"] == "打开命令面板"
+
+
+_PALETTE_REVIEW_FIXES = r"""
+(async () => {
+  const modifier = IS_MAC ? { metaKey: true } : { ctrlKey: true };
+  const names = () => document.body.all().filter((n) => n.className === "palette-name").map((n) => n.textContent);
+  globalThis.peopleDoc = { next_cursor: null, people: [{ id: "A", canonical_name: "Ann", aliases: [], emails: [] }] };
+  await tick();
+  // Help opened from a page control, then replaced by the palette: closing returns to that control.
+  const origin = document.getElementById("nav-people");
+  origin.focus();
+  press("?");
+  press("k", modifier);
+  const box = document.activeElement;
+  box.value = "an"; box.listeners.input(); await settle();
+  const found = names();
+  // New text: the people found for the old text are gone before the new search answers.
+  holdGets = true;
+  box.value = "zed"; box.listeners.input();
+  const whileSearching = names();
+  holdGets = false;
+  heldGets.forEach((r) => r()); await settle();
+  press("Escape");
+  console.log(JSON.stringify({ found, whileSearching, restored: document.activeElement === origin,
+    open: overlays().length }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_palette_drops_stale_people_and_returns_focus_past_a_replaced_overlay(
+    db_file: Path, tmp_path: Path
+) -> None:
+    assert _run_page(db_file, tmp_path, _PALETTE_REVIEW_FIXES) == {
+        # A person, then the one command whose name also holds the text.
+        "found": ["Ann", "Switch language to 中文"],
+        "whileSearching": [],
+        "restored": True,
+        "open": 0,
+    }
