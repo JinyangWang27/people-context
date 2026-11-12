@@ -113,11 +113,152 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   table.review td { border: none; padding: 2px 0; }
   dl { grid-template-columns: 1fr; }
 }
+/* --- Command palette, shortcuts, and the refreshed look ------------------------------------- */
+:root { --fg: #1b1b1f; --bg: #f6f6f3; --surface: #ffffff; --muted: #66666e; --line: #e2e2dd; --line-strong: #cfcfc9;
+  --accent: #2a5bc4; --accent-soft: #e7eefc; --hover: #f0f0ec; --scrim: rgba(24, 24, 32, 0.32);
+  --shadow: 0 1px 2px rgba(24, 24, 32, 0.04), 0 4px 14px rgba(24, 24, 32, 0.04);
+  --shadow-lift: 0 2px 6px rgba(24, 24, 32, 0.08), 0 24px 64px rgba(24, 24, 32, 0.22); --radius: 10px; }
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #ebebef; --bg: #121215; --surface: #1a1a1f; --muted: #9d9da8; --line: #2b2b32; --line-strong: #3b3b44;
+    --accent: #93b4ff; --accent-soft: #1e2a47; --hover: #212128; --scrim: rgba(0, 0, 0, 0.6);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.4), 0 24px 64px rgba(0, 0, 0, 0.55); }
+}
+body { -webkit-font-smoothing: antialiased; }
+header { position: sticky; top: 0; z-index: 10; background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: saturate(1.4) blur(12px);
+  -webkit-backdrop-filter: saturate(1.4) blur(12px); border-bottom-color: var(--line); }
+header h1 { letter-spacing: -0.01em; }
+#nav-palette { margin-left: auto; color: var(--muted); font-size: 12px; padding: 3px 8px; letter-spacing: 0.04em;
+  background: var(--surface); }
+nav button[aria-current="page"] { background: var(--accent-soft); border-color: transparent; color: var(--accent);
+  font-weight: 600; }
+button { border-radius: 8px; transition: background-color 0.12s, border-color 0.12s, color 0.12s; }
+button:hover { background: var(--hover); }
+button.link:hover { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+button:disabled { opacity: 0.55; cursor: default; }
+main { position: relative; padding: 24px 16px 48px; }
+main > h2 { font-size: 24px; letter-spacing: -0.015em; margin: 0 0 16px; }
+#view > table { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  border-collapse: separate; border-spacing: 0; overflow: hidden; box-shadow: var(--shadow); }
+th, td { padding: 10px 12px; }
+th { font-size: 12px; letter-spacing: 0.04em; background: var(--bg); }
+#view > table tr:last-child > td { border-bottom: none; }
+tr:hover > td { background: var(--hover); }
+td .who { display: inline-flex; align-items: center; gap: 10px; }
+tr:has(.who) > td { vertical-align: middle; }
+.avatar { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  font-size: 12px; font-weight: 600; line-height: 1; user-select: none; }
+.avatar::before { content: attr(data-initials); }
+.avatar-large { width: 64px; height: 64px; font-size: 24px; }
+.avatar-0 { background: #dfe8fd; color: #1d4bb0; } .avatar-1 { background: #dcf3e6; color: #17683e; }
+.avatar-2 { background: #fde6d8; color: #9a3e0c; } .avatar-3 { background: #efe2fb; color: #6c2fa8; }
+.avatar-4 { background: #fbe0e7; color: #a2224a; } .avatar-5 { background: #d9f1f4; color: #11636f; }
+.avatar-6 { background: #f6eccb; color: #7a5a06; } .avatar-7 { background: #e6e7ec; color: #43465a; }
+@media (prefers-color-scheme: dark) {
+  .avatar-0 { background: #22315a; color: #b8cbff; } .avatar-1 { background: #193b2a; color: #a6e3c0; }
+  .avatar-2 { background: #48291a; color: #ffc6a3; } .avatar-3 { background: #36234f; color: #dcc0fb; }
+  .avatar-4 { background: #4a1f2c; color: #ffb7ca; } .avatar-5 { background: #173b40; color: #a3e4ec; }
+  .avatar-6 { background: #40351a; color: #f0d98f; } .avatar-7 { background: #2c2d36; color: #c9cbd6; }
+}
+main[data-page="person"] { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 16px;
+  align-content: start; }
+main[data-page="person"] > * { grid-column: 1 / -1; min-width: 0; }
+main[data-page="person"] > h2 { grid-column: 2; grid-row: 1; align-self: end; margin: 0; font-size: 28px; }
+.person-head { display: contents; }
+.person-head > .avatar { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+.person-lines { grid-column: 2; grid-row: 2; align-self: start; min-height: 8px; color: var(--muted); }
+.person-lines p { margin: 2px 0 0; }
+main[data-page="person"] > dl { margin: 12px 0 0; padding: 12px 16px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+main[data-page="person"] > dl:first-of-type { margin-top: 24px; }
+main[data-page="person"] > details { margin-top: 12px; padding: 8px 16px; border: 1px solid var(--line);
+  border-radius: var(--radius); }
+main[data-page="person"] > details > summary { cursor: pointer; color: var(--muted); }
+main[data-page="person"] > button:last-child { justify-self: start; margin-top: 24px; }
+.card { margin-top: 16px; padding: 14px 16px 12px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); box-shadow: var(--shadow); }
+.card > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; color: var(--muted); }
+.card ul { list-style: none; margin: 0; padding: 0; }
+.card > ul > li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.card > ul > li:last-child { border-bottom: none; }
+.card li li { padding: 2px 0 0; color: var(--muted); font-size: 13px; }
+.card li button:not(.link) { font-size: 12px; padding: 1px 8px; color: var(--muted); }
+.card > .alias { margin: 8px 0 0; }
+.card > .notice { margin: 4px 0; }
+.timeline > ul { position: relative; padding-left: 20px; }
+.timeline > ul::before { content: ""; position: absolute; left: 4px; top: 14px; bottom: 14px; width: 2px;
+  background: var(--line); }
+.timeline > ul > li { position: relative; border-bottom: none; }
+.timeline > ul > li::before { content: ""; position: absolute; left: -20px; top: 14px; width: 6px; height: 6px;
+  border-radius: 50%; border: 2px solid var(--accent); background: var(--surface); }
+main[aria-busy="true"] > * { opacity: 0.45; pointer-events: none; transition: opacity 0.2s ease 0.12s; }
+main[aria-busy="true"]::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat -200% 0 / 40% 100%;
+  animation: pctx-loading 1.1s ease-in-out 0.12s infinite; }
+@keyframes pctx-loading { from { background-position: -200% 0; } to { background-position: 300% 0; } }
+@keyframes pctx-rise { from { opacity: 0; transform: translateY(-6px) scale(0.99); } }
+@keyframes pctx-fade { from { opacity: 0; } }
+.overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 16px 16px; background: var(--scrim); animation: pctx-fade 0.12s ease-out; }
+.palette, .sheet { display: flex; flex-direction: column; width: min(560px, 100%); max-height: 72vh; overflow: hidden;
+  background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px;
+  box-shadow: var(--shadow-lift); animation: pctx-rise 0.14s ease-out; }
+.palette input { flex: none; width: 100%; box-sizing: border-box; padding: 16px 18px; font-size: 17px;
+  border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+.palette input:focus-visible { outline: none; box-shadow: inset 0 -2px 0 var(--accent); }
+.palette-list { overflow-y: auto; padding: 6px; }
+.palette-list:empty { display: none; }
+.palette-group-label { padding: 8px 10px 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--muted); }
+.palette-option { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px;
+  cursor: pointer; }
+.palette-option[aria-selected="true"] { background: var(--accent-soft); }
+.palette-words { display: flex; flex-direction: column; min-width: 0; }
+.palette-name, .palette-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-sub { font-size: 13px; color: var(--muted); }
+.palette-glyph { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border-radius: 8px;
+  background: var(--hover); color: var(--muted); }
+.palette-status { margin: 0; padding: 12px 18px; color: var(--muted); }
+.palette-status:empty { display: none; }
+.palette-foot { margin: 0; padding: 8px 18px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+.sheet { width: min(420px, 100%); padding: 18px 20px; overflow-y: auto; }
+.sheet h2 { margin: 0 0 12px; font-size: 18px; }
+.shortcut-list { grid-template-columns: max-content 1fr; gap: 10px 20px; align-items: center; margin: 0; }
+.shortcut-list dt { display: flex; gap: 4px; align-items: center; color: var(--fg); }
+.shortcut-list dd { color: var(--muted); }
+.shortcut-joiner { font-size: 12px; color: var(--muted); padding: 0 2px; }
+.sheet-actions { display: flex; justify-content: flex-end; margin-top: 16px; }
+kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo,
+  monospace; text-align: center; color: var(--fg); background: var(--bg); border: 1px solid var(--line-strong);
+  border-bottom-width: 2px; border-radius: 6px; }
+@media (forced-colors: active) {
+  .palette-option[aria-selected="true"] { outline: 2px solid Highlight; }
+  nav button[aria-current="page"] { outline: 2px solid Highlight; }
+}
+@media (max-width: 640px) {
+  header { padding: 10px 12px; }
+  #nav-palette { display: none; }
+  main { padding: 16px 12px 40px; }
+  #view > table { display: block; overflow-x: auto; }
+  #view > table td { min-width: 8rem; }
+  main[data-page="person"] { grid-template-columns: 48px minmax(0, 1fr); column-gap: 12px; }
+  main[data-page="person"] > h2 { font-size: 22px; }
+  .avatar-large { width: 48px; height: 48px; font-size: 18px; }
+  .overlay { padding: 8px; }
+  .palette, .sheet { max-height: calc(100vh - 16px); }
+  .shortcut-list { grid-template-columns: max-content 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  main[aria-busy="true"]::before { background: var(--accent); opacity: 0.5; }
+}
 </style>
 </head>
 <body>
 <header>
 <h1 id="app-title">People Context</h1>
+<button type="button" id="nav-palette"></button>
 <nav>
 <button type="button" id="nav-today">Today</button>
 <button type="button" id="nav-people">People</button>
@@ -187,6 +328,7 @@ function applyLanguage() {
   toggle.textContent = LANGUAGE_NAMES[other] || other;
   toggle.setAttribute("aria-label", t("nav.language"));
   toggle.setAttribute("lang", other);
+  applyShortcutLanguage();
 }
 
 function switchLanguage() {
@@ -246,10 +388,12 @@ function navigate() {
 
 function show(title, ...nodes) {
   view.replaceChildren(el("h2", title), ...nodes);
+  viewShown();
 }
 
 function fail(error, at) {
   if (at !== undefined && at !== navigation) return;
+  viewShown();
   view.replaceChildren(el("p", t("error", { message: error.message }), "error"));
 }
 
@@ -293,6 +437,7 @@ let restoringHistory = false;
 let viewerClosed = false;
 
 function rememberPage(page, args) {
+  viewOpening(page);
   if (restoringHistory || viewerClosed) return;
   const state = { pctx: true, page, args, filters: { ...peopleFilter } };
   if (JSON.stringify(history.state) === JSON.stringify(state)) return;
@@ -364,7 +509,8 @@ async function showPeople(cursor, back) {
   const rows = doc.people.map((person) => {
     const emails = person.emails || [];
     return [
-      button(person.display_name || person.canonical_name, () => showPerson(person.id, cursor, back), "link"),
+      withAvatar(person, button(person.display_name || person.canonical_name, () => showPerson(person.id, cursor, back),
+        "link")),
       person.full_name || person.canonical_name,
       (organizations[person.id] || []).join(", "),
       // Email addresses are contact information, shown on the person view rather than as names here.
@@ -972,7 +1118,7 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
     nodes.push(history);
   }
   nodes.push(button(t("person.back"), () => showPeople(cursor, back)));
-  show(doc.person.display_name || doc.person.canonical_name, ...nodes);
+  show(doc.person.display_name || doc.person.canonical_name, personHead(doc), ...personCards(nodes));
 }
 
 async function showSources(cursor, back) {
@@ -1801,6 +1947,412 @@ async function commitAccepted() {
   if (at === navigation) return showBatch(batchId, message);
 }
 
+// --- Command palette, shortcuts, and view chrome ----------------------------------------------
+// Keyboard reach and the look of the views, with nothing that writes. ⌘K / Ctrl+K opens a palette
+// over any view: it finds people through the same `/api/people` search the list uses, a handful at
+// a time, and runs a fixed set of commands. Single keys reach the same places, never while the user
+// is typing or holding a modifier. Both overlays are built when they open, so they always speak
+// the language on screen, and the rest of the page is inert behind them.
+
+const IS_MAC = /mac|iphone|ipad/i.test(
+  typeof navigator === "undefined" ? "" : String(navigator.platform || navigator.userAgent || ""));
+const PALETTE_LIMIT = 6;
+const PALETTE_DELAY = 150;
+const CHORD_TIMEOUT = 1200;
+
+// The nav button each view belongs to. Opening a view marks it at once and dims the view it
+// replaces, which stays unclickable until the new one is drawn or its request is refused.
+const NAV_OF_PAGE = { today: "nav-today", people: "nav-people", person: "nav-people", sources: "nav-sources",
+  source: "nav-sources", batch: "nav-sources" };
+let openingPage = null;
+
+function viewOpening(page) {
+  openingPage = page;
+  view.setAttribute("aria-busy", "true");
+  for (const id of ["nav-today", "nav-people", "nav-sources"]) {
+    document.getElementById(id).setAttribute("aria-current", NAV_OF_PAGE[page] === id ? "page" : "false");
+  }
+}
+
+function viewShown() {
+  view.setAttribute("aria-busy", "false");
+  view.setAttribute("data-page", openingPage || "");
+}
+
+// An initials avatar, coloured by one of eight CSS classes from a stable hash of the person id. The
+// initials are a data attribute the style sheet draws, so they are decoration only: not read out,
+// not copied with the row, and not part of any name a control or a test reads.
+const AVATAR_COLOURS = 8;
+
+function isCjk(character) {
+  const code = character.codePointAt(0);
+  return (code >= 0x2e80 && code <= 0x9fff) || (code >= 0xac00 && code <= 0xd7af)
+    || (code >= 0xf900 && code <= 0xfaff) || code >= 0x20000;
+}
+
+function initials(name) {
+  const words = String(name || "").trim().split(" ").filter((word) => word);
+  if (!words.length) return "?";
+  const first = Array.from(words[0])[0];
+  if (isCjk(first)) return first;
+  const last = words.length > 1 ? Array.from(words[words.length - 1])[0] : "";
+  return (first + (last && !isCjk(last) ? last : "")).toLocaleUpperCase();
+}
+
+function avatarColour(id) {
+  let hash = 2166136261;
+  for (const character of String(id)) hash = Math.imul(hash ^ character.codePointAt(0), 16777619) >>> 0;
+  return hash % AVATAR_COLOURS;
+}
+
+function avatar(person, large) {
+  const node = el("span", null, "avatar avatar-" + avatarColour(person.id) + (large ? " avatar-large" : ""));
+  node.setAttribute("data-initials", initials(person.display_name || person.canonical_name));
+  node.setAttribute("aria-hidden", "true");
+  return node;
+}
+
+function withAvatar(person, link) {
+  const cell = el("span", null, "who");
+  cell.append(avatar(person, false), link);
+  return cell;
+}
+
+// The person view's header block: the large avatar beside the heading, with the full name when it
+// differs from the name shown and the organizations of the person's affiliations.
+function personHead(doc) {
+  const person = doc.person;
+  const head = el("div", null, "person-head");
+  const lines = el("div", null, "person-lines");
+  const full = person.full_name || person.canonical_name;
+  if (full !== (person.display_name || person.canonical_name)) lines.append(el("p", full, "person-full"));
+  const organizations = Array.from(new Set((doc.affiliations || []).map((entry) => entry.organization_name)))
+    .filter((name) => name);
+  if (organizations.length) lines.append(el("p", organizations.join(" · "), "person-orgs"));
+  head.append(avatar(person, true), lines);
+  return head;
+}
+
+// Each section the person view lists under a heading becomes a card holding that heading and what
+// follows it, up to the next heading, a disclosure, or a top-level button. Interactions read as a
+// timeline. A section another change adds under its own heading becomes a card the same way.
+function personCards(nodes) {
+  const out = [];
+  let card = null;
+  for (const node of nodes) {
+    const tag = node.tagName;
+    if (tag === "H3") {
+      card = el("section", null, node.textContent === t("person.interactions") ? "card timeline" : "card");
+      out.push(card);
+    } else if (tag === "DETAILS" || tag === "BUTTON") {
+      card = null;
+    }
+    if (card) card.append(node);
+    else out.push(node);
+  }
+  return out;
+}
+
+// One overlay at a time. It remembers what had focus, so closing it puts focus back there.
+let overlay = null;
+
+function openOverlay(kind, dialog, focusTarget) {
+  closeOverlay(false);
+  const returnTo = document.activeElement;
+  const backdrop = el("div", null, "overlay");
+  backdrop.addEventListener("mousedown", (event) => { if (event.target === backdrop) closeOverlay(true); });
+  backdrop.append(dialog);
+  for (const child of Array.from(document.body.children)) child.inert = true;
+  document.body.append(backdrop);
+  overlay = { kind, node: backdrop, returnTo };
+  focusTarget.focus();
+}
+
+function closeOverlay(restore) {
+  if (!overlay) return;
+  const { node, returnTo } = overlay;
+  overlay = null;
+  clearTimeout(palette.timer);
+  palette.version += 1;
+  document.body.removeChild(node);
+  for (const child of Array.from(document.body.children)) child.inert = false;
+  if (restore && returnTo && returnTo.isConnected !== false && typeof returnTo.focus === "function") returnTo.focus();
+}
+
+function dialogNode(className, label) {
+  const node = el("div", null, className);
+  node.setAttribute("role", "dialog");
+  node.setAttribute("aria-modal", "true");
+  node.setAttribute("aria-label", label);
+  return node;
+}
+
+// The palette's state. `version` is the latest search: a reply to an older one is dropped, and an
+// Enter pressed before the latest reply runs once it has landed.
+const palette = { input: null, list: null, status: null, people: [], items: [], active: 0, version: 0, timer: null,
+  searching: false, failed: null, runWhenReady: false };
+
+function paletteCommands() {
+  const other = I18N.languages.find((code) => code !== lang);
+  const commands = [
+    ["palette.command.today", {}, () => showToday()],
+    ["palette.command.people", {}, () => showPeople(null, [])],
+    ["palette.command.sources", {}, () => showSources(null, [])],
+  ];
+  if (other) commands.push(["palette.command.language", { language: LANGUAGE_NAMES[other] || other }, switchLanguage]);
+  commands.push(["palette.command.done", {}, done]);
+  // Matched in the language on screen and in English, so a command is found by either name.
+  return commands.map(([key, params, run]) => ({ label: t(key, params), english: I18N.messages.en[key] || "", run }));
+}
+
+function openPalette() {
+  if (viewerClosed) return;
+  const dialog = dialogNode("palette", t("palette.title"));
+  const input = el("input");
+  input.type = "text";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = t("palette.input");
+  input.setAttribute("aria-label", t("palette.input"));
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-expanded", "true");
+  input.setAttribute("aria-controls", "palette-list");
+  input.setAttribute("aria-autocomplete", "list");
+  const list = el("div", null, "palette-list");
+  list.id = "palette-list";
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", t("palette.title"));
+  const status = el("p", null, "palette-status");
+  status.setAttribute("role", "status");
+  dialog.append(input, list, status, el("p", t("palette.hint"), "palette-foot"));
+  input.addEventListener("input", paletteTyped);
+  input.addEventListener("keydown", paletteKey);
+  openOverlay("palette", dialog, input);
+  Object.assign(palette, { input, list, status, people: [], active: 0, searching: false, failed: null,
+    runWhenReady: false });
+  paletteRender();
+}
+
+function paletteTyped() {
+  const text = palette.input.value.trim();
+  const version = ++palette.version;
+  clearTimeout(palette.timer);
+  Object.assign(palette, { active: 0, failed: null, runWhenReady: false, searching: Boolean(text) });
+  if (!text) palette.people = [];
+  paletteRender();
+  if (!text) return;
+  palette.timer = setTimeout(async () => {
+    let doc;
+    try { doc = await api("/api/people" + query({ q: text, limit: String(PALETTE_LIMIT) })); } catch (error) {
+      if (version !== palette.version) return;
+      Object.assign(palette, { people: [], searching: false, failed: error, runWhenReady: false });
+      return paletteRender();
+    }
+    if (version !== palette.version) return;
+    const organizations = doc.organization_names || {};
+    palette.people = doc.people.slice(0, PALETTE_LIMIT)
+      .map((person) => ({ person, organizations: organizations[person.id] || [] }));
+    palette.searching = false;
+    palette.active = 0;
+    paletteRender();
+    if (palette.runWhenReady) {
+      palette.runWhenReady = false;
+      paletteRun();
+    }
+  }, PALETTE_DELAY);
+}
+
+function paletteRender() {
+  const needle = palette.input.value.trim().toLocaleLowerCase();
+  const commands = paletteCommands().filter((command) => !needle
+    || command.label.toLocaleLowerCase().includes(needle) || command.english.toLocaleLowerCase().includes(needle));
+  const items = [];
+  const groups = [];
+  const group = (labelKey, entries, draw) => {
+    if (!entries.length) return;
+    const node = el("div", null, "palette-group");
+    const label = el("div", t(labelKey), "palette-group-label");
+    label.id = "palette-group-" + groups.length;
+    node.setAttribute("role", "group");
+    node.setAttribute("aria-labelledby", label.id);
+    node.append(label);
+    for (const entry of entries) {
+      const index = items.length;
+      const option = el("div", null, "palette-option");
+      option.id = "palette-option-" + index;
+      option.setAttribute("role", "option");
+      draw(option, entry);
+      // Pressing an option must not take focus from the input that owns the listbox.
+      option.addEventListener("mousedown", (event) => event.preventDefault());
+      option.addEventListener("click", () => { palette.active = index; paletteRun(); });
+      option.addEventListener("mousemove", () => {
+        if (palette.active === index) return;
+        palette.active = index;
+        paletteMark();
+      });
+      items.push({ option, run: entry.run });
+      node.append(option);
+    }
+    groups.push(node);
+  };
+  group("palette.people", palette.people.map(({ person, organizations }) => ({
+    person, organizations, run: () => showPerson(person.id, null, []),
+  })), (option, { person, organizations }) => {
+    const shown = person.display_name || person.canonical_name;
+    const full = person.full_name || person.canonical_name;
+    const words = el("span", null, "palette-words");
+    words.append(el("span", shown, "palette-name"));
+    const sub = [full !== shown ? full : "", organizations.join(", ")].filter((part) => part).join(" · ");
+    if (sub) words.append(el("span", sub, "palette-sub"));
+    option.append(avatar(person, false), words);
+  });
+  group("palette.commands", commands, (option, command) => {
+    const glyph = el("span", "›", "palette-glyph");
+    glyph.setAttribute("aria-hidden", "true");
+    option.append(glyph, el("span", command.label, "palette-name"));
+  });
+  palette.items = items;
+  if (palette.active >= items.length) palette.active = 0;
+  palette.list.replaceChildren(...groups);
+  palette.status.textContent = palette.failed ? t("error", { message: palette.failed.message })
+    : palette.searching ? t("palette.searching") : items.length ? "" : t("palette.empty");
+  paletteMark();
+}
+
+function paletteMark() {
+  palette.items.forEach(({ option }, index) => {
+    option.setAttribute("aria-selected", String(index === palette.active));
+  });
+  const chosen = palette.items[palette.active];
+  if (!chosen) {
+    palette.input.removeAttribute("aria-activedescendant");
+    return;
+  }
+  palette.input.setAttribute("aria-activedescendant", chosen.option.id);
+  if (typeof chosen.option.scrollIntoView === "function") chosen.option.scrollIntoView({ block: "nearest" });
+}
+
+function paletteKey(event) {
+  // A key that completes an input method's composition belongs to the composition, not the palette.
+  if (event.isComposing) return;
+  const count = palette.items.length;
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (count) palette.active = (palette.active + (event.key === "ArrowDown" ? 1 : count - 1)) % count;
+    paletteMark();
+  } else if (event.key === "Enter") {
+    if (palette.searching) palette.runWhenReady = true;
+    else paletteRun();
+  } else if (event.key === "Escape") {
+    closeOverlay(true);
+  } else if (event.key !== "Tab") {
+    return;
+  }
+  // Tab is held too: the input is the dialog's one stop, so focus stays inside it.
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function paletteRun() {
+  const chosen = palette.items[palette.active];
+  if (!chosen) return;
+  closeOverlay(true);
+  chosen.run();
+}
+
+// The help sheet. Keys joined by `+` are pressed together; a `then` is a second key afterwards.
+function shortcutList() {
+  return [
+    [[IS_MAC ? "⌘" : "Ctrl", "K"], "+", "shortcuts.palette"],
+    [["/"], null, "shortcuts.search"],
+    [["g", "t"], "then", "shortcuts.today"],
+    [["g", "p"], "then", "shortcuts.people"],
+    [["g", "s"], "then", "shortcuts.sources"],
+    [["?"], null, "shortcuts.help"],
+    [["Esc"], null, "shortcuts.close"],
+  ];
+}
+
+function openHelp() {
+  if (viewerClosed) return;
+  const dialog = dialogNode("sheet", t("shortcuts.title"));
+  const grid = el("dl", null, "shortcut-list");
+  for (const [keys, joiner, description] of shortcutList()) {
+    const term = el("dt");
+    keys.forEach((name, index) => {
+      if (index) term.append(el("span", joiner === "then" ? t("shortcuts.then") : joiner, "shortcut-joiner"));
+      term.append(el("kbd", name));
+    });
+    grid.append(term, el("dd", t(description)));
+  }
+  const close = button(t("common.close"), () => closeOverlay(true));
+  close.addEventListener("keydown", (event) => { if (event.key === "Tab") event.preventDefault(); });
+  const actions = el("div", null, "sheet-actions");
+  actions.append(close);
+  dialog.append(el("h2", t("shortcuts.title")), grid, actions);
+  openOverlay("help", dialog, close);
+}
+
+async function focusPeopleSearch() {
+  if (openingPage !== "people") await showPeople(null, []);
+  const search = Array.from(view.querySelectorAll("input")).find((node) => node.type === "search");
+  if (search) search.focus();
+}
+
+function typing(target) {
+  return Boolean(target)
+    && (["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName) || target.isContentEditable === true);
+}
+
+// `g` waits a moment for its second key; any other key, or none, ends the wait.
+let chord = null;
+
+function onShortcut(event) {
+  if (viewerClosed) return;
+  const key = event.key;
+  if ((IS_MAC ? event.metaKey : event.ctrlKey) && !event.altKey && !event.shiftKey && (key === "k" || key === "K")) {
+    event.preventDefault();
+    if (overlay && overlay.kind === "palette") closeOverlay(true);
+    else openPalette();
+    return;
+  }
+  if (overlay) {
+    if (key === "Escape") {
+      event.preventDefault();
+      closeOverlay(true);
+    }
+    return;
+  }
+  const waiting = chord !== null;
+  clearTimeout(chord);
+  chord = null;
+  if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing || typing(event.target)) return;
+  if (waiting && (key === "t" || key === "p" || key === "s")) {
+    event.preventDefault();
+    if (key === "t") showToday();
+    else if (key === "p") showPeople(null, []);
+    else showSources(null, []);
+  } else if (key === "g") {
+    chord = setTimeout(() => { chord = null; }, CHORD_TIMEOUT);
+  } else if (key === "/") {
+    event.preventDefault();
+    focusPeopleSearch();
+  } else if (key === "?") {
+    event.preventDefault();
+    openHelp();
+  }
+}
+
+const paletteHint = document.getElementById("nav-palette");
+paletteHint.textContent = IS_MAC ? "⌘K" : "Ctrl K";
+paletteHint.setAttribute("aria-keyshortcuts", IS_MAC ? "Meta+K" : "Control+K");
+paletteHint.addEventListener("click", openPalette);
+document.addEventListener("keydown", onShortcut);
+
+function applyShortcutLanguage() {
+  paletteHint.setAttribute("aria-label", t("palette.open"));
+  paletteHint.title = t("palette.open");
+}
+
 async function done() {
   // Stopping is a navigation too: no pending view or batch response may repaint after it.
   const at = navigate();
@@ -1810,6 +2362,7 @@ async function done() {
     return fail(error, at);
   }
   if (at !== navigation) return;
+  view.setAttribute("aria-busy", "false");
   current = () => view.replaceChildren(el("p", t("done.stopped")));
   current();
 }

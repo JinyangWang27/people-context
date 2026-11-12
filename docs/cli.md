@@ -36,7 +36,7 @@ browser batch review, and M30.3 browser inline edit.
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--subject PERSON] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--subject` records the relationship from that existing person instead of you; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of what needs attention today, people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Close; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of what needs attention today, people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Close, with a ⌘K / Ctrl+K command palette and keyboard shortcuts; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
@@ -648,6 +648,18 @@ All changes are audited.
 disclosure even in an elevated session. **History** is a collapsed, bounded newest-first timeline of stored records,
 including ended relationships, with each entry's date basis and a notice when older entries were omitted. It is
 not the mutation audit log.
+
+The page can be driven from the keyboard. **⌘K** (Ctrl+K off macOS), or the hint button beside the title, opens a
+command palette over any view: typing searches people through the same people-list search, a fraction of a second
+after typing stops, showing at most six with their preferred name, full name, and organizations, and it also matches
+five fixed commands — go to Today, go to People, go to Import sources, switch language, and close the viewer — by their name in
+either language. Up and Down move, Enter opens (waiting for a search still in flight), and Esc closes it and returns
+focus to where it was; a person opened from it is the ordinary person view, whose Back returns to the people list.
+Outside a text box, and with no Ctrl, ⌘, or Alt held, `/` focuses the people search (opening People first), `g` then
+`t`, `p`, or `s` opens Today, People, or Import sources, `?` lists these shortcuts, and Esc closes the palette or that
+list. The palette and shortcuts write nothing and add no endpoint. The header marks the current view; each person
+has an initials avatar coloured by a hash of their id; the person view groups its records into cards, with
+interactions as a timeline; and the view being replaced is dimmed while the next one loads.
 
 The page is in English or Simplified Chinese. It opens in the first of `--lang`, the `PEOPLE_CONTEXT_BROWSE_LANG`
 environment variable, and `browse_lang` in `config.toml` (the same file as `db_path`, below) that is set, and in
