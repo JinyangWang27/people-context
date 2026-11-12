@@ -176,6 +176,7 @@ main[data-page="person"] > details { margin-top: 12px; padding: 8px 16px; border
   border-radius: var(--radius); }
 main[data-page="person"] > details > summary { cursor: pointer; color: var(--muted); }
 main[data-page="person"] > button:last-child { justify-self: start; margin-top: 24px; }
+.today-card, .today-chip { background: var(--surface); }
 .card { margin-top: 16px; padding: 14px 16px 12px; background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow); }
 .card > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; color: var(--muted); }
