@@ -58,14 +58,22 @@ class GetStaleRelationships:
         category: str | None = None,
         threshold_days: int = DEFAULT_THRESHOLD_DAYS,
         limit: int = DEFAULT_STALE_LIMIT,
+        interacted_only: bool = False,
     ) -> StaleRelationshipsResult:
-        """Return people with no ordinary interaction, or one at least `threshold_days` old."""
+        """Return people with no ordinary interaction, or one at least `threshold_days` old.
+
+        `interacted_only` leaves out people with no ordinary interaction at all, before the cap, so
+        a store of imported contacts nobody has logged anything with cannot crowd out the people
+        the user has actually lost touch with.
+        """
         _validate(threshold_days, limit)
         today = self._clock.now().date()
         signals = self._recency.list_recency_signals(as_of=today, category=_canonical_category(category))
         qualifying: list[StalePersonResult] = []
         for signal in signals:
             days_since = _days_since(signal, today)
+            if interacted_only and days_since is None:
+                continue
             # A future interaction yields a negative age; it is neither clamped nor stale.
             if days_since is not None and days_since < threshold_days:
                 continue

@@ -35,10 +35,10 @@ _TEMPLATE = """<!doctype html>
 <title>People Context</title>
 <style nonce="__PCTX_NONCE__">
 :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fbfbfa; --muted: #6b6b70; --line: #d9d9de;
-  --accent: #2f5fb3; --warn-bg: #fff4d6; --warn-fg: #5c4400; }
+  --accent: #2f5fb3; --warn-bg: #fff4d6; --warn-fg: #5c4400; --late: #b3261e; }
 @media (prefers-color-scheme: dark) {
   :root { --fg: #ececef; --bg: #17171a; --muted: #a0a0a8; --line: #34343a; --accent: #8fb1ff;
-    --warn-bg: #3a3017; --warn-fg: #f3dc9c; }
+    --warn-bg: #3a3017; --warn-fg: #f3dc9c; --late: #ff8a80; }
 }
 body { margin: 0; font: 15px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
 header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;
@@ -83,6 +83,29 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   overflow-wrap: anywhere; }
 .proposal dl { margin: 4px 0 0; }
 .row-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.today-date { color: var(--muted); margin: -8px 0 16px; }
+.today { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; align-items: start; }
+.today-card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+.today-card h3 { display: flex; gap: 8px; align-items: baseline; margin: 0 0 4px; font-size: 15px; }
+.today-card ul { list-style: none; margin: 0; padding: 0; }
+.today-card li { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 8px 0;
+  border-top: 1px solid var(--line); }
+.today-card li:first-child { border-top: none; }
+.today-card li .alias { margin: 0; max-width: 100%; }
+.today-card .notice { margin: 4px 0; }
+.today-late { border-color: var(--late); }
+.today-late h3, .today-late .today-when { color: var(--late); }
+.today-chip { flex: none; width: 46px; padding: 3px 0; border: 1px solid var(--line); border-radius: 8px;
+  text-align: center; line-height: 1.15; }
+.today-chip b { display: block; font-size: 17px; }
+.today-chip span { display: block; color: var(--muted); font-size: 11px; }
+.today-what { flex: 1 1 8rem; min-width: 0; }
+.today-who { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.today-what span { display: block; color: var(--muted); font-size: 13px; }
+.today-who .today-when { flex: none; }
+.today-wide { grid-column: 1 / -1; }
+.today-recent { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.today-recent button.link { border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; }
 @media (max-width: 640px) {
   table.review, table.review tr, table.review td { display: block; width: 100%; box-sizing: border-box; }
   table.review th { display: none; }
@@ -96,6 +119,7 @@ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 <header>
 <h1 id="app-title">People Context</h1>
 <nav>
+<button type="button" id="nav-today">Today</button>
 <button type="button" id="nav-people">People</button>
 <button type="button" id="nav-sources">Import sources</button>
 <button type="button" id="nav-done">Close</button>
@@ -154,6 +178,7 @@ function applyLanguage() {
   if (document.documentElement) document.documentElement.lang = lang;
   document.title = t("app.title");
   document.getElementById("app-title").textContent = t("app.title");
+  document.getElementById("nav-today").textContent = t("nav.today");
   document.getElementById("nav-people").textContent = t("nav.people");
   document.getElementById("nav-sources").textContent = t("nav.sources");
   document.getElementById("nav-done").textContent = t("nav.done");
@@ -357,6 +382,114 @@ async function showPeople(cursor, back) {
       : el("p", t(narrowed ? "people.none_match" : "people.none"), "notice"),
     pager(back, cursor, doc.next_cursor, showPeople),
   );
+}
+
+// --- Today ------------------------------------------------------------------------------------
+// What is worth attention now, read from reports the CLI and MCP already give: `pctx upcoming`, the
+// active reminders, and `pctx stale`. The page works out only how far a date is from the day the
+// server says it is; it decides nothing about who or what is listed.
+function dayNumber(iso) {
+  const [year, month, day] = String(iso).slice(0, 10).split("-").map(Number);
+  return Math.round(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function relativeDay(iso, today) {
+  const days = dayNumber(iso) - dayNumber(today);
+  if (days === 0) return t("today.when.today");
+  if (days === 1) return t("today.when.tomorrow");
+  if (days === -1) return t("today.when.yesterday");
+  return days > 0 ? t("today.when.in_days", { count: days }) : t("today.when.days_ago", { count: -days });
+}
+
+// A calendar date said in the language on screen; it names a day, so no time zone may move it.
+function calendarDate(iso, options) {
+  const format = new Intl.DateTimeFormat(lang, Object.assign({ timeZone: "UTC" }, options));
+  return format.format(new Date(dayNumber(iso) * 86400000));
+}
+
+function todayCard(title, count, className, ...body) {
+  const card = labelled(el("section", null, "today-card" + (className ? " " + className : "")), title);
+  const heading = el("h3", title);
+  if (count) heading.append(" ", el("span", count, "badge"));
+  card.append(heading, ...body);
+  return card;
+}
+
+// One row: an optional date chip, who and what, how far away, then any controls.
+function todayRow(date, today, personId, name, detail, ...controls) {
+  const row = el("li");
+  if (date) {
+    const chip = el("div", null, "today-chip");
+    chip.append(el("b", calendarDate(date, { day: "numeric" })), el("span", calendarDate(date, { month: "short" })));
+    row.append(chip);
+  }
+  const what = el("div", null, "today-what");
+  const who = el("div", null, "today-who");
+  who.append(button(name, () => showPerson(personId, null, []), "link"));
+  if (date) who.append(el("span", relativeDay(date, today), "today-when"));
+  what.append(who, el("span", detail));
+  row.append(what, ...controls);
+  return row;
+}
+
+function todayList(rows, truncated, command) {
+  const nodes = [];
+  if (rows.length) {
+    const items = el("ul");
+    items.append(...rows);
+    nodes.push(items);
+  }
+  if (truncated) nodes.push(el("p", t("today.more", { command }), "notice"));
+  return nodes;
+}
+
+async function showToday() {
+  rememberPage("today", []);
+  current = () => showToday();
+  const at = navigate();
+  let doc;
+  try { doc = await api("/api/today"); } catch (error) { return fail(error, at); }
+  if (at !== navigation) return;
+  const reopen = () => showToday();
+  const today = doc.today || new Date().toISOString().slice(0, 10);
+  const overdue = doc.overdue || [];
+  const upcoming = doc.upcoming || [];
+  const reconnect = doc.reconnect || [];
+  const recent = doc.recent || [];
+  const cards = el("div", null, "today");
+  if (overdue.length) {
+    cards.append(todayCard(t("today.overdue"), overdue.length, "today-late", ...todayList(overdue.map((reminder) => {
+      const message = el("span", null, "error");
+      const finish = button(t("today.done"), () =>
+        aliasWrite("/api/reminder/complete", { reminder_id: reminder.id }, message, reopen));
+      finish.setAttribute("aria-label", t("today.done.aria", { text: reminder.text }));
+      return todayRow(reminder.due_on, today, reminder.person_id, reminder.name, reminder.text, finish, message);
+    }), false), ...(doc.overdue_truncated ? [el("p", t("today.more_overdue"), "notice")] : [])));
+  }
+  cards.append(todayCard(t("today.upcoming"), upcoming.length, null,
+    el("p", t(upcoming.length ? "today.upcoming.window" : "today.upcoming.none", { count: doc.window_days }),
+      "notice"),
+    ...todayList(upcoming.map((entry) => todayRow(entry.date, today, entry.person_id, entry.name,
+      entry.kind === "birthday" ? t("today.birthday") : entry.label)), doc.upcoming_truncated, "pctx upcoming")));
+  cards.append(todayCard(t("today.reconnect"), reconnect.length, null,
+    el("p", t(reconnect.length ? "today.reconnect.hint" : "today.reconnect.none", { count: doc.threshold_days }),
+      "notice"),
+    ...todayList(reconnect.map((person) => todayRow(null, today, person.person_id, person.name,
+      t("today.reconnect.last", { days: person.days_since, count: person.interaction_count }),
+      interactionAdder(person.person_id, reopen))), doc.reconnect_truncated, "pctx stale")));
+  const chips = el("div", null, "today-recent");
+  for (const person of recent) {
+    chips.append(button(person.display_name || person.canonical_name, () => showPerson(person.id, null, []), "link"));
+  }
+  const everyone = el("div", null, "actions");
+  everyone.append(button(t("today.all_people"), () => showPeople(null, [])));
+  cards.append(todayCard(t("today.recent"), null, "today-wide",
+    recent.length ? chips : el("p", t("today.empty"), "notice"), everyone));
+  const hour = new Date().getHours();
+  show(t(hour < 5 || hour >= 18 ? "today.greeting.evening" : hour < 12 ? "today.greeting.morning"
+    : "today.greeting.afternoon"),
+    el("p", calendarDate(today, { weekday: "long", year: "numeric", month: "long", day: "numeric" }), "today-date"),
+    cards);
 }
 
 // A refusal arrives as a code; the text for it is this language's, and an unknown code is shown as is.
@@ -1684,7 +1817,7 @@ async function done() {
 window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (viewerClosed || !state || state.pctx !== true || !Array.isArray(state.args)) return;
-  const open = { people: showPeople, person: showPerson, sources: showSources,
+  const open = { today: showToday, people: showPeople, person: showPerson, sources: showSources,
     source: showSource, batch: showBatch }[state.page];
   if (typeof open !== "function") return;
   Object.assign(peopleFilter, state.filters);
@@ -1692,12 +1825,13 @@ window.addEventListener("popstate", (event) => {
   try { open(...state.args); } finally { restoringHistory = false; }
 });
 
+document.getElementById("nav-today").addEventListener("click", () => showToday());
 document.getElementById("nav-people").addEventListener("click", () => showPeople(null, []));
 document.getElementById("nav-sources").addEventListener("click", () => showSources(null, []));
 document.getElementById("nav-done").addEventListener("click", done);
 document.getElementById("nav-lang").addEventListener("click", switchLanguage);
 applyLanguage();
-showPeople(null, []);
+showToday();
 </script>
 </body>
 </html>

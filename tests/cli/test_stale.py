@@ -95,6 +95,20 @@ def test_stale_lists_never_contacted_people_first(tmp_path: Path, capsys: pytest
     assert "private matter" not in out
 
 
+def test_stale_interacted_only_leaves_out_never_contacted_people(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    _seed(db_file)
+
+    code = cli.main(["--db", str(db_file), "stale", "--interacted-only", "--threshold-days", "0"])
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "never" not in out
+    assert "Carol" not in out and "Alice" in out and "Bob" in out
+
+
 def test_stale_reports_categories_and_ordinary_counts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     db_file = tmp_path / "people.db"
     _seed(db_file)

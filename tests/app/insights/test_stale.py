@@ -145,6 +145,18 @@ def test_naive_and_aware_timestamps_are_ordered_and_aged_without_a_host_timezone
     assert {row.person_id: row.days_since for row in result.people} == {"N": 92, "A": 92}
 
 
+def test_interacted_only_drops_never_interacted_people_before_the_cap() -> None:
+    nobody = [_signal(f"N{index}", f"Nobody {index}") for index in range(3)]
+    old = _signal("O", "Omar", last=datetime(2020, 1, 1, tzinfo=UTC), count=5)
+
+    crowded = _use_case(*nobody, old).execute(limit=2)
+    result = _use_case(*nobody, old).execute(limit=2, interacted_only=True)
+
+    assert [row.person_id for row in crowded.people] == ["N0", "N1"]
+    assert [row.person_id for row in result.people] == ["O"]
+    assert result.truncated is False
+
+
 def test_limit_applies_after_filtering_and_reports_truncation() -> None:
     signals = [_signal(f"P{index}", f"Person {index}") for index in range(5)]
 

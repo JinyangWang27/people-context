@@ -30,13 +30,13 @@ browser batch review, and M30.3 browser inline edit.
 | `setup CLIENT [--scope user\|project] [--dry-run]` | Write the stdio server into one MCP client's configuration (`claude-desktop`, `claude-code`, `codex`, `cursor`, `windsurf`, `vscode`) or print the generic `json` snippet. |
 | `list [--all] [--limit N] [--json]` | List people; `--all` includes soft-deleted rows, `--json` emits the person index. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
-| `stale [--category C] [--threshold-days N] [--limit N]` | Report people with no recent ordinary interaction. |
+| `stale [--category C] [--threshold-days N] [--limit N] [--interacted-only]` | Report people with no recent ordinary interaction. |
 | `upcoming [--window-days N] [--person PERSON]` | Report ordinary birthdays and dated reminders coming up. |
 | `timeline PERSON [--limit N] [--include-sensitive] [--json]` | Print one bounded page of a person's durable history, newest first; a read-only projection, not an audit dump. |
 | `remember PERSON [NOTE] [--kind K] [--org ORG] [--role ROLE] [--relationship TYPE] [--subject PERSON] [--predicate P] [--trait-category C] [--sensitivity S] [--occurred-at WHEN] [--json]` | Record one statement about one person: resolves the name, creates them only if nobody matches, records the note/affiliation/relationship in one audited transaction; `--subject` records the relationship from that existing person instead of you; `--occurred-at` dates an interaction, and is required when the note says it happened earlier; exits 2 with candidates when the name is ambiguous or only loosely matched, and 1 on any other refusal. `--json` reports the same exit codes. |
 | `show PERSON` | Resolve an id/name and print identity plus context; relationships use perspective `display_type`. |
 | `brief PERSON [--include-sensitive] [--include-history] [--history-limit N] [--json] [--output FILE]` | Compose one person's deterministic brief. |
-| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Close; the printed URL carries a per-launch token. |
+| `browse [--open] [--port N] [--lang en\|zh-CN]` | Serve a local page, in English or Simplified Chinese, of what needs attention today, people, one person's brief with alias editing (add, correct, or remove) and in-place correction of its affiliations, facts, traits, and reminders, import sources, and staged-batch review (amend, withdraw, and commit) on `127.0.0.1` until Ctrl-C or Close; the printed URL carries a per-launch token. |
 | `doctor [--json] [--only CODES]` | Report data-quality findings; repairs nothing and exits `0` even with findings. |
 | `health` | Check `uv`, runtime dependencies, your database (read-only, never created or migrated), and an MCP handshake on a temporary database; exits `1` when a check fails. It cannot see whether a client has connected. |
 | `stats [--json] [--include-path]` | Report aggregate-only counts and storage bytes; the path is redacted by default, and a target it would have to create or migrate is refused. |
@@ -394,7 +394,9 @@ Prints one row per active person you have not interacted with for at least `--th
 with no ordinary interaction at all (shown as `never`). `--category` keeps only people whose relationship to you
 is in that category today; the value uses the same normalization as relationship vocabulary, so `Professional`
 and `professional` behave identically. `--threshold-days` accepts `0..36500` (default 90) and `--limit` accepts
-`1..100` (default 20); an out-of-range value exits `2` without printing a partial report.
+`1..100` (default 20); an out-of-range value exits `2` without printing a partial report. `--interacted-only`
+leaves out everyone shown as `never`, before the limit applies, so a store of imported contacts cannot crowd out
+the people you have actually lost touch with.
 
 The report is a recency signal, not a health score: it shows ids, names, categories, the last interaction date,
 the signed day count, and an interaction count, and never interaction summaries. Only `public`/`personal`
@@ -577,6 +579,14 @@ without writing anything, when `--output` names the database it is reading or on
 `-shm`, or `-journal` sidecars.
 
 ## Local browser viewer
+
+The page opens on **Today**: reminders whose date has passed, each with **Done** (the same use case as the
+`complete_reminder` MCP tool); the birthdays and dated reminders of the next 30 days, as `pctx upcoming` reports
+them; the people you last spoke to 90 days ago or more, longest first, as `pctx stale --interacted-only` reports
+them, each with **Add interaction** to log the catch-up on the spot; and the people edited most recently. Each
+list holds at most 12 rows and says when there are more. It reads only what those reports read — ordinary
+birthdays and interactions, never a summary of one — so Today shows nothing a sensitive record would add, with
+or without the operator's elevation.
 
 The person view shows active relationships, including reporting lines, with links to the other person.
 Relationship direction comes from the existing brief (for example, reports to versus manages).

@@ -10,7 +10,7 @@ import sqlite3
 import subprocess
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -25,11 +25,18 @@ from people_context.adapters.web import app as web_app
 from people_context.adapters.web.fields import ALIAS_FIELDS, CANDIDATE_FIELDS
 from people_context.app.exports.brief import BRIEF_CONTEXT_ITEMS
 from people_context.app.imports import ImportPipelineError, ImportReviewRow
-from people_context.app.records import RecordFact, RecordFactInput, RecordInteractionInput, SetAffiliationInput
+from people_context.app.records import (
+    RecordFact,
+    RecordFactInput,
+    RecordInteractionInput,
+    SetAffiliationInput,
+    SetReminderInput,
+)
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
 from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
 from people_context.domain.person import Alias, AliasKind, Person
+from people_context.domain.reminder import ReminderKind
 from people_context.domain.shared import Sensitivity
 
 _PORT = 8123
@@ -2859,11 +2866,12 @@ _BROWSER_HISTORY = r"""
 def test_browser_back_forward_restore_all_views_without_reopening_closed_viewer(db_file: Path, tmp_path: Path) -> None:
     outcome = _run_page(db_file, tmp_path, _BROWSER_HISTORY)
     assert outcome == {
-        "count": 5,
-        "stableCount": 5,
+        # Today, which the page opens on, is the entry under the five views the scenario opens.
+        "count": 6,
+        "stableCount": 6,
         "backward": ["Import source", "Import sources", "Alice", "People"],
         "forward": ["Alice", "Import sources", "Import source", "Import batch"],
-        "urls": ["/"] * 5,
+        "urls": ["/"] * 6,
         "readsAfterClose": 0,
         "stopped": "pctx browse has stopped. You can close this tab.",
     }
@@ -2895,11 +2903,11 @@ def test_browser_history_restores_filters_and_does_not_add_refresh_steps(db_file
     })();
     """
     assert _run_page(db_file, tmp_path, scenario) == {
-        "beforeRefresh": 3,
-        "afterRefresh": 3,
+        "beforeRefresh": 4,
+        "afterRefresh": 4,
         "restored": {"q": "Alice", "sort": "updated", "organization": "O", "group": "G"},
         "request": "/api/people?cursor=C1&q=Alice&sort=updated&organization=O&group=G",
-        "length": 4,
+        "length": 5,
         "url": "/",
     }
 
@@ -3113,3 +3121,172 @@ def test_relationship_removal_requires_confirmation_and_cancel_sends_nothing(
         "cancelled": 0,
         "posts": [["/api/record/remove", {"entity_type": "relationship", "entity_id": "R"}]],
     }
+
+
+def _seed_today(db_file: Path) -> dict[str, str]:
+    """Elena: last spoken to long ago, a birthday tomorrow, one reminder overdue and one ahead. Toma: nothing."""
+    ids = _seed_people(db_file)
+    now = datetime.now(UTC)
+    runtime = build_runtime(db_file)
+    try:
+        cases = runtime.use_cases
+        cases.record_interaction.execute(
+            RecordInteractionInput(
+                summary="Walked the plots", participant_ids=[ids["elena"]], occurred_at=now - timedelta(days=200)
+            )
+        )
+        cases.record_fact.execute(
+            RecordFactInput(
+                person_id=ids["elena"], predicate="birthday", value=(now + timedelta(days=1)).strftime("--%m-%d")
+            )
+        )
+        late = cases.set_reminder.execute(
+            SetReminderInput(
+                person_id=ids["elena"],
+                text="Return the spade",
+                kind=ReminderKind.FOLLOW_UP,
+                due_at=now - timedelta(days=3),
+            )
+        )
+        cases.set_reminder.execute(
+            SetReminderInput(
+                person_id=ids["elena"], text="Seed swap", kind=ReminderKind.OCCASION, due_at=now + timedelta(days=5)
+            )
+        )
+        cases.set_reminder.execute(
+            SetReminderInput(person_id=ids["elena"], text="Prefers mornings", kind=ReminderKind.COMMUNICATION_NOTE)
+        )
+    finally:
+        runtime.close()
+    return {**ids, "late": late.id}
+
+
+def test_today_gathers_the_upcoming_overdue_and_stale_reports(db_file: Path) -> None:
+    ids = _seed_today(db_file)
+    with _client(db_file) as client:
+        response = client.get("/api/today")
+    assert response.status_code == 200
+    _assert_security_headers(response.headers)
+    body = response.json()
+    assert [(row["id"], row["person_id"], row["text"]) for row in body["overdue"]] == [
+        (ids["late"], ids["elena"], "Return the spade")
+    ]
+    # The window starts today: the birthday tomorrow comes before the reminder in five days, and
+    # neither the overdue reminder nor the undated note is in it.
+    assert [(row["kind"], row["label"]) for row in body["upcoming"]] == [
+        ("birthday", "Birthday"),
+        ("reminder", "Seed swap"),
+    ]
+    # Toma, with no interaction on record, is not someone the user lost touch with.
+    assert [(row["person_id"], row["interaction_count"]) for row in body["reconnect"]] == [(ids["elena"], 1)]
+    assert body["reconnect"][0]["days_since"] >= 199
+    assert {row["id"] for row in body["recent"]} == {ids["elena"], ids["toma"]}
+    assert (body["window_days"], body["threshold_days"]) == (30, 90)
+    assert not (body["overdue_truncated"] or body["upcoming_truncated"] or body["reconnect_truncated"])
+    assert _SENSITIVE_VALUE not in response.text
+
+
+def test_today_is_empty_rather_than_refused_for_an_empty_store(db_file: Path) -> None:
+    with _client(db_file) as client:
+        body = client.get("/api/today").json()
+    assert (body["overdue"], body["upcoming"], body["reconnect"], body["recent"]) == ([], [], [], [])
+
+
+def test_completing_a_reminder_from_today_is_the_complete_reminder_use_case(db_file: Path) -> None:
+    ids = _seed_today(db_file)
+    with _client(db_file) as client:
+        done = client.post("/api/reminder/complete", json={"reminder_id": ids["late"]})
+        again = client.post("/api/reminder/complete", json={"reminder_id": ids["late"]})
+        unknown = client.post("/api/reminder/complete", json={"reminder_id": "no-such-reminder"})
+        malformed = client.post("/api/reminder/complete", json={"reminder_id": ids["late"], "status": "cancelled"})
+        after = client.get("/api/today").json()
+    assert (done.status_code, done.json()) == (200, {"completed": True})
+    assert (again.status_code, again.json()) == (409, {"error": "reminder_not_active"})
+    assert (unknown.status_code, unknown.json()) == (404, {"error": "record_not_found"})
+    assert (malformed.status_code, malformed.json()) == (400, {"error": "invalid_request"})
+    assert after["overdue"] == []
+    conn = sqlite3.connect(db_file)
+    try:
+        audited = conn.execute(
+            "SELECT op, source FROM audit_log WHERE entity_type = 'reminder' AND entity_id = ? ORDER BY rowid",
+            (ids["late"],),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert audited[-1] == ("update", "browser")
+
+
+_TODAY_VIEW = r"""
+(async () => {
+  const originalFetch = fetch;
+  let overdue = [{ id: "R1", person_id: "P", name: "Elena <b>", text: "Return the spade", kind: "follow_up",
+    due_on: "2026-11-09" }];
+  globalThis.fetch = async (path, options) => {
+    if (path !== "/api/today") return originalFetch(path, options);
+    gets.push(path);
+    return { ok: true, json: async () => ({ today: "2026-11-12", window_days: 30, threshold_days: 90, overdue,
+      upcoming: [{ person_id: "P", name: "Elena <b>", kind: "birthday", date: "2026-11-13", label: "Birthday" },
+        { person_id: "Q", name: "Omar", kind: "reminder", date: "2026-11-20", label: "Seed swap" }],
+      reconnect: [{ person_id: "Q", name: "Omar", days_since: 143, interaction_count: 3 }],
+      reconnect_truncated: true,
+      recent: [{ id: "P", canonical_name: "Elena <b>", display_name: "Elena" }] }) };
+  };
+  const texts = () => view.all().map((n) => n.textContent).filter((text) => text);
+  const first = gets[0];
+  await showToday();
+  const shown = texts();
+  const cards = view.all().filter((n) => n.tag === "section").map((n) => n.attrs["aria-label"]);
+  const doneLabel = t("today.done.aria", { text: "Return the spade" });
+  view.all().find((n) => (n.attrs || {})["aria-label"] === doneLabel).listeners.click();
+  const disabled = view.all().filter((n) => n.tag === "button").every((n) => n.disabled);
+  overdue = [];
+  releases.forEach((r) => r()); await tick();
+  const after = view.all().filter((n) => n.tag === "section").map((n) => n.attrs["aria-label"]);
+  view.all().find((n) => n.tag === "button" && n.textContent === t("adder.interaction")).listeners.click();
+  const logging = view.all().some((n) => n.tag === "input" && n.type === "date");
+  console.log(JSON.stringify({ first, shown, cards, disabled, after, logging,
+    posts: posts.map((post) => [post.path, JSON.parse(post.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        (
+            "en",
+            [
+                "Overdue",
+                "3 days ago",
+                "Coming up",
+                "Birthday",
+                "Tomorrow",
+                "Seed swap",
+                "In 8 days",
+                "Worth reconnecting",
+            ]
+            + ["143 days since you last spoke · 3 logged", "More than fit here; pctx stale lists them all."]
+            + ["Recently edited", "Thursday, November 12, 2026"],
+        ),
+        (
+            "zh-CN",
+            ["已逾期", "3 天前", "即将到来", "生日", "明天", "Seed swap", "8 天后", "值得重新联系"]
+            + ["距上次联系 143 天 · 共记录 3 次", "此处未能全部列出；pctx stale 可查看完整列表。"]
+            + ["最近编辑", "2026年11月12日星期四"],
+        ),
+    ],
+)
+def test_the_page_opens_on_today_and_completes_a_reminder_in_place(
+    db_file: Path, tmp_path: Path, language: str, expected: list[str]
+) -> None:
+    outcome = _run_page(db_file, tmp_path, _TODAY_VIEW, language=language)
+    assert outcome["first"] == "/api/today"
+    for text in expected:
+        assert text in outcome["shown"], text
+    # A recorded name is text wherever it is shown, and the stored label of a birthday is translated.
+    assert "Elena <b>" in outcome["shown"]
+    assert len(outcome["cards"]) == 4 and len(outcome["after"]) == 3
+    assert outcome["disabled"] is True
+    assert outcome["posts"] == [["/api/reminder/complete", {"reminder_id": "R1"}]]
+    assert outcome["logging"] is True

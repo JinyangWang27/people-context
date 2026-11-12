@@ -10,8 +10,12 @@ correction, and removal on a person page, through the same use cases as `pctx ad
 `RecordInteraction` as the `set_affiliation`, `record_fact`, and `record_interaction` MCP tools;
 relationship assertions through `SetRelationship` as the `set_relationship` MCP tool; in-place
 correction of an affiliation, fact, interaction, trait, reminder, or relationship the page displays, through the same
-`CorrectRecord` as the `correct_record` MCP tool; and removal of an affiliation, fact, interaction, or relationship
-the page displays, through the same `Forget` as the `forget` MCP tool.
+`CorrectRecord` as the `correct_record` MCP tool; removal of an affiliation, fact, interaction, or relationship
+the page displays, through the same `Forget` as the `forget` MCP tool; and completion of a reminder the Today view
+lists, through the same `CompleteReminder` as the `complete_reminder` MCP tool.
+
+The Today view is a read of three reports the CLI and MCP already give — `pctx upcoming`, `pctx stale`, and the
+active reminders — beside the most recently edited people, in one response.
 
 One guard runs before routing on every request. It checks the `Host` against the bound loopback
 address, a present `Origin` and `Sec-Fetch-Site` against same-origin, and the per-launch token —
@@ -65,6 +69,7 @@ from people_context.app.imports import (
     import_sources_document,
     render_import_json,
 )
+from people_context.app.insights import DEFAULT_THRESHOLD_DAYS, DEFAULT_WINDOW_DAYS
 from people_context.app.people import (
     AddAliasInput,
     AliasConflictError,
@@ -76,13 +81,16 @@ from people_context.app.people import (
     UpdateAliasInput,
 )
 from people_context.app.records import (
+    CompleteReminderInput,
     CorrectRecordInput,
     InvalidCorrectionError,
+    ListRemindersInput,
     OrganizationNotFoundError,
     PersonNotFoundError,
     RecordFactInput,
     RecordInteractionInput,
     RecordNotFoundError,
+    ReminderNotActiveError,
     SetAffiliationInput,
 )
 from people_context.app.relationships.commands import SetRelationshipInput
@@ -102,6 +110,11 @@ ReviewLines = Callable[[list[ImportReviewRow]], list[str]]
 #: Bytes one batch-action body may carry. Its ids name rows of one batch the CLI ceiling already
 #: bounds, so the same ceiling bounds the request that selects them.
 MAX_BATCH_ACTION_BYTES = MAX_CLI_STAGED_PAYLOAD_BYTES
+
+#: How many rows each Today list carries; a longer report says it was cut rather than growing the page.
+TODAY_LIST_LIMIT = 12
+#: How many recently edited people Today offers as a way back into what was last worked on.
+TODAY_RECENT_LIMIT = 8
 
 _NonBlank = Annotated[str, StringConstraints(min_length=1)]
 #: Text that needs one visible character; the value itself is stored as typed.
@@ -224,6 +237,14 @@ class _RemoveRecordAction(BaseModel):
     entity_id: _NonBlank
 
 
+class _CompleteReminderAction(BaseModel):
+    """Mark one reminder the Today view lists as done."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    reminder_id: _NonBlank
+
+
 class _RemoveAliasAction(BaseModel):
     """Remove one alias, named by value, from the person the page displayed."""
 
@@ -340,6 +361,70 @@ def create_browse_app(
         nonce = request.scope[_NONCE_KEY]
         text = render_page(nonce, review_warning=review_warning, sources_warning=sources_warning, language=language)
         return HTMLResponse(text)
+
+    async def today(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        use_cases = runtime.use_cases
+        day = runtime.clock.now().date()
+        upcoming = use_cases.list_upcoming_dates.execute(window_days=DEFAULT_WINDOW_DAYS)
+        # The upcoming report starts today, so a dated reminder already past is read from the
+        # reminders themselves — by its stored calendar date, as that report reads one.
+        overdue = []
+        for reminder in use_cases.list_reminders.execute(ListRemindersInput()):
+            if reminder.due_at is None or reminder.due_at.date() >= day:
+                continue
+            owner = runtime.repo.get(reminder.person_id)
+            if owner is None or owner.deleted_at is not None:
+                continue
+            overdue.append(
+                {
+                    "id": reminder.id,
+                    "person_id": owner.id,
+                    "name": owner.canonical_name,
+                    "text": reminder.text,
+                    "kind": reminder.kind.value,
+                    "due_on": reminder.due_at.date().isoformat(),
+                }
+            )
+        overdue.sort(key=lambda row: (row["due_on"], row["name"], row["id"]))
+        # Only people with an interaction on record: someone never logged is not someone lost touch with.
+        stale = use_cases.get_stale_relationships.execute(
+            threshold_days=DEFAULT_THRESHOLD_DAYS, limit=TODAY_LIST_LIMIT, interacted_only=True
+        )
+        recent = use_cases.list_person_index.page(
+            limit=TODAY_RECENT_LIMIT, sort="updated", include_sensitive=include_sensitive
+        )
+        body = {
+            "today": day.isoformat(),
+            "window_days": DEFAULT_WINDOW_DAYS,
+            "threshold_days": DEFAULT_THRESHOLD_DAYS,
+            "overdue": overdue[:TODAY_LIST_LIMIT],
+            "overdue_truncated": len(overdue) > TODAY_LIST_LIMIT,
+            "upcoming": [entry.model_dump(mode="json") for entry in upcoming.entries[:TODAY_LIST_LIMIT]],
+            "upcoming_truncated": len(upcoming.entries) > TODAY_LIST_LIMIT,
+            "reconnect": [row.model_dump(mode="json") for row in stale.people],
+            "reconnect_truncated": stale.truncated,
+            "recent": json.loads(render_person_index_json(recent))["people"],
+        }
+        return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
+
+    async def complete_reminder(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        try:
+            action = await _read_action(request, _CompleteReminderAction)
+        except _RequestRefused as exc:
+            return _error(exc.code, exc.status)
+        try:
+            runtime.use_cases.complete_reminder.execute(
+                CompleteReminderInput(reminder_id=action.reminder_id, source="browser")
+            )
+        except (RecordNotFoundError, PersonNotFoundError):
+            # A reminder whose person is gone is as absent to the page as one that never existed.
+            return _error("record_not_found", 404)
+        except ReminderNotActiveError:
+            return _error("reminder_not_active", 409)
+        # The reminder is not echoed: the page reloads Today, which no longer lists it.
+        return _json(json.dumps({"completed": True}) + "\n")
 
     async def people(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime
@@ -685,6 +770,8 @@ def create_browse_app(
     app = Starlette(
         routes=[
             Route("/", page, methods=["GET"]),
+            Route("/api/today", today, methods=["GET"]),
+            Route("/api/reminder/complete", complete_reminder, methods=["POST"]),
             Route("/api/people", people, methods=["GET"]),
             Route("/api/person", person, methods=["GET"]),
             Route("/api/person/alias/add", add_alias, methods=["POST"]),

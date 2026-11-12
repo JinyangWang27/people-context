@@ -38,6 +38,7 @@ def cmd_stale(runtime: ApplicationRuntime, args: argparse.Namespace) -> int:
             category=args.category,
             threshold_days=args.threshold_days,
             limit=args.limit,
+            interacted_only=args.interacted_only,
         )
     except StaleRelationshipsError as exc:
         print(f"Error: {exc}", file=sys.stderr)

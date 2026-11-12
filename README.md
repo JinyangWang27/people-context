@@ -170,6 +170,8 @@ Or, without an agent: `pctx remember "Amina Hassan" "prefers short emails" --org
 
 Prefer a table to a terminal? `pctx browse --open` opens a local page over the same database:
 
+- open on **Today**: overdue reminders to tick off, birthdays and reminders coming up, and the people you have
+  not spoken to in a while, each one click from logging a catch-up;
 - browse people, searching names, aliases, and summaries, sorting by name or newest added or edited, and
   narrowing to one organization or group; open one person's brief;
 - rename a person (the old name stays as an alias) or rewrite their summary;
@@ -237,7 +239,7 @@ encryption or opt into SQLCipher at-rest encryption (`uv sync --extra encrypted`
 - **Import**: `pctx import stage SOURCE PATH` then `review` and `commit`, over email, mbox, vCard, `.ics`,
   LinkedIn, Outlook, and WhatsApp exports. Agents can stage extracted candidates the same way. See
   [docs/import.md](docs/import.md).
-- **Local browser**: `pctx browse --open` serves a loopback-only, token-guarded page to browse people, rename them and edit
+- **Local browser**: `pctx browse --open` serves a loopback-only, token-guarded page to see what needs attention today, browse people, rename them and edit
   their summary and aliases, correct affiliations, facts, traits, and reminders, and review, edit, and commit staged import batches.
   See [Review and edit in your browser](#review-and-edit-in-your-browser).
 - **Groups**: record classes, teams, clubs, and households with `pctx group`, then ask how two people know each
