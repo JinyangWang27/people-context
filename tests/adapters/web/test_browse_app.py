@@ -32,6 +32,7 @@ from people_context.app.records import (
     SetAffiliationInput,
     SetReminderInput,
 )
+from people_context.app.relationships.commands import SetRelationshipInput
 from people_context.cli.imports import REVIEW_DISCLOSURE_WARNING
 from people_context.cli.rendering import import_review_lines
 from people_context.cli.sources import SOURCES_DISCLOSURE_WARNING
@@ -936,6 +937,17 @@ globalThis.press = (key, modifiers) => {
   return event;
 };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
+// The constellation's SVG elements, and its endpoint: `graphDoc` answers, `graphReply` refuses once.
+document.createElementNS = (namespace, tag) => Object.assign(new El(tag), { namespace });
+const pageFetch = globalThis.fetch;
+globalThis.fetch = async (path, options) => {
+  if (!String(path).startsWith("/api/graph")) return pageFetch(path, options);
+  gets.push(path);
+  const reply = globalThis.graphReply;
+  globalThis.graphReply = null;
+  if (reply) return { ok: false, status: reply.status, json: async () => reply.body };
+  return { ok: true, json: async () => structuredClone(globalThis.graphDoc) };
+};
 """
 
 _DOUBLE_CLICKS = r"""
@@ -3413,6 +3425,7 @@ def test_the_palette_finds_people_and_runs_commands_by_keyboard(db_file: Path, t
         "commands": [
             "Go to Today",
             "Go to People",
+            "Go to Constellation",
             "Go to Import sources",
             "Switch language to 中文",
             "Close the viewer",
@@ -3531,7 +3544,7 @@ def test_keyboard_shortcuts_move_between_views_and_stay_out_of_typing(db_file: P
     assert outcome["helpOpen"]["role"] == "dialog" and outcome["helpOpen"]["modal"] == "true"
     assert outcome["helpOpen"]["label"] == "Keyboard shortcuts"
     assert outcome["helpOpen"]["focus"] == "Close"
-    assert outcome["helpOpen"]["keys"][2:] == ["/", "g", "t", "g", "p", "g", "s", "?", "Esc"]
+    assert outcome["helpOpen"]["keys"][2:] == ["/", "g", "t", "g", "p", "g", "c", "g", "s", "?", "Esc"]
     assert outcome["tabHeld"] is True
     assert outcome["closed"] == 0 and outcome["restored"] is True
 
@@ -3615,7 +3628,7 @@ _PALETTE_IN_CHINESE = r"""
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_the_palette_speaks_chinese_and_still_finds_english_command_names(db_file: Path, tmp_path: Path) -> None:
     outcome = _run_page(db_file, tmp_path, _PALETTE_IN_CHINESE, language="zh-CN")
-    assert outcome["all"] == ["前往今日", "前往联系人", "前往导入来源", "将语言切换为 EN", "关闭浏览页面"]
+    assert outcome["all"] == ["前往今日", "前往联系人", "前往关系图", "前往导入来源", "将语言切换为 EN", "关闭浏览页面"]
     assert outcome["english"] == ["前往导入来源"]
     assert outcome["placeholder"] == "搜索联系人或输入命令"
     assert outcome["title"] == "导入来源"
@@ -3660,3 +3673,352 @@ def test_the_palette_drops_stale_people_and_returns_focus_past_a_replaced_overla
         "restored": True,
         "open": 0,
     }
+
+
+# --- Constellation ------------------------------------------------------------------------------
+
+
+def _seed_constellation(db_file: Path, *, with_self: bool = True) -> dict[str, str]:
+    """Me, two people one step away, one two steps away, and one three steps away."""
+    runtime = build_runtime(db_file)
+    try:
+        ids: dict[str, str] = {}
+        for key, name in [("me", "Jin Self"), ("ana", "Ana Duarte"), ("ben", _MARKUP_NAME), ("cy", "Cy Ng")]:
+            person = Person(canonical_name=name, is_self=key == "me" and with_self)
+            runtime.repo.save_person(person)
+            ids[key] = person.id
+        far = Person(canonical_name="Far Away")
+        runtime.repo.save_person(far)
+        ids["far"] = far.id
+        for subject, kind, other in [
+            ("ana", "reports_to", "me"),
+            ("ben", "friend_of", "me"),
+            ("ana", "colleague_of", "ben"),
+            ("cy", "sibling_of", "ben"),
+            ("far", "friend_of", "cy"),
+        ]:
+            runtime.use_cases.set_relationship.execute(
+                SetRelationshipInput(subject_id=ids[subject], object_id=ids[other], type=kind, source="cli")
+            )
+        return ids
+    finally:
+        runtime.close()
+
+
+def test_the_graph_is_the_relationship_graph_use_case_result_with_its_centre(db_file: Path) -> None:
+    ids = _seed_constellation(db_file)
+    with _client(db_file) as client:
+        response = client.get("/api/graph", params={"id": ids["ana"], "depth": "3"})
+        refused = client.get("/api/graph", params={"id": ids["ana"]}, headers={TOKEN_HEADER: "wrong"})
+    _assert_security_headers(response.headers)
+    assert response.status_code == 200
+    assert refused.status_code == 403
+    runtime = build_runtime(db_file)
+    try:
+        expected = runtime.use_cases.get_relationship_graph.execute(ids["ana"], depth=3).model_dump(mode="json")
+    finally:
+        runtime.close()
+    assert response.json() == {"center_id": ids["ana"], **expected}
+    assert {node["person_id"] for node in expected["nodes"]} == set(ids.values())
+
+
+def test_the_graph_centres_on_the_users_own_record_at_depth_two_by_default(db_file: Path) -> None:
+    ids = _seed_constellation(db_file)
+    with _client(db_file) as client:
+        body = client.get("/api/graph").json()
+    assert body["center_id"] == ids["me"]
+    assert {node["person_id"] for node in body["nodes"]} == {ids["me"], ids["ana"], ids["ben"], ids["cy"]}
+    assert [node["person_id"] for node in body["nodes"] if node["is_self"]] == [ids["me"]]
+    assert body["truncated"] is False
+    # The markup name is data in the JSON, never markup.
+    assert _MARKUP_NAME in {node["name"] for node in body["nodes"]}
+
+
+def test_the_graph_refuses_a_missing_self_and_an_unknown_person_by_code_only(db_file: Path) -> None:
+    _seed_constellation(db_file, with_self=False)
+    with _client(db_file) as client:
+        no_self = client.get("/api/graph")
+        unknown = client.get("/api/graph", params={"id": "nobody-<b>"})
+    assert (no_self.status_code, no_self.json()) == (404, {"error": "no_self"})
+    assert (unknown.status_code, unknown.json()) == (404, {"error": "unknown_person"})
+    assert "nobody" not in unknown.text
+
+
+@pytest.mark.parametrize("depth", ["0", "5", "-1", "two", "", "2.5"])
+def test_the_graph_refuses_a_depth_outside_one_to_four(db_file: Path, depth: str) -> None:
+    ids = _seed_constellation(db_file)
+    with _client(db_file) as client:
+        response = client.get("/api/graph", params={"id": ids["me"], "depth": depth})
+    assert (response.status_code, response.json()) == (400, {"error": "invalid_depth"})
+
+
+def test_the_graph_is_structure_only_whatever_the_elevation(db_file: Path) -> None:
+    # The `get_relationship_graph` MCP tool takes no elevation and returns no records, so neither does the page.
+    ids = _seed_constellation(db_file)
+    runtime = build_runtime(db_file)
+    try:
+        runtime.use_cases.record_fact.execute(
+            RecordFactInput(
+                person_id=ids["ana"],
+                predicate="health",
+                value=_SENSITIVE_VALUE,
+                sensitivity=Sensitivity.SENSITIVE,
+                source="cli",
+            )
+        )
+    finally:
+        runtime.close()
+    bodies = []
+    for elevated in (False, True):
+        with _client(db_file, include_sensitive=elevated) as client:
+            bodies.append(client.get("/api/graph", params={"id": ids["ana"], "depth": "4"}).text)
+    assert bodies[0] == bodies[1]
+    assert _SENSITIVE_VALUE not in bodies[0]
+    body = json.loads(bodies[0])
+    assert set(body) == {"center_id", "nodes", "edges", "truncated"}
+    assert {key for node in body["nodes"] for key in node} == {"person_id", "name", "is_self"}
+    assert {key for edge in body["edges"] for key in edge} == {"subject_id", "object_id", "type", "label", "category"}
+
+
+# One small constellation: Ana at the centre, the user one step away, a long name, and a markup name.
+_GRAPH_DOC = r"""
+const graphNodes = [
+  { person_id: "A", name: "Ana Duarte", is_self: false },
+  { person_id: "M", name: "Jin Self", is_self: true },
+  { person_id: "B", name: "Bartholomew Montgomery-Fitzwilliam", is_self: false },
+  { person_id: "C", name: "Cy <b>Ng</b>", is_self: false },
+];
+const graphEdges = [
+  { subject_id: "A", object_id: "M", type: "reports_to", label: null, category: "professional" },
+  { subject_id: "B", object_id: "A", type: "friend_of", label: "Climbing", category: "social" },
+  { subject_id: "C", object_id: "B", type: "sibling_of", label: null, category: "family" },
+];
+globalThis.graphDoc = { center_id: "A", nodes: graphNodes, edges: graphEdges, truncated: false };
+const texts = (node) => node.all().map((n) => n.textContent || n.text).filter((v) => typeof v === "string" && v);
+const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+const graphNodesDrawn = () => view.all().filter((n) => n.tag === "g" && /graph-node/.test(n.attrs.class || ""));
+const named = (name) => graphNodesDrawn().find((n) => n.children.some((c) => c.tag === "title"
+  && c.textContent === name));
+const classOf = (node) => node.attrs.class;
+const shownLabels = () => view.all().filter((n) => n.tag === "text" && /graph-shown/.test(n.attrs.class || ""))
+  .map((n) => n.textContent);
+"""
+
+_GRAPH_VIEW = (
+    _GRAPH_DOC
+    + r"""
+(async () => {
+  document.getElementById("nav-graph").listeners.click();
+  await tick();
+  const request = gets.at(-1);
+  const heading = view.children[0].textContent;
+  const svg = view.all().find((n) => n.tag === "svg" && /graph-svg/.test(n.attrs.class || ""));
+  const drawn = graphNodesDrawn();
+  const focusable = drawn.every((n) => n.attrs.tabindex === "0" && n.attrs.role === "button" && n.attrs["aria-label"]);
+  const centre = classOf(named("Ana Duarte"));
+  const self = classOf(named("Jin Self (you)"));
+  const selfName = named("Jin Self (you)").attrs["aria-label"];
+  const longLabel = named("Bartholomew Montgomery-Fitzwilliam").children.find((c) => c.tag === "text").textContent;
+  const markupLabel = named("Cy <b>Ng</b>").children.find((c) => c.tag === "text").textContent;
+  const lines = svg.all().filter((n) => n.tag === "line" && /graph-edge /.test(n.attrs.class || ""))
+    .map(classOf).sort();
+  const labelsBefore = shownLabels();
+  const details = view.all().find((n) => n.tag === "details");
+  const list = texts(details);
+  const legend = texts(view.all().find((n) => n.tag === "ul" && n.className === "graph-legend"));
+  named("Cy <b>Ng</b>").listeners.focus();
+  const focused = { cy: classOf(named("Cy <b>Ng</b>")), bart: classOf(named("Bartholomew Montgomery-Fitzwilliam")),
+    ana: classOf(named("Ana Duarte")), labels: shownLabels(),
+    panel: texts(view.all().find((n) => n.tag === "aside")) };
+  named("Cy <b>Ng</b>").listeners.blur();
+  const blurred = { ana: classOf(named("Ana Duarte")), labels: shownLabels() };
+  graphDoc.center_id = "C";
+  named("Cy <b>Ng</b>").listeners.click();
+  await tick();
+  const recentred = gets.at(-1);
+  const state = history.state;
+  globalThis.personDoc = { person: { id: "C", canonical_name: "Cy", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [],
+    traits: [], alias_details: [], alias_kinds: [] };
+  find("Open person").listeners.click();
+  await tick();
+  const opened = gets.at(-1);
+  const hasViewBox = /^-?[0-9.]+ -?[0-9.]+ [0-9.]+ [0-9.]+$/.test(svg.attrs.viewBox);
+  console.log(JSON.stringify({ request, heading, nodes: drawn.length, hasViewBox, namespace: svg.namespace,
+    focusable, centre, self, selfName, longLabel, markupLabel,
+    lines, labelsBefore, list, legend, focused, blurred, recentred, state: { page: state.page, args: state.args },
+    opened }));
+})();
+"""
+)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_constellation_draws_highlights_recentres_and_opens_a_person(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _GRAPH_VIEW)
+    assert outcome["request"] == "/api/graph?depth=2"
+    assert outcome["heading"] == "Constellation around Ana Duarte"
+    assert outcome["nodes"] == 4 and outcome["focusable"] and outcome["hasViewBox"]
+    assert outcome["namespace"] == "http" + "://www.w3.org/2000/svg"
+    assert "graph-center" in outcome["centre"] and "graph-self" in outcome["self"]
+    assert outcome["selfName"].startswith("Jin Self (you)")
+    # Long names are shortened in the drawing only; the title keeps the whole name.
+    assert outcome["longLabel"] == "Bartholomew Mon…"
+    assert outcome["markupLabel"] == "Cy <b>Ng</b>"
+    assert outcome["lines"] == [
+        "graph-edge graph-edge-family",
+        "graph-edge graph-edge-professional",
+        "graph-edge graph-edge-social",
+    ]
+    assert outcome["labelsBefore"] == []
+    assert "Ana Duarte — reports to → Jin Self" in outcome["list"]
+    assert "Bartholomew Montgomery-Fitzwilliam — friend of (Climbing) → Ana Duarte" in outcome["list"]
+    assert {"Family", "Work", "Social", "Centred person", "Your own record"} <= set(outcome["legend"])
+    focused = outcome["focused"]
+    assert "graph-hot" in focused["cy"]
+    assert "graph-dim" not in focused["bart"]
+    assert "graph-dim" in focused["ana"]
+    assert focused["labels"] == ["sibling of"]
+    assert "Cy <b>Ng</b> — sibling of → Bartholomew Montgomery-Fitzwilliam" in focused["panel"]
+    assert "Open person" in focused["panel"] and "Centre here" in focused["panel"]
+    assert "graph-dim" not in outcome["blurred"]["ana"] and outcome["blurred"]["labels"] == []
+    assert outcome["recentred"] == "/api/graph?id=C&depth=2"
+    assert outcome["state"] == {"page": "graph", "args": ["C", 2]}
+    assert outcome["opened"] == "/api/person?id=C"
+
+
+_GRAPH_IS_DETERMINISTIC = (
+    _GRAPH_DOC
+    + r"""
+(async () => {
+  const picture = () => graphNodesDrawn().map((n) => n.attrs.transform);
+  await showGraph("A", 2);
+  const first = picture();
+  await showGraph("A", 2);
+  const second = picture();
+  console.log(JSON.stringify({ first, second }));
+})();
+"""
+)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_same_constellation_always_draws_the_same_picture(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _GRAPH_IS_DETERMINISTIC)
+    assert outcome["first"] == outcome["second"]
+    assert len(set(outcome["first"])) == 4
+    assert all(re.fullmatch(r"translate\(-?[0-9.]+ -?[0-9.]+\)", value) for value in outcome["first"])
+
+
+_GRAPH_MANY_LABELS = r"""
+(async () => {
+  const nodes = [{ person_id: "hub", name: "Hub Person", is_self: true }];
+  const edges = [];
+  for (let i = 0; i < 44; i += 1) {
+    const id = "p" + i;
+    nodes.push({ person_id: id, name: "Person number " + i + (i % 3 ? "" : " with a long surname"),
+      is_self: false });
+    const other = i < 16 ? "hub" : "p" + (i % 16);
+    edges.push({ subject_id: id, object_id: other, type: i % 2 ? "colleague_of" : "friend_of", label: null,
+      category: i % 2 ? "professional" : "social" });
+  }
+  globalThis.graphDoc = { center_id: "hub", nodes, edges, truncated: true };
+  await showGraph("hub", 2);
+  const boxes = graphView.nodes.map((n) => ({ x: n.x, y: n.y + (n.bottom - n.top) / 2, hw: n.hw,
+    hh: (n.top + n.bottom) / 2 }));
+  let overlaps = 0;
+  for (let i = 0; i < boxes.length; i += 1) for (let j = i + 1; j < boxes.length; j += 1) {
+    const a = boxes[i], b = boxes[j];
+    if (Math.abs(a.x - b.x) < a.hw + b.hw && Math.abs(a.y - b.y) < a.hh + b.hh) overlaps += 1;
+  }
+  const svg = view.all().find((n) => n.tag === "svg" && /graph-svg/.test(n.attrs.class || ""));
+  const [vx, vy, vw, vh] = svg.attrs.viewBox.split(" ").map(Number);
+  const inside = graphView.nodes.every((n) => n.x - n.hw >= vx && n.x + n.hw <= vx + vw
+    && n.y - n.top >= vy && n.y + n.bottom <= vy + vh);
+  const notices = view.children.filter((n) => n.tag === "p").map((n) => n.textContent);
+  console.log(JSON.stringify({ count: boxes.length, overlaps, inside, notices }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_forty_five_people_draw_without_overlapping_labels_inside_the_view_box(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _GRAPH_MANY_LABELS)
+    assert outcome["count"] == 45
+    assert outcome["overlaps"] == 0
+    assert outcome["inside"] is True
+    assert any(notice.startswith("This constellation is too large to draw in full") for notice in outcome["notices"])
+
+
+_GRAPH_EMPTY_NO_SELF_DEPTH_AND_PERSON = (
+    _GRAPH_DOC
+    + r"""
+(async () => {
+  globalThis.graphReply = { status: 404, body: { error: "no_self" } };
+  await showGraph(null, 2);
+  const noSelf = texts(view);
+  globalThis.graphDoc = { center_id: "A", nodes: [graphNodes[0]], edges: [], truncated: false };
+  await showGraph("A", 2);
+  const empty = { text: texts(view), svg: view.all().some((n) => n.tag === "svg") };
+  globalThis.graphDoc = { center_id: "A", nodes: graphNodes, edges: graphEdges, truncated: false };
+  await showGraph("A", 2);
+  const depth = view.all().find((n) => n.tag === "select" && n.attrs["aria-label"] === "How many steps out to draw");
+  const options = depth.children.map((o) => o.value);
+  depth.value = "4";
+  depth.listeners.change();
+  await tick();
+  const deeper = gets.at(-1);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Pat", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+    alias_details: [], alias_kinds: [] };
+  await showPerson("P", null, []);
+  find("Show constellation").listeners.click();
+  await tick();
+  const fromPerson = gets.at(-1);
+  history.back();
+  await tick();
+  const back = history.state.page;
+  history.forward();
+  await tick();
+  console.log(JSON.stringify({ noSelf, empty, options, value: depth.value, deeper, fromPerson, back,
+    forward: gets.at(-1) }));
+})();
+"""
+)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_constellation_explains_empty_and_missing_self_and_follows_depth_and_history(
+    db_file: Path, tmp_path: Path
+) -> None:
+    outcome = _run_page(db_file, tmp_path, _GRAPH_EMPTY_NO_SELF_DEPTH_AND_PERSON)
+    assert any(text.startswith("Your own record is not set") for text in outcome["noSelf"])
+    assert outcome["empty"]["svg"] is False
+    assert any("Add relationship" in text and "Ana Duarte" in text for text in outcome["empty"]["text"])
+    assert "Open person" in outcome["empty"]["text"]
+    assert outcome["options"] == ["1", "2", "3", "4"]
+    assert outcome["deeper"] == "/api/graph?id=A&depth=4"
+    assert outcome["fromPerson"] == "/api/graph?id=P&depth=2"
+    assert outcome["back"] == "person"
+    assert outcome["forward"] == "/api/graph?id=P&depth=2"
+
+
+_GRAPH_IN_CHINESE = (
+    _GRAPH_DOC
+    + r"""
+(async () => {
+  applyLanguage();
+  await showGraph("A", 2);
+  console.log(JSON.stringify({ nav: document.getElementById("nav-graph").textContent,
+    heading: view.children[0].textContent, list: texts(view.all().find((n) => n.tag === "details")) }));
+})();
+"""
+)
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_constellation_speaks_simplified_chinese(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _GRAPH_IN_CHINESE, language="zh-CN")
+    assert outcome["nav"] == "关系图"
+    assert outcome["heading"] == "Ana Duarte 的关系图"
+    assert "Ana Duarte — 汇报给 → Jin Self" in outcome["list"]

@@ -27,7 +27,8 @@ verbatim under the review disclosure warning, as `pctx import review` shows them
 withdrawal and commit through the existing use cases, each carrying the displayed `batch_digest` so a stale view
 is refused with `batch_changed`. M30.3 adds inline editing of a staged candidate on the same terms: the same
 `AmendStagedCandidate` the CLI calls, the same digest, and a refusal that names the field and never the value
-submitted. The Today view is a read of the `upcoming_dates` and `get_stale_relationships`
+submitted. The Constellation view is a read of `GetRelationshipGraph`, the same bounded traversal as the
+`get_relationship_graph` MCP tool, and carries names and relationship types only. The Today view is a read of the `upcoming_dates` and `get_stale_relationships`
 reports and the active reminders, which count only ordinary records whatever the process's elevation, and its one
 write completes a reminder through `CompleteReminder`. The person view also edits durable records, each audited with source `browser`: it can add, correct, or
 remove an alias through the same `AddAlias`, `UpdateAlias`, and `RemoveAlias` use cases as `pctx add-alias`,
