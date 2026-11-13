@@ -658,7 +658,9 @@ physical deletion from an unreachable device or third-party backup.
   never served. Batch withdrawal and commit (M30.2), amendment of a staged candidate (M30.3), alias add, correction,
   and removal, a rename or summary edit, a new affiliation, fact, or interaction, in-place correction of an
   affiliation, fact, interaction, trait, or reminder, removal of an affiliation, fact, or interaction, and
-  completion of a reminder from Today are token-guarded `POST`s through the same use cases and audit seam as the CLI and MCP tools. A correction or
+  completion of a reminder from Today are token-guarded `POST`s through the same use cases and audit seam as the CLI and MCP tools. The ⌘K command palette
+  and keyboard shortcuts add no endpoint and write nothing: the palette searches through the same people-list
+  endpoint as the list, under the same disclosure, at most six people at a time, and keeps nothing once closed. A correction or
   removal of a record the view's disclosure hides is refused as `record_not_found`, so the page cannot edit or
   delete what it cannot show. A refusal returns the use-case
   error code, plus — for an amendment or correction — the declared field each rule named (and, for an amendment,

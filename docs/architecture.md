@@ -97,7 +97,9 @@ Concrete implementations of the ports, plus anything that talks to the outside w
   file output), `vault_writer.py`, and `vcard_writer.py`.
 - `adapters/mcp/` — `server.py` (`build_server`/`main`, tool registration and annotations), `tools/` (one
   module per tool group), `prompts.py`, and the packaged `guide.md`.
-- `adapters/web/` — the loopback-only `pctx browse` Starlette app (`app.py`), its single page (`page.py`), and the
+- `adapters/web/` — the loopback-only `pctx browse` Starlette app (`app.py`), its single page (`page.py`, including
+  its command palette and keyboard shortcuts, which read only the people-list endpoint), its interface text
+  (`i18n.py`), and the
   editable-field declarations (`fields.py`); a fourth client of the same use cases.
 - `adapters/importers/` — source-specific, stdlib-backed email/mbox, ICS, LinkedIn, Outlook, vCard, and WhatsApp
   extraction plus routing; every importer feeds the shared candidate staging use case described in [docs/import.md](import.md).

@@ -180,7 +180,9 @@ Prefer a table to a terminal? `pctx browse --open` opens a local page over the s
 - correct an affiliation, fact, interaction, trait, or reminder in place, with the before and after kept in the
   audit log;
 - permanently remove an affiliation, fact, or interaction, after a confirmation;
-- review a staged import batch person by person, edit its candidates, then withdraw or commit them.
+- review a staged import batch person by person, edit its candidates, then withdraw or commit them;
+- get around from the keyboard: ⌘K / Ctrl+K opens a command palette that finds people and runs commands, `/`
+  searches people, `g t` / `g p` / `g s` switch views, and `?` lists the shortcuts.
 
 It binds `127.0.0.1` only, every request needs the per-launch token printed in its URL, and every write goes
 through the same audited use cases as the CLI and MCP tools. Sensitive records stay hidden unless the operator
@@ -240,7 +242,8 @@ encryption or opt into SQLCipher at-rest encryption (`uv sync --extra encrypted`
   LinkedIn, Outlook, and WhatsApp exports. Agents can stage extracted candidates the same way. See
   [docs/import.md](docs/import.md).
 - **Local browser**: `pctx browse --open` serves a loopback-only, token-guarded page to see what needs attention today, browse people, rename them and edit
-  their summary and aliases, correct affiliations, facts, traits, and reminders, and review, edit, and commit staged import batches.
+  their summary and aliases, correct affiliations, facts, traits, and reminders, and review, edit, and commit staged import batches,
+  with a ⌘K / Ctrl+K command palette and keyboard shortcuts.
   See [Review and edit in your browser](#review-and-edit-in-your-browser).
 - **Groups**: record classes, teams, clubs, and households with `pctx group`, then ask how two people know each
   other with `pctx group shared A B`. See [docs/shared-connections-examples.md](docs/shared-connections-examples.md).

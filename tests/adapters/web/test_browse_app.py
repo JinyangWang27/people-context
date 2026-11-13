@@ -912,6 +912,30 @@ globalThis.fetch = async (path, options) => {
   return { ok: true, json: async () => globalThis.peopleDoc || { people: [], next_cursor: null } };
 };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+// Keyboard and focus, for the palette and the shortcuts: a body overlays are appended to, focus that
+// moves `document.activeElement`, and `press`, which offers a keydown to the focused element's own
+// listener and then, unless it stopped there, to the document's.
+Object.defineProperty(El.prototype, "tagName", { get() { return String(this.tag).toUpperCase(); } });
+El.prototype.focus = function focus() { document.activeElement = this; };
+El.prototype.removeAttribute = function removeAttribute(name) { delete this.attrs[name]; };
+const documentEvents = {};
+document.addEventListener = (name, listener) => { documentEvents[name] = listener; };
+document.body = new El("body");
+// The page's own view sits in the body, as in the real document, so an overlay can make it inert.
+document.body.append(document.getElementById("view"));
+globalThis.overlays = () => document.body.children.filter((n) => n.className === "overlay");
+document.activeElement = document.body;
+globalThis.press = (key, modifiers) => {
+  const event = Object.assign({ key, target: document.activeElement, metaKey: false, ctrlKey: false,
+    altKey: false, shiftKey: false, isComposing: false, prevented: false, stopped: false }, modifiers);
+  event.preventDefault = () => { event.prevented = true; };
+  event.stopPropagation = () => { event.stopped = true; };
+  const own = event.target && event.target.listeners && event.target.listeners.keydown;
+  if (own) own(event);
+  if (!event.stopped && documentEvents.keydown) documentEvents.keydown(event);
+  return event;
+};
+const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
 """
 
 _DOUBLE_CLICKS = r"""
@@ -3290,3 +3314,349 @@ def test_the_page_opens_on_today_and_completes_a_reminder_in_place(
     assert outcome["disabled"] is True
     assert outcome["posts"] == [["/api/reminder/complete", {"reminder_id": "R1"}]]
     assert outcome["logging"] is True
+
+
+# --- Command palette, shortcuts, and view chrome -------------------------------------------------
+
+
+def test_the_palette_search_is_the_bounded_people_search(db_file: Path) -> None:
+    # The palette asks the existing people endpoint for a handful; it reaches nothing else.
+    ids = _seed_people(db_file)
+    runtime = build_runtime(db_file)
+    try:
+        runtime.use_cases.set_affiliation.execute(
+            SetAffiliationInput(person_id=ids["elena"], org="Allotment Society", role="treasurer")
+        )
+    finally:
+        runtime.close()
+    with _client(db_file) as client:
+        found = client.get("/api/people", params={"q": "elena", "limit": "6"}).json()
+        page = client.get(f"/?token={_TOKEN}", headers={TOKEN_HEADER: ""}).text
+    assert [p["id"] for p in found["people"]] == [ids["elena"]]
+    assert found["organization_names"] == {ids["elena"]: ["Allotment Society"]}
+    assert 'api("/api/people" + query({ q: text, limit: String(PALETTE_LIMIT) }))' in page
+    assert "const PALETTE_LIMIT = 6;" in page
+    assert '<button type="button" id="nav-palette"></button>' in page
+
+
+_PALETTE = r"""
+(async () => {
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  const modifier = IS_MAC ? { metaKey: true } : { ctrlKey: true };
+  globalThis.peopleDoc = { next_cursor: null, organization_names: { P1: ["Acme"] }, people: [
+    { id: "P1", canonical_name: "Jordan Lee", display_name: "Jordy", full_name: "Jordan Lee", aliases: [], emails: [] },
+    { id: "P2", canonical_name: "Jordan Park", aliases: [], emails: [] }] };
+  globalThis.personDoc = { person: { id: "P1", canonical_name: "Jordan Lee", display_name: "Jordy",
+    full_name: "Jordan Lee", aliases: [], emails: [] }, disclosure: { context: "ordinary" }, affiliations: [],
+    facts: [], interactions: [], reminders: [], traits: [], alias_kinds: [], alias_details: [] };
+  await showPeople(null, []);
+  const search = labelled("search people");
+  search.focus();
+  // ⌘K / Ctrl+K opens the palette even from inside a text box.
+  const opened = press("k", modifier);
+  const backdrop = overlays()[0];
+  const dialog = backdrop.children[0];
+  const input = dialog.children[0];
+  const listbox = dialog.children[1];
+  const options = () => listbox.all().filter((n) => n.attrs.role === "option");
+  const label = (option) => option.all().filter((n) => n.className === "palette-name")[0].textContent;
+  const first = { prevented: opened.prevented, role: dialog.attrs.role, modal: dialog.attrs["aria-modal"],
+    focused: document.activeElement === input, inert: view.inert === true, listbox: listbox.attrs.role,
+    commands: options().map(label) };
+  press("Escape");
+  const closed = { open: document.body.children.includes(backdrop), restored: document.activeElement === search,
+    inert: view.inert };
+  // The header hint opens it too; typing searches people, debounced, latest text only.
+    document.getElementById("nav-palette").listeners.click();
+  const box = document.activeElement;
+  const before = gets.length;
+  box.value = "jo"; box.listeners.input();
+  box.value = "jor"; box.listeners.input();
+  await settle();
+  const searched = gets.slice(before);
+  const listed = overlays()[0].children[0].children[1];
+  const shown = listed.all().filter((n) => n.attrs.role === "option");
+  const subs = listed.all().filter((n) => n.className === "palette-sub").map((n) => n.textContent);
+  const activeAt = () => box.attrs["aria-activedescendant"];
+  const selected = () => shown.filter((n) => n.attrs["aria-selected"] === "true").map((n) => n.id);
+  const start = { active: activeAt(), selected: selected(), ids: shown.map((n) => n.id) };
+  press("ArrowDown");
+  const down = { active: activeAt(), selected: selected() };
+  press("ArrowUp");
+  press("ArrowUp");
+  const wrapped = activeAt();
+  press("ArrowDown");
+  const tab = press("Tab");
+  const entered = press("Enter");
+  await tick();
+  const person = { request: gets.at(-1), title: view.children[0].textContent, open: overlays().length,
+    nav: document.getElementById("nav-people").attrs["aria-current"] };
+  view.all().find((n) => n.tag === "button" && n.textContent === t("person.back")).listeners.click();
+  await tick();
+  console.log(JSON.stringify({ first, closed, searched, names: shown.map((n) => n.all()
+    .filter((c) => c.className === "palette-name")[0].textContent), subs, start, down, wrapped,
+    tabHeld: tab.prevented, entered: entered.prevented, person, back: [gets.at(-1), view.children[0].textContent] }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_palette_finds_people_and_runs_commands_by_keyboard(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _PALETTE)
+    assert outcome["first"] == {
+        "prevented": True,
+        "role": "dialog",
+        "modal": "true",
+        "focused": True,
+        "inert": True,
+        "listbox": "listbox",
+        "commands": [
+            "Go to Today",
+            "Go to People",
+            "Go to Import sources",
+            "Switch language to 中文",
+            "Close the viewer",
+        ],
+    }
+    assert outcome["closed"] == {"open": False, "restored": True, "inert": False}
+    assert outcome["searched"] == ["/api/people?q=jor&limit=6"]
+    assert outcome["names"] == ["Jordy", "Jordan Park"]
+    assert outcome["subs"] == ["Jordan Lee · Acme"]
+    ids = outcome["start"]["ids"]
+    assert outcome["start"] == {"active": ids[0], "selected": [ids[0]], "ids": ids}
+    assert outcome["down"] == {"active": ids[1], "selected": [ids[1]]}
+    assert outcome["wrapped"] == ids[-1]
+    assert outcome["tabHeld"] is True and outcome["entered"] is True
+    assert outcome["person"] == {"request": "/api/person?id=P1", "title": "Jordy", "open": 0, "nav": "page"}
+    assert outcome["back"] == ["/api/people?sort=name", "People"]
+
+
+_PALETTE_LATEST_WINS = r"""
+(async () => {
+  const modifier = IS_MAC ? { metaKey: true } : { ctrlKey: true };
+  const doc = (id, name) => ({ next_cursor: null, people: [{ id, canonical_name: name, aliases: [], emails: [] }] });
+  globalThis.personDoc = { person: { id: "B", canonical_name: "Bea", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [], traits: [],
+    alias_kinds: [], alias_details: [] };
+  await tick();
+  press("k", modifier);
+  const box = document.activeElement;
+  holdGets = true;
+  box.value = "a"; box.listeners.input(); await settle();
+  box.value = "b"; box.listeners.input(); await settle();
+  globalThis.peopleDoc = doc("B", "Bea");
+  heldGets[1](); await tick();
+  const names = () => document.body.all().filter((n) => n.className === "palette-name").map((n) => n.textContent);
+  const afterLatest = names();
+  globalThis.peopleDoc = doc("A", "Ann");
+  heldGets[0](); await tick();
+  const afterStale = names();
+  // Enter before the latest reply runs once that reply has landed, on its first result.
+  box.value = "be"; box.listeners.input();
+  press("Enter");
+  const waited = overlays().length;
+  globalThis.peopleDoc = doc("B", "Bea");
+  await settle();
+  heldGets[2](); await tick();
+  holdGets = false;
+  heldGets.slice(3).forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ afterLatest, afterStale, waited, open: overlays().length, gets: gets.slice(1),
+    title: view.children[0].textContent }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_a_slow_palette_reply_never_replaces_the_latest(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _PALETTE_LATEST_WINS)
+    assert outcome["afterLatest"] == outcome["afterStale"] == ["Bea"]
+    assert outcome["waited"] == 1 and outcome["open"] == 0
+    assert outcome["gets"] == [
+        "/api/people?q=a&limit=6",
+        "/api/people?q=b&limit=6",
+        "/api/people?q=be&limit=6",
+        "/api/person?id=B",
+    ]
+    assert outcome["title"] == "Bea"
+
+
+_SHORTCUTS = r"""
+(async () => {
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.peopleDoc = { people: [], sources: [], next_cursor: null };
+  await tick();
+  const nav = (id) => document.getElementById(id).attrs["aria-current"];
+  press("g"); press("s"); await tick();
+  const sources = { request: gets.at(-1), title: view.children[0].textContent, people: nav("nav-people"),
+    sources: nav("nav-sources") };
+  const slash = press("/"); await tick();
+  const focused = (document.activeElement.attrs || {})["aria-label"];
+  const fromSlash = gets.at(-1);
+  // Typing in a box, or holding a modifier, is never a shortcut.
+  const count = gets.length;
+  press("g"); press("s"); press("?"); await tick();
+  document.activeElement = document.body;
+  press("g", { altKey: true }); press("s"); press("g"); press("s", { ctrlKey: true }); await tick();
+  const ignored = gets.length - count + overlays().length;
+  press("g"); press("p"); await tick();
+  const people = gets.at(-1);
+  const help = press("?", { shiftKey: true });
+  const sheet = overlays()[0].children[0];
+  const helpOpen = { prevented: help.prevented, role: sheet.attrs.role, modal: sheet.attrs["aria-modal"],
+    label: sheet.attrs["aria-label"], focus: document.activeElement.textContent,
+    keys: sheet.all().filter((n) => n.tag === "kbd").map((n) => n.textContent) };
+  const tabHeld = press("Tab").prevented;
+  press("Escape");
+  console.log(JSON.stringify({ sources, slash: slash.prevented, focused, fromSlash, ignored, people, helpOpen,
+    tabHeld, closed: overlays().length, restored: document.activeElement === document.body }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_keyboard_shortcuts_move_between_views_and_stay_out_of_typing(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _SHORTCUTS)
+    assert outcome["sources"] == {
+        "request": "/api/sources",
+        "title": "Import sources",
+        "people": "false",
+        "sources": "page",
+    }
+    assert outcome["slash"] is True
+    assert outcome["focused"] == "search people"
+    assert outcome["fromSlash"] == "/api/people?sort=name"
+    assert outcome["ignored"] == 0
+    assert outcome["people"] == "/api/people?sort=name"
+    assert outcome["helpOpen"]["prevented"] is True
+    assert outcome["helpOpen"]["role"] == "dialog" and outcome["helpOpen"]["modal"] == "true"
+    assert outcome["helpOpen"]["label"] == "Keyboard shortcuts"
+    assert outcome["helpOpen"]["focus"] == "Close"
+    assert outcome["helpOpen"]["keys"][2:] == ["/", "g", "t", "g", "p", "g", "s", "?", "Esc"]
+    assert outcome["tabHeld"] is True
+    assert outcome["closed"] == 0 and outcome["restored"] is True
+
+
+_AVATARS_CARDS_AND_LOADING = r"""
+(async () => {
+  const initialsOf = (node) => node.all().filter((n) => (n.className || "").startsWith("avatar"))
+    .map((n) => [n.attrs["data-initials"], n.className, n.attrs["aria-hidden"]]);
+  globalThis.peopleDoc = { next_cursor: null, people: [
+    { id: "P1", canonical_name: "Jordan Lee", aliases: [], emails: [] },
+    { id: "P2", canonical_name: "王小明", aliases: [], emails: [] },
+    { id: "P3", canonical_name: "cher", aliases: [], emails: [] }] };
+  await showPeople(null, []);
+  const list = initialsOf(view);
+  await showPeople(null, []);
+  const stable = JSON.stringify(initialsOf(view)) === JSON.stringify(list);
+  globalThis.personDoc = { person: { id: "P1", canonical_name: "Jordan Lee", display_name: "Jordy",
+    full_name: "Jordan Lee", aliases: [], emails: [] }, disclosure: { context: "ordinary" },
+    affiliations: [{ affiliation: { id: "A", role: "Eng" }, organization_name: "Acme" },
+      { affiliation: { id: "A2", role: "Lead" }, organization_name: "Acme" }],
+    facts: [], interactions: [{ id: "I", occurred_at: "2026-11-01T10:00:00", summary: "Coffee" }],
+    reminders: [], traits: [], alias_kinds: [], alias_details: [] };
+  holdGets = true;
+  const opening = showPerson("P1", null, []);
+  const busy = [view.attrs["aria-busy"], view.children[0].textContent];
+  holdGets = false; heldGets.forEach((r) => r()); await opening;
+  const head = view.children[1];
+  const cards = view.children.filter((n) => n.tag === "section");
+  console.log(JSON.stringify({ list, stable, busy, settled: [view.attrs["aria-busy"], view.attrs["data-page"]],
+    title: view.children[0].textContent, head: [head.className, initialsOf(head),
+      head.all().map((n) => n.textContent).filter((v) => v)],
+    cards: cards.map((n) => [n.className, n.children[0].textContent]),
+    lastIsBack: view.children.at(-1).textContent }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_people_get_avatars_and_the_person_view_gets_a_header_and_cards(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _AVATARS_CARDS_AND_LOADING)
+    assert [entry[0] for entry in outcome["list"]] == ["JL", "王", "C"]
+    assert all(entry[1].startswith("avatar avatar-") and entry[2] == "true" for entry in outcome["list"])
+    assert outcome["stable"] is True
+    # The view being replaced is marked busy while its successor loads, and settles once drawn.
+    assert outcome["busy"] == ["true", "People"]
+    assert outcome["settled"] == ["false", "person"]
+    assert outcome["title"] == "Jordy"
+    assert outcome["head"][0] == "person-head"
+    # The initials are of the name shown, here the preferred name.
+    assert outcome["head"][1][0][0] == "J" and outcome["head"][1][0][1].endswith(" avatar-large")
+    assert outcome["head"][1][0][1].split()[1] == outcome["list"][0][1].split()[1]
+    assert outcome["head"][2] == ["Jordan Lee", "Acme"]
+    assert outcome["cards"] == [
+        ["card", "Relationships"],
+        ["card", "Affiliations"],
+        ["card", "Facts"],
+        ["card timeline", "Interactions"],
+        ["card", "Reminders"],
+        ["card", "Traits"],
+    ]
+    assert outcome["lastIsBack"] == "Back to people"
+
+
+_PALETTE_IN_CHINESE = r"""
+(async () => {
+  globalThis.peopleDoc = { people: [], sources: [], next_cursor: null };
+  await tick();
+  press("k", IS_MAC ? { metaKey: true } : { ctrlKey: true });
+  const box = document.activeElement;
+  const names = () => document.body.all().filter((n) => n.className === "palette-name").map((n) => n.textContent);
+  const all = names();
+  box.value = "sources"; box.listeners.input();
+  const english = names();
+  press("Enter"); await settle();
+  console.log(JSON.stringify({ all, english, placeholder: box.placeholder, title: view.children[0].textContent,
+    hint: document.getElementById("nav-palette").attrs["aria-label"] }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_palette_speaks_chinese_and_still_finds_english_command_names(db_file: Path, tmp_path: Path) -> None:
+    outcome = _run_page(db_file, tmp_path, _PALETTE_IN_CHINESE, language="zh-CN")
+    assert outcome["all"] == ["前往今日", "前往联系人", "前往导入来源", "将语言切换为 EN", "关闭浏览页面"]
+    assert outcome["english"] == ["前往导入来源"]
+    assert outcome["placeholder"] == "搜索联系人或输入命令"
+    assert outcome["title"] == "导入来源"
+    assert outcome["hint"] == "打开命令面板"
+
+
+_PALETTE_REVIEW_FIXES = r"""
+(async () => {
+  const modifier = IS_MAC ? { metaKey: true } : { ctrlKey: true };
+  const names = () => document.body.all().filter((n) => n.className === "palette-name").map((n) => n.textContent);
+  globalThis.peopleDoc = { next_cursor: null, people: [{ id: "A", canonical_name: "Ann", aliases: [], emails: [] }] };
+  await tick();
+  // Help opened from a page control, then replaced by the palette: closing returns to that control.
+  const origin = document.getElementById("nav-people");
+  origin.focus();
+  press("?");
+  press("k", modifier);
+  const box = document.activeElement;
+  box.value = "an"; box.listeners.input(); await settle();
+  const found = names();
+  // New text: the people found for the old text are gone before the new search answers.
+  holdGets = true;
+  box.value = "zed"; box.listeners.input();
+  const whileSearching = names();
+  holdGets = false;
+  heldGets.forEach((r) => r()); await settle();
+  press("Escape");
+  console.log(JSON.stringify({ found, whileSearching, restored: document.activeElement === origin,
+    open: overlays().length }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_palette_drops_stale_people_and_returns_focus_past_a_replaced_overlay(
+    db_file: Path, tmp_path: Path
+) -> None:
+    assert _run_page(db_file, tmp_path, _PALETTE_REVIEW_FIXES) == {
+        # A person, then the one command whose name also holds the text.
+        "found": ["Ann", "Switch language to 中文"],
+        "whileSearching": [],
+        "restored": True,
+        "open": 0,
+    }
