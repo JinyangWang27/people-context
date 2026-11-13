@@ -254,6 +254,46 @@ kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; font: 12px/1.5 
   *, *::before, *::after { animation: none !important; transition: none !important; }
   main[aria-busy="true"]::before { background: var(--accent); opacity: 0.5; }
 }
+/* Constellation */
+.graph-canvas, .graph-panel { background: var(--surface); }
+.graph { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: 16px; align-items: start;
+  --graph-family: #c2410c; --graph-professional: #2f5fb3; --graph-social: #15803d; --graph-other: #7a7a82; }
+@media (prefers-color-scheme: dark) {
+  .graph { --graph-family: #fb923c; --graph-professional: #8fb1ff; --graph-social: #4ade80;
+    --graph-other: #a0a0a8; }
+}
+.graph-canvas { overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.graph-svg { display: block; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.graph-edge { fill: none; stroke-width: 2; stroke-linecap: round; }
+.graph-edge-family { stroke: var(--graph-family); }
+.graph-edge-professional { stroke: var(--graph-professional); stroke-dasharray: 7 4; }
+.graph-edge-social { stroke: var(--graph-social); stroke-dasharray: 1 5; stroke-width: 2.5; }
+.graph-edge-other { stroke: var(--graph-other); stroke-dasharray: 10 3 2 3; }
+.graph-edge-mixed { stroke: var(--fg); stroke-width: 3; }
+.graph-edge.graph-hot { stroke-width: 3.5; }
+.graph-node { cursor: pointer; touch-action: none; outline: none; }
+.graph-dot { fill: var(--bg); stroke: var(--fg); stroke-width: 1.5; }
+.graph-center .graph-dot { fill: var(--accent); stroke: var(--accent); }
+.graph-self-ring { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 3 2; }
+.graph-focus { fill: none; stroke: none; }
+.graph-node:focus-visible .graph-focus { stroke: var(--fg); stroke-width: 2; }
+.graph-hot .graph-dot { stroke: var(--accent); stroke-width: 3.5; }
+.graph-label, .graph-edge-label { font-size: 12px; fill: var(--fg); paint-order: stroke; stroke: var(--bg);
+  stroke-width: 3px; stroke-linejoin: round; }
+.graph-center .graph-label { font-weight: 600; }
+.graph-edge-label { display: none; font-style: italic; }
+.graph-edge-label.graph-shown { display: inline; }
+.graph-dim { opacity: 0.15; }
+.graph-node, .graph-edge { transition: opacity 0.15s; }
+.graph-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; margin: 8px 0 0;
+  color: var(--muted); font-size: 13px; }
+.graph-legend li { display: flex; align-items: center; gap: 6px; }
+.graph-panel { border: 1px solid var(--line); border-radius: 6px; padding: 8px 12px; overflow-wrap: anywhere; }
+.graph-panel h3 { margin: 0 0 4px; font-size: 16px; }
+.graph-panel ul, .graph-list ul { padding-left: 20px; margin: 4px 0; }
+.graph-list { margin-top: 16px; }
+@media (max-width: 720px) { .graph { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .graph-node, .graph-edge { transition: none; } }
 </style>
 </head>
 <body>
@@ -264,6 +304,7 @@ kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; font: 12px/1.5 
 <button type="button" id="nav-today">Today</button>
 <button type="button" id="nav-people">People</button>
 <button type="button" id="nav-sources">Import sources</button>
+<button type="button" id="nav-graph">Constellation</button>
 <button type="button" id="nav-done">Close</button>
 <button type="button" id="nav-lang"></button>
 </nav>
@@ -323,6 +364,7 @@ function applyLanguage() {
   document.getElementById("nav-today").textContent = t("nav.today");
   document.getElementById("nav-people").textContent = t("nav.people");
   document.getElementById("nav-sources").textContent = t("nav.sources");
+  document.getElementById("nav-graph").textContent = t("graph.nav");
   document.getElementById("nav-done").textContent = t("nav.done");
   const toggle = document.getElementById("nav-lang");
   const other = I18N.languages.find((code) => code !== lang) || lang;
@@ -1078,6 +1120,7 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
     el("h3", t("person.relationships")),
     relationships.children.length ? relationships : el("p", t("common.none_recorded"), "notice"),
     relationshipAdder(doc.person.id, reopen),
+    button(t("graph.open"), () => showGraph(doc.person.id, GRAPH_DEFAULT_DEPTH)),
     el("h3", t("person.affiliations")),
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
       t("person.affiliation_label", { role: a.affiliation.role, organization: a.organization_name })])),
@@ -1964,13 +2007,13 @@ const CHORD_TIMEOUT = 1200;
 // The nav button each view belongs to. Opening a view marks it at once and dims the view it
 // replaces, which stays unclickable until the new one is drawn or its request is refused.
 const NAV_OF_PAGE = { today: "nav-today", people: "nav-people", person: "nav-people", sources: "nav-sources",
-  source: "nav-sources", batch: "nav-sources" };
+  source: "nav-sources", batch: "nav-sources", graph: "nav-graph" };
 let openingPage = null;
 
 function viewOpening(page) {
   openingPage = page;
   view.setAttribute("aria-busy", "true");
-  for (const id of ["nav-today", "nav-people", "nav-sources"]) {
+  for (const id of ["nav-today", "nav-people", "nav-graph", "nav-sources"]) {
     document.getElementById(id).setAttribute("aria-current", NAV_OF_PAGE[page] === id ? "page" : "false");
   }
 }
@@ -2100,6 +2143,7 @@ function paletteCommands() {
   const commands = [
     ["palette.command.today", {}, () => showToday()],
     ["palette.command.people", {}, () => showPeople(null, [])],
+    ["palette.command.graph", {}, () => showGraph(null, GRAPH_DEFAULT_DEPTH)],
     ["palette.command.sources", {}, () => showSources(null, [])],
   ];
   if (other) commands.push(["palette.command.language", { language: LANGUAGE_NAMES[other] || other }, switchLanguage]);
@@ -2271,6 +2315,7 @@ function shortcutList() {
     [["/"], null, "shortcuts.search"],
     [["g", "t"], "then", "shortcuts.today"],
     [["g", "p"], "then", "shortcuts.people"],
+    [["g", "c"], "then", "shortcuts.graph"],
     [["g", "s"], "then", "shortcuts.sources"],
     [["?"], null, "shortcuts.help"],
     [["Esc"], null, "shortcuts.close"],
@@ -2331,9 +2376,10 @@ function onShortcut(event) {
   clearTimeout(chord);
   chord = null;
   if (event.metaKey || event.ctrlKey || event.altKey || event.isComposing || typing(event.target)) return;
-  if (waiting && (key === "t" || key === "p" || key === "s")) {
+  if (waiting && (key === "t" || key === "p" || key === "c" || key === "s")) {
     event.preventDefault();
     if (key === "t") showToday();
+    else if (key === "c") showGraph(null, GRAPH_DEFAULT_DEPTH);
     else if (key === "p") showPeople(null, []);
     else showSources(null, []);
   } else if (key === "g") {
@@ -2358,6 +2404,445 @@ function applyShortcutLanguage() {
   paletteHint.title = t("palette.open");
 }
 
+// --- Constellation --------------------------------------------------------------------------------
+// The people around one person, drawn. The SVG is built element by element like the rest of the page,
+// with every colour from a CSS class. The layout is a small force simulation (people repel each other,
+// relationships pull like springs, everyone drifts towards the middle, and label boxes are pushed
+// apart) started from positions derived from the person ids, so the same graph always draws the same
+// picture. Everything the drawing shows is also written out as text beside it.
+
+// An XML namespace name, never fetched; written in two pieces so the document holds no literal URL.
+const SVG_NS = "http:" + "//www.w3.org/2000/svg";
+const GRAPH_DEPTHS = [1, 2, 3, 4];
+const GRAPH_DEFAULT_DEPTH = 2;
+// The categories with a line style of their own; any other category is drawn as `other`.
+const GRAPH_CATEGORIES = { family: "graph.category.family", professional: "graph.category.professional",
+  social: "graph.category.social", other: "graph.category.other" };
+const GRAPH_LABEL_CHARS = 16;
+const GRAPH_TICKS = 320;
+const GRAPH_TICKS_PER_FRAME = 8;
+const GRAPH_LINK_LENGTH = 90;
+const GRAPH_RING = 120;
+const GRAPH_GAP = 6;
+
+// The constellation last laid out: its people, with their positions and label boxes.
+let graphView = null;
+
+function svgEl(tag, attrs) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs || {})) node.setAttribute(name, String(value));
+  return node;
+}
+
+// FNV-1a over the id, as a fraction in [0, 1): the same id always starts in the same place.
+function graphSeed(text) {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+function graphShortName(name) {
+  const chars = Array.from(name);
+  return chars.length > GRAPH_LABEL_CHARS ? chars.slice(0, GRAPH_LABEL_CHARS - 1).join("") + "…" : name;
+}
+
+// An estimate of a 12px label's width; wide (CJK) characters count about twice a Latin one.
+function graphTextWidth(text) {
+  let width = 0;
+  for (const ch of text) width += ch.codePointAt(0) > 0x2e7f ? 12.5 : 6.8;
+  return width;
+}
+
+function graphCategory(category) {
+  return Object.hasOwn(GRAPH_CATEGORIES, category) ? category : "other";
+}
+
+// How one drawn line is styled: by its category, or as `mixed` when the two people are related in
+// more than one, so a line never claims a single category the pair's relationships do not share.
+function graphLinkStyle(link) {
+  const categories = new Set(link.edges.map((edge) => graphCategory(edge.category)));
+  return categories.size > 1 ? "mixed" : graphCategory(link.edges[0].category);
+}
+
+function graphTypeLabel(type) {
+  return valueLabel(type).replaceAll("_", " ");
+}
+
+function graphEdgeText(edge, names) {
+  const type = graphTypeLabel(edge.type) + (edge.label ? " (" + edge.label + ")" : "");
+  return t("graph.edge", { subject: names.get(edge.subject_id), type, object: names.get(edge.object_id) });
+}
+
+function graphLayout(doc) {
+  const index = new Map(doc.nodes.map((node, i) => [node.person_id, i]));
+  const centre = index.get(doc.center_id) ?? 0;
+  const neighbours = doc.nodes.map(() => new Set());
+  // One line per pair of people, however many relationships join them.
+  const pairs = new Map();
+  for (const edge of doc.edges) {
+    const a = index.get(edge.subject_id), b = index.get(edge.object_id);
+    if (a === undefined || b === undefined || a === b) continue;
+    neighbours[a].add(b);
+    neighbours[b].add(a);
+    const key = Math.min(a, b) + ":" + Math.max(a, b);
+    if (!pairs.has(key)) pairs.set(key, { a, b, edges: [] });
+    pairs.get(key).edges.push(edge);
+  }
+  // Everyone starts on a ring by their distance from the centre, at an angle their id decides.
+  const ring = doc.nodes.map(() => -1);
+  ring[centre] = 0;
+  const queue = [centre];
+  while (queue.length) {
+    const i = queue.shift();
+    for (const j of neighbours[i]) if (ring[j] < 0) { ring[j] = ring[i] + 1; queue.push(j); }
+  }
+  const nodes = doc.nodes.map((node, i) => {
+    const label = graphShortName(node.name);
+    const radius = i === centre ? 14 : 8;
+    const turn = graphSeed(node.person_id) * 2 * Math.PI;
+    const distance = i === centre ? 0
+      : GRAPH_RING * (ring[i] < 0 ? 4 : ring[i]) * (0.8 + 0.4 * graphSeed(node.person_id + "|"));
+    const halfWidth = Math.max(radius * 2, graphTextWidth(label)) / 2 + 3;
+    return { id: node.person_id, name: node.name, self: node.is_self, centre: i === centre, label, radius,
+      x: distance * Math.cos(turn), y: distance * Math.sin(turn), vx: 0, vy: 0, fixed: i === centre,
+      // The box the circle and the label beneath it occupy, measured from the circle's centre.
+      hw: halfWidth, top: radius + 2, bottom: radius + 18 };
+  });
+  return { nodes, centre, neighbours, links: [...pairs.values()], tick: 0 };
+}
+
+// Push apart any two label boxes that overlap, along whichever axis needs the smaller move.
+function graphSeparate(nodes) {
+  let moved = false;
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const a = nodes[i], b = nodes[j];
+      const dx = b.x - a.x;
+      const dy = (b.y + (b.bottom - b.top) / 2) - (a.y + (a.bottom - a.top) / 2);
+      const ox = a.hw + b.hw + GRAPH_GAP - Math.abs(dx);
+      const oy = (a.top + a.bottom + b.top + b.bottom) / 2 + GRAPH_GAP - Math.abs(dy);
+      if (ox <= 0 || oy <= 0) continue;
+      moved = true;
+      const share = a.fixed ? [0, 1] : b.fixed ? [1, 0] : [0.5, 0.5];
+      if (ox < oy) {
+        const sign = dx > 0 || (dx === 0 && i < j) ? 1 : -1;
+        a.x -= sign * ox * share[0];
+        b.x += sign * ox * share[1];
+      } else {
+        const sign = dy > 0 || (dy === 0 && i < j) ? 1 : -1;
+        a.y -= sign * oy * share[0];
+        b.y += sign * oy * share[1];
+      }
+    }
+  }
+  return moved;
+}
+
+function graphStep(layout) {
+  const nodes = layout.nodes;
+  const alpha = Math.max(0.05, 1 - layout.tick / GRAPH_TICKS);
+  layout.tick += 1;
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const a = nodes[i], b = nodes[j];
+      let dx = b.x - a.x, dy = b.y - a.y;
+      if (dx === 0 && dy === 0) { dx = (j - i) * 0.1; dy = 0.1; }
+      const distance2 = Math.max(dx * dx + dy * dy, 100);
+      const push = 9000 * alpha / distance2 / Math.sqrt(distance2);
+      a.vx -= dx * push; a.vy -= dy * push;
+      b.vx += dx * push; b.vy += dy * push;
+    }
+  }
+  for (const link of layout.links) {
+    const a = nodes[link.a], b = nodes[link.b];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const distance = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+    const pull = (distance - GRAPH_LINK_LENGTH) * 0.06 * alpha / distance;
+    a.vx += dx * pull; a.vy += dy * pull;
+    b.vx -= dx * pull; b.vy -= dy * pull;
+  }
+  for (const node of nodes) {
+    if (node.fixed) { node.vx = 0; node.vy = 0; continue; }
+    node.vx = (node.vx - node.x * 0.01 * alpha) * 0.6;
+    node.vy = (node.vy - node.y * 0.01 * alpha) * 0.6;
+    node.x += node.vx;
+    node.y += node.vy;
+  }
+  graphSeparate(nodes);
+  if (layout.tick === GRAPH_TICKS) for (let pass = 0; pass < 200 && graphSeparate(nodes); pass += 1);
+}
+
+function graphBounds(nodes) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const node of nodes) {
+    minX = Math.min(minX, node.x - node.hw); maxX = Math.max(maxX, node.x + node.hw);
+    minY = Math.min(minY, node.y - node.top); maxY = Math.max(maxY, node.y + node.bottom);
+  }
+  const pad = 16;
+  const width = Math.max(maxX - minX + 2 * pad, 360), height = Math.max(maxY - minY + 2 * pad, 220);
+  return { x: (minX + maxX - width) / 2, y: (minY + maxY - height) / 2, width, height };
+}
+
+function graphLegend(layout) {
+  const legend = el("ul", null, "graph-legend");
+  legend.setAttribute("aria-label", t("graph.legend"));
+  const sample = (...shapes) => {
+    const drawing = svgEl("svg", { width: 28, height: 16, viewBox: "0 0 28 16", "aria-hidden": "true" });
+    drawing.append(...shapes);
+    return drawing;
+  };
+  const entry = (drawing, key) => {
+    const item = el("li");
+    item.append(drawing, el("span", t(key)));
+    legend.append(item);
+  };
+  const shown = new Set(layout.links.map(graphLinkStyle));
+  for (const [category, key] of [...Object.entries(GRAPH_CATEGORIES), ["mixed", "graph.category.mixed"]]) {
+    if (!shown.has(category)) continue;
+    entry(sample(svgEl("line", { class: "graph-edge graph-edge-" + category, x1: 2, y1: 8, x2: 26, y2: 8 })), key);
+  }
+  const centre = svgEl("g", { class: "graph-center" });
+  centre.append(svgEl("circle", { class: "graph-dot", cx: 14, cy: 8, r: 6 }));
+  entry(sample(centre), "graph.legend.centre");
+  if (layout.nodes.some((node) => node.self)) {
+    const self = svgEl("g", { class: "graph-self" });
+    self.append(svgEl("circle", { class: "graph-self-ring", cx: 14, cy: 8, r: 7 }),
+      svgEl("circle", { class: "graph-dot", cx: 14, cy: 8, r: 3.5 }));
+    entry(sample(self), "graph.legend.you");
+  }
+  return legend;
+}
+
+function graphNodeName(node) {
+  return node.self ? t("graph.node.you", { name: node.name }) : node.name;
+}
+
+// Every connection as text: each person, a button to centre on them, and their relationships.
+function graphList(doc, layout, names, depth) {
+  const details = el("details", null, "graph-list");
+  details.append(el("summary", t("graph.list", { people: doc.nodes.length, relationships: doc.edges.length })));
+  const people = el("ul");
+  const order = layout.nodes.map((node, i) => i).sort((a, b) => (b === layout.centre) - (a === layout.centre)
+    || layout.nodes[a].name.localeCompare(layout.nodes[b].name));
+  for (const i of order) {
+    const node = layout.nodes[i];
+    const item = el("li");
+    item.append(node.centre ? el("strong", graphNodeName(node))
+      : button(graphNodeName(node), () => showGraph(node.id, depth), "link"));
+    item.append(list(doc.edges.filter((edge) => edge.subject_id === node.id || edge.object_id === node.id)
+      .map((edge) => graphEdgeText(edge, names))));
+    people.append(item);
+  }
+  details.append(people);
+  return details;
+}
+
+function graphPanel(panel, doc, node, names, depth) {
+  const heading = el("h3", node.name);
+  const tags = el("div", null, "row-actions");
+  if (node.centre) tags.append(el("span", t("graph.centre"), "badge"));
+  if (node.self) tags.append(el("span", t("graph.you"), "badge"));
+  const actions = el("div", null, "actions");
+  actions.append(button(t("graph.open_person"), () => showPerson(node.id, null, [])));
+  if (!node.centre) actions.append(button(t("graph.recentre"), () => showGraph(node.id, depth)));
+  panel.replaceChildren(heading, tags, el("p", t("graph.panel.relationships"), "notice"),
+    list(doc.edges.filter((edge) => edge.subject_id === node.id || edge.object_id === node.id)
+      .map((edge) => graphEdgeText(edge, names))), actions);
+}
+
+function graphDepthControl(personId, depth) {
+  const box = el("div", null, "filters");
+  const label = el("label", t("graph.depth") + " ");
+  const select = el("select");
+  select.setAttribute("aria-label", t("graph.depth.aria"));
+  for (const value of GRAPH_DEPTHS) {
+    const option = el("option", String(value));
+    option.value = String(value);
+    select.append(option);
+  }
+  select.value = String(depth);
+  select.addEventListener("change", () => showGraph(personId, Number(select.value)));
+  label.append(select);
+  box.append(label);
+  return box;
+}
+
+// `personId` null centres on the user's own record. `refocus` returns keyboard focus to the new centre.
+async function showGraph(personId, depth, refocus = false) {
+  depth = GRAPH_DEPTHS.includes(Number(depth)) ? Number(depth) : GRAPH_DEFAULT_DEPTH;
+  rememberPage("graph", [personId, depth]);
+  current = () => showGraph(personId, depth);
+  const at = navigate();
+  let doc;
+  try { doc = await api("/api/graph" + query({ id: personId, depth: String(depth) })); } catch (error) {
+    if (at !== navigation) return;
+    if (error.message !== "no_self") return fail(error, at);
+    return show(t("graph.title"), el("p", t("graph.no_self"), "notice"),
+      button(t("nav.people"), () => showPeople(null, [])));
+  }
+  if (at !== navigation) return;
+  const names = new Map(doc.nodes.map((node) => [node.person_id, node.name]));
+  const layout = graphLayout(doc);
+  graphView = layout;
+  const centreNode = layout.nodes[layout.centre];
+  const title = t("graph.title_for", { name: centreNode.name });
+  if (!doc.edges.length) {
+    return show(title, el("p", t("graph.empty", { name: centreNode.name }), "notice"),
+      button(t("graph.open_person"), () => showPerson(centreNode.id, null, [])));
+  }
+  const nodes = layout.nodes;
+  const drawing = svgEl("svg", { class: "graph-svg", role: "group",
+    "aria-label": t("graph.svg.aria", { name: centreNode.name }) });
+  const edgeLayer = svgEl("g", { "aria-hidden": "true" });
+  const nodeLayer = svgEl("g");
+  const labelLayer = svgEl("g", { "aria-hidden": "true" });
+  const lines = layout.links.map((link) => {
+    const base = "graph-edge graph-edge-" + graphLinkStyle(link);
+    const line = svgEl("line", { class: base });
+    const text = svgEl("text", { class: "graph-edge-label", "text-anchor": "middle" });
+    text.textContent = link.edges.map((edge) => graphTypeLabel(edge.type)).join(" · ");
+    edgeLayer.append(line);
+    labelLayer.append(text);
+    return { link, line, text, base };
+  });
+  const panel = el("aside", null, "graph-panel");
+  let hot = null, drag = null, suppressClick = false, box = null;
+  const round = (value) => Math.round(value * 10) / 10;
+  function paint() {
+    for (const dot of dots) {
+      dot.group.setAttribute("transform", "translate(" + round(dot.node.x) + " " + round(dot.node.y) + ")");
+    }
+    for (const edge of lines) {
+      // A label sits nearer the far end from the person it is shown for, so a hub's labels fan out.
+      const from = nodes[edge.link.b === hot ? edge.link.b : edge.link.a];
+      const to = nodes[edge.link.b === hot ? edge.link.a : edge.link.b];
+      const share = hot === null ? 0.5 : 0.62;
+      edge.line.setAttribute("x1", round(from.x)); edge.line.setAttribute("y1", round(from.y));
+      edge.line.setAttribute("x2", round(to.x)); edge.line.setAttribute("y2", round(to.y));
+      edge.text.setAttribute("x", round(from.x + (to.x - from.x) * share));
+      edge.text.setAttribute("y", round(from.y + (to.y - from.y) * share - 4));
+    }
+  }
+  function fit() {
+    box = graphBounds(nodes);
+    drawing.setAttribute("viewBox", [box.x, box.y, box.width, box.height].map(round).join(" "));
+    // Scaled to the room it has, but never so small that a label cannot be read: past that it scrolls.
+    const room = canvas.clientWidth || 900;
+    const scale = Math.min(1.25, Math.max(0.75, room / box.width));
+    drawing.setAttribute("width", round(box.width * scale));
+    drawing.setAttribute("height", round(box.height * scale));
+  }
+  function highlight(i) {
+    hot = i;
+    for (const [j, dot] of dots.entries()) {
+      const near = i === null || j === i || layout.neighbours[i].has(j);
+      dot.group.setAttribute("class", dot.base + (i === j ? " graph-hot" : near ? "" : " graph-dim"));
+    }
+    for (const edge of lines) {
+      const touches = i !== null && (edge.link.a === i || edge.link.b === i);
+      edge.line.setAttribute("class", edge.base + (i === null ? "" : touches ? " graph-hot" : " graph-dim"));
+      edge.text.setAttribute("class", "graph-edge-label" + (touches ? " graph-shown" : ""));
+    }
+    paint();
+  }
+  function select(i) {
+    highlight(i);
+    graphPanel(panel, doc, nodes[i], names, depth);
+  }
+  function recentre(i, keyboard) {
+    if (nodes[i].centre) return select(i);
+    showGraph(nodes[i].id, depth, keyboard);
+  }
+  function pointFor(event) {
+    const matrix = drawing.getScreenCTM && drawing.getScreenCTM();
+    if (!matrix) return null;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
+    return { x: Math.min(Math.max(point.x, box.x), box.x + box.width),
+      y: Math.min(Math.max(point.y, box.y), box.y + box.height) };
+  }
+  const dots = nodes.map((node, i) => {
+    const base = "graph-node" + (node.centre ? " graph-center" : "") + (node.self ? " graph-self" : "");
+    const group = svgEl("g", { class: base, tabindex: 0, role: "button",
+      "aria-label": t("graph.node.aria", { name: graphNodeName(node), count: layout.neighbours[i].size }) });
+    const title = svgEl("title");
+    title.textContent = graphNodeName(node);
+    group.append(title, svgEl("circle", { class: "graph-focus", r: node.radius + 8 }));
+    if (node.self) group.append(svgEl("circle", { class: "graph-self-ring", r: node.radius + 4 }));
+    group.append(svgEl("circle", { class: "graph-dot", r: node.radius }));
+    const label = svgEl("text", { class: "graph-label", y: node.radius + 14, "text-anchor": "middle" });
+    label.textContent = node.label;
+    group.append(label);
+    group.addEventListener("pointerenter", () => select(i));
+    group.addEventListener("pointerleave", () => { if (!drag) highlight(null); });
+    group.addEventListener("focus", () => select(i));
+    group.addEventListener("blur", () => highlight(null));
+    group.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      recentre(i, true);
+    });
+    group.addEventListener("click", () => {
+      if (suppressClick) { suppressClick = false; return; }
+      recentre(i, false);
+    });
+    group.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      drag = { i, x: event.clientX, y: event.clientY, moved: false };
+      if (group.setPointerCapture) group.setPointerCapture(event.pointerId);
+    });
+    group.addEventListener("pointermove", (event) => {
+      if (!drag || drag.i !== i) return;
+      if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 4) return;
+      drag.moved = true;
+      const point = pointFor(event);
+      if (!point) return;
+      node.x = point.x;
+      node.y = point.y;
+      node.fixed = true;
+      paint();
+    });
+    const release = () => {
+      if (!drag || drag.i !== i) return;
+      suppressClick = drag.moved;
+      drag = null;
+    };
+    group.addEventListener("pointerup", release);
+    group.addEventListener("pointercancel", release);
+    nodeLayer.append(group);
+    return { node, group, base };
+  });
+  drawing.append(edgeLayer, nodeLayer, labelLayer);
+  const canvas = el("div", null, "graph-canvas");
+  canvas.append(drawing);
+  const main = el("div", null, "graph-main");
+  main.append(canvas, graphLegend(layout));
+  const area = el("div", null, "graph");
+  area.append(main, panel);
+  graphPanel(panel, doc, centreNode, names, depth);
+  const reduced = typeof requestAnimationFrame !== "function" || !window.matchMedia
+    || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) while (layout.tick < GRAPH_TICKS) graphStep(layout);
+  const nodesShown = [graphDepthControl(personId, depth)];
+  if (doc.truncated) nodesShown.push(el("p", t("graph.truncated"), "notice"));
+  nodesShown.push(el("p", t("graph.hint"), "notice"), area, graphList(doc, layout, names, depth));
+  show(title, ...nodesShown);
+  paint();
+  fit();
+  if (refocus && dots[layout.centre].group.focus) dots[layout.centre].group.focus();
+  if (reduced) return;
+  const frame = () => {
+    if (at !== navigation) return;
+    for (let k = 0; k < GRAPH_TICKS_PER_FRAME && layout.tick < GRAPH_TICKS; k += 1) graphStep(layout);
+    paint();
+    if (!drag) fit();
+    if (layout.tick < GRAPH_TICKS) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+}
+
 async function done() {
   // Stopping is a navigation too: no pending view or batch response may repaint after it.
   const at = navigate();
@@ -2376,7 +2861,7 @@ window.addEventListener("popstate", (event) => {
   const state = event.state;
   if (viewerClosed || !state || state.pctx !== true || !Array.isArray(state.args)) return;
   const open = { today: showToday, people: showPeople, person: showPerson, sources: showSources,
-    source: showSource, batch: showBatch }[state.page];
+    source: showSource, batch: showBatch, graph: showGraph }[state.page];
   if (typeof open !== "function") return;
   Object.assign(peopleFilter, state.filters);
   restoringHistory = true;
@@ -2386,6 +2871,7 @@ window.addEventListener("popstate", (event) => {
 document.getElementById("nav-today").addEventListener("click", () => showToday());
 document.getElementById("nav-people").addEventListener("click", () => showPeople(null, []));
 document.getElementById("nav-sources").addEventListener("click", () => showSources(null, []));
+document.getElementById("nav-graph").addEventListener("click", () => showGraph(null, GRAPH_DEFAULT_DEPTH));
 document.getElementById("nav-done").addEventListener("click", done);
 document.getElementById("nav-lang").addEventListener("click", switchLanguage);
 applyLanguage();

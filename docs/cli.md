@@ -580,6 +580,15 @@ without writing anything, when `--output` names the database it is reading or on
 
 ## Local browser viewer
 
+**Constellation** draws the people around one person — you, when your own record is set, or whoever's page
+**Show constellation** was pressed on — from the same bounded traversal as the `get_relationship_graph` MCP tool,
+1 to 4 steps out (2 by default). Lines are coloured and dashed by relationship category, with a solid line of its own for two people related in
+more than one; hovering or tabbing to a
+person highlights their relationships and names them, clicking or Enter re-centres on them, and the side panel
+opens their page. The same picture is always drawn for the same data, a list of every person and relationship
+sits under it for anyone who cannot use the drawing, and a graph over the traversal's 100-person or 300-edge cap
+says it was cut. It carries names and relationship types only, as that tool does.
+
 The page opens on **Today**: reminders whose date has passed, each with **Done** (the same use case as the
 `complete_reminder` MCP tool); the birthdays and dated reminders of the next 30 days, as `pctx upcoming` reports
 them; the people you last spoke to 90 days ago or more, longest first, as `pctx stale --interacted-only` reports
@@ -652,11 +661,11 @@ not the mutation audit log.
 The page can be driven from the keyboard. **⌘K** (Ctrl+K off macOS), or the hint button beside the title, opens a
 command palette over any view: typing searches people through the same people-list search, a fraction of a second
 after typing stops, showing at most six with their preferred name, full name, and organizations, and it also matches
-five fixed commands — go to Today, go to People, go to Import sources, switch language, and close the viewer — by their name in
+six fixed commands — go to Today, go to People, go to Constellation, go to Import sources, switch language, and close the viewer — by their name in
 either language. Up and Down move, Enter opens (waiting for a search still in flight), and Esc closes it and returns
 focus to where it was; a person opened from it is the ordinary person view, whose Back returns to the people list.
 Outside a text box, and with no Ctrl, ⌘, or Alt held, `/` focuses the people search (opening People first), `g` then
-`t`, `p`, or `s` opens Today, People, or Import sources, `?` lists these shortcuts, and Esc closes the palette or that
+`t`, `p`, `c`, or `s` opens Today, People, Constellation, or Import sources, `?` lists these shortcuts, and Esc closes the palette or that
 list. The palette and shortcuts write nothing and add no endpoint. The header marks the current view; each person
 has an initials avatar coloured by a hash of their id; the person view groups its records into cards, with
 interactions as a timeline; and the view being replaced is dimmed while the next one loads.

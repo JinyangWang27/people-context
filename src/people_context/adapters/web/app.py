@@ -94,6 +94,7 @@ from people_context.app.records import (
     SetAffiliationInput,
 )
 from people_context.app.relationships.commands import SetRelationshipInput
+from people_context.app.relationships.graph import DEFAULT_GRAPH_DEPTH, MAX_GRAPH_DEPTH, GraphPersonNotFound
 from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, NAME_IS_EMAIL, AliasKind
 from people_context.domain.shared import Sensitivity, ValidityPeriod
 
@@ -763,6 +764,28 @@ def create_browse_app(
             return _refusal(exc)
         return _json(render_import_json(import_commit_document(result)))
 
+    async def graph(request: Request) -> Response:
+        runtime: ApplicationRuntime = request.state.runtime
+        params = request.query_params
+        raw_depth = params.get("depth", str(DEFAULT_GRAPH_DEPTH))
+        depth = int(raw_depth) if raw_depth.isdecimal() and raw_depth.isascii() else 0
+        # Depth 0 would draw one person alone, so the page asks for at least their own relationships.
+        if not 1 <= depth <= MAX_GRAPH_DEPTH:
+            return _error("invalid_depth", 400)
+        person_id = params.get("id", "")
+        if not person_id:
+            own = runtime.repo.get_self()
+            if own is None:
+                return _error("no_self", 404)
+            person_id = own.id
+        # The `get_relationship_graph` MCP tool's own call. Its result is structure only — ids, names,
+        # `is_self`, and canonical edges — and takes no elevation, so `include_sensitive` changes nothing here.
+        result = runtime.use_cases.get_relationship_graph.execute(person_id, depth=depth)
+        if isinstance(result, GraphPersonNotFound):
+            return _error("unknown_person", 404)
+        body = {"center_id": person_id, **result.model_dump(mode="json")}
+        return _json(json.dumps(body, indent=2, ensure_ascii=False) + "\n")
+
     async def done(_request: Request) -> Response:
         on_done()
         return _json(json.dumps({"stopped": True}) + "\n")
@@ -790,6 +813,7 @@ def create_browse_app(
             Route("/api/batch/amend", amend, methods=["POST"]),
             Route("/api/batch/withdraw", withdraw, methods=["POST"]),
             Route("/api/batch/commit", commit, methods=["POST"]),
+            Route("/api/graph", graph, methods=["GET"]),
             Route("/api/done", done, methods=["POST"]),
         ],
         lifespan=lifespan,

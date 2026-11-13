@@ -172,6 +172,7 @@ Prefer a table to a terminal? `pctx browse --open` opens a local page over the s
 
 - open on **Today**: overdue reminders to tick off, birthdays and reminders coming up, and the people you have
   not spoken to in a while, each one click from logging a catch-up;
+- see the people around you, or around anyone, drawn as a **constellation** of relationships you can walk;
 - browse people, searching names, aliases, and summaries, sorting by name or newest added or edited, and
   narrowing to one organization or group; open one person's brief;
 - rename a person (the old name stays as an alias) or rewrite their summary;
@@ -182,7 +183,7 @@ Prefer a table to a terminal? `pctx browse --open` opens a local page over the s
 - permanently remove an affiliation, fact, or interaction, after a confirmation;
 - review a staged import batch person by person, edit its candidates, then withdraw or commit them;
 - get around from the keyboard: ⌘K / Ctrl+K opens a command palette that finds people and runs commands, `/`
-  searches people, `g t` / `g p` / `g s` switch views, and `?` lists the shortcuts.
+  searches people, `g t` / `g p` / `g c` / `g s` switch views, and `?` lists the shortcuts.
 
 It binds `127.0.0.1` only, every request needs the per-launch token printed in its URL, and every write goes
 through the same audited use cases as the CLI and MCP tools. Sensitive records stay hidden unless the operator
