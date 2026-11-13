@@ -5,6 +5,38 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/JinyangWang27/people-context/compare/v1.5.0...v1.6.0) (2026-11-13)
+
+
+### Features
+
+* add a command palette, keyboard shortcuts, and a visual refresh to pctx browse ([caea3c0](https://github.com/JinyangWang27/people-context/commit/caea3c0e7c2756efc0a53dcc571e69b3b7f772f2))
+* add a command palette, keyboard shortcuts, and a visual refresh to pctx browse ([176b1c5](https://github.com/JinyangWang27/people-context/commit/176b1c56d2c5f78ae4439b74b4111881495d572f))
+* add an affiliation from the browser person view ([#253](https://github.com/JinyangWang27/people-context/issues/253)) ([d18898e](https://github.com/JinyangWang27/people-context/commit/d18898e6f326b281935e132e0e4ced519057fa85))
+* add, edit, and remove facts, affiliations, and interactions from the browser ([#255](https://github.com/JinyangWang27/people-context/issues/255)) ([145c5cf](https://github.com/JinyangWang27/people-context/commit/145c5cfe3032190b899581de139869aa1c5f7190))
+* draw the people around one person as a constellation in pctx browse ([1da14f2](https://github.com/JinyangWang27/people-context/commit/1da14f272d4ea1e6159f92a36262a0e9aac5d046))
+* draw the people around one person as a constellation in pctx browse ([0809a57](https://github.com/JinyangWang27/people-context/commit/0809a57d216564eb8837cc8ab5b8a0a2642ee26f))
+* improve person names and browser profiles ([#257](https://github.com/JinyangWang27/people-context/issues/257)) ([559b201](https://github.com/JinyangWang27/people-context/commit/559b201e500b147daa631dae21ec97b2eed514d1))
+* offer the browser page in Simplified Chinese with a 中文 / EN toggle ([#256](https://github.com/JinyangWang27/people-context/issues/256)) ([11dd2d5](https://github.com/JinyangWang27/people-context/commit/11dd2d534c416792d800e9ab5061cd3c5c944add))
+* open the browser page on a Today view of what needs attention ([dae92ec](https://github.com/JinyangWang27/people-context/commit/dae92ece27fe3f81feeae00521d610fe24ef2132))
+* open the browser page on a Today view of what needs attention ([eaad386](https://github.com/JinyangWang27/people-context/commit/eaad38650d22e0a3197e186614dc06ddc611dd0d))
+* record relationships between two other people (pctx relate, remember subject) ([#243](https://github.com/JinyangWang27/people-context/issues/243)) ([ede3542](https://github.com/JinyangWang27/people-context/commit/ede35426e2fd8856394bc67912ef885494e748a2))
+* rename a person and edit their summary from the browser ([#251](https://github.com/JinyangWang27/people-context/issues/251)) ([22fbe2a](https://github.com/JinyangWang27/people-context/commit/22fbe2a470bc40be21572b6cce0974dd03e8c5a2))
+* search, sort, and filter the browser's people list ([#252](https://github.com/JinyangWang27/people-context/issues/252)) ([d2ea8fd](https://github.com/JinyangWang27/people-context/commit/d2ea8fd40ccfdc5b643abcac3bfad5c6b572e20b))
+* show organizations and drop the contact column in the browser people list ([#254](https://github.com/JinyangWang27/people-context/issues/254)) ([715b537](https://github.com/JinyangWang27/people-context/commit/715b53740bf6f347bc34f76c888f57408f2284d8))
+
+
+### Bug Fixes
+
+* draw two people related in several categories as a mixed line ([0dcbbc6](https://github.com/JinyangWang27/people-context/commit/0dcbbc6eae11c0378f5eca2b50da75f8a57f772c))
+* drop stale palette results and return focus past a replaced overlay ([1bd5758](https://github.com/JinyangWang27/people-context/commit/1bd575835882ff3af3d1ba8fd8218c6d5811a172))
+* return the stored affiliation on an exact repeat capture ([#246](https://github.com/JinyangWang27/people-context/issues/246)) ([1af7055](https://github.com/JinyangWang27/people-context/commit/1af70554578a6c8e0a9663ce73fdd10ad6279900)), closes [#242](https://github.com/JinyangWang27/people-context/issues/242)
+
+
+### Performance Improvements
+
+* cut the tokens agents spend on tool lists, results, and the usage skill ([#245](https://github.com/JinyangWang27/people-context/issues/245)) ([9a872af](https://github.com/JinyangWang27/people-context/commit/9a872af8965c532111fe320cb9fb3eb71a7e67e6))
+
 ## [1.5.0](https://github.com/JinyangWang27/people-context/compare/v1.4.0...v1.5.0) (2026-11-05)
 
 
