@@ -9,7 +9,7 @@ from people_context import __version__ as package_version
 from tests.test_registry_metadata import registry_package
 
 ROOT = Path(__file__).parents[1]
-PRIMARY_RELEASE_VERSION = "1.5.0"  # x-release-please-version
+PRIMARY_RELEASE_VERSION = "1.6.0"  # x-release-please-version
 #: The Claude Code and OpenClaw packages version independently (docs/compatibility.md), so each has its own.
 CLAUDE_PLUGIN_RELEASE_VERSION = "0.3.0"
 INTEGRATION_RELEASE_VERSION = "0.2.0"
