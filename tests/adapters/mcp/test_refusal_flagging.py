@@ -79,6 +79,7 @@ def test_every_refusal_shape_across_the_tool_surface_is_flagged(tmp_path: Path) 
         "record_fact": {"person_id": "missing", "predicate": "location", "value": "Dubai"},
         "record_trait": {"person_id": "missing", "category": "temperament", "value": "calm"},
         "set_affiliation": {"person_id": "missing", "org": "Acme", "role": "CTO"},
+        "record_education": {"person_id": "missing", "institution": "Acme Institute"},
         "set_reminder": {"person_id": "missing", "text": "Follow up", "kind": "follow_up"},
         "correct_record": {"entity_type": "fact", "entity_id": "missing", "fields": {"value": "x"}},
         "merge_people": {"primary_id": "missing", "duplicate_id": "other"},
@@ -172,3 +173,33 @@ def test_every_registered_tool_flags_its_refusals(tmp_path: Path, monkeypatch: A
     }
     unflagged = [tool.name for tool in registered if getattr(tool.fn, "__wrapped__", None) is None]
     assert unflagged == []
+
+
+def test_record_education_writes_a_degree_that_person_context_returns(tmp_path: Path) -> None:
+    server = build_server(db_path=tmp_path / "education.db")
+
+    async def flow(client: Client) -> tuple[Any, Any]:
+        created = await client.call_tool("remember_person", {"name": "Alice"})
+        person_id = created.structured_content["person"]["id"]
+        recorded = await client.call_tool(
+            "record_education",
+            {
+                "person_id": person_id,
+                "institution": "University of Edinburgh",
+                "degree": "MSc",
+                "field_of_study": "Cognitive Science",
+                "valid_to": "2024-06-30",
+            },
+        )
+        context = await client.call_tool("get_person_context", {"person_id": person_id})
+        return recorded, context
+
+    recorded, context = _run(server, flow)
+
+    assert recorded.is_error is False
+    assert recorded.structured_content["degree"] == "MSc"
+    [entry] = context.structured_content["education"]
+    assert (entry["institution_name"], entry["education"]["field_of_study"]) == (
+        "University of Edinburgh",
+        "Cognitive Science",
+    )
