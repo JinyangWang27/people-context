@@ -590,8 +590,12 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
 #: opts into the bounded extraction contract; a request built only from the four released types
 #: does not. Groups and memberships belong here because they are distilled from unstructured
 #: material exactly as an observation is, and an unbounded batch of them would be the one
-#: extraction path the budgets do not reach.
-EXTRACTION_CANDIDATE_TYPES: Final = frozenset({"observation", "trait", "relationship", "group", "group_membership"})
+#: extraction path the budgets do not reach. Education is here for the same reason: it is new with
+#: structured CV and profile capture, so no released caller depends on staging it unbounded, and a
+#: batch of only people and degrees must not be the path around the count and payload budgets.
+EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
+    {"observation", "trait", "relationship", "group", "group_membership", "education"}
+)
 
 
 def contains_extraction_candidate(candidates: list[Any]) -> bool:

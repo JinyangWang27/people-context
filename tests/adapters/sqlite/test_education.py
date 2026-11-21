@@ -318,3 +318,18 @@ class TestImport:
 
         with pytest.raises(Exception, match="candidate validation failed"):
             runtime.use_cases.stage_candidates.execute("linkedin-profile", candidates)
+
+
+def test_a_people_and_education_batch_is_held_to_the_extraction_budget(runtime: ApplicationRuntime) -> None:
+    from people_context.app.imports.limits import MAX_EXTRACTION_CANDIDATES
+
+    candidates: list[dict[str, Any]] = [{"type": "person", "ref": "alice", "name": "Alice Ahmed", "aliases": []}]
+    candidates += [
+        {"type": "education", "person_ref": "alice", "institution": f"Institute {index}"}
+        for index in range(MAX_EXTRACTION_CANDIDATES)
+    ]
+
+    with pytest.raises(Exception, match=f"at most {MAX_EXTRACTION_CANDIDATES} candidates"):
+        runtime.use_cases.stage_candidates.execute("linkedin-profile", candidates)
+
+    assert _count(runtime, "import_staging") == 0

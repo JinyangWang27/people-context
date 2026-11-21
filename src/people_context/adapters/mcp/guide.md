@@ -482,7 +482,7 @@ wrote it, and storing a claim must never quietly promote it to a verified charac
    matches two other people, and a name matching two with nothing to separate them fails the whole
    commit after the user has already reviewed it. `pctx import stage-candidates` always uses the
    ambiguity-preserving matcher; `stage_candidates` does so only for a batch that also carries an
-   `observation`, `trait`, or `relationship`.
+   `observation`, `trait`, `relationship`, group, or `education` candidate.
 3. **Pick the record type from what the document supports.** Employment is an `affiliation` candidate
    *when* role, organisation, dates, and disclosure can all be represented faithfully. Each degree is an
    `education` candidate — `institution`, and the `degree` and `field_of_study` the document states — never
