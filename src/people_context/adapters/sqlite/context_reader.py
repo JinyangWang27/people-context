@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, datetime
 
+from people_context.adapters.sqlite.record_store import hydrate_education
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
@@ -13,7 +14,7 @@ from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod
 from people_context.domain.trait import Trait, TraitCategory
-from people_context.ports.context import AffiliationRecord, RelationshipRecord, TraitEvidenceRecord
+from people_context.ports.context import AffiliationRecord, EducationRecord, RelationshipRecord, TraitEvidenceRecord
 
 
 class SqliteContextReader:
@@ -92,6 +93,23 @@ class SqliteContextReader:
                 organization_name=row["organization_name"],
             )
             for row in rows
+        ]
+
+    def list_education(self, person_id: str) -> list[EducationRecord]:
+        # Most recent study first; undated rows after dated ones, newest recorded first.
+        rows = self._conn.execute(
+            """
+            SELECT e.*, o.name AS institution_name
+            FROM education e
+            JOIN organizations o ON o.id = e.org_id
+            WHERE e.person_id = ?
+            ORDER BY coalesce(e.valid_to, e.valid_from) IS NULL, coalesce(e.valid_to, e.valid_from) DESC,
+                     e.created_at DESC, e.id
+            """,
+            (person_id,),
+        ).fetchall()
+        return [
+            EducationRecord(education=hydrate_education(row), institution_name=row["institution_name"]) for row in rows
         ]
 
     def list_facts(self, person_id: str) -> list[Fact]:

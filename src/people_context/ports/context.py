@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Protocol, runtime_checkable
 
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
@@ -32,6 +33,14 @@ class AffiliationRecord:
 
     affiliation: Affiliation
     organization_name: str
+
+
+@dataclass(frozen=True)
+class EducationRecord:
+    """An education row hydrated with its institution's name."""
+
+    education: Education
+    institution_name: str
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,10 @@ class PersonContextReader(Protocol):
     def list_active_relationships(self, person_id: str, as_of: date) -> list[RelationshipRecord]: ...
 
     def list_active_affiliations(self, person_id: str, as_of: date) -> list[AffiliationRecord]: ...
+
+    def list_education(self, person_id: str) -> list[EducationRecord]:
+        """Return every education row, ended or not: a degree stays true after it is finished."""
+        ...
 
     def list_facts(self, person_id: str) -> list[Fact]: ...
 

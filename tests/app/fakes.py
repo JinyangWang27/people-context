@@ -29,7 +29,7 @@ from people_context.ports.consolidation import (
     ConsolidationObservationRow,
     ConsolidationTraitRow,
 )
-from people_context.ports.context import AffiliationRecord, RelationshipRecord, TraitEvidenceRecord
+from people_context.ports.context import AffiliationRecord, EducationRecord, RelationshipRecord, TraitEvidenceRecord
 from people_context.ports.curation import DeletedPersonReference, FactAssertion, NameUsage
 from people_context.ports.export import ExportSnapshot
 from people_context.ports.insights import RecencySignal
@@ -192,6 +192,7 @@ class FakeContextReader:
     def __init__(self) -> None:
         self.relationships: list[RelationshipRecord] = []
         self.affiliations: list[AffiliationRecord] = []
+        self.education: list[EducationRecord] = []
         self.facts: list[Fact] = []
         self.observations: list[Observation] = []
         self.traits: list[Trait] = []
@@ -225,6 +226,9 @@ class FakeContextReader:
             if record.affiliation.person_id == person_id
             and (record.affiliation.period.valid_to is None or record.affiliation.period.valid_to >= as_of)
         ]
+
+    def list_education(self, person_id: str) -> list[EducationRecord]:
+        return [record for record in self.education if record.education.person_id == person_id]
 
     def list_facts(self, person_id: str) -> list[Fact]:
         return [record for record in self.facts if record.person_id == person_id]

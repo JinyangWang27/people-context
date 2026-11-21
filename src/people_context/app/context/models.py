@@ -1,12 +1,13 @@
-"""Shared public models for hydrated relationship and affiliation context."""
+"""Shared public models for hydrated relationship, affiliation, and education context."""
 
 from __future__ import annotations
 
 from pydantic import BaseModel
 
+from people_context.domain.education import Education
 from people_context.domain.organization import Affiliation
 from people_context.domain.relationship import Relationship
-from people_context.ports.context import AffiliationRecord, RelationshipRecord
+from people_context.ports.context import AffiliationRecord, EducationRecord, RelationshipRecord
 
 
 class PersonRelationshipContext(BaseModel):
@@ -25,6 +26,13 @@ class PersonAffiliationContext(BaseModel):
     organization_name: str
 
 
+class PersonEducationContext(BaseModel):
+    """An education row plus its institution's display name."""
+
+    education: Education
+    institution_name: str
+
+
 def relationship_context(record: RelationshipRecord) -> PersonRelationshipContext:
     """Convert a context-port relationship record to the public app model."""
     return PersonRelationshipContext(
@@ -38,3 +46,8 @@ def relationship_context(record: RelationshipRecord) -> PersonRelationshipContex
 def affiliation_context(record: AffiliationRecord) -> PersonAffiliationContext:
     """Convert a context-port affiliation record to the public app model."""
     return PersonAffiliationContext(affiliation=record.affiliation, organization_name=record.organization_name)
+
+
+def education_context(record: EducationRecord) -> PersonEducationContext:
+    """Convert a context-port education record to the public app model."""
+    return PersonEducationContext(education=record.education, institution_name=record.institution_name)
