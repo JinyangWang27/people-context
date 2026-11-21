@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.group import Group, GroupKind, GroupMembership
 from people_context.domain.interaction import Interaction
@@ -474,6 +475,26 @@ class FakeRecordStore:
             for (kind, _), record in self.records.items()
             if kind == "affiliation"
             and (record.person_id, record.org_id, record.role, record.period) == (person_id, org_id, role, period)
+        ]
+        return min(matches, key=lambda record: (record.created_at, record.id), default=None)
+
+    def save_education(self, education: Education) -> None:
+        self.records[("education", education.id)] = education
+
+    def find_education(
+        self,
+        person_id: str,
+        org_id: str,
+        degree: str | None,
+        field_of_study: str | None,
+        period: ValidityPeriod,
+    ) -> Education | None:
+        claim = (person_id, org_id, degree, field_of_study, period)
+        matches = [
+            record
+            for (kind, _), record in self.records.items()
+            if kind == "education"
+            and (record.person_id, record.org_id, record.degree, record.field_of_study, record.period) == claim
         ]
         return min(matches, key=lambda record: (record.created_at, record.id), default=None)
 

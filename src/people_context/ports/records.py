@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Protocol, TypeAlias, runtime_checkable
 
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.group import Group, GroupMembership
 from people_context.domain.interaction import Interaction
@@ -16,7 +17,17 @@ from people_context.domain.shared import ValidityPeriod
 from people_context.domain.trait import Trait
 
 Record: TypeAlias = (
-    Relationship | Affiliation | Fact | Observation | Trait | Interaction | Reminder | Group | GroupMembership
+    Relationship
+    | Affiliation
+    | Education
+    | Organization
+    | Fact
+    | Observation
+    | Trait
+    | Interaction
+    | Reminder
+    | Group
+    | GroupMembership
 )
 
 
@@ -30,6 +41,19 @@ class RecordWriter(Protocol):
 
     def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
         """Return the earliest stored affiliation identical in person, organization, role, and period."""
+        ...
+
+    def save_education(self, education: Education) -> None: ...
+
+    def find_education(
+        self,
+        person_id: str,
+        org_id: str,
+        degree: str | None,
+        field_of_study: str | None,
+        period: ValidityPeriod,
+    ) -> Education | None:
+        """Return the earliest stored education identical in person, institution, degree, field, and period."""
         ...
 
     def save_fact(self, fact: Fact) -> None: ...

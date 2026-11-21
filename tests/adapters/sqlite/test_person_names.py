@@ -43,7 +43,7 @@ def test_names_edit_search_sort_and_restore(tmp_path: Path) -> None:
         with pytest.raises(PersonIndexError):
             use_cases.list_person_index.page(limit=1, cursor=cursor)
         bundle = use_cases.export_sync_bundle.execute()
-        assert bundle.version == 9
+        assert bundle.version == 10
         edits = [entry for entry in bundle.changelog if "preferred_name" in entry.changed_fields]
         assert any(entry.payload["preferred_name"] is None for entry in edits)
     finally:
@@ -77,7 +77,7 @@ def test_version_10_migration_preserves_existing_identity(tmp_path: Path) -> Non
         assert person is not None
         assert person.canonical_name == person.display_name == "王小明"
         assert (person.preferred_name, person.given_name, person.family_name) == (None, None, None)
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 12
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 13
         assert upgraded.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0] == 0
         assert upgraded.execute("SELECT COUNT(*) FROM changelog").fetchone()[0] == 0
     finally:

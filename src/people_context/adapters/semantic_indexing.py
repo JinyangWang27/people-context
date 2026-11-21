@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from people_context.app.semantic.indexing import SemanticIndexUpdater
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
@@ -103,6 +104,19 @@ class IndexingRecordStore:
 
     def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
         return self._delegate.find_affiliation(person_id, org_id, role, period)
+
+    def save_education(self, education: Education) -> None:
+        self._delegate.save_education(education)
+
+    def find_education(
+        self,
+        person_id: str,
+        org_id: str,
+        degree: str | None,
+        field_of_study: str | None,
+        period: ValidityPeriod,
+    ) -> Education | None:
+        return self._delegate.find_education(person_id, org_id, degree, field_of_study, period)
 
     def save_fact(self, fact: Fact) -> None:
         self._delegate.save_fact(fact)

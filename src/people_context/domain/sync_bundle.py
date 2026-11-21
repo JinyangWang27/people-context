@@ -20,6 +20,7 @@ from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
+from people_context.domain.education import EducationLabel
 from people_context.domain.group import MAX_GROUP_NAME_CHARS, GroupKind, MembershipRole, TemporalBasis
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
@@ -48,7 +49,7 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: The only version this release emits and restores. The bundle is deliberately not additively
 #: extensible within a version — a reader that accepts a field must understand it — so new primary
 #: state, a new candidate type, or a new status value takes a new version.
-SYNC_BUNDLE_VERSION = 9
+SYNC_BUNDLE_VERSION = 10
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -167,6 +168,7 @@ class BundleOrganization(StrictBundleModel):
     id: Identifier
     name: str
     kind: str | None
+    industry: str | None
 
 
 class BundleAffiliation(StrictBundleModel):
@@ -566,14 +568,28 @@ class BundleGroupMembership(StrictBundleModel):
         return self
 
 
+class BundleEducation(StrictBundleModel):
+    """One bundled education row: a person's study at an institution."""
+
+    id: Identifier
+    person_id: Identifier
+    org_id: Identifier
+    degree: EducationLabel | None
+    field_of_study: EducationLabel | None
+    period: BundleValidityPeriod
+    confidence: Confidence
+    provenance: BundleProvenance
+    created_at: UtcDatetime
+
+
 class SyncBundleDocument(StrictBundleModel):
     """One complete, point-in-time bootstrap bundle.
 
-    Trait evidence, groups, and memberships sit beside the snapshot rather than inside it.
+    Trait evidence, groups, memberships, and education sit beside the snapshot rather than inside it.
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[9]
+    version: Literal[10]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark
@@ -585,6 +601,7 @@ class SyncBundleDocument(StrictBundleModel):
     trait_evidence: list[BundleTraitEvidence]
     groups: list[BundleGroup]
     group_memberships: list[BundleGroupMembership]
+    education: list[BundleEducation]
 
 
 def parse_bundle_payload(payload: Any) -> SyncBundleDocument:
@@ -644,6 +661,7 @@ def validate_bundle_document(document: SyncBundleDocument) -> None:
         *_import_details(document),
         *_trait_evidence_details(document),
         *_group_details(document),
+        *_education_details(document),
     ]
     if details:
         raise InvalidBundleError(details)
@@ -653,6 +671,7 @@ def validate_bundle_document(document: SyncBundleDocument) -> None:
 _MAPPED_ENTITY_COLLECTIONS: dict[str, str] = {
     "person": "people",
     "affiliation": "affiliations",
+    "education": "education",
     "fact": "facts",
     "observation": "observations",
     "trait": "traits",
@@ -681,6 +700,7 @@ def _import_details(document: SyncBundleDocument) -> list[str]:
     known: dict[str, set[str]] = {
         "people": {person.id for person in snapshot.people},
         "affiliations": {row.id for row in snapshot.affiliations},
+        "education": {row.id for row in document.education},
         "facts": {row.id for row in snapshot.facts},
         "observations": {row.id for row in snapshot.observations},
         "traits": {row.id for row in snapshot.traits},
@@ -921,6 +941,18 @@ def _group_details(document: SyncBundleDocument) -> list[str]:
         ),
         *_missing("group membership", ((row.id, row.person_id) for row in memberships), people, "person"),
         *_missing("group membership", ((row.id, row.group_id) for row in memberships), groups, "group"),
+    ]
+
+
+def _education_details(document: SyncBundleDocument) -> list[str]:
+    """Check that restored education rows are unique and name only people and institutions bundled."""
+    people = {person.id for person in document.snapshot.people}
+    organizations = {row.id for row in document.snapshot.organizations}
+    rows = document.education
+    return [
+        *_repeated("education id", (row.id for row in rows)),
+        *_missing("education", ((row.id, row.person_id) for row in rows), people, "person"),
+        *_missing("education", ((row.id, row.org_id) for row in rows), organizations, "organization"),
     ]
 
 

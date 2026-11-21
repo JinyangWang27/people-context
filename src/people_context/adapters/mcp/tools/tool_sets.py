@@ -78,6 +78,7 @@ EXTENDED_TOOLS: frozenset[str] = frozenset(
         "record_observation",
         "record_interaction",
         "set_affiliation",
+        "record_education",
         "set_relationship",
         "merge_people",
         "import_content",

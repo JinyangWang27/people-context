@@ -37,6 +37,10 @@ _GROUP_ID = "01J0000000000000000000GRP1"
 _MEMBERSHIP_ID = "01J0000000000000000000MEM1"
 
 
+_ORG_ID = "01J000000000000000000ORG01"
+_EDUCATION_ID = "01J00000000000000000EDU001"
+
+
 def _document() -> dict[str, Any]:
     """Return one complete, structurally valid current-version bundle document."""
     return {
@@ -81,7 +85,9 @@ def _document() -> dict[str, Any]:
                     "deleted_at": None,
                 }
             ],
-            "organizations": [],
+            "organizations": [
+                {"id": _ORG_ID, "name": "University of Edinburgh", "kind": None, "industry": "education"}
+            ],
             "affiliations": [],
             "relationships": [],
             "facts": [
@@ -243,6 +249,19 @@ def _document() -> dict[str, Any]:
                 "confidence": 1.0,
                 "sensitivity": "sensitive",
                 "provenance": {"source": "agent", "session": None, "stated_by": "Alice"},
+                "created_at": "2026-07-03T00:00:00Z",
+            }
+        ],
+        "education": [
+            {
+                "id": _EDUCATION_ID,
+                "person_id": _PERSON_ID,
+                "org_id": _ORG_ID,
+                "degree": "MSc",
+                "field_of_study": "Cognitive Science",
+                "period": {"valid_from": "2022-09-01", "valid_to": "2024-06-30"},
+                "confidence": 1.0,
+                "provenance": {"source": "agent", "session": None, "stated_by": None},
                 "created_at": "2026-07-03T00:00:00Z",
             }
         ],
@@ -1091,7 +1110,7 @@ def test_the_current_version_accepts_a_rejected_staging_row() -> None:
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 9
+    assert document.version == SYNC_BUNDLE_VERSION == 10
     assert document.imports.staging[0].status == "rejected"
 
 
@@ -1220,7 +1239,7 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 9
+    assert document.version == SYNC_BUNDLE_VERSION == 10
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1305,7 +1324,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 1, 6, 7, 8, 10, "9"])
+@pytest.mark.parametrize("version", [0, 1, 6, 7, 8, 9, 11, "10"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version
@@ -1882,5 +1901,48 @@ def test_a_bundled_group_name_at_exactly_the_domain_bound_is_accepted() -> None:
 def test_bundle_refuses_name_components_that_cannot_hydrate_verbatim(field: str, value: str) -> None:
     payload = _document()
     payload["snapshot"]["people"][0][field] = value
+    with pytest.raises(ValidationError):
+        parse_bundle_payload(payload)
+
+
+def test_education_rows_validate_beside_the_snapshot() -> None:
+    document = parse_bundle_payload(_document())
+
+    validate_bundle_document(document)
+    assert [(row.degree, row.field_of_study) for row in document.education] == [("MSc", "Cognitive Science")]
+    assert document.snapshot.organizations[0].industry == "education"
+
+
+def test_education_naming_an_unbundled_person_or_institution_is_refused() -> None:
+    payload = _document()
+    payload["education"][0]["person_id"] = "01J0000000000000000000NOPE"
+    payload["education"][0]["org_id"] = "01J00000000000000000NOORG1"
+
+    with pytest.raises(InvalidBundleError) as refusal:
+        validate_bundle_document(parse_bundle_payload(payload))
+
+    assert (
+        f"education {_EDUCATION_ID} references an unknown person: 01J0000000000000000000NOPE" in refusal.value.details
+    )
+    assert (
+        f"education {_EDUCATION_ID} references an unknown organization: 01J00000000000000000NOORG1"
+        in refusal.value.details
+    )
+
+
+def test_a_repeated_education_id_is_refused() -> None:
+    payload = _document()
+    payload["education"].append(dict(payload["education"][0]))
+
+    with pytest.raises(InvalidBundleError) as refusal:
+        validate_bundle_document(parse_bundle_payload(payload))
+
+    assert f"duplicate education id: {_EDUCATION_ID}" in refusal.value.details
+
+
+def test_an_overlong_education_label_is_refused() -> None:
+    payload = _document()
+    payload["education"][0]["field_of_study"] = "x" * 201
+
     with pytest.raises(ValidationError):
         parse_bundle_payload(payload)

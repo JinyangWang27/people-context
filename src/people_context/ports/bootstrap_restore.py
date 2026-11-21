@@ -42,6 +42,7 @@ class RestoreOutcome:
     trait_evidence: int = 0
     groups: int = 0
     group_memberships: int = 0
+    education: int = 0
 
 
 @runtime_checkable

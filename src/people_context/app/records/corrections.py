@@ -16,6 +16,7 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.group import GroupMembership
 from people_context.domain.interaction import Interaction
@@ -38,13 +39,18 @@ CORRECTABLE_FIELDS: dict[str, frozenset[str]] = {
     "interaction": frozenset({"summary", "occurred_at", "channel", "sensitivity"}),
     "relationship": frozenset({"type", "label", "valid_from", "valid_to", "confidence"}),
     "affiliation": frozenset({"role", "valid_from", "valid_to", "confidence"}),
+    # The institution is not correctable here, for the same reason a group's placement is not.
+    "education": frozenset({"degree", "field_of_study", "valid_from", "valid_to", "confidence"}),
+    # Renaming is not offered: an organization's name is its identity, and a rename that collides
+    # with another organization's name would need a merge this generic path cannot perform.
+    "organization": frozenset({"kind", "industry"}),
     "reminder": frozenset({"text", "kind", "due_at", "recurrence"}),
     # Placement is not correctable here: pointing a group at another organization needs that
     # organization to exist, which this generic path cannot check.
     "group": frozenset({"name", "kind", "sensitivity"}),
     "group_membership": frozenset({"role", "valid_from", "valid_to", "temporal_basis", "confidence", "sensitivity"}),
 }
-_PERIOD_TYPES = (Fact, Relationship, Affiliation, GroupMembership)
+_PERIOD_TYPES = (Fact, Relationship, Affiliation, Education, GroupMembership)
 
 
 class CorrectRecordInput(BaseModel):
@@ -144,6 +150,6 @@ def _linked_person_ids(record: Record) -> list[str]:
         return [record.subject_id, record.object_id]
     if isinstance(record, Interaction):
         return record.participant_ids
-    if isinstance(record, (Fact, Observation, Trait, Affiliation, Reminder, GroupMembership)):
+    if isinstance(record, (Fact, Observation, Trait, Affiliation, Education, Reminder, GroupMembership)):
         return [record.person_id]
     return []

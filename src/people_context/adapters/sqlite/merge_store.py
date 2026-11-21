@@ -26,6 +26,8 @@ _LINKED_TABLES = {
     "trait": "traits",
     "reminder": "reminders",
     "affiliation": "affiliations",
+    # Education moves like an affiliation: two identical rows stay two assertions.
+    "education": "education",
     # Memberships move to the survivor unchanged. Two memberships in one group stay two
     # assertions: combining them would manufacture a claim neither source made.
     "group_membership": "group_memberships",
@@ -70,12 +72,8 @@ class SqliteMergeStore:
             ]
 
             self._save_primary(primary, duplicate_id)
-            counts = {
-                f"{entity_type}s" if entity_type != "affiliation" else "affiliations": self._reparent(
-                    table, duplicate_id, primary.id
-                )
-                for entity_type, table in _LINKED_TABLES.items()
-            }
+            # Counts are keyed by table, which is also the field name `MergeMovedCounts` reports.
+            counts = {table: self._reparent(table, duplicate_id, primary.id) for table in _LINKED_TABLES.values()}
             moved_edge_ids, self_loops = self._merge_relationships(primary.id, duplicate_id)
             counts["relationships"] = len(moved_edge_ids)
             self._recanonicalize_symmetric(moved_edge_ids)

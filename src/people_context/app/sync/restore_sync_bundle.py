@@ -84,6 +84,7 @@ class RestoreSyncBundle:
                 "staged candidates": len(document.imports.staging),
                 "groups": len(document.groups),
                 "group memberships": len(document.group_memberships),
+                "education": len(document.education),
             },
         )
 

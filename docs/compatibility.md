@@ -143,7 +143,7 @@ amendment surface, also accepts a person the possible-match rule lists.
 | Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
 | Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
 | Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `9` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `10` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -210,7 +210,7 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 9** and `pctx sync pull` accepts **only version 9**. Earlier bundle versions
+  `pctx sync push` emits **version 10** and `pctx sync pull` accepts **only version 10**. Earlier bundle versions
   are refused; re-export from a current release to move data. A new field, collection, candidate type, or status
   value all advance the version, because a strict reader cannot fail closed on any of them.
 
@@ -265,3 +265,12 @@ snapshots. Existing database backups remain usable through the forward migration
 Migration 012 adds the explicit order flag, default false. Full name is derived from complete given/family
 components with the selected order and spacing, otherwise the original canonical name is used. Index/context
 and brief documents add `full_name` and `family_name_first` without changing their version-1 envelopes.
+
+### Education records and organization industry
+
+Migration 013 adds an `education` table and a nullable `organizations.industry` column; no existing row is
+rewritten. Education is a separate record, not an affiliation kind, so every existing affiliation reader —
+including the vCard `ORG`/`TITLE` export — keeps meaning employment. Sync bundles advance from version 9 to
+**10** because organizations now carry `industry` and the bundle carries an `education` collection beside its
+snapshot. Version-9 and older bundles are refused; export a fresh bundle from the updated source installation.
+The plain JSON export adds an `education` collection and an `industry` field on organizations.

@@ -110,6 +110,7 @@ from people_context.app.records import (
     CompleteReminder,
     CorrectRecord,
     ListReminders,
+    RecordEducation,
     RecordFact,
     RecordInteraction,
     RecordObservation,
@@ -162,6 +163,7 @@ class RuntimeUseCases:
     add_relationship_type: AddRelationshipType
     normalize_relationships: NormalizeRelationships
     set_affiliation: SetAffiliation
+    record_education: RecordEducation
     record_fact: RecordFact
     record_observation: RecordObservation
     record_trait: RecordTrait
@@ -303,6 +305,7 @@ def build_runtime(
     remember_person = RememberPerson(repo, repo, audit, runtime_clock)
     record_interaction = RecordInteraction(repo, records, audit, runtime_clock)
     set_affiliation = SetAffiliation(repo, organizations, records, audit, runtime_clock)
+    record_education = RecordEducation(repo, organizations, records, audit, runtime_clock)
     record_fact = RecordFact(repo, records, audit, runtime_clock)
     record_observation = RecordObservation(repo, records, audit, runtime_clock)
     record_trait = RecordTrait(repo, records, audit, runtime_clock, trait_evidence)
@@ -374,6 +377,7 @@ def build_runtime(
             runtime_clock,
         ),
         set_affiliation=set_affiliation,
+        record_education=record_education,
         record_fact=record_fact,
         record_observation=record_observation,
         record_trait=record_trait,

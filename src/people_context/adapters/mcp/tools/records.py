@@ -10,6 +10,7 @@ from people_context.adapters.mcp.tools.tool_errors import call_action, flag_refu
 from people_context.app.people import AddAliasInput, EditPersonInput, RemoveAliasInput, UpdateAliasInput
 from people_context.app.records import (
     CorrectRecordInput,
+    RecordEducationInput,
     RecordFactInput,
     RecordInteractionInput,
     RecordObservationInput,
@@ -190,6 +191,37 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
                     person_id=person_id,
                     org=org,
                     role=role,
+                    valid_from=valid_from,
+                    valid_to=valid_to,
+                    confidence=confidence,
+                )
+            )
+        )
+
+    @mcp.tool(annotations=_WRITE, structured_output=False)
+    @flag_refusals
+    async def record_education(
+        person_id: str,
+        institution: str,
+        degree: str | None = None,
+        field_of_study: str | None = None,
+        valid_from: str | None = None,
+        valid_to: str | None = None,
+        confidence: float | None = None,
+    ) -> dict[str, Any]:
+        """Record that a person studied at an institution, resolving an org id or get/creating by name.
+
+        Use one call per degree: `degree` is the level ("MSc", "PhD"), `field_of_study` the subject
+        ("Computer Science"). Education is not an affiliation — do not record a school with
+        `set_affiliation`, which every reader treats as employment.
+        """
+        return call_action(
+            lambda: deps.record_education.execute(
+                RecordEducationInput(
+                    person_id=person_id,
+                    institution=institution,
+                    degree=degree,
+                    field_of_study=field_of_study,
                     valid_from=valid_from,
                     valid_to=valid_to,
                     confidence=confidence,

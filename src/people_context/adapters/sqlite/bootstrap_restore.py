@@ -56,6 +56,7 @@ _BASELINE_EMPTY_TABLES = (
     "trait_evidence",
     "identified_groups",
     "group_memberships",
+    "education",
     "audit_log",
     "changelog",
     "sync_conflicts",
@@ -270,8 +271,8 @@ class SqliteBootstrapRestorer:
         # every restored organization on the next affiliation write.
         self._insert_many(
             "organizations",
-            ("id", "name", "name_normalized", "kind"),
-            ((row.id, row.name, normalize_name(row.name), row.kind) for row in snapshot.organizations),
+            ("id", "name", "name_normalized", "kind", "industry"),
+            ((row.id, row.name, normalize_name(row.name), row.kind, row.industry) for row in snapshot.organizations),
         )
         self._insert_many(
             "persons",
@@ -619,6 +620,37 @@ class SqliteBootstrapRestorer:
                 for row in document.group_memberships
             ),
         )
+        self._insert_many(
+            "education",
+            (
+                "id",
+                "person_id",
+                "org_id",
+                "degree",
+                "field_of_study",
+                "valid_from",
+                "valid_to",
+                "confidence",
+                "provenance_source",
+                "provenance_session",
+                "provenance_stated_by",
+                "created_at",
+            ),
+            (
+                (
+                    row.id,
+                    row.person_id,
+                    row.org_id,
+                    row.degree,
+                    row.field_of_study,
+                    *_period(row.period),
+                    row.confidence,
+                    *_provenance(row.provenance),
+                    row.created_at.isoformat(),
+                )
+                for row in document.education
+            ),
+        )
 
     def _insert_imports(self, document: SyncBundleDocument) -> None:
         """Restore source receipts, commit mappings, and incomplete staging verbatim."""
@@ -795,4 +827,5 @@ def _outcome(
         trait_evidence=len(document.trait_evidence),
         groups=len(document.groups),
         group_memberships=len(document.group_memberships),
+        education=len(document.education),
     )

@@ -30,6 +30,7 @@ class ExportDocument(BaseModel):
     audit_log: list[dict[str, Any]] = Field(default_factory=list)
     groups: list[dict[str, Any]] = Field(default_factory=list)
     group_memberships: list[dict[str, Any]] = Field(default_factory=list)
+    education: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ExportData:
