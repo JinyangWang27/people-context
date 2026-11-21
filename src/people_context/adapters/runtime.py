@@ -448,6 +448,7 @@ def build_runtime(
             create_group,
             add_group_membership,
             records,
+            record_education,
         ),
         stage_candidates=StageCandidates(candidate_stager),
         list_import_sources=ListImportSources(import_sources),

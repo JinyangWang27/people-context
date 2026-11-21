@@ -51,7 +51,7 @@ changed after they saw it.
 
 ### Use only the strict candidate vocabulary
 
-`stage_candidates` accepts exactly nine candidate `type`s. Nothing else validates:
+`stage_candidates` accepts exactly ten candidate `type`s. Nothing else validates:
 
 - `person` — `ref`, `name`; optional strict `aliases` (objects such as
   `{"value": "Al", "kind": "nickname"}`, never bare strings), `summary`, `message_id`, `date`.
@@ -59,6 +59,8 @@ changed after they saw it.
   optional `channel`, `message_id`, `sensitivity`, `evidence_ref`.
 - `affiliation` — `person_ref`, `org`, `role`; optional `valid_from`, `valid_to`,
   `confidence`, `stated_by`.
+- `education` — `person_ref`, `institution`; optional `degree` (the level, e.g. `MSc`),
+  `field_of_study`, `valid_from`, `valid_to`, `confidence`, `stated_by`. One per degree.
 - `fact` — `person_ref`, `predicate`, `value`; optional `valid_from`, `valid_to`,
   `confidence`, `sensitivity`, `stated_by`.
 - `observation` — `person_ref`, `text`; optional `observed_at`, `sensitivity`,
@@ -76,13 +78,13 @@ changed after they saw it.
   `temporal_basis`, `confidence`, `sensitivity`, `stated_by`. Requires `source_kind` on
   the request; see below.
 
-`stated_by` on a `fact` or `affiliation` records **who asserted the claim**, in at most 256
+`stated_by` on a `fact`, `affiliation`, or `education` row records **who asserted the claim**, in at most 256
 characters — a person, a document, or a role. It is not `source`, which names the process that
 wrote the row. Attribution is not verification: a claim someone makes about themselves stays a
 fact whose value says so and whose `stated_by` names them, never an inferred `trait`. Omit it
 when the attribution is unknown rather than guessing at a speaker.
 
-References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
+References are **batch-local**: an `interaction`, `affiliation`, `education`, `fact`, `observation`,
 `trait`, `relationship`, or `group_membership` points at a `person` candidate's `ref` within the
 same `stage_candidates` call, and a `group_membership`'s `group_ref` points at a `group`
 candidate's `ref` in that same call. Extract concise, structured field values only. Never copy raw

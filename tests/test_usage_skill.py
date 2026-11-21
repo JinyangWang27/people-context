@@ -316,10 +316,12 @@ class TestCvCapture:
         assert "a unique handle binds the claim even when the name on the document" in lowered
         assert "fails the whole commit after the user has already reviewed it" in lowered
 
-    def test_maps_employment_to_affiliations_and_background_to_facts(self) -> None:
+    def test_maps_employment_to_affiliations_education_to_its_own_record_and_background_to_facts(self) -> None:
         lowered = " ".join(_skill_text().lower().split())
 
-        assert "employment and education are `affiliation` candidates" in lowered
+        assert "employment is an `affiliation` candidate" in lowered
+        assert "each degree is an `education` candidate" in lowered
+        assert "never a whole career or education history summarised into one `fact`" in lowered
         assert "background are `fact` candidates" in lowered
         # A CV is a document, not something the agent witnessed.
         assert "a cv is not a meeting you sat in" in lowered

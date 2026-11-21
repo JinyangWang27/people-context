@@ -260,3 +260,61 @@ def test_the_timeline_shows_education_with_its_institution(runtime: ApplicationR
         ("MSc, Cognitive Science", "University of Edinburgh", "valid_from"),
         ("education", "Open University", "created_at"),
     ]
+
+
+class TestImport:
+    _CANDIDATES: list[dict[str, Any]] = [
+        {"type": "person", "ref": "alice", "name": "Alice Ahmed", "aliases": []},
+        {
+            "type": "education",
+            "person_ref": "alice",
+            "institution": "University of Edinburgh",
+            "degree": "MSc",
+            "field_of_study": "Cognitive Science",
+            "valid_from": "2022-09-01",
+            "valid_to": "2024-06-30",
+            "stated_by": "LinkedIn",
+        },
+        {"type": "affiliation", "person_ref": "alice", "org": "Presight", "role": "Data Scientist"},
+    ]
+
+    def _stage(self, runtime: ApplicationRuntime) -> str:
+        return runtime.use_cases.stage_candidates.execute(
+            "linkedin-profile", self._CANDIDATES, source_kind="document"
+        ).batch_id
+
+    def test_a_staged_degree_commits_into_an_education_record(self, runtime: ApplicationRuntime) -> None:
+        batch = self._stage(runtime)
+        rows = runtime.use_cases.review_import.execute(batch).candidates
+
+        result = runtime.use_cases.commit_import.execute(batch, [row.id for row in rows])
+
+        assert result.unresolved_ids == []
+        alice = runtime.conn.execute("SELECT id FROM persons WHERE canonical_name = 'Alice Ahmed'").fetchone()["id"]
+        context = runtime.use_cases.get_person_context.execute(alice)
+        [studied] = context.education
+        assert (studied.education.degree, studied.education.field_of_study, studied.institution_name) == (
+            "MSc",
+            "Cognitive Science",
+            "University of Edinburgh",
+        )
+        assert studied.education.provenance.stated_by == "LinkedIn"
+        assert [row.organization_name for row in context.affiliations] == ["Presight"]
+        timeline = runtime.use_cases.get_person_timeline.execute(alice)
+        [entry] = [entry for entry in timeline.entries if entry.entry_type == "education"]
+        assert entry.source_session_id is not None
+
+    def test_review_lines_describe_the_degree(self, runtime: ApplicationRuntime) -> None:
+        from people_context.cli.rendering import import_review_lines
+
+        rows = runtime.use_cases.review_import.execute(self._stage(runtime)).candidates
+
+        [line] = [line for line in import_review_lines(rows) if "  education  " in line]
+        assert "MSc, Cognitive Science at University of Edinburgh — Alice Ahmed" in line
+
+    def test_an_education_candidate_with_an_inverted_period_is_refused(self, runtime: ApplicationRuntime) -> None:
+        candidates = [dict(row) for row in self._CANDIDATES[:2]]
+        candidates[1].update(valid_from="2024-06-30", valid_to="2022-09-01")
+
+        with pytest.raises(Exception, match="candidate validation failed"):
+            runtime.use_cases.stage_candidates.execute("linkedin-profile", candidates)

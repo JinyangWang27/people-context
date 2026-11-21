@@ -43,6 +43,7 @@ _ALLOWED_CANDIDATE_TYPES = [
     "person",
     "interaction",
     "affiliation",
+    "education",
     "fact",
     "observation",
     "trait",

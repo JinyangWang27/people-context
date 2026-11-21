@@ -25,8 +25,9 @@ Existing affiliations and relationships are never automatically converted into g
 |---|---|
 | `persons` | Canonical identity, `is_self`, summary, timestamps, and soft-delete tombstone. |
 | `aliases` | Nickname, native-script name, transliteration, handle, former name, or other alias. |
-| `organizations` | Named organization and optional kind. |
-| `affiliations` | Person-to-organization role with validity, confidence, and provenance. |
+| `organizations` | Named organization, optional kind, and optional industry (a property of the organization, not of anyone's role there). |
+| `affiliations` | Person-to-organization role (employment) with validity, confidence, and provenance. |
+| `education` | A person's study at an institution (an organization): optional degree and field of study, validity, confidence, and provenance. A separate record, not an affiliation kind, because every affiliation reader means employment. No sensitivity field, like affiliations. |
 | `relationships` | One stored typed edge between two people with validity, confidence, and provenance. |
 | `facts` | Objective predicate/value statements with validity, recording time, sensitivity, and provenance. |
 | `observations` | Explicitly subjective point-in-time notes. |

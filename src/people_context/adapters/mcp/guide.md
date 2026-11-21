@@ -300,7 +300,7 @@ changed after they saw it.
 
 ### Use only the strict candidate vocabulary
 
-`stage_candidates` accepts exactly nine candidate `type`s. Nothing else validates:
+`stage_candidates` accepts exactly ten candidate `type`s. Nothing else validates:
 
 - `person` — `ref`, `name`; optional strict `aliases` (objects such as
   `{"value": "Al", "kind": "nickname"}`, never bare strings), `summary`, `message_id`, `date`.
@@ -308,6 +308,8 @@ changed after they saw it.
   optional `channel`, `message_id`, `sensitivity`, `evidence_ref`.
 - `affiliation` — `person_ref`, `org`, `role`; optional `valid_from`, `valid_to`,
   `confidence`, `stated_by`.
+- `education` — `person_ref`, `institution`; optional `degree` (the level, e.g. `MSc`),
+  `field_of_study`, `valid_from`, `valid_to`, `confidence`, `stated_by`. One per degree.
 - `fact` — `person_ref`, `predicate`, `value`; optional `valid_from`, `valid_to`,
   `confidence`, `sensitivity`, `stated_by`.
 - `observation` — `person_ref`, `text`; optional `observed_at`, `sensitivity`,
@@ -325,13 +327,13 @@ changed after they saw it.
   `temporal_basis`, `confidence`, `sensitivity`, `stated_by`. Requires `source_kind` on
   the request; see below.
 
-`stated_by` on a `fact` or `affiliation` records **who asserted the claim**, in at most 256
+`stated_by` on a `fact`, `affiliation`, or `education` row records **who asserted the claim**, in at most 256
 characters — a person, a document, or a role. It is not `source`, which names the process that
 wrote the row. Attribution is not verification: a claim someone makes about themselves stays a
 fact whose value says so and whose `stated_by` names them, never an inferred `trait`. Omit it
 when the attribution is unknown rather than guessing at a speaker.
 
-References are **batch-local**: an `interaction`, `affiliation`, `fact`, `observation`,
+References are **batch-local**: an `interaction`, `affiliation`, `education`, `fact`, `observation`,
 `trait`, `relationship`, or `group_membership` points at a `person` candidate's `ref` within the
 same `stage_candidates` call, and a `group_membership`'s `group_ref` points at a `group`
 candidate's `ref` in that same call. Extract concise, structured field values only. Never copy raw
@@ -481,9 +483,12 @@ wrote it, and storing a claim must never quietly promote it to a verified charac
    commit after the user has already reviewed it. `pctx import stage-candidates` always uses the
    ambiguity-preserving matcher; `stage_candidates` does so only for a batch that also carries an
    `observation`, `trait`, or `relationship`.
-3. **Pick the record type from what the document supports.** Employment and education are `affiliation`
-   candidates *when* role, organisation, dates, and disclosure can all be represented faithfully.
-   Qualifications, skills, languages, and other background are `fact` candidates. `observation` and
+3. **Pick the record type from what the document supports.** Employment is an `affiliation` candidate
+   *when* role, organisation, dates, and disclosure can all be represented faithfully. Each degree is an
+   `education` candidate — `institution`, and the `degree` and `field_of_study` the document states — never
+   an `affiliation`, which every reader treats as a job. Stage one candidate per position or degree, never a
+   whole career or education history summarised into one `fact`. Certificates, skills, languages, and other
+   background are `fact` candidates. `observation` and
    `trait` keep the meanings they have in `staged-capture.md` — a CV is not a meeting you sat in.
 4. **Attribute every claim** with `stated_by`. "Describes herself as analytical in her CV" is a `fact`
    whose value says exactly that and whose `stated_by` names her. It never becomes a `trait` valued
@@ -510,6 +515,10 @@ role you know only as historical must not be staged as one. Capture it as an att
 carrying its own uncertainty, or leave it unresolved and say why. A document's silence about an end date
 is not a claim that the role continues. An explicit "current" in the source is such a claim, and can be
 staged as one with its attribution and whatever bounds are known.
+
+Education does not carry that risk: an `education` row is never read as current, so a degree whose dates
+are only years is still staged as `education` — with no `valid_from` or `valid_to`, rather than invented
+ones. If the stated years matter, record them as a companion `fact` that keeps their uncertainty.
 
 Two roles at once are ordinary — a job and a board seat, a lecturer and a consultant — and are not a
 contradiction to resolve. Nothing a CV leaves out closes or deletes anything: omission is not an ending.
@@ -538,15 +547,15 @@ A readable CV whose subject resolves to exactly one person:
   {"type": "fact", "person_ref": "nadia", "predicate": "skill",
    "value": "CV lists Rust and distributed systems as primary skills",
    "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6},
-  {"type": "fact", "person_ref": "nadia", "predicate": "education",
-   "value": "CV reports study at Northbridge College, 2017–2019; months and days unknown",
+  {"type": "education", "person_ref": "nadia", "institution": "Northbridge College",
+   "degree": "BSc", "field_of_study": "Computer Science",
    "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6}
 ]
 ```
 
 The dated role is an affiliation because the CV gives a start date and says it is current. The degree is
-a fact because 2017–2019 is not a pair of dates, and forcing it into an affiliation would either invent
-two days or open a period that reads as a job she still holds.
+an `education` row, never an affiliation, which would read as a job she still holds. It carries no dates
+because 2017–2019 is not a pair of dates, and inventing two days would be worse than leaving them out.
 
 The same document when its middle pages are an unreadable scan and the name matches two active people:
 stage nothing. Report what you have — "the employment section did not come out, and 'J. Okonkwo' matches
