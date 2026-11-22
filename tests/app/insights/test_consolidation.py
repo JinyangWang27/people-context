@@ -25,6 +25,7 @@ from people_context.app.insights import (
 )
 from people_context.domain.person import Person
 from people_context.domain.shared import Provenance, Sensitivity
+from people_context.domain.tenure import DatePrecision
 from people_context.ports.consolidation import (
     ConsolidationAffiliationRow,
     ConsolidationFactRow,
@@ -670,6 +671,8 @@ class TestAffiliations:
             "role": "Head of Design",
             "valid_from": date(2024, 1, 1),
             "valid_to": date(2025, 6, 30),
+            "valid_from_precision": DatePrecision.DAY,
+            "valid_to_precision": DatePrecision.DAY,
             "created_at": _RECORDED,
             "confidence": 1.0,
             "provenance": {"source": "agent", "session": None, "stated_by": None},

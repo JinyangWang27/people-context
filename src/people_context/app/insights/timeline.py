@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 
 from people_context.app.exports._document import render_json_document
 from people_context.domain.shared import Sensitivity, as_utc
+from people_context.domain.tenure import DatePrecision
 from people_context.domain.trait_evidence import MAX_TRAIT_EVIDENCE_LINKS
 from people_context.ports.repository import PersonReader
 from people_context.ports.timeline import (
@@ -110,6 +111,10 @@ class TimelineEntry(BaseModel):
     sensitivity: Sensitivity | None = None
     valid_from: date | None = None
     valid_to: date | None = None
+    #: How much of each bound was stated: an affiliation or education dated "2015" has `year`, and
+    #: its `valid_from` is the year's first day. Every other entry type is `day`.
+    valid_from_precision: DatePrecision = DatePrecision.DAY
+    valid_to_precision: DatePrecision = DatePrecision.DAY
     source_session_id: str | None = None
     evidence: list[TimelineEvidenceLink] = Field(default_factory=list)
     evidence_truncated: bool = False
@@ -206,6 +211,8 @@ class GetPersonTimeline:
             sensitivity=row.sensitivity,
             valid_from=row.valid_from,
             valid_to=row.valid_to,
+            valid_from_precision=row.valid_from_precision,
+            valid_to_precision=row.valid_to_precision,
             source_session_id=row.source_session_id,
             evidence=evidence,
             evidence_truncated=truncated,

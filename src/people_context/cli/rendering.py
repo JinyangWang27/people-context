@@ -129,13 +129,13 @@ def import_review_lines(rows: list[ImportReviewRow]) -> list[str]:
             detail = _import_person(candidate)
         elif candidate_type == "affiliation":
             detail = (
-                f"{candidate['role']} at {candidate['org']} — "
+                f"{candidate['role']} at {candidate['org']}{_import_span(candidate)} — "
                 f"{_import_owner(candidate, person_names)}{_import_attribution(candidate)}"
             )
         elif candidate_type == "education":
             studied = ", ".join(str(candidate[key]) for key in ("degree", "field_of_study") if candidate.get(key))
             detail = (
-                f"{studied or 'studied'} at {candidate['institution']} — "
+                f"{studied or 'studied'} at {candidate['institution']}{_import_span(candidate)} — "
                 f"{_import_owner(candidate, person_names)}{_import_attribution(candidate)}"
             )
         elif candidate_type == "fact":
@@ -264,6 +264,14 @@ def _import_owner(candidate: dict[str, object], person_names: dict[str, str]) ->
     person_candidate_id = str(candidate["person_candidate_id"])
     person_name = str(person_names.get(person_candidate_id, "unknown person"))
     return f"{person_name} ({person_candidate_id})"
+
+
+def _import_span(candidate: dict[str, object]) -> str:
+    """Render a tenure candidate's dates exactly as stated — `2015–2019` stays years — or nothing."""
+    start, end = candidate.get("valid_from"), candidate.get("valid_to")
+    if start is None and end is None:
+        return ""
+    return f" ({start or '?'}–{end or '?'})"
 
 
 def _import_attribution(candidate: dict[str, object]) -> str:

@@ -58,6 +58,7 @@ from people_context.app.insights.timeline import (
     TimelineEvidenceLink,
 )
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
+from people_context.domain.tenure import DatePrecision
 from people_context.ports.consolidation import (
     ConsolidationAffiliationRow,
     ConsolidationFactRow,
@@ -203,6 +204,10 @@ class ConsolidationAffiliation(BaseModel):
     role: str
     valid_from: date | None = None
     valid_to: date | None = None
+    #: How much of each bound was stated: `year` means the source gave only the year, and the bound
+    #: is that year's edge, not a known day.
+    valid_from_precision: DatePrecision = DatePrecision.DAY
+    valid_to_precision: DatePrecision = DatePrecision.DAY
     created_at: datetime
     confidence: float
     provenance: Provenance
@@ -360,6 +365,8 @@ def _affiliation(row: ConsolidationAffiliationRow) -> ConsolidationAffiliation:
         role=row.role,
         valid_from=row.valid_from,
         valid_to=row.valid_to,
+        valid_from_precision=row.valid_from_precision,
+        valid_to_precision=row.valid_to_precision,
         created_at=row.created_at,
         confidence=row.confidence,
         provenance=row.provenance,

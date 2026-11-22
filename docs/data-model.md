@@ -18,6 +18,10 @@ Existing affiliations and relationships are never automatically converted into g
   database through import may supply it on its candidate; see
   [docs/import.md](import.md#attributing-a-claim-to-who-made-it-m22).
 - Facts, affiliations, and relationships use a bitemporal-lite shape: world validity plus recording/creation time.
+- Affiliation and education periods also record how much of each bound was stated: `valid_from_precision` and
+  `valid_to_precision` are `day`, `month`, or `year`. A bound known only to a year or a month is stored as the edge
+  of that span — "2015–2019" is 2015-01-01 to 2019-12-31 at `year` precision — so range reads stay correct, and
+  displays render the bound only to its stated precision. Every other dated record stores exact days.
 
 ## Core tables
 

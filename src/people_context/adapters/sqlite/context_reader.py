@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, datetime
 
-from people_context.adapters.sqlite.record_store import hydrate_education
+from people_context.adapters.sqlite.record_store import hydrate_education, tenure_period
 from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
@@ -85,7 +85,7 @@ class SqliteContextReader:
                     person_id=row["person_id"],
                     org_id=row["org_id"],
                     role=row["role"],
-                    period=_period(row),
+                    period=tenure_period(row),
                     confidence=row["confidence"],
                     provenance=_provenance(row),
                     created_at=datetime.fromisoformat(row["created_at"]),

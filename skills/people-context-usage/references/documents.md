@@ -41,11 +41,13 @@ wrote it, and storing a claim must never quietly promote it to a verified charac
 
 #### Only the dates the source actually supports
 
-`valid_from` and `valid_to` take the exact dates the document gives you and nothing else. Year-only,
-month-only, approximate, and unknown periods stay in the claim text, where their uncertainty survives:
-"CV reports study at Northbridge College, 2017–2019; months and days unknown." Never invent a January 1,
-a month boundary, or a date taken from when you happened to read the file — a recording date is not an
-event date.
+`valid_from` and `valid_to` take only as much of a date as the document gives you. On an `affiliation`
+or an `education` row that can be a year (`"2017"`), a month (`"2019-06"`), or a day (`"2023-04-03"`):
+write "2017–2019" as `"valid_from": "2017", "valid_to": "2019"`, and the store keeps it as a year rather
+than a day. Never pad a year into `"2017-01-01"` or a month into its first day, and never take a date from
+when you happened to read the file — a recording date is not an event date. Every other record type takes
+exact days only, so there a year-only, approximate, or unknown period stays in the claim text, where its
+uncertainty survives.
 
 This matters most at the open end. An affiliation with no `valid_to` reads as current everywhere, so a
 role you know only as historical must not be staged as one. Capture it as an attributed background fact
@@ -53,9 +55,8 @@ carrying its own uncertainty, or leave it unresolved and say why. A document's s
 is not a claim that the role continues. An explicit "current" in the source is such a claim, and can be
 staged as one with its attribution and whatever bounds are known.
 
-Education does not carry that risk: an `education` row is never read as current, so a degree whose dates
-are only years is still staged as `education` — with no `valid_from` or `valid_to`, rather than invented
-ones. If the stated years matter, record them as a companion `fact` that keeps their uncertainty.
+Education does not carry that risk: an `education` row is never read as current, so a degree is staged as
+`education` with whatever bounds the document states — both years, one, or none.
 
 Two roles at once are ordinary — a job and a board seat, a lecturer and a consultant — and are not a
 contradiction to resolve. Nothing a CV leaves out closes or deletes anything: omission is not an ending.
@@ -85,14 +86,14 @@ A readable CV whose subject resolves to exactly one person:
    "value": "CV lists Rust and distributed systems as primary skills",
    "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6},
   {"type": "education", "person_ref": "nadia", "institution": "Northbridge College",
-   "degree": "BSc", "field_of_study": "Computer Science",
+   "degree": "BSc", "field_of_study": "Computer Science", "valid_from": "2017", "valid_to": "2019",
    "stated_by": "Nadia Okonkwo (CV)", "confidence": 0.6}
 ]
 ```
 
 The dated role is an affiliation because the CV gives a start date and says it is current. The degree is
-an `education` row, never an affiliation, which would read as a job she still holds. It carries no dates
-because 2017–2019 is not a pair of dates, and inventing two days would be worse than leaving them out.
+an `education` row, never an affiliation, which would read as a job she still holds. Its dates are the
+years the CV gives, 2017–2019, stated as years: inventing two days would be worse than either.
 
 The same document when its middle pages are an unreadable scan and the name matches two active people:
 stage nothing. Report what you have — "the employment section did not come out, and 'J. Okonkwo' matches

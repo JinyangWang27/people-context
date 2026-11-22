@@ -18,6 +18,7 @@ from people_context.domain.organization import Affiliation, Organization
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
+from people_context.domain.tenure import DatePrecision, TenurePeriod
 from people_context.domain.trait import Trait, TraitCategory
 from people_context.ports.records import Record
 
@@ -37,8 +38,16 @@ _TABLES = {
 
 _UPDATE_COLUMNS = {
     "relationship": {"type", "label", "valid_from", "valid_to", "confidence"},
-    "affiliation": {"role", "valid_from", "valid_to", "confidence"},
-    "education": {"degree", "field_of_study", "valid_from", "valid_to", "confidence"},
+    "affiliation": {"role", "valid_from", "valid_to", "valid_from_precision", "valid_to_precision", "confidence"},
+    "education": {
+        "degree",
+        "field_of_study",
+        "valid_from",
+        "valid_to",
+        "valid_from_precision",
+        "valid_to_precision",
+        "confidence",
+    },
     "organization": {"kind", "industry"},
     "fact": {"predicate", "value", "valid_from", "valid_to", "confidence", "sensitivity"},
     "observation": {"text", "observed_at", "sensitivity"},
@@ -80,24 +89,33 @@ class SqliteRecordStore:
                 "person_id": affiliation.person_id,
                 "org_id": affiliation.org_id,
                 "role": affiliation.role,
-                **_period_values(affiliation.period),
+                **_tenure_values(affiliation.period),
                 "confidence": affiliation.confidence,
                 **_provenance_values(affiliation.provenance),
                 "created_at": affiliation.created_at.isoformat(),
             },
         )
 
-    def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
-        values = _period_values(period)
+    def find_affiliation(self, person_id: str, org_id: str, role: str, period: TenurePeriod) -> Affiliation | None:
+        values = _tenure_values(period)
         row = self._conn.execute(
             """
             SELECT * FROM affiliations
             WHERE person_id = ? AND org_id = ? AND role = ?
               AND valid_from IS ? AND valid_to IS ?
+              AND valid_from_precision = ? AND valid_to_precision = ?
             ORDER BY created_at, id
             LIMIT 1
             """,
-            (person_id, org_id, role, values["valid_from"], values["valid_to"]),
+            (
+                person_id,
+                org_id,
+                role,
+                values["valid_from"],
+                values["valid_to"],
+                values["valid_from_precision"],
+                values["valid_to_precision"],
+            ),
         ).fetchone()
         return _affiliation(row, self._participant_ids) if row is not None else None
 
@@ -110,7 +128,7 @@ class SqliteRecordStore:
                 "org_id": education.org_id,
                 "degree": education.degree,
                 "field_of_study": education.field_of_study,
-                **_period_values(education.period),
+                **_tenure_values(education.period),
                 "confidence": education.confidence,
                 **_provenance_values(education.provenance),
                 "created_at": education.created_at.isoformat(),
@@ -123,18 +141,28 @@ class SqliteRecordStore:
         org_id: str,
         degree: str | None,
         field_of_study: str | None,
-        period: ValidityPeriod,
+        period: TenurePeriod,
     ) -> Education | None:
-        values = _period_values(period)
+        values = _tenure_values(period)
         row = self._conn.execute(
             """
             SELECT * FROM education
             WHERE person_id = ? AND org_id = ? AND degree IS ? AND field_of_study IS ?
               AND valid_from IS ? AND valid_to IS ?
+              AND valid_from_precision = ? AND valid_to_precision = ?
             ORDER BY created_at, id
             LIMIT 1
             """,
-            (person_id, org_id, degree, field_of_study, values["valid_from"], values["valid_to"]),
+            (
+                person_id,
+                org_id,
+                degree,
+                field_of_study,
+                values["valid_from"],
+                values["valid_to"],
+                values["valid_from_precision"],
+                values["valid_to_precision"],
+            ),
         ).fetchone()
         return hydrate_education(row) if row is not None else None
 
@@ -299,6 +327,14 @@ def _period_values(period: ValidityPeriod) -> dict[str, str | None]:
     }
 
 
+def _tenure_values(period: TenurePeriod) -> dict[str, str | None]:
+    return {
+        **_period_values(period),
+        "valid_from_precision": period.valid_from_precision.value,
+        "valid_to_precision": period.valid_to_precision.value,
+    }
+
+
 def _provenance_values(provenance: Provenance) -> dict[str, str | None]:
     return {
         "provenance_source": provenance.source,
@@ -319,6 +355,16 @@ def _period(row: sqlite3.Row) -> ValidityPeriod:
     return ValidityPeriod(
         valid_from=date.fromisoformat(row["valid_from"]) if row["valid_from"] else None,
         valid_to=date.fromisoformat(row["valid_to"]) if row["valid_to"] else None,
+    )
+
+
+def tenure_period(row: sqlite3.Row) -> TenurePeriod:
+    """Hydrate an affiliation's or an education row's period with the precision each bound was stated to."""
+    return TenurePeriod(
+        valid_from=date.fromisoformat(row["valid_from"]) if row["valid_from"] else None,
+        valid_to=date.fromisoformat(row["valid_to"]) if row["valid_to"] else None,
+        valid_from_precision=DatePrecision(row["valid_from_precision"]),
+        valid_to_precision=DatePrecision(row["valid_to_precision"]),
     )
 
 
@@ -350,7 +396,7 @@ def _affiliation(row: sqlite3.Row, _: Callable[[str], list[str]]) -> Affiliation
         person_id=row["person_id"],
         org_id=row["org_id"],
         role=row["role"],
-        period=_period(row),
+        period=tenure_period(row),
         confidence=row["confidence"],
         provenance=_provenance(row),
         created_at=datetime.fromisoformat(row["created_at"]),
@@ -364,7 +410,7 @@ def hydrate_education(row: sqlite3.Row, _: Callable[[str], list[str]] | None = N
         org_id=row["org_id"],
         degree=row["degree"],
         field_of_study=row["field_of_study"],
-        period=_period(row),
+        period=tenure_period(row),
         confidence=row["confidence"],
         provenance=_provenance(row),
         created_at=datetime.fromisoformat(row["created_at"]),

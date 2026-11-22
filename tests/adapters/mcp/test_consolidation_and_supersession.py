@@ -187,6 +187,8 @@ class TestConsolidationTool:
             "role",
             "valid_from",
             "valid_to",
+            "valid_from_precision",
+            "valid_to_precision",
             "created_at",
             "confidence",
             "provenance",

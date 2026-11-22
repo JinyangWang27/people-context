@@ -40,6 +40,7 @@ from people_context.domain.fact import Fact
 from people_context.domain.interaction import Interaction
 from people_context.domain.reminder import Reminder, ReminderStatus
 from people_context.domain.shared import normalize_name
+from people_context.domain.tenure import format_bound
 from people_context.domain.trait import Trait
 from people_context.ports.clock import Clock
 
@@ -332,8 +333,8 @@ def _history_line(entry: TimelineEntry) -> str:
     body = entry.summary if entry.detail is None else f"{entry.summary}: {entry.detail}"
     parts = [f"{entry.effective_at.isoformat()} (by {entry.basis}) — {entry.entry_type}: {body}"]
     if entry.valid_from is not None or entry.valid_to is not None:
-        start = entry.valid_from.isoformat() if entry.valid_from else "unknown"
-        end = entry.valid_to.isoformat() if entry.valid_to else "present"
+        start = format_bound(entry.valid_from, entry.valid_from_precision) or "unknown"
+        end = format_bound(entry.valid_to, entry.valid_to_precision) or "present"
         parts.append(f"valid {start} to {end}")
     if entry.source_session_id is not None:
         parts.append(f"source session {entry.source_session_id}")

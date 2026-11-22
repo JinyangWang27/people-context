@@ -19,7 +19,8 @@ from people_context.domain.organization import Affiliation, Organization
 from people_context.domain.person import Person
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderStatus
-from people_context.domain.shared import Sensitivity, ValidityPeriod, normalize_name
+from people_context.domain.shared import Sensitivity, normalize_name
+from people_context.domain.tenure import TenurePeriod
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.changelog import ChangelogCursor, ChangelogEntry
@@ -473,7 +474,7 @@ class FakeRecordStore:
     def save_affiliation(self, affiliation: Affiliation) -> None:
         self.records[("affiliation", affiliation.id)] = affiliation
 
-    def find_affiliation(self, person_id: str, org_id: str, role: str, period: ValidityPeriod) -> Affiliation | None:
+    def find_affiliation(self, person_id: str, org_id: str, role: str, period: TenurePeriod) -> Affiliation | None:
         matches = [
             record
             for (kind, _), record in self.records.items()
@@ -491,7 +492,7 @@ class FakeRecordStore:
         org_id: str,
         degree: str | None,
         field_of_study: str | None,
-        period: ValidityPeriod,
+        period: TenurePeriod,
     ) -> Education | None:
         claim = (person_id, org_id, degree, field_of_study, period)
         matches = [

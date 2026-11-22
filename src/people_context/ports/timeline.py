@@ -30,6 +30,7 @@ from datetime import date, datetime
 from typing import Final, Protocol, runtime_checkable
 
 from people_context.domain.shared import Sensitivity
+from people_context.domain.tenure import DatePrecision
 
 #: Record types the timeline projects. These are the durable entity types M18.1 already names in
 #: its commit mappings, so a timeline entry and a provenance mapping talk about the same thing.
@@ -95,6 +96,10 @@ class TimelineRow:
     sensitivity: Sensitivity | None = None
     valid_from: date | None = None
     valid_to: date | None = None
+    #: How much of each bound was stated. Only an affiliation or an education row can be less than
+    #: a day; every other entry type stores exact days.
+    valid_from_precision: DatePrecision = DatePrecision.DAY
+    valid_to_precision: DatePrecision = DatePrecision.DAY
     source_session_id: str | None = None
 
 

@@ -259,7 +259,12 @@ def _document() -> dict[str, Any]:
                 "org_id": _ORG_ID,
                 "degree": "MSc",
                 "field_of_study": "Cognitive Science",
-                "period": {"valid_from": "2022-09-01", "valid_to": "2024-06-30"},
+                "period": {
+                    "valid_from": "2022-09-01",
+                    "valid_to": "2024-06-30",
+                    "valid_from_precision": "month",
+                    "valid_to_precision": "month",
+                },
                 "confidence": 1.0,
                 "provenance": {"source": "agent", "session": None, "stated_by": None},
                 "created_at": "2026-07-03T00:00:00Z",
@@ -1110,7 +1115,7 @@ def test_the_current_version_accepts_a_rejected_staging_row() -> None:
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 10
+    assert document.version == SYNC_BUNDLE_VERSION == 11
     assert document.imports.staging[0].status == "rejected"
 
 
@@ -1239,7 +1244,7 @@ def test_the_current_version_accepts_a_staged_candidate_naming_who_asserted_it(c
 
     document = parse_bundle_payload(payload)
 
-    assert document.version == SYNC_BUNDLE_VERSION == 10
+    assert document.version == SYNC_BUNDLE_VERSION == 11
     assert document.imports.staging[-1].candidate["stated_by"] == "her CV"
 
 
@@ -1324,7 +1329,7 @@ def test_wrong_format_is_rejected() -> None:
         SyncBundleDocument.model_validate(payload)
 
 
-@pytest.mark.parametrize("version", [0, 1, 6, 7, 8, 9, 11, "10"])
+@pytest.mark.parametrize("version", [0, 1, 6, 7, 8, 9, 10, 12, "11"])
 def test_unsupported_version_is_rejected(version: object) -> None:
     payload = _document()
     payload["version"] = version
@@ -1811,7 +1816,7 @@ def _row_with_period(collection: str) -> dict[str, Any]:
             "person_id": _PERSON_ID,
             "org_id": "01J000000000000000000ORG01",
             "role": "Engineer",
-            "period": period,
+            "period": {**period, "valid_from_precision": "day", "valid_to_precision": "day"},
             "confidence": 1.0,
             "provenance": provenance,
             "created_at": "2026-07-04T00:00:00Z",

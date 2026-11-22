@@ -54,6 +54,8 @@ class SqliteVaultReader:
                     role=record.affiliation.role,
                     valid_from=record.affiliation.period.valid_from,
                     valid_to=record.affiliation.period.valid_to,
+                    valid_from_precision=record.affiliation.period.valid_from_precision,
+                    valid_to_precision=record.affiliation.period.valid_to_precision,
                 )
                 for record in self._context.list_active_affiliations(person.id, as_of)
             ]
@@ -78,6 +80,8 @@ class SqliteVaultReader:
                         role=affiliation.role,
                         valid_from=affiliation.valid_from,
                         valid_to=affiliation.valid_to,
+                        valid_from_precision=affiliation.valid_from_precision,
+                        valid_to_precision=affiliation.valid_to_precision,
                     )
                 )
             facts = [

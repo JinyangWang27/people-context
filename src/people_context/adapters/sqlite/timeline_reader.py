@@ -46,6 +46,7 @@ from people_context.adapters.sqlite._projection import (
     source_session as _source_session,
 )
 from people_context.domain.shared import Sensitivity
+from people_context.domain.tenure import DatePrecision
 from people_context.ports.timeline import (
     BASIS_CREATED_AT,
     BASIS_OBSERVED_AT,
@@ -74,6 +75,8 @@ SELECT '{ENTRY_INTERACTION}' AS entry_type,
        i.sensitivity AS sensitivity,
        NULL AS valid_from,
        NULL AS valid_to,
+       'day' AS valid_from_precision,
+       'day' AS valid_to_precision,
        {_source_session(ENTRY_INTERACTION, "i.id")} AS source_session_id
 FROM interactions i
 JOIN interaction_participants ip ON ip.interaction_id = i.id AND ip.person_id = :person_id
@@ -90,6 +93,8 @@ SELECT '{ENTRY_OBSERVATION}' AS entry_type,
        o.sensitivity AS sensitivity,
        NULL AS valid_from,
        NULL AS valid_to,
+       'day' AS valid_from_precision,
+       'day' AS valid_to_precision,
        {_source_session(ENTRY_OBSERVATION, "o.id")} AS source_session_id
 FROM observations o
 WHERE o.person_id = :person_id AND o.sensitivity IN ({{levels}})
@@ -108,6 +113,8 @@ SELECT '{ENTRY_FACT}' AS entry_type,
        f.sensitivity AS sensitivity,
        f.valid_from AS valid_from,
        f.valid_to AS valid_to,
+       'day' AS valid_from_precision,
+       'day' AS valid_to_precision,
        {_source_session(ENTRY_FACT, "f.id")} AS source_session_id
 FROM facts f
 WHERE f.person_id = :person_id AND f.sensitivity IN ({{levels}})
@@ -126,6 +133,8 @@ SELECT '{ENTRY_AFFILIATION}' AS entry_type,
        NULL AS sensitivity,
        a.valid_from AS valid_from,
        a.valid_to AS valid_to,
+       a.valid_from_precision AS valid_from_precision,
+       a.valid_to_precision AS valid_to_precision,
        {_source_session(ENTRY_AFFILIATION, "a.id")} AS source_session_id
 FROM affiliations a
 JOIN organizations org ON org.id = a.org_id
@@ -149,6 +158,8 @@ SELECT '{ENTRY_EDUCATION}' AS entry_type,
        NULL AS sensitivity,
        e.valid_from AS valid_from,
        e.valid_to AS valid_to,
+       e.valid_from_precision AS valid_from_precision,
+       e.valid_to_precision AS valid_to_precision,
        {_source_session(ENTRY_EDUCATION, "e.id")} AS source_session_id
 FROM education e
 JOIN organizations org ON org.id = e.org_id
@@ -176,6 +187,8 @@ SELECT '{ENTRY_RELATIONSHIP}' AS entry_type,
        NULL AS sensitivity,
        r.valid_from AS valid_from,
        r.valid_to AS valid_to,
+       'day' AS valid_from_precision,
+       'day' AS valid_to_precision,
        {_source_session(ENTRY_RELATIONSHIP, "r.id")} AS source_session_id
 FROM relationships r
 JOIN persons other
@@ -195,6 +208,8 @@ SELECT '{ENTRY_TRAIT}' AS entry_type,
        t.sensitivity AS sensitivity,
        NULL AS valid_from,
        NULL AS valid_to,
+       'day' AS valid_from_precision,
+       'day' AS valid_to_precision,
        {_source_session(ENTRY_TRAIT, "t.id")} AS source_session_id
 FROM traits t
 WHERE t.person_id = :person_id AND t.sensitivity IN ({{levels}})
@@ -213,7 +228,7 @@ _BOUNDED_BRANCHES = tuple(f"SELECT * FROM (SELECT * FROM ({branch}) {_ORDER_BY} 
 
 _TIMELINE_SQL = (
     "SELECT entry_type, entry_id, effective_at, basis, summary, detail, sensitivity, "
-    "valid_from, valid_to, source_session_id FROM ("
+    "valid_from, valid_to, valid_from_precision, valid_to_precision, source_session_id FROM ("
     + " UNION ALL ".join(_BOUNDED_BRANCHES)
     + f") {_ORDER_BY} LIMIT :limit"
 )
@@ -283,6 +298,8 @@ def _row(row: sqlite3.Row) -> TimelineRow:
         sensitivity=_sensitivity(row["sensitivity"]),
         valid_from=_date(row["valid_from"]),
         valid_to=_date(row["valid_to"]),
+        valid_from_precision=DatePrecision(row["valid_from_precision"]),
+        valid_to_precision=DatePrecision(row["valid_to_precision"]),
         source_session_id=row["source_session_id"],
     )
 
