@@ -21,6 +21,7 @@ from people_context.domain.shared import normalize_name
 from people_context.domain.sync_bundle import (
     BundleDevice,
     BundleProvenance,
+    BundleTenurePeriod,
     BundleValidityPeriod,
     InvalidBundleError,
     RestoreUnavailableError,
@@ -341,6 +342,8 @@ class SqliteBootstrapRestorer:
                 "role",
                 "valid_from",
                 "valid_to",
+                "valid_from_precision",
+                "valid_to_precision",
                 "confidence",
                 "provenance_source",
                 "provenance_session",
@@ -353,7 +356,7 @@ class SqliteBootstrapRestorer:
                     row.person_id,
                     row.org_id,
                     row.role,
-                    *_period(row.period),
+                    *_tenure(row.period),
                     row.confidence,
                     *_provenance(row.provenance),
                     row.created_at.isoformat(),
@@ -630,6 +633,8 @@ class SqliteBootstrapRestorer:
                 "field_of_study",
                 "valid_from",
                 "valid_to",
+                "valid_from_precision",
+                "valid_to_precision",
                 "confidence",
                 "provenance_source",
                 "provenance_session",
@@ -643,7 +648,7 @@ class SqliteBootstrapRestorer:
                     row.org_id,
                     row.degree,
                     row.field_of_study,
-                    *_period(row.period),
+                    *_tenure(row.period),
                     row.confidence,
                     *_provenance(row.provenance),
                     row.created_at.isoformat(),
@@ -789,6 +794,10 @@ def _period(period: BundleValidityPeriod) -> tuple[str | None, str | None]:
         period.valid_from.isoformat() if period.valid_from else None,
         period.valid_to.isoformat() if period.valid_to else None,
     )
+
+
+def _tenure(period: BundleTenurePeriod) -> tuple[str | None, str | None, str, str]:
+    return (*_period(period), period.valid_from_precision.value, period.valid_to_precision.value)
 
 
 def _provenance(provenance: BundleProvenance) -> tuple[str, str | None, str | None]:

@@ -310,7 +310,7 @@ class TestImport:
         rows = runtime.use_cases.review_import.execute(self._stage(runtime)).candidates
 
         [line] = [line for line in import_review_lines(rows) if "  education  " in line]
-        assert "MSc, Cognitive Science at University of Edinburgh — Alice Ahmed" in line
+        assert "MSc, Cognitive Science at University of Edinburgh (2022-09-01–2024-06-30) — Alice Ahmed" in line
 
     def test_an_education_candidate_with_an_inverted_period_is_refused(self, runtime: ApplicationRuntime) -> None:
         candidates = [dict(row) for row in self._CANDIDATES[:2]]

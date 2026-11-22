@@ -143,7 +143,7 @@ amendment surface, also accepts a person the possible-match rule lists.
 | Group detail | `people-context-group` | `1` | `pctx group show --json`, `get_group` |
 | Person memberships | `people-context-person-memberships` | `1` | `pctx group memberships --json`, `list_group_memberships` |
 | Shared connections | `people-context-shared-connections` | `1` | `pctx group shared --json`, `explain_shared_connections` |
-| Bootstrap sync bundle | `people-context-sync-bundle` | `10` | `pctx sync push` |
+| Bootstrap sync bundle | `people-context-sync-bundle` | `11` | `pctx sync push` |
 
 The documents differ in how a field addition is classified, because only one of them is read back by this
 project:
@@ -210,7 +210,7 @@ project:
   release therefore cannot tolerate *any* added field, so for this document a field addition is an incompatible
   change and advances `version`. The bundle is deliberately not additively extensible within a version.
 
-  `pctx sync push` emits **version 10** and `pctx sync pull` accepts **only version 10**. Earlier bundle versions
+  `pctx sync push` emits **version 11** and `pctx sync pull` accepts **only version 11**. Earlier bundle versions
   are refused; re-export from a current release to move data. A new field, collection, candidate type, or status
   value all advance the version, because a strict reader cannot fail closed on any of them.
 
@@ -274,3 +274,15 @@ including the vCard `ORG`/`TITLE` export — keeps meaning employment. Sync bund
 **10** because organizations now carry `industry` and the bundle carries an `education` collection beside its
 snapshot. Version-9 and older bundles are refused; export a fresh bundle from the updated source installation.
 The plain JSON export adds an `education` collection and an `industry` field on organizations.
+
+### Affiliation and education date precision
+
+Migration 014 adds `valid_from_precision` and `valid_to_precision` (`day`, `month`, or `year`, default `day`) to
+`affiliations` and `education`. Existing rows keep their exact dates and read back as `day`. A bound stated only to
+a month or a year is stored as the edge of that span — "2015" starts on 2015-01-01 and ends on 2015-12-31 — so
+range reads such as active-as-of stay correct without knowing about precision. `set_affiliation`,
+`record_education`, their staged candidates, and `correct_record` now accept `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`;
+an exact date is accepted as before. Person context, consolidation context, and timeline entries add the two
+precision fields beside the dates they qualify. Sync bundles advance from version 10 to **11** because affiliation
+and education periods carry the precisions. Version-10 and older bundles are refused; export a fresh bundle from
+the updated source installation.

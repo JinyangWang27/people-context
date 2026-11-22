@@ -9,6 +9,7 @@ import unicodedata
 from collections import defaultdict
 from pathlib import Path
 
+from people_context.domain.tenure import format_bound
 from people_context.domain.vault import (
     VaultAffiliation,
     VaultFact,
@@ -211,12 +212,14 @@ def _render_organization(organization: VaultOrganization, people: dict[str, str]
 
 
 def _period_prose(value: VaultAffiliation | VaultOrganizationMember) -> str:
-    if value.valid_from and value.valid_to:
-        return f"; active {value.valid_from.isoformat()} to {value.valid_to.isoformat()}"
-    if value.valid_from:
-        return f"; active since {value.valid_from.isoformat()}"
-    if value.valid_to:
-        return f"; active through {value.valid_to.isoformat()}"
+    start = format_bound(value.valid_from, value.valid_from_precision)
+    end = format_bound(value.valid_to, value.valid_to_precision)
+    if start and end:
+        return f"; active {start} to {end}"
+    if start:
+        return f"; active since {start}"
+    if end:
+        return f"; active through {end}"
     return ""
 
 

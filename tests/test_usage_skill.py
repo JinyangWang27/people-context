@@ -332,12 +332,14 @@ class TestCvCapture:
         assert "`stated_by`" in lowered
         assert 'it never becomes a `trait` valued "analytical", because nobody observed it' in lowered
 
-    def test_keeps_inexact_dates_in_the_claim_text(self) -> None:
+    def test_states_inexact_dates_to_their_precision_and_never_pads_them(self) -> None:
         lowered = " ".join(_skill_text().lower().split())
 
-        assert "never invent a january 1, a month boundary, or a date taken from when you happened" in lowered
+        assert 'write "2017–2019" as `"valid_from": "2017", "valid_to": "2019"`' in lowered
+        assert 'never pad a year into `"2017-01-01"` or a month into its first day' in lowered
         assert "a recording date is not an event date" in lowered
-        assert "months and days unknown" in lowered
+        # Only tenure records take a partial date; everywhere else the imprecision stays in the text.
+        assert "every other record type takes exact days only" in lowered
 
     def test_refuses_to_open_an_affiliation_for_a_role_with_unknown_bounds(self) -> None:
         lowered = " ".join(_skill_text().lower().split())
@@ -590,7 +592,7 @@ class TestReviewedCvUpdate:
         assert "the date is exact, so the new role is **added** as an affiliation" in lowered
         # And it says what the month-only version of the same claim would have to become instead.
         assert 'had the cv said only "march 2026"' in lowered
-        assert "never an affiliation starting on a 1 march nobody wrote down" in lowered
+        assert 'would start at `"2026-03"`, stated as a month — never on a 1 march nobody wrote down' in lowered
 
     def test_the_worked_example_carries_the_source_into_the_superseded_value(self) -> None:
         """Stating the attribution limit is not enough; the example has to apply its own remedy."""

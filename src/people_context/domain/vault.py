@@ -6,6 +6,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
+from people_context.domain.tenure import DatePrecision
+
 
 class VaultRelationship(BaseModel):
     """One relationship rendered from the exported person's perspective."""
@@ -23,6 +25,8 @@ class VaultAffiliation(BaseModel):
     role: str
     valid_from: date | None = None
     valid_to: date | None = None
+    valid_from_precision: DatePrecision = DatePrecision.DAY
+    valid_to_precision: DatePrecision = DatePrecision.DAY
 
 
 class VaultFact(BaseModel):
@@ -65,6 +69,8 @@ class VaultOrganizationMember(BaseModel):
     role: str
     valid_from: date | None = None
     valid_to: date | None = None
+    valid_from_precision: DatePrecision = DatePrecision.DAY
+    valid_to_precision: DatePrecision = DatePrecision.DAY
 
 
 class VaultOrganization(BaseModel):

@@ -35,6 +35,7 @@ from people_context.adapters.sqlite._projection import (
 )
 from people_context.adapters.sqlite.timeline_reader import SqlitePersonTimelineReader
 from people_context.domain.shared import Provenance, Sensitivity
+from people_context.domain.tenure import DatePrecision
 from people_context.ports.consolidation import (
     ConsolidationAffiliationRow,
     ConsolidationFactRow,
@@ -90,6 +91,8 @@ SELECT a.id AS affiliation_id,
        a.role AS role,
        a.valid_from AS valid_from,
        a.valid_to AS valid_to,
+       a.valid_from_precision AS valid_from_precision,
+       a.valid_to_precision AS valid_to_precision,
        a.created_at AS created_at,
        a.confidence AS confidence,
        a.provenance_source AS provenance_source,
@@ -235,6 +238,8 @@ class SqlitePersonConsolidationReader:
                 role=row["role"],
                 valid_from=_date(row["valid_from"]),
                 valid_to=_date(row["valid_to"]),
+                valid_from_precision=DatePrecision(row["valid_from_precision"]),
+                valid_to_precision=DatePrecision(row["valid_to_precision"]),
                 created_at=datetime.fromisoformat(row["created_at"]),
                 confidence=float(row["confidence"]),
                 provenance=_provenance(row),

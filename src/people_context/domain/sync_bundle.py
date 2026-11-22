@@ -42,6 +42,7 @@ from people_context.domain.person import AliasKind, check_person_name
 from people_context.domain.relationship_vocabulary import SEEDED_RELATIONSHIP_TYPES
 from people_context.domain.reminder import ReminderKind, ReminderStatus
 from people_context.domain.shared import Confidence, Sensitivity
+from people_context.domain.tenure import DatePrecision, TenurePeriod
 from people_context.domain.trait import TraitCategory
 
 SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
@@ -49,7 +50,7 @@ SYNC_BUNDLE_FORMAT = "people-context-sync-bundle"
 #: The only version this release emits and restores. The bundle is deliberately not additively
 #: extensible within a version — a reader that accepts a field must understand it — so new primary
 #: state, a new candidate type, or a new status value takes a new version.
-SYNC_BUNDLE_VERSION = 10
+SYNC_BUNDLE_VERSION = 11
 
 #: Upper bound on reported reasons. A hostile or badly corrupted document must not turn one
 #: refusal into an unbounded message; the count of suppressed reasons is reported instead.
@@ -126,6 +127,19 @@ class BundleValidityPeriod(StrictBundleModel):
         return self
 
 
+class BundleTenurePeriod(BundleValidityPeriod):
+    """Verbatim period of an affiliation or education row, with the precision of each bound."""
+
+    valid_from_precision: DatePrecision
+    valid_to_precision: DatePrecision
+
+    @model_validator(mode="after")
+    def _check_precision(self) -> BundleTenurePeriod:
+        """Mirror the domain ``TenurePeriod`` invariant, so a restored row hydrates on every later read."""
+        TenurePeriod.model_validate(self.model_dump())
+        return self
+
+
 class BundleAlias(StrictBundleModel):
     """One alternate name carried inside a bundled person row."""
 
@@ -178,7 +192,7 @@ class BundleAffiliation(StrictBundleModel):
     person_id: Identifier
     org_id: Identifier
     role: str
-    period: BundleValidityPeriod
+    period: BundleTenurePeriod
     confidence: Confidence
     provenance: BundleProvenance
     created_at: UtcDatetime
@@ -576,7 +590,7 @@ class BundleEducation(StrictBundleModel):
     org_id: Identifier
     degree: EducationLabel | None
     field_of_study: EducationLabel | None
-    period: BundleValidityPeriod
+    period: BundleTenurePeriod
     confidence: Confidence
     provenance: BundleProvenance
     created_at: UtcDatetime
@@ -589,7 +603,7 @@ class SyncBundleDocument(StrictBundleModel):
     """
 
     format: Literal["people-context-sync-bundle"]
-    version: Literal[10]
+    version: Literal[11]
     created_at: UtcDatetime
     origin_device_id: Identifier
     watermark: BundleWatermark

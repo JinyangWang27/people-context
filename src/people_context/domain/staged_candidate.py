@@ -62,6 +62,7 @@ from people_context.domain.group import (
 )
 from people_context.domain.person import AliasKind, OptionalName
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
+from people_context.domain.tenure import PartialDate, TenurePeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -168,10 +169,16 @@ class StagedAffiliation(StrictStagedModel):
     person_candidate_id: NonBlank
     org: NonBlank
     role: NonBlank
-    valid_from: date | None = None
-    valid_to: date | None = None
+    valid_from: PartialDate | None = None
+    valid_to: PartialDate | None = None
     confidence: Confidence | None = None
     stated_by: StatedByText | None = None
+
+    @model_validator(mode="after")
+    def _check_period(self) -> StagedAffiliation:
+        # Constructing the durable type is the check, so a restored row commits into a valid record.
+        TenurePeriod.from_partial(self.valid_from, self.valid_to)
+        return self
 
 
 class StagedEducation(StrictStagedModel):
@@ -182,15 +189,15 @@ class StagedEducation(StrictStagedModel):
     institution: NonBlank
     degree: EducationLabel | None = None
     field_of_study: EducationLabel | None = None
-    valid_from: date | None = None
-    valid_to: date | None = None
+    valid_from: PartialDate | None = None
+    valid_to: PartialDate | None = None
     confidence: Confidence | None = None
     stated_by: StatedByText | None = None
 
     @model_validator(mode="after")
     def _check_period(self) -> StagedEducation:
         # Constructing the durable type is the check, so a restored row commits into a valid record.
-        ValidityPeriod(valid_from=self.valid_from, valid_to=self.valid_to)
+        TenurePeriod.from_partial(self.valid_from, self.valid_to)
         return self
 
 

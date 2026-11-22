@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from pydantic import BaseModel
 
 from people_context.app._mutation import (
@@ -16,7 +14,8 @@ from people_context.app._mutation import (
 )
 from people_context.app.records.organizations import resolve_organization
 from people_context.domain.organization import Affiliation
-from people_context.domain.shared import Confidence, ValidityPeriod, new_id
+from people_context.domain.shared import Confidence, new_id
+from people_context.domain.tenure import PartialDate, TenurePeriod
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.records import OrganizationStore, RecordWriter
@@ -29,8 +28,9 @@ class SetAffiliationInput(BaseModel):
     person_id: str
     org: str
     role: str
-    valid_from: date | None = None
-    valid_to: date | None = None
+    #: `2015`, `2015-11`, or `2015-11-03`: only as much of the date as the source stated.
+    valid_from: PartialDate | None = None
+    valid_to: PartialDate | None = None
     confidence: Confidence | None = None
     source: str = "agent"
     session: str | None = None
@@ -74,7 +74,7 @@ class SetAffiliation:
             session=data.session,
             stated_by=data.stated_by,
         )
-        period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
+        period = TenurePeriod.from_partial(data.valid_from, data.valid_to)
         existing = self._writer.find_affiliation(data.person_id, organization.id, data.role, period)
         if existing is not None:
             return existing

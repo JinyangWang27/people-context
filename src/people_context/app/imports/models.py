@@ -20,6 +20,7 @@ from people_context.domain.group import (
 from people_context.domain.person import AliasKind, OptionalName, check_alias_kind, check_person_name
 from people_context.domain.relationship_vocabulary import normalize_relationship_type
 from people_context.domain.shared import Confidence, Sensitivity, StatedByText, ValidityPeriod
+from people_context.domain.tenure import PartialDate, TenurePeriod
 from people_context.domain.trait import TraitCategory
 from people_context.domain.trait_evidence import MAX_EVIDENCE_REFERENCE_CHARS, MAX_TRAIT_EVIDENCE_LINKS
 
@@ -344,8 +345,9 @@ class AffiliationCandidateInput(BaseModel):
     person_ref: NonBlank
     org: NonBlank
     role: NonBlank
-    valid_from: date | None = None
-    valid_to: date | None = None
+    #: `2015`, `2015-11`, or `2015-11-03`: only as much of the date as the source stated.
+    valid_from: PartialDate | None = None
+    valid_to: PartialDate | None = None
     confidence: Confidence | None = None
     #: Who asserted this affiliation, forwarded into the record's existing provenance.
     #: See `FactCandidateInput.stated_by`; absent when the attribution is unknown.
@@ -353,7 +355,7 @@ class AffiliationCandidateInput(BaseModel):
 
     @model_validator(mode="after")
     def _check_period(self) -> AffiliationCandidateInput:
-        check_candidate_period(self.valid_from, self.valid_to)
+        TenurePeriod.from_partial(self.valid_from, self.valid_to)
         return self
 
 
@@ -367,15 +369,16 @@ class EducationCandidateInput(BaseModel):
     institution: NonBlank
     degree: EducationLabel | None = None
     field_of_study: EducationLabel | None = None
-    valid_from: date | None = None
-    valid_to: date | None = None
+    #: `2015`, `2015-11`, or `2015-11-03`: only as much of the date as the source stated.
+    valid_from: PartialDate | None = None
+    valid_to: PartialDate | None = None
     confidence: Confidence | None = None
     #: Who asserted this study, forwarded into the record's existing provenance.
     stated_by: StatedBy | None = None
 
     @model_validator(mode="after")
     def _check_period(self) -> EducationCandidateInput:
-        check_candidate_period(self.valid_from, self.valid_to)
+        TenurePeriod.from_partial(self.valid_from, self.valid_to)
         return self
 
 

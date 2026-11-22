@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from pydantic import BaseModel
 
 from people_context.app._mutation import (
@@ -16,7 +14,8 @@ from people_context.app._mutation import (
 )
 from people_context.app.records.organizations import resolve_organization
 from people_context.domain.education import Education, EducationLabel
-from people_context.domain.shared import Confidence, ValidityPeriod, new_id
+from people_context.domain.shared import Confidence, new_id
+from people_context.domain.tenure import PartialDate, TenurePeriod
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.records import OrganizationStore, RecordWriter
@@ -30,8 +29,9 @@ class RecordEducationInput(BaseModel):
     institution: str
     degree: EducationLabel | None = None
     field_of_study: EducationLabel | None = None
-    valid_from: date | None = None
-    valid_to: date | None = None
+    #: `2015`, `2015-11`, or `2015-11-03`: only as much of the date as the source stated.
+    valid_from: PartialDate | None = None
+    valid_to: PartialDate | None = None
     confidence: Confidence | None = None
     source: str = "agent"
     session: str | None = None
@@ -64,7 +64,7 @@ class RecordEducation:
         row and writes nothing. A second degree at the same institution is a second row.
         """
         require_active_person(self._people, data.person_id)
-        period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
+        period = TenurePeriod.from_partial(data.valid_from, data.valid_to)
         transaction_id = transaction_id or new_id()
         institution = resolve_organization(
             self._organizations,

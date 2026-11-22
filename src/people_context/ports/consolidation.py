@@ -51,6 +51,7 @@ from datetime import date, datetime
 from typing import Protocol, runtime_checkable
 
 from people_context.domain.shared import Provenance, Sensitivity
+from people_context.domain.tenure import DatePrecision
 from people_context.ports.timeline import TimelineEvidenceRow
 
 
@@ -135,6 +136,8 @@ class ConsolidationAffiliationRow:
     confidence: float
     provenance: Provenance
     source_session_id: str | None = None
+    valid_from_precision: DatePrecision = DatePrecision.DAY
+    valid_to_precision: DatePrecision = DatePrecision.DAY
 
 
 @runtime_checkable

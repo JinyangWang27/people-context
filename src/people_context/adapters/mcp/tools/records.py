@@ -184,7 +184,10 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         valid_to: str | None = None,
         confidence: float | None = None,
     ) -> dict[str, Any]:
-        """Create an affiliation, resolving an org id or get/creating by name."""
+        """Create an affiliation, resolving an org id or get/creating by name.
+
+        Dates may be `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`: give only as much as the source states.
+        """
         return call_action(
             lambda: deps.set_affiliation.execute(
                 SetAffiliationInput(
@@ -213,7 +216,8 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
 
         Use one call per degree: `degree` is the level ("MSc", "PhD"), `field_of_study` the subject
         ("Computer Science"). Education is not an affiliation — do not record a school with
-        `set_affiliation`, which every reader treats as employment.
+        `set_affiliation`, which every reader treats as employment. Dates may be `YYYY`, `YYYY-MM`,
+        or `YYYY-MM-DD`: give only as much as the source states.
         """
         return call_action(
             lambda: deps.record_education.execute(

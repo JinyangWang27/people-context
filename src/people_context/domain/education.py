@@ -16,7 +16,8 @@ from typing import Annotated, Final
 
 from pydantic import BaseModel, Field, StringConstraints
 
-from people_context.domain.shared import Confidence, Provenance, ValidityPeriod, new_id, utc_now
+from people_context.domain.shared import Confidence, Provenance, new_id, utc_now
+from people_context.domain.tenure import TenurePeriod
 
 #: Characters a degree or field of study may carry. Each names one thing — "MSc", "Cognitive
 #: Science" — so a longer value is a pasted passage, which belongs nowhere in a structured record.
@@ -39,7 +40,7 @@ class Education(BaseModel):
     org_id: str
     degree: EducationLabel | None = None
     field_of_study: EducationLabel | None = None
-    period: ValidityPeriod = Field(default_factory=ValidityPeriod)
+    period: TenurePeriod = Field(default_factory=TenurePeriod)
     confidence: Confidence = 1.0
     provenance: Provenance
     created_at: datetime = Field(default_factory=utc_now)

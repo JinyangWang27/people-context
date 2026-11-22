@@ -24,6 +24,7 @@ from people_context.domain.observation import Observation
 from people_context.domain.organization import Affiliation
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder
+from people_context.domain.tenure import DatePrecision, TenurePeriod, span_end, span_start
 from people_context.domain.trait import Trait
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
@@ -124,11 +125,20 @@ class CorrectRecord:
 def _validate_fields(current: Record, fields: dict[str, Any]) -> dict[str, Any]:
     data = current.model_dump()
     persistence_fields = dict(fields)
+    precisions: dict[str, DatePrecision] = {}
     if isinstance(current, _PERIOD_TYPES):
         period_data = current.period.model_dump()
         for field in ("valid_from", "valid_to"):
             if field in persistence_fields:
-                period_data[field] = persistence_fields[field]
+                if isinstance(current.period, TenurePeriod):
+                    # A tenure bound is corrected to whatever precision the caller states: "2015"
+                    # stores the year's edge and says so, "2015-11-03" goes back to a day.
+                    bound, precision = _tenure_bound(field, persistence_fields[field])
+                    period_data[field] = bound
+                    period_data[f"{field}_precision"] = precision
+                    precisions[f"{field}_precision"] = precision
+                else:
+                    period_data[field] = persistence_fields[field]
         data["period"] = period_data
         data.update({key: value for key, value in persistence_fields.items() if key not in period_data})
     else:
@@ -142,7 +152,16 @@ def _validate_fields(current: Record, fields: dict[str, Any]) -> dict[str, Any]:
             result[field] = date.fromisoformat(value) if isinstance(value, str) else value
         else:
             result[field] = validated_data[field]
+    result.update(precisions)
     return result
+
+
+def _tenure_bound(field: str, value: Any) -> tuple[date | None, DatePrecision]:
+    if value is None:
+        return None, DatePrecision.DAY
+    if not isinstance(value, (str, date)):
+        raise TypeError(f"{field} must be a date")
+    return span_start(value) if field == "valid_from" else span_end(value)
 
 
 def _linked_person_ids(record: Record) -> list[str]:
