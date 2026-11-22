@@ -18,6 +18,8 @@ from people_context.app.insights import (
 )
 from people_context.cli.people import resolve_person
 from people_context.cli.rendering import print_table, truncate
+from people_context.domain.tenure import DatePrecision, format_bound
+from people_context.ports.timeline import BASIS_VALID_FROM
 
 #: Width one record's display text is rendered at in the human timeline. Stored summaries and
 #: observation texts are free-form, so this keeps a long one from unaligning the table; `--json`
@@ -127,7 +129,7 @@ def _timeline_row(entry: TimelineEntry) -> tuple[str, str, str, str, str, str, s
     return (
         # The durable record's own id, which is what a later `correct_record` or `forget` takes.
         entry.entry_id,
-        entry.effective_at.isoformat(),
+        _timeline_when(entry),
         entry.basis,
         entry.entry_type,
         truncate(_timeline_summary(entry), _SUMMARY_DISPLAY_WIDTH),
@@ -136,6 +138,16 @@ def _timeline_row(entry: TimelineEntry) -> tuple[str, str, str, str, str, str, s
         entry.sensitivity.value if entry.sensitivity is not None else "-",
         entry.source_session_id or "-",
     )
+
+
+def _timeline_when(entry: TimelineEntry) -> str:
+    """Show a start stated to a month or a year as just that: `2015`, not `2015-01-01T00:00:00+00:00`.
+
+    An exact date and a recording or creation instant keep the full form they always had.
+    """
+    if entry.basis == BASIS_VALID_FROM and entry.valid_from_precision is not DatePrecision.DAY:
+        return format_bound(entry.valid_from, entry.valid_from_precision) or entry.effective_at.isoformat()
+    return entry.effective_at.isoformat()
 
 
 def _timeline_summary(entry: TimelineEntry) -> str:

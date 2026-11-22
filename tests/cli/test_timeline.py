@@ -287,3 +287,27 @@ def test_the_timeline_records_nothing_it_reads(tmp_path: Path, capsys: pytest.Ca
     finally:
         conn.close()
     assert after == before
+
+
+def test_a_start_stated_to_a_year_or_month_is_shown_only_that_precisely(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_file = tmp_path / "people.db"
+    conn = open_db(db_file)
+    try:
+        repo = SqlitePeopleRepository(conn)
+        person = Person(canonical_name="Mason")
+        repo.save_person(person)
+        affiliate = SetAffiliation(
+            repo, SqliteOrganizationStore(conn), SqliteRecordStore(conn), SqliteAuditLog(conn), SystemClock()
+        )
+        affiliate.execute(SetAffiliationInput(person_id=person.id, org="G42", role="Head", valid_from="2019-10"))
+        affiliate.execute(SetAffiliationInput(person_id=person.id, org="EPRI", role="Researcher", valid_from="2017"))
+    finally:
+        conn.close()
+
+    code = cli.main(["--db", str(db_file), "timeline", "Mason"])
+
+    rows = [line.split() for line in capsys.readouterr().out.splitlines() if "valid_from" in line]
+    assert code == 0
+    assert [(row[1], row[2]) for row in rows] == [("2019-10", "valid_from"), ("2017", "valid_from")]
