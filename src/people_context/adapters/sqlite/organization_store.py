@@ -29,14 +29,21 @@ class SqliteOrganizationStore:
     def save(self, organization: Organization) -> None:
         with SqliteUnitOfWork(self._conn):
             self._conn.execute(
-                """INSERT INTO organizations (id, name, name_normalized, kind) VALUES (?, ?, ?, ?)
+                """INSERT INTO organizations (id, name, name_normalized, kind, industry) VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                        name = excluded.name,
                        name_normalized = excluded.name_normalized,
-                       kind = excluded.kind""",
-                (organization.id, organization.name, normalize_name(organization.name), organization.kind),
+                       kind = excluded.kind,
+                       industry = excluded.industry""",
+                (
+                    organization.id,
+                    organization.name,
+                    normalize_name(organization.name),
+                    organization.kind,
+                    organization.industry,
+                ),
             )
 
 
 def _organization(row: sqlite3.Row) -> Organization:
-    return Organization(id=row["id"], name=row["name"], kind=row["kind"])
+    return Organization(id=row["id"], name=row["name"], kind=row["kind"], industry=row["industry"])

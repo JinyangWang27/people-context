@@ -9,7 +9,6 @@ from typing import Any
 
 from people_context.adapters.sqlite.record_store import SqliteRecordStore
 from people_context.adapters.sqlite.repository import SqlitePeopleRepository
-from people_context.domain.organization import Organization
 from people_context.domain.person import Person
 from people_context.ports.audit_log import AuditEntry
 from people_context.ports.export import ExportSnapshot
@@ -25,6 +24,7 @@ _RECORD_TABLES = (
     ("reminders", "reminder"),
     ("identified_groups", "group"),
     ("group_memberships", "group_membership"),
+    ("education", "education"),
 )
 
 
@@ -43,8 +43,12 @@ class SqliteExportReader:
             for row in self._conn.execute("SELECT id FROM persons ORDER BY id").fetchall()
         ]
         organizations = [
-            Organization(id=row["id"], name=row["name"], kind=row["kind"]).model_dump(mode="json")
-            for row in self._conn.execute("SELECT * FROM organizations ORDER BY id").fetchall()
+            organization.model_dump(mode="json")
+            for organization in (
+                self._records.get_record("organization", row["id"])
+                for row in self._conn.execute("SELECT id FROM organizations ORDER BY id").fetchall()
+            )
+            if organization is not None
         ]
         records: dict[str, list[dict[str, Any]]] = {}
         for table, entity_type in _RECORD_TABLES:
@@ -77,6 +81,7 @@ class SqliteExportReader:
             audit_log=audit_log,
             groups=records["identified_groups"],
             group_memberships=records["group_memberships"],
+            education=records["education"],
         )
 
     def _person_payload(self, person_id: str) -> dict[str, Any]:

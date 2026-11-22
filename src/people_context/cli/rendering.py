@@ -132,6 +132,12 @@ def import_review_lines(rows: list[ImportReviewRow]) -> list[str]:
                 f"{candidate['role']} at {candidate['org']} — "
                 f"{_import_owner(candidate, person_names)}{_import_attribution(candidate)}"
             )
+        elif candidate_type == "education":
+            studied = ", ".join(str(candidate[key]) for key in ("degree", "field_of_study") if candidate.get(key))
+            detail = (
+                f"{studied or 'studied'} at {candidate['institution']} — "
+                f"{_import_owner(candidate, person_names)}{_import_attribution(candidate)}"
+            )
         elif candidate_type == "fact":
             detail = (
                 f"{candidate['predicate']}={candidate['value']} — "

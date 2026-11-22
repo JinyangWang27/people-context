@@ -37,11 +37,13 @@ ENTRY_INTERACTION: Final = "interaction"
 ENTRY_OBSERVATION: Final = "observation"
 ENTRY_FACT: Final = "fact"
 ENTRY_AFFILIATION: Final = "affiliation"
+ENTRY_EDUCATION: Final = "education"
 ENTRY_RELATIONSHIP: Final = "relationship"
 ENTRY_TRAIT: Final = "trait"
 
 TIMELINE_ENTRY_TYPES: Final[tuple[str, ...]] = (
     ENTRY_AFFILIATION,
+    ENTRY_EDUCATION,
     ENTRY_FACT,
     ENTRY_INTERACTION,
     ENTRY_OBSERVATION,

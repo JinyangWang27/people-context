@@ -588,6 +588,9 @@ FIELD_LABELS: dict[str, dict[str, str]] = {
         "label": "标签",
         "type": "类型",
         "org": "机构",
+        "institution": "院校",
+        "degree": "学位",
+        "field_of_study": "专业",
         "organization_id": "机构 ID",
         "participant_candidate_ids": "参与者候选项",
         "person_candidate_id": "联系人候选项",
@@ -614,6 +617,7 @@ VALUE_LABELS: dict[str, dict[str, str]] = {
     "zh-CN": {
         # Candidate and record types.
         "affiliation": "所属机构",
+        "education": "教育经历",
         "fact": "事实",
         "group": "分组",
         "group_membership": "分组成员",

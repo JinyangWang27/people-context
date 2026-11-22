@@ -78,6 +78,7 @@ class SqliteForgetStore:
         tables = {
             "relationship": "relationships",
             "affiliation": "affiliations",
+            "education": "education",
             "fact": "facts",
             "observation": "observations",
             "trait": "traits",
@@ -177,6 +178,10 @@ class SqliteForgetStore:
         if memberships:
             # Omitted when zero, so a forget summary for someone in no group reads as it always did.
             counts["group_memberships"] = memberships
+        education = self._conn.execute("SELECT COUNT(*) FROM education WHERE person_id = ?", (person_id,)).fetchone()[0]
+        if education:
+            # Omitted when zero for the same reason.
+            counts["education"] = education
         counts["relationships"] = self._conn.execute(
             "SELECT COUNT(*) FROM relationships WHERE subject_id = ? OR object_id = ?",
             (person_id, person_id),
@@ -208,6 +213,7 @@ class SqliteForgetStore:
             ("trait", "traits"),
             ("reminder", "reminders"),
             ("affiliation", "affiliations"),
+            ("education", "education"),
             ("group_membership", "group_memberships"),
         ):
             entities.extend(

@@ -52,6 +52,7 @@ from pydantic import (
     model_validator,
 )
 
+from people_context.domain.education import EducationLabel
 from people_context.domain.group import (
     GroupKind,
     GroupName,
@@ -171,6 +172,26 @@ class StagedAffiliation(StrictStagedModel):
     valid_to: date | None = None
     confidence: Confidence | None = None
     stated_by: StatedByText | None = None
+
+
+class StagedEducation(StrictStagedModel):
+    """A persisted education candidate."""
+
+    type: Literal["education"]
+    person_candidate_id: NonBlank
+    institution: NonBlank
+    degree: EducationLabel | None = None
+    field_of_study: EducationLabel | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+    confidence: Confidence | None = None
+    stated_by: StatedByText | None = None
+
+    @model_validator(mode="after")
+    def _check_period(self) -> StagedEducation:
+        # Constructing the durable type is the check, so a restored row commits into a valid record.
+        ValidityPeriod(valid_from=self.valid_from, valid_to=self.valid_to)
+        return self
 
 
 class StagedFact(StrictStagedModel):
@@ -318,6 +339,7 @@ StagedCandidate = Annotated[
     StagedPerson
     | StagedInteraction
     | StagedAffiliation
+    | StagedEducation
     | StagedFact
     | StagedObservation
     | StagedTrait
@@ -331,6 +353,7 @@ STAGED_CANDIDATE_MODELS: dict[str, type[StrictStagedModel]] = {
     "person": StagedPerson,
     "interaction": StagedInteraction,
     "affiliation": StagedAffiliation,
+    "education": StagedEducation,
     "fact": StagedFact,
     "observation": StagedObservation,
     "trait": StagedTrait,

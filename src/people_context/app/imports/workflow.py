@@ -57,6 +57,7 @@ from people_context.app.imports.sources import (
 from people_context.app.imports.staging import CandidateStager
 from people_context.app.people.remember import AliasInput, RememberPerson, RememberPersonInput
 from people_context.app.records.affiliations import SetAffiliation, SetAffiliationInput
+from people_context.app.records.education import RecordEducation, RecordEducationInput
 from people_context.app.records.facts import RecordFact, RecordFactInput
 from people_context.app.records.interactions import RecordInteraction, RecordInteractionInput
 from people_context.app.records.observations import RecordObservation, RecordObservationInput
@@ -96,7 +97,7 @@ from people_context.ports.sources import (
 )
 
 #: Candidate types that commit against exactly one batch-local person.
-_PERSON_SCOPED_TYPES = ("affiliation", "fact", "observation", "trait")
+_PERSON_SCOPED_TYPES = ("affiliation", "education", "fact", "observation", "trait")
 
 
 class ImportContent:
@@ -699,6 +700,7 @@ class CommitImport:
         create_group: CreateGroup | None = None,
         add_group_membership: AddGroupMembership | None = None,
         records: RecordReader | None = None,
+        record_education: RecordEducation | None = None,
     ) -> None:
         self._people = people
         self._staging = staging
@@ -716,6 +718,7 @@ class CommitImport:
         self._create_group = create_group
         self._add_group_membership = add_group_membership
         self._records = records
+        self._record_education = record_education
         # The source store's boundary reserves the write lock. Commit always writes, so taking it
         # at `BEGIN` rather than at the first write changes nothing about what this does — but it
         # is what makes an `expected_batch_digest` mean anything, because a deferred `BEGIN` lets
@@ -804,6 +807,10 @@ class CommitImport:
                 continue
             if candidate_type == "trait":
                 deferred_traits.append((row, person_id))
+                continue
+            if candidate_type == "education" and self._record_education is None:
+                # Unwired, as a membership is without its writer: left pending, never guessed at.
+                unresolved_rows.add(row.id)
                 continue
             entity_id = self._commit_person_scoped(str(candidate_type), person_id, row, transaction_id)
             produced[row.id] = (str(candidate_type), entity_id)
@@ -1103,6 +1110,22 @@ class CommitImport:
                     person_id=person_id,
                     org=candidate["org"],
                     role=candidate["role"],
+                    valid_from=candidate.get("valid_from"),
+                    valid_to=candidate.get("valid_to"),
+                    confidence=candidate.get("confidence"),
+                    source=row.source,
+                    session=candidate.get("message_id"),
+                    stated_by=candidate.get("stated_by"),
+                ),
+                transaction_id=transaction_id,
+            ).id
+        if candidate_type == "education" and self._record_education is not None:
+            return self._record_education.execute(
+                RecordEducationInput(
+                    person_id=person_id,
+                    institution=candidate["institution"],
+                    degree=candidate.get("degree"),
+                    field_of_study=candidate.get("field_of_study"),
                     valid_from=candidate.get("valid_from"),
                     valid_to=candidate.get("valid_to"),
                     confidence=candidate.get("confidence"),

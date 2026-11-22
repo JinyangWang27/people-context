@@ -54,6 +54,7 @@ from people_context.ports.timeline import (
     BASIS_UPDATED_AT,
     BASIS_VALID_FROM,
     ENTRY_AFFILIATION,
+    ENTRY_EDUCATION,
     ENTRY_FACT,
     ENTRY_INTERACTION,
     ENTRY_OBSERVATION,
@@ -131,6 +132,29 @@ JOIN organizations org ON org.id = a.org_id
 WHERE a.person_id = :person_id
 """
 
+# Like an affiliation, education carries no stored disclosure level. The summary is the degree and
+# field together ("MSc, Cognitive Science"), or whichever is known, or the entry type when neither is:
+# a summary is never null.
+_EDUCATION = f"""
+SELECT '{ENTRY_EDUCATION}' AS entry_type,
+       e.id AS entry_id,
+       CASE WHEN e.valid_from IS NULL THEN e.created_at ELSE e.valid_from || '{_DATE_START_OF_DAY}' END
+           AS effective_at,
+       CASE WHEN e.valid_from IS NULL THEN '{BASIS_CREATED_AT}' ELSE '{BASIS_VALID_FROM}' END AS basis,
+       CASE
+            WHEN e.degree IS NOT NULL AND e.field_of_study IS NOT NULL THEN e.degree || ', ' || e.field_of_study
+            ELSE coalesce(e.degree, e.field_of_study, '{ENTRY_EDUCATION}')
+       END AS summary,
+       org.name AS detail,
+       NULL AS sensitivity,
+       e.valid_from AS valid_from,
+       e.valid_to AS valid_to,
+       {_source_session(ENTRY_EDUCATION, "e.id")} AS source_session_id
+FROM education e
+JOIN organizations org ON org.id = e.org_id
+WHERE e.person_id = :person_id
+"""
+
 # An edge is rendered from this person's side, by exactly the rule person context uses: the stored
 # type when they are its subject or the type is symmetric, otherwise the vocabulary's inverse. A
 # stored `parent_of` shown unchanged on the object's timeline would state the relationship
@@ -176,7 +200,7 @@ FROM traits t
 WHERE t.person_id = :person_id AND t.sensitivity IN ({{levels}})
 """
 
-_BRANCHES = (_INTERACTIONS, _OBSERVATIONS, _FACTS, _AFFILIATIONS, _RELATIONSHIPS, _TRAITS)
+_BRANCHES = (_INTERACTIONS, _OBSERVATIONS, _FACTS, _AFFILIATIONS, _EDUCATION, _RELATIONSHIPS, _TRAITS)
 
 #: The one ordering every level of this query uses, so a branch and the union agree on what "newest"
 #: means and the application's own exact sort reproduces it. `entry_type` and `entry_id` break an

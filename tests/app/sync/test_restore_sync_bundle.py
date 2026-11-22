@@ -75,6 +75,7 @@ def _payload() -> dict[str, Any]:
         "trait_evidence": [],
         "groups": [],
         "group_memberships": [],
+        "education": [],
     }
 
 

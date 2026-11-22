@@ -135,7 +135,7 @@ An email address is an alias only with `kind: "handle"`; any other kind is refus
 
 ---
 
-## 7. set_relationship / set_affiliation
+## 7. set_relationship / set_affiliation / record_education
 
 ```python
 call("set_relationship", {"subject_id": pid_a, "object_id": pid_b, "type": "spouse"})
@@ -148,7 +148,22 @@ call(
         "valid_from": "2026-09-01",
     },
 )
+call(
+    "record_education",
+    {
+        "person_id": pid,
+        "institution": "University of Edinburgh",
+        "degree": "MSc",  # the level; one call per degree
+        "field_of_study": "Cognitive Science",
+        "valid_from": "2022-09-01",
+        "valid_to": "2024-06-30",
+    },
+)
 ```
+
+An affiliation is employment. A school or degree goes in `record_education`, never `set_affiliation`, and
+never as a `previous_experience`/`education` fact: structured rows answer "who studied at X" and keep dates
+queryable. One call per job or degree, not one summary of a whole CV.
 
 ---
 
@@ -237,7 +252,7 @@ plugins do this), it advertises only the **core** tools below; the rest need `--
 `explain_shared_connections` · `get_stale_relationships` · `get_consolidation_context` · `find_groups` ·
 `get_group` · `list_group_memberships`
 
-**Full set only**, write: `set_relationship` · `set_affiliation` · `record_fact` · `record_observation` ·
+**Full set only**, write: `set_relationship` · `set_affiliation` · `record_education` · `record_fact` · `record_observation` ·
 `record_trait` · `record_interaction` · `merge_people` · `import_content` · `create_group` ·
 `add_group_membership` · `close_group_membership`
 

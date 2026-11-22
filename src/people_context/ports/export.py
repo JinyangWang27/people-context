@@ -24,6 +24,8 @@ class ExportSnapshot:
     #: M28.1. The strict sync bundle carries these beside its snapshot rather than inside it.
     groups: list[dict[str, Any]] = field(default_factory=list)
     group_memberships: list[dict[str, Any]] = field(default_factory=list)
+    #: Carried beside the sync bundle's snapshot, like groups.
+    education: list[dict[str, Any]] = field(default_factory=list)
 
 
 @runtime_checkable

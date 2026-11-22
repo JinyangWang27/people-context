@@ -19,6 +19,8 @@ from people_context.adapters.sqlite.timeline_reader import _BRANCHES, _TIMELINE_
 from people_context.adapters.sqlite.trait_evidence import SqliteTraitEvidenceStore
 from people_context.app.insights import MAX_TIMELINE_EVIDENCE_LINKS, GetPersonTimeline
 from people_context.app.records import (
+    RecordEducation,
+    RecordEducationInput,
     RecordFact,
     RecordFactInput,
     RecordInteraction,
@@ -74,6 +76,7 @@ class _Fixture:
         self.facts = RecordFact(self.people, self.records, self.audit, self.clock)
         self.traits = RecordTrait(self.people, self.records, self.audit, self.clock, self.trait_evidence)
         self.affiliations = SetAffiliation(self.people, self.organizations, self.records, self.audit, self.clock)
+        self.education = RecordEducation(self.people, self.organizations, self.records, self.audit, self.clock)
         self.relationships = SetRelationship(
             self.people,
             SqliteRelationshipStore(self.conn),
@@ -600,6 +603,7 @@ def test_the_projection_only_emits_the_declared_vocabulary() -> None:
         RecordFactInput(person_id=alice.id, predicate="city", value="Berlin", valid_from=date(2026, 1, 1))
     )
     fixture.affiliations.execute(SetAffiliationInput(person_id=alice.id, org="Acme", role="Engineer"))
+    fixture.education.execute(RecordEducationInput(person_id=alice.id, institution="Acme Institute", degree="BSc"))
     fixture.relationships.execute(
         SetRelationshipInput(
             subject_id=alice.id,

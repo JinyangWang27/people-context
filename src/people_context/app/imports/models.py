@@ -8,6 +8,7 @@ from typing import Annotated, Any, Final, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
+from people_context.domain.education import EducationLabel
 from people_context.domain.group import (
     GroupKind,
     GroupName,
@@ -356,6 +357,28 @@ class AffiliationCandidateInput(BaseModel):
         return self
 
 
+class EducationCandidateInput(BaseModel):
+    """Strict education candidate referencing one batch-local person: one degree, not a whole CV."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["education"]
+    person_ref: NonBlank
+    institution: NonBlank
+    degree: EducationLabel | None = None
+    field_of_study: EducationLabel | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+    confidence: Confidence | None = None
+    #: Who asserted this study, forwarded into the record's existing provenance.
+    stated_by: StatedBy | None = None
+
+    @model_validator(mode="after")
+    def _check_period(self) -> EducationCandidateInput:
+        check_candidate_period(self.valid_from, self.valid_to)
+        return self
+
+
 class FactCandidateInput(BaseModel):
     """Strict fact candidate referencing one batch-local person."""
 
@@ -540,6 +563,7 @@ CandidateInput = Annotated[
     PersonCandidateInput
     | InteractionCandidateInput
     | AffiliationCandidateInput
+    | EducationCandidateInput
     | FactCandidateInput
     | ObservationCandidateInput
     | TraitCandidateInput
@@ -553,6 +577,7 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
     "person": PersonCandidateInput,
     "interaction": InteractionCandidateInput,
     "affiliation": AffiliationCandidateInput,
+    "education": EducationCandidateInput,
     "fact": FactCandidateInput,
     "observation": ObservationCandidateInput,
     "trait": TraitCandidateInput,
@@ -565,8 +590,12 @@ CANDIDATE_MODELS: dict[str, type[BaseModel]] = {
 #: opts into the bounded extraction contract; a request built only from the four released types
 #: does not. Groups and memberships belong here because they are distilled from unstructured
 #: material exactly as an observation is, and an unbounded batch of them would be the one
-#: extraction path the budgets do not reach.
-EXTRACTION_CANDIDATE_TYPES: Final = frozenset({"observation", "trait", "relationship", "group", "group_membership"})
+#: extraction path the budgets do not reach. Education is here for the same reason: it is new with
+#: structured CV and profile capture, so no released caller depends on staging it unbounded, and a
+#: batch of only people and degrees must not be the path around the count and payload budgets.
+EXTRACTION_CANDIDATE_TYPES: Final = frozenset(
+    {"observation", "trait", "relationship", "group", "group_membership", "education"}
+)
 
 
 def contains_extraction_candidate(candidates: list[Any]) -> bool:

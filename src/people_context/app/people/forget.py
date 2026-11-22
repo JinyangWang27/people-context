@@ -21,6 +21,7 @@ from people_context.ports.repository import PersonReader
 _RECORD_TYPES = {
     "relationship",
     "affiliation",
+    "education",
     "fact",
     "observation",
     "trait",

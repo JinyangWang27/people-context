@@ -593,6 +593,7 @@ def test_stage_candidates_returns_strict_validation_details(tmp_path: Path) -> N
         "person",
         "interaction",
         "affiliation",
+        "education",
         "fact",
         "observation",
         "trait",

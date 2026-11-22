@@ -12,7 +12,7 @@ every request: on the 43-tool surface the schemas are about 53k characters per r
 | Set | Tools |
 |---|---|
 | core | `resolve_person`, `search_people`, `get_person_context`, `get_person_timeline`, `get_communication_guidance`, `upcoming_dates`, `remember`, `remember_person`, `add_alias`, `update_alias`, `remove_alias`, `rename_person`, `supersede_fact`, `correct_record`, `set_communication_philosophy`, `forget`, `stage_candidates`, `review_import`, `amend_candidate`, `withdraw_candidates`, `commit_import`, `set_reminder`, `list_reminders`, `complete_reminder` |
-| all only | `record_fact`, `record_trait`, `record_observation`, `record_interaction`, `set_affiliation`, `set_relationship`, `merge_people`, `import_content`, `get_relationship_graph`, `find_connection`, `explain_shared_connections`, `get_stale_relationships`, `get_consolidation_context`, `semantic_search`, `create_group`, `find_groups`, `get_group`, `add_group_membership`, `close_group_membership`, `list_group_memberships` |
+| all only | `record_fact`, `record_trait`, `record_observation`, `record_interaction`, `set_affiliation`, `record_education`, `set_relationship`, `merge_people`, `import_content`, `get_relationship_graph`, `find_connection`, `explain_shared_connections`, `get_stale_relationships`, `get_consolidation_context`, `semantic_search`, `create_group`, `find_groups`, `get_group`, `add_group_membership`, `close_group_membership`, `list_group_memberships` |
 
 A tool outside the chosen set is neither listed nor callable. Tool sets never change a tool's parameters,
 responses, or annotations, and they never touch the operator-elevated tools, which keep their own environment
@@ -757,6 +757,7 @@ Resolution, search, context budgets, sensitivity behavior, and all pre-M7 respon
 | `update_alias` | Change one alias's `value`, `kind`, `lang`, or `script` in place, keeping its id; omitted fields stay unchanged. Returns `{person_id, alias, changed}`. An unknown alias is refused with `alias_not_found`; a new value matching the canonical name or another alias is refused with `alias_conflict` (`reason: duplicate_name`). An update whose result is an email address of a kind other than `handle` is refused with `alias_conflict` (`reason: alias_email_not_handle`), so setting `kind: handle` is how an email stored as a name is fixed. |
 | `set_relationship` | Normalize vocabulary/direction and create or update one canonical active edge. |
 | `set_affiliation` | Create a role at an existing or get/created organization; an exact repeat (same organization, role, and validity dates) returns the stored row. |
+| `record_education` | Record one degree at an existing or get/created institution (`institution`, optional `degree`, `field_of_study`, `valid_from`, `valid_to`, `confidence`); an exact repeat returns the stored row. `get_person_context` returns every education row in an additive `education` list, and the timeline adds an `education` entry type. `correct_record` accepts `education` (degree, field, dates, confidence) and `organization` (`kind`, `industry`). |
 | `record_fact` | Record an objective time-aware fact. |
 | `record_observation` | Record a subjective observation. |
 | `record_trait` | Record a derived categorized trait. |

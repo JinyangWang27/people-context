@@ -10,8 +10,10 @@ from pydantic import BaseModel, Field
 
 from people_context.app.context.models import (
     PersonAffiliationContext,
+    PersonEducationContext,
     PersonRelationshipContext,
     affiliation_context,
+    education_context,
     relationship_context,
 )
 from people_context.domain.fact import Fact
@@ -71,6 +73,7 @@ class PersonContextResult(BaseModel):
     identity: PersonIdentity | None = None
     relationships: list[PersonRelationshipContext] = Field(default_factory=list)
     affiliations: list[PersonAffiliationContext] = Field(default_factory=list)
+    education: list[PersonEducationContext] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
     interactions: list[Interaction] = Field(default_factory=list)
     observations: list[Observation] = Field(default_factory=list)
@@ -126,6 +129,7 @@ class GetPersonContext:
         affiliations = [
             affiliation_context(record) for record in self._context.list_active_affiliations(person_id, as_of)
         ]
+        education = [education_context(record) for record in self._context.list_education(person_id)]
         facts, interactions, truncated = self._rank_disclosure_records(person_id, max_items, include_sensitive)
         traits = self._communication_traits(person_id, purpose, include_sensitive)
         reminders = [
@@ -140,6 +144,7 @@ class GetPersonContext:
             identity=_identity(person),
             relationships=relationships,
             affiliations=affiliations,
+            education=education,
             facts=facts,
             interactions=interactions,
             observations=[],

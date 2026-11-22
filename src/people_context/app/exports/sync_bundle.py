@@ -10,6 +10,7 @@ from people_context.domain.sync_bundle import (
     BundleCandidateMapping,
     BundleChangelogEntry,
     BundleDevice,
+    BundleEducation,
     BundleGroup,
     BundleGroupMembership,
     BundleImportState,
@@ -29,7 +30,7 @@ from people_context.ports.sync_bundle import BundleReader
 SYNC_BUNDLE_FILENAME = "people-context-sync-bundle.json"
 
 #: Export collections the bundle carries as its own top-level fields, not inside `BundleSnapshot`.
-_BESIDE_SNAPSHOT = frozenset({"groups", "group_memberships"})
+_BESIDE_SNAPSHOT = frozenset({"groups", "group_memberships", "education"})
 
 
 class ExportSyncBundle:
@@ -70,6 +71,7 @@ class ExportSyncBundle:
             trait_evidence=[BundleTraitEvidence.model_validate(row) for row in source.trait_evidence],
             groups=[BundleGroup.model_validate(row) for row in source.snapshot.groups],
             group_memberships=[BundleGroupMembership.model_validate(row) for row in source.snapshot.group_memberships],
+            education=[BundleEducation.model_validate(row) for row in source.snapshot.education],
         )
 
 

@@ -9,11 +9,12 @@ from typing import Any
 
 from people_context.adapters.sqlite._projection import sort_key
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.group import Group, GroupKind, GroupMembership, MembershipRole, TemporalBasis
 from people_context.domain.interaction import Interaction
 from people_context.domain.observation import Observation
-from people_context.domain.organization import Affiliation
+from people_context.domain.organization import Affiliation, Organization
 from people_context.domain.relationship import Relationship
 from people_context.domain.reminder import Reminder, ReminderKind, ReminderStatus
 from people_context.domain.shared import Provenance, Sensitivity, ValidityPeriod, normalize_name
@@ -23,6 +24,8 @@ from people_context.ports.records import Record
 _TABLES = {
     "relationship": "relationships",
     "affiliation": "affiliations",
+    "education": "education",
+    "organization": "organizations",
     "fact": "facts",
     "observation": "observations",
     "trait": "traits",
@@ -35,6 +38,8 @@ _TABLES = {
 _UPDATE_COLUMNS = {
     "relationship": {"type", "label", "valid_from", "valid_to", "confidence"},
     "affiliation": {"role", "valid_from", "valid_to", "confidence"},
+    "education": {"degree", "field_of_study", "valid_from", "valid_to", "confidence"},
+    "organization": {"kind", "industry"},
     "fact": {"predicate", "value", "valid_from", "valid_to", "confidence", "sensitivity"},
     "observation": {"text", "observed_at", "sensitivity"},
     "trait": {"category", "value", "evidence_note", "confidence", "sensitivity", "updated_at"},
@@ -95,6 +100,43 @@ class SqliteRecordStore:
             (person_id, org_id, role, values["valid_from"], values["valid_to"]),
         ).fetchone()
         return _affiliation(row, self._participant_ids) if row is not None else None
+
+    def save_education(self, education: Education) -> None:
+        self._upsert(
+            "education",
+            {
+                "id": education.id,
+                "person_id": education.person_id,
+                "org_id": education.org_id,
+                "degree": education.degree,
+                "field_of_study": education.field_of_study,
+                **_period_values(education.period),
+                "confidence": education.confidence,
+                **_provenance_values(education.provenance),
+                "created_at": education.created_at.isoformat(),
+            },
+        )
+
+    def find_education(
+        self,
+        person_id: str,
+        org_id: str,
+        degree: str | None,
+        field_of_study: str | None,
+        period: ValidityPeriod,
+    ) -> Education | None:
+        values = _period_values(period)
+        row = self._conn.execute(
+            """
+            SELECT * FROM education
+            WHERE person_id = ? AND org_id = ? AND degree IS ? AND field_of_study IS ?
+              AND valid_from IS ? AND valid_to IS ?
+            ORDER BY created_at, id
+            LIMIT 1
+            """,
+            (person_id, org_id, degree, field_of_study, values["valid_from"], values["valid_to"]),
+        ).fetchone()
+        return hydrate_education(row) if row is not None else None
 
     def save_fact(self, fact: Fact) -> None:
         self._upsert(
@@ -315,6 +357,24 @@ def _affiliation(row: sqlite3.Row, _: Callable[[str], list[str]]) -> Affiliation
     )
 
 
+def hydrate_education(row: sqlite3.Row, _: Callable[[str], list[str]] | None = None) -> Education:
+    return Education(
+        id=row["id"],
+        person_id=row["person_id"],
+        org_id=row["org_id"],
+        degree=row["degree"],
+        field_of_study=row["field_of_study"],
+        period=_period(row),
+        confidence=row["confidence"],
+        provenance=_provenance(row),
+        created_at=datetime.fromisoformat(row["created_at"]),
+    )
+
+
+def _organization(row: sqlite3.Row, _: Callable[[str], list[str]] | None = None) -> Organization:
+    return Organization(id=row["id"], name=row["name"], kind=row["kind"], industry=row["industry"])
+
+
 def _fact(row: sqlite3.Row, _: Callable[[str], list[str]]) -> Fact:
     return Fact(
         id=row["id"],
@@ -439,6 +499,8 @@ def group_membership_values(membership: GroupMembership) -> dict[str, Any]:
 _HYDRATORS: dict[str, Callable[[sqlite3.Row, Callable[[str], list[str]]], Record]] = {
     "relationship": _relationship,
     "affiliation": _affiliation,
+    "education": hydrate_education,
+    "organization": _organization,
     "fact": _fact,
     "observation": _observation,
     "trait": _trait,

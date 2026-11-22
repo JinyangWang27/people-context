@@ -15,6 +15,9 @@ class Organization(BaseModel):
     id: str = Field(default_factory=new_id)
     name: str
     kind: str | None = None
+    #: What the organization does, e.g. "telecommunications". A property of the organization, so it
+    #: lives here rather than on each person's affiliation with it.
+    industry: str | None = None
 
 
 class Affiliation(BaseModel):

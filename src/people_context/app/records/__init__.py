@@ -27,6 +27,7 @@ from people_context.app.records.doctor import (
     ReportDoctorFindings,
     render_doctor_json,
 )
+from people_context.app.records.education import RecordEducation, RecordEducationInput
 from people_context.app.records.facts import RecordFact, RecordFactInput
 from people_context.app.records.interactions import RecordInteraction, RecordInteractionInput
 from people_context.app.records.observations import RecordObservation, RecordObservationInput
@@ -83,6 +84,8 @@ __all__ = [
     "NameEvidence",
     "OrganizationNotFoundError",
     "PersonNotFoundError",
+    "RecordEducation",
+    "RecordEducationInput",
     "RecordFact",
     "RecordFactInput",
     "RecordInteraction",

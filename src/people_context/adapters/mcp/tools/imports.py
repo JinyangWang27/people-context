@@ -75,10 +75,11 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
     ) -> dict[str, Any]:
         """Stage agent-extracted people, interactions, records, relationships, groups, and memberships.
 
-        Candidate types are `person`, `interaction`, `affiliation`, `fact`, `observation`, `trait`,
+        Candidate types are `person`, `interaction`, `affiliation`, `education`, `fact`, `observation`, `trait`,
         `relationship`, `group`, and `group_membership`. Stage every candidate from one source in a single
         call. Required fields, beyond `type`; any key the type does not declare is refused:
-        `person` `ref`, `name` (optional `aliases`); `affiliation` `person_ref`, `org`, `role`; `fact` `person_ref`,
+        `person` `ref`, `name` (optional `aliases`); `affiliation` `person_ref`, `org`, `role`; `education`
+        `person_ref`, `institution` (optional `degree`, `field_of_study`); `fact` `person_ref`,
         `predicate`, `value`; `observation` `person_ref`, `text`; `trait` `person_ref`, `category`, `value`,
         `evidence_note`, `confidence`; `interaction` `summary`, `participant_refs`, `date`; `relationship`
         `from_ref`, `to_ref`, `relationship_type`; `group` `ref`, `name`, `kind`; `group_membership` `person_ref`,
@@ -86,7 +87,9 @@ def register(mcp: MCPServer, deps: RuntimeUseCases) -> None:
         Staging matches each `person` against stored people, so do not resolve names first. An email address is
         a `{"value": <address>, "kind": "handle"}` alias, never a `name`.
 
-        A `fact` is stated, an `observation` happened in this source, and a `trait` is inferred. Never put raw
+        An `affiliation` is a job and an `education` row is one degree: stage one per position or degree, never
+        a CV summary as a fact. A `fact` is stated, an `observation` happened in this source, and a `trait` is
+        inferred. Never put raw
         source text in a field, and leave out a relationship the user would consider sensitive. Staging writes
         nothing durable: the user reviews with `review_import` and accepts with `commit_import`. Before staging
         `stated_by`, trait evidence, groups and memberships, dates, or the receipt fields `source_kind`, `label`,

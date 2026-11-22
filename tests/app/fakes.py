@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.group import Group, GroupKind, GroupMembership
 from people_context.domain.interaction import Interaction
@@ -28,7 +29,7 @@ from people_context.ports.consolidation import (
     ConsolidationObservationRow,
     ConsolidationTraitRow,
 )
-from people_context.ports.context import AffiliationRecord, RelationshipRecord, TraitEvidenceRecord
+from people_context.ports.context import AffiliationRecord, EducationRecord, RelationshipRecord, TraitEvidenceRecord
 from people_context.ports.curation import DeletedPersonReference, FactAssertion, NameUsage
 from people_context.ports.export import ExportSnapshot
 from people_context.ports.insights import RecencySignal
@@ -191,6 +192,7 @@ class FakeContextReader:
     def __init__(self) -> None:
         self.relationships: list[RelationshipRecord] = []
         self.affiliations: list[AffiliationRecord] = []
+        self.education: list[EducationRecord] = []
         self.facts: list[Fact] = []
         self.observations: list[Observation] = []
         self.traits: list[Trait] = []
@@ -224,6 +226,9 @@ class FakeContextReader:
             if record.affiliation.person_id == person_id
             and (record.affiliation.period.valid_to is None or record.affiliation.period.valid_to >= as_of)
         ]
+
+    def list_education(self, person_id: str) -> list[EducationRecord]:
+        return [record for record in self.education if record.education.person_id == person_id]
 
     def list_facts(self, person_id: str) -> list[Fact]:
         return [record for record in self.facts if record.person_id == person_id]
@@ -474,6 +479,26 @@ class FakeRecordStore:
             for (kind, _), record in self.records.items()
             if kind == "affiliation"
             and (record.person_id, record.org_id, record.role, record.period) == (person_id, org_id, role, period)
+        ]
+        return min(matches, key=lambda record: (record.created_at, record.id), default=None)
+
+    def save_education(self, education: Education) -> None:
+        self.records[("education", education.id)] = education
+
+    def find_education(
+        self,
+        person_id: str,
+        org_id: str,
+        degree: str | None,
+        field_of_study: str | None,
+        period: ValidityPeriod,
+    ) -> Education | None:
+        claim = (person_id, org_id, degree, field_of_study, period)
+        matches = [
+            record
+            for (kind, _), record in self.records.items()
+            if kind == "education"
+            and (record.person_id, record.org_id, record.degree, record.field_of_study, record.period) == claim
         ]
         return min(matches, key=lambda record: (record.created_at, record.id), default=None)
 

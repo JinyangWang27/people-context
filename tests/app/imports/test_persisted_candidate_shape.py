@@ -122,6 +122,17 @@ def _every_type() -> list[dict[str, Any]]:
             "stated_by": "Alice Ahmed",
         },
         {
+            "type": "education",
+            "person_ref": "alice",
+            "institution": "University of Edinburgh",
+            "degree": "MSc",
+            "field_of_study": "Cognitive Science",
+            "valid_from": "2022-09-01",
+            "valid_to": "2024-06-30",
+            "confidence": 0.9,
+            "stated_by": "Alice Ahmed",
+        },
+        {
             "type": "fact",
             "person_ref": "alice",
             "predicate": "city",

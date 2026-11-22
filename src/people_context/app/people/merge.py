@@ -35,6 +35,7 @@ class MergeMovedCounts(BaseModel):
     traits: int = 0
     reminders: int = 0
     affiliations: int = 0
+    education: int = 0
     relationships: int = 0
     interaction_participations: int = 0
     candidate_mappings: int = 0

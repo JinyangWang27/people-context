@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from datetime import date
 
 from pydantic import BaseModel
 
 from people_context.app._mutation import (
-    OrganizationNotFoundError,
     audit_mutation,
     provenance,
     require_active_person,
@@ -16,14 +14,13 @@ from people_context.app._mutation import (
     transactional,
     unit_of_work_for,
 )
-from people_context.domain.organization import Affiliation, Organization
-from people_context.domain.shared import Confidence, ValidityPeriod, new_id, normalize_name
+from people_context.app.records.organizations import resolve_organization
+from people_context.domain.organization import Affiliation
+from people_context.domain.shared import Confidence, ValidityPeriod, new_id
 from people_context.ports.audit_log import AuditLog
 from people_context.ports.clock import Clock
 from people_context.ports.records import OrganizationStore, RecordWriter
 from people_context.ports.repository import PersonReader
-
-_ULID_PATTERN = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$", re.IGNORECASE)
 
 
 class SetAffiliationInput(BaseModel):
@@ -67,26 +64,16 @@ class SetAffiliation:
         """
         require_active_person(self._people, data.person_id)
         transaction_id = transaction_id or new_id()
-        organization = self._organizations.get(data.org)
-        if organization is None and _ULID_PATTERN.fullmatch(data.org):
-            raise OrganizationNotFoundError(data.org)
-        if organization is None:
-            organization = self._organizations.get_by_normalized_name(normalize_name(data.org))
-        if organization is None:
-            organization = Organization(name=data.org)
-            self._organizations.save(organization)
-            audit_mutation(
-                self._audit,
-                self._clock,
-                op="create",
-                entity_type="organization",
-                entity_id=organization.id,
-                payload=snapshot(organization),
-                source=data.source,
-                transaction_id=transaction_id,
-                session=data.session,
-                stated_by=data.stated_by,
-            )
+        organization = resolve_organization(
+            self._organizations,
+            self._audit,
+            self._clock,
+            data.org,
+            source=data.source,
+            transaction_id=transaction_id,
+            session=data.session,
+            stated_by=data.stated_by,
+        )
         period = ValidityPeriod(valid_from=data.valid_from, valid_to=data.valid_to)
         existing = self._writer.find_affiliation(data.person_id, organization.id, data.role, period)
         if existing is not None:

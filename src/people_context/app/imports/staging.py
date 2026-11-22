@@ -22,6 +22,7 @@ from people_context.app.imports.models import (
     CANDIDATE_MODELS,
     AffiliationCandidateInput,
     CandidateInput,
+    EducationCandidateInput,
     FactCandidateInput,
     GroupCandidateInput,
     ImportBatchResult,
@@ -669,6 +670,7 @@ def _candidate_refs(candidate: CandidateInput) -> list[str]:
         candidate,
         (
             AffiliationCandidateInput,
+            EducationCandidateInput,
             FactCandidateInput,
             ObservationCandidateInput,
             TraitCandidateInput,
