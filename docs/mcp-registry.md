@@ -60,7 +60,7 @@ This reconstructs the documented invocation, pinned for reproducibility:
 
 <!-- x-release-please-start-version -->
 ```
-uvx --from people-context==1.5.0 people-context
+uvx --from people-context==1.6.0 people-context
 ```
 <!-- x-release-please-end -->
 

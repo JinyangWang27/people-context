@@ -1,3 +1,3 @@
 """people-context: local-first contextual knowledge about the people in your life."""
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
