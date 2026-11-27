@@ -899,6 +899,7 @@ globalThis.fetch = async (path, options) => {
       const failed = postFailure; postFailure = null;
       return { ok: false, status: failed.status, json: async () => failed.body };
     }
+    if (globalThis.postReply) return { ok: true, json: async () => globalThis.postReply };
     return { ok: true, json: async () => ({ withdrawn: 1, batch_digest: "d2", committed_ids: ["p1"],
       unresolved_ids: [], skipped_ids: [] }) };
   }
@@ -2104,7 +2105,7 @@ def test_the_person_page_adds_an_alias_through_the_use_case(db_file: Path) -> No
         after = client.get("/api/person", params={"id": person_id}).json()
     assert added.json() == {"person_id": person_id, "alias": "Priyanka", "added": True}
     # The same name again, in any case, changes nothing and says so.
-    assert again.json() == {"person_id": person_id, "alias": "PRIYANKA", "added": False}
+    assert again.json() == {"person_id": person_id, "alias": "PRIYANKA", "added": False, "matched": "alias"}
     assert email.json()["added"] is True
     assert {"value": "Priyanka", "kind": "former_name", "lang": "en", "script": None} in after["alias_details"]
     assert "p.sharma@example.com" in after["person"]["emails"]
@@ -2135,6 +2136,81 @@ def test_alias_add_refusals_name_a_code_and_never_the_value(
     assert (response.status_code, response.json()) == (status, expected)
     assert _SENTINEL not in response.text
     assert (unknown.status_code, unknown.json()) == (404, {"error": "unknown_person"})
+
+
+def test_an_alias_matching_the_canonical_name_says_so(db_file: Path) -> None:
+    person_id = _person_with_aliases(db_file)
+    with _client(db_file) as client:
+        response = client.post("/api/person/alias/add", json={"person_id": person_id, "value": "priya SHARMA"})
+        after = client.get("/api/person", params={"id": person_id}).json()
+    assert response.json() == {
+        "person_id": person_id,
+        "alias": "priya SHARMA",
+        "added": False,
+        "matched": "canonical_name",
+    }
+    assert [alias["value"] for alias in after["alias_details"]] == ["priya@example.com", "Pri"]
+
+
+_ALIAS_NOTICES = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (name) => view.all().find((n) => (n.attrs || {})["aria-label"] === name);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Bruce", full_name: "李彦龙",
+    preferred_name: "李彦龙", given_name: "彦龙", family_name: "李", family_name_first: true, aliases: [],
+    emails: [] }, disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [],
+    reminders: [], traits: [], alias_kinds: ["nickname"], alias_details: [], record_fields: {} };
+  const notices = [];
+  for (const matched of ["canonical_name", "alias"]) {
+    globalThis.postReply = { person_id: "P", alias: "Bruce", added: false, matched };
+    await showPerson("P", null, []);
+    find("Add alias").listeners.click();
+    labelled("new alias value").value = "Bruce";
+    find("Add").listeners.click();
+    releases.forEach((r) => r()); await tick();
+    notices.push(view.all().filter((n) => n.tag === "span" && n.textContent
+      && (n.className === "error" || (n.attrs || {}).class === "error")).map((n) => n.textContent));
+  }
+  console.log(JSON.stringify({ notices }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_an_alias_already_stored_as_the_canonical_name_names_it(db_file: Path, tmp_path: Path) -> None:
+    assert _run_page(db_file, tmp_path, _ALIAS_NOTICES) == {
+        "notices": [
+            ["Bruce is this person's canonical name. To keep it as an alias instead, change the canonical name first."],
+            ["Already stored as a name of this person."],
+        ]
+    }
+
+
+_EDIT_CANONICAL_NAME = r"""
+(async () => {
+  const find = (label) => view.all().find((n) => n.tag === "button" && n.textContent === label);
+  const labelled = (label) => view.all().find((n) => (n.attrs || {})["aria-label"] === label);
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", full_name: "Jordan Lee",
+    aliases: [], emails: [] }, disclosure: { context: "ordinary" }, affiliations: [], facts: [],
+    interactions: [], reminders: [], traits: [], alias_kinds: [], alias_details: [], record_fields: {} };
+  await showPerson("P", null, []);
+  const identity = view.children.find((n) => n.tag === "dl");
+  const terms = identity.children.filter((n) => n.tag === "dt").map((n) => n.textContent);
+  labelled("Edit canonical name").listeners.click();
+  labelled(fieldAria("name")).value = "Jordan Li";
+  find("Save").listeners.click();
+  releases.forEach((r) => r()); await tick();
+  console.log(JSON.stringify({ terms, posts: posts.map((p) => [p.path, JSON.parse(p.body)]) }));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_the_full_name_row_renames_when_it_is_the_canonical_name(db_file: Path, tmp_path: Path) -> None:
+    assert _run_page(db_file, tmp_path, _EDIT_CANONICAL_NAME) == {
+        "terms": ["Preferred name", "Full name"],
+        "posts": [["/api/person/edit", {"person_id": "P", "name": "Jordan Li"}]],
+    }
 
 
 _ADD_ALIAS = r"""
@@ -2698,8 +2774,8 @@ _NAME_DETAILS = r"""
 @pytest.mark.parametrize(
     ("language", "terms", "summary", "parts"),
     [
-        ("en", ["Preferred name", "Full name"], "Name details", ["Given name", "Family name"]),
-        ("zh-CN", ["称呼名", "完整姓名"], "姓名详情", ["名", "姓"]),
+        ("en", ["Preferred name", "Full name", "Canonical name"], "Name details", ["Given name", "Family name"]),
+        ("zh-CN", ["称呼名", "完整姓名", "规范名称"], "姓名详情", ["名", "姓"]),
     ],
 )
 def test_name_details_keep_full_name_read_only_and_edit_order(
@@ -2712,7 +2788,7 @@ def test_name_details_keep_full_name_read_only_and_edit_order(
         "collapsed": True,
         "summary": summary,
         "order": True,
-        "nameEditors": 1,
+        "nameEditors": 2,
         "parts": parts,
         "openAfterSave": True,
         "openAfterLanguage": True,
