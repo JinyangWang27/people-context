@@ -1,6 +1,6 @@
 # Desktop bundle and editor configuration
 
-This document covers the native-UV MCPB Desktop bundle and the Cursor, Windsurf, and VS Code stdio
+This document covers the native-UV MCPB Desktop bundle and the Cursor, Windsurf, WorkBuddy, and VS Code stdio
 configurations for `people-context`.
 
 The canonical tool inventory and response contracts live in [docs/mcp-interface.md](mcp-interface.md); this
@@ -59,7 +59,7 @@ repository. Acknowledge the local-permission note above before enabling it.
 ## Editor / IDE stdio configuration
 
 `pctx setup <client>` writes the snippet below into the right file for you (`claude-desktop`, `cursor`,
-`windsurf`, `vscode`; `--dry-run` to preview). See [cli.md](cli.md#connect-a-client). By hand, every ordinary
+`windsurf`, `workbuddy`, `vscode`; `--dry-run` to preview). See [cli.md](cli.md#connect-a-client). By hand, every ordinary
 client uses one canonical invocation:
 
 ```text
@@ -98,6 +98,26 @@ Add to `~/.codeium/windsurf/mcp_config.json`:
   }
 }
 ```
+
+### WorkBuddy
+
+Tencent WorkBuddy reads user-level MCP servers from `~/.workbuddy/mcp.json` (the file its **Connectors → MCP**
+editor opens; the name is `mcp.json`, without a leading dot). `pctx setup workbuddy` writes it for you, or add:
+
+```json
+{
+  "mcpServers": {
+    "people-context": {
+      "command": "uvx",
+      "args": ["--from", "people-context", "people-context"]
+    }
+  }
+}
+```
+
+Restart WorkBuddy after saving. WorkBuddy is a desktop app, so it does not inherit your shell's environment:
+`pctx setup` pins a `PEOPLE_CONTEXT_DB` you selected through the environment into the entry, and an encrypted
+database still needs `PEOPLE_CONTEXT_DB_KEY` in the environment WorkBuddy launches the server with.
 
 ### VS Code
 

@@ -27,7 +27,7 @@ browser batch review, and M30.3 browser inline edit.
 | `db-path [-v]` | Print the resolved DB path; verbose mode prints the complete resolution trace. |
 | `init` | Safely seed or add to the self identity, optionally review a vCard import, and set a philosophy. |
 | `demo [--reset]` | Seed the isolated packaged fictional demo; refuse replacement unless `--reset` is supplied. |
-| `setup CLIENT [--scope user\|project] [--dry-run]` | Write the stdio server into one MCP client's configuration (`claude-desktop`, `claude-code`, `codex`, `cursor`, `windsurf`, `vscode`) or print the generic `json` snippet. |
+| `setup CLIENT [--scope user\|project] [--dry-run]` | Write the stdio server into one MCP client's configuration (`claude-desktop`, `claude-code`, `codex`, `cursor`, `windsurf`, `workbuddy`, `vscode`) or print the generic `json` snippet. |
 | `list [--all] [--limit N] [--json]` | List people; `--all` includes soft-deleted rows, `--json` emits the person index. |
 | `search QUERY [--limit N]` | Ranked lexical person search. |
 | `stale [--category C] [--threshold-days N] [--limit N] [--interacted-only]` | Report people with no recent ordinary interaction. |
@@ -106,7 +106,7 @@ pctx setup cursor --tools core
 
 `setup` writes the canonical `uvx --from people-context people-context` entry into the client's own MCP
 configuration so the copy-paste step disappears. File-configured clients (Claude Desktop, Cursor, Windsurf,
-VS Code) are edited in place: the existing file is parsed, only the `people-context` entry is added or
+WorkBuddy, VS Code) are edited in place: the existing file is parsed, only the `people-context` entry is added or
 replaced, every other server and key is preserved, the previous file is kept beside it as `<name>.bak`, and the
 result is written atomically. A symlink or a file that is not a JSON object is refused rather than overwritten.
 Clients that own their configuration through a CLI (Claude Code, Codex) are driven through `claude mcp add` /
@@ -114,7 +114,7 @@ Clients that own their configuration through a CLI (Claude Code, Codex) are driv
 
 `--scope project` targets `.cursor/mcp.json` or `.vscode/mcp.json` in the current directory, or Claude Code's
 project scope. Omitting it means user scope, except for VS Code, which keeps user-level servers in its own
-settings UI and exposes only the workspace file to write, so `pctx setup vscode` defaults to the project one; Claude Desktop, Windsurf, and Codex are user-level only. `--dry-run` prints the target path, what the write does to it, and the `people-context` entry alone — never the other servers already in the file, whose `env` blocks routinely hold other tools' API keys. It prints what would be written
+settings UI and exposes only the workspace file to write, so `pctx setup vscode` defaults to the project one; Claude Desktop, Windsurf, WorkBuddy, and Codex are user-level only. `--dry-run` prints the target path, what the write does to it, and the `people-context` entry alone — never the other servers already in the file, whose `env` blocks routinely hold other tools' API keys. It prints what would be written
 or run and changes nothing; on Windows that command is quoted for PowerShell, whose single quotes are literal, since no `cmd.exe` rendering is safe for a path containing `&` or `%…%`. The global `--db` is carried into the entry as `PEOPLE_CONTEXT_DB`; without it the
 server resolves the path exactly as the CLI does. A relative `--db` is stored absolute, anchored to the directory setup ran in. A database selected through `PEOPLE_CONTEXT_DB` is written into the entry too, because a client launched from the desktop inherits none of the shell's environment and would otherwise open the default database instead; a config-file location or the shared `~/.pctx/people.db` default is left unpinned, since the server resolves those itself. `--encrypted` also decides which command the client should run, because `uvx` builds a fresh isolated
 environment on every launch. On glibc Linux x86-64 the entry selects `people-context[encrypted]`, whose wheel

@@ -108,10 +108,10 @@ Start a new Codex session. Details: [docs/codex-plugin.md](docs/codex-plugin.md)
 </details>
 
 <details>
-<summary><b>Cursor, Windsurf, VS Code, or any MCP client</b></summary>
+<summary><b>Cursor, Windsurf, WorkBuddy, VS Code, or any MCP client</b></summary>
 
 Add the stdio server to your client's MCP config (`.cursor/mcp.json`, `~/.codeium/windsurf/mcp_config.json`,
-`.vscode/mcp.json`, ...):
+`~/.workbuddy/mcp.json`, `.vscode/mcp.json`, ...):
 
 ```json
 {
@@ -124,7 +124,7 @@ Add the stdio server to your client's MCP config (`.cursor/mcp.json`, `~/.codeiu
 }
 ```
 
-Or let the CLI write it: `uvx --from people-context pctx setup cursor` (also `windsurf`, `vscode`,
+Or let the CLI write it: `uvx --from people-context pctx setup cursor` (also `windsurf`, `workbuddy`, `vscode`,
 `claude-desktop`; add `--dry-run` to preview). VS Code uses a `servers` key with `"type": "stdio"`. Per-editor
 snippets: [docs/desktop-and-editors.md](docs/desktop-and-editors.md).
 </details>
@@ -295,7 +295,7 @@ writing live in adapters. One composition root wires both stdio and HTTP. See
 | [docs/releasing.md](docs/releasing.md) | PyPI trusted publishing, Codecov, and release procedure |
 | [docs/mcp-registry.md](docs/mcp-registry.md) | MCP Registry namespace, `server.json`, and community-directory submission matrix |
 | [docs/distribution-checklist.md](docs/distribution-checklist.md) | Account-owner walkthrough: Registry publish, directories, awesome lists, Desktop directory, Obsidian |
-| [docs/desktop-and-editors.md](docs/desktop-and-editors.md) | Native-UV MCPB Desktop bundle and Cursor/Windsurf/VS Code snippets |
+| [docs/desktop-and-editors.md](docs/desktop-and-editors.md) | Native-UV MCPB Desktop bundle and Cursor/Windsurf/WorkBuddy/VS Code snippets |
 | [docs/docker.md](docs/docker.md) | Optional non-root stdio Docker image, data volume, and GHCR publishing |
 | [docs/claude-code-plugin.md](docs/claude-code-plugin.md) | Claude Code install, runtime, privacy, validation, and publishing |
 | [docs/codex-plugin.md](docs/codex-plugin.md) | Codex install, runtime, privacy, validation, and publishing |

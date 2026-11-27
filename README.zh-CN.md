@@ -74,7 +74,7 @@ codex plugin add people-context@people-context-plugins
 
 安装后请启动新的 Codex 会话。详细说明见 [Codex 插件文档（英文）](docs/codex-plugin.md)。
 
-### Cursor、Windsurf、VS Code 或其他 MCP Client
+### Cursor、Windsurf、WorkBuddy、VS Code 或其他 MCP Client
 
 在客户端的 MCP 配置中加入 stdio 服务器：
 
@@ -97,7 +97,7 @@ VS Code 使用 `servers` 键并需要设置 `"type": "stdio"`；下面的 CLI �
 uvx --from people-context pctx setup cursor
 ```
 
-`cursor` 也可以替换为 `windsurf`、`vscode` 或 `claude-desktop`；加上 `--dry-run` 可先预览修改。
+`cursor` 也可以替换为 `windsurf`、`workbuddy`、`vscode` 或 `claude-desktop`；加上 `--dry-run` 可先预览修改。
 各编辑器的完整说明见 [桌面端与编辑器文档（英文）](docs/desktop-and-editors.md)。
 
 ### OpenClaw
