@@ -61,6 +61,7 @@ CLIENTS: tuple[str, ...] = (
     "codex",
     "cursor",
     "windsurf",
+    "workbuddy",
     "vscode",
     "json",
 )
@@ -290,6 +291,15 @@ def file_target(
             raise SetupError("Windsurf reads only its user-level mcp_config.json; omit --scope or use --scope user.")
         path = _home(env) / ".codeium" / "windsurf" / "mcp_config.json"
         return FileTarget(client, path, "mcpServers", False, "Refresh the MCP servers panel in Windsurf.")
+    if client == "workbuddy":
+        if scope == "project":
+            raise SetupError(
+                "WorkBuddy reads only its user-level ~/.workbuddy/mcp.json; omit --scope or use --scope user."
+            )
+        path = _home(env) / ".workbuddy" / "mcp.json"
+        return FileTarget(
+            client, path, "mcpServers", False, "Restart WorkBuddy, then check Connectors for people-context."
+        )
     if client == "vscode":
         if scope == "user":
             raise SetupError(

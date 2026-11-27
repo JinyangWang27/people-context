@@ -289,7 +289,7 @@ def _import_attribution(candidate: dict[str, object]) -> str:
 #: an honest, single-line request is the cheapest thing that helps the next person find it.
 CLIENT_SETUP_HINT = (
     "Connect a client any time with `pctx setup <client>` "
-    "(claude-desktop, claude-code, codex, cursor, windsurf, vscode)."
+    "(claude-desktop, claude-code, codex, cursor, windsurf, workbuddy, vscode)."
 )
 STAR_HINT = "If this is useful, a star helps others find it: https://github.com/JinyangWang27/people-context"
 

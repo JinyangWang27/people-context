@@ -123,6 +123,7 @@ class TestPaths:
         [
             ("cursor", "user", Path(".cursor/mcp.json")),
             ("windsurf", "user", Path(".codeium/windsurf/mcp_config.json")),
+            ("workbuddy", "user", Path(".workbuddy/mcp.json")),
         ],
     )
     def test_user_scope_files_live_under_home(self, tmp_path: Path, client: str, scope: str, relative: Path) -> None:
@@ -142,11 +143,19 @@ class TestPaths:
 
     @pytest.mark.parametrize(
         ("client", "scope"),
-        [("claude-desktop", "project"), ("windsurf", "project"), ("vscode", "user")],
+        [("claude-desktop", "project"), ("windsurf", "project"), ("workbuddy", "project"), ("vscode", "user")],
     )
     def test_unsupported_scopes_are_refused_with_guidance(self, tmp_path: Path, client: str, scope: str) -> None:
         with pytest.raises(SetupError):
             file_target(client, scope, env=_env(tmp_path), platform="linux", cwd=tmp_path)
+
+
+def test_workbuddy_entry_uses_mcp_servers_without_a_type(tmp_path: Path) -> None:
+    target = file_target("workbuddy", "user", env=_env(tmp_path), platform="darwin", cwd=tmp_path)
+
+    merged = merged_config({"mcpServers": {"other": {"command": "x"}}}, target, build_entry(None, encrypted=False))
+
+    assert merged["mcpServers"] == {"other": {"command": "x"}, "people-context": CANONICAL}
 
 
 class TestMerge:

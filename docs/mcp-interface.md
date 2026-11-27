@@ -25,7 +25,7 @@ Any other client opts in where it launches the server:
 
 | Client route | How |
 |---|---|
-| `pctx setup <client>` (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, VS Code, `json`) | `pctx setup <client> --tools core` |
+| `pctx setup <client>` (Claude Desktop, Claude Code, Codex, Cursor, Windsurf, WorkBuddy, VS Code, `json`) | `pctx setup <client> --tools core` |
 | Docker | append `--tools core` after the image name in `args` |
 | A hand-written client configuration | append `"--tools", "core"` to `args` |
 | OpenClaw | nothing to do: the plugin defines its own four tool schemas and calls only core tools |
