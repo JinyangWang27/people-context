@@ -96,7 +96,7 @@ from people_context.app.records import (
 from people_context.app.relationships.commands import SetRelationshipInput
 from people_context.app.relationships.graph import DEFAULT_GRAPH_DEPTH, MAX_GRAPH_DEPTH, GraphPersonNotFound
 from people_context.domain.person import ALIAS_EMAIL_NOT_HANDLE, NAME_IS_EMAIL, AliasKind
-from people_context.domain.shared import Sensitivity, ValidityPeriod
+from people_context.domain.shared import Sensitivity, ValidityPeriod, normalize_name
 
 LOOPBACK_HOST = "127.0.0.1"
 TOKEN_HEADER = "X-Pctx-Token"
@@ -489,9 +489,14 @@ def create_browse_app(
             person = runtime.use_cases.add_alias.execute(data)
         except PersonNotFoundError as exc:
             return _alias_refusal(exc)
-        # The use case adds nothing for a value the person already carries; the page says so.
+        # The use case adds nothing for a value the person already carries; the page says so, and
+        # names which of their names it matched, since the canonical one may not be the one shown.
         added = before is not None and len(person.aliases) > len(before.aliases)
-        return _json(json.dumps({"person_id": person.id, "alias": data.value, "added": added}) + "\n")
+        body: dict[str, object] = {"person_id": person.id, "alias": data.value, "added": added}
+        if not added:
+            canonical = normalize_name(data.value) == normalize_name(person.canonical_name)
+            body["matched"] = "canonical_name" if canonical else "alias"
+        return _json(json.dumps(body) + "\n")
 
     async def remove_alias(request: Request) -> Response:
         runtime: ApplicationRuntime = request.state.runtime

@@ -37,6 +37,7 @@ _COMPOSED_KEYS = {
         for name in ("organization", "role", "from", "to", "predicate", "value", "summary", "channel", "on")
     ),
     "person.edit_summary",
+    "person.edit_name",
     "person.edit_preferred_name",
     "person.edit_given_name",
     "person.edit_family_name",

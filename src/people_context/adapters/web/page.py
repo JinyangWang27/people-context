@@ -760,8 +760,12 @@ function aliasAdder(personId, kinds, reopen, contact) {
       const body = { person_id: personId, value: value.value, kind: kind.value };
       if (lang.value.trim()) body.lang = lang.value;
       if (script.value.trim()) body.script = script.value;
-      aliasWrite("/api/person/alias/add", body, message, reopen,
-        (result) => (result.added ? null : t("alias.already_stored")));
+      aliasWrite("/api/person/alias/add", body, message, reopen, (result) => {
+        if (result.added) return null;
+        return result.matched === "canonical_name"
+          ? t("alias.already_canonical", { value: result.alias })
+          : t("alias.already_stored");
+      });
     };
     const fields = contact ? [value] : [value, kind, lang, script];
     row.replaceChildren(...fields, button(t("common.add"), save), button(t("common.cancel"), idle), message);
@@ -1065,8 +1069,18 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
   contact.append(aliasEditor(doc.person.id, doc, reopen, true), aliasAdder(doc.person.id, kinds, reopen, true));
   const preferred = el("dd");
   preferred.append(personFieldRow(doc.person.id, "preferred_name", doc.person.preferred_name, reopen, pendingEdits));
-  identity.append(el("dt", t("person.preferred_name")), preferred,
-    el("dt", t("person.name")), el("dd", doc.person.full_name || doc.person.canonical_name));
+  identity.append(el("dt", t("person.preferred_name")), preferred);
+  // The canonical name is the identity a new alias is checked against; it is shown (and editable)
+  // on its own row whenever the given and family names derive a different full name, so it never
+  // hides behind them. A rename keeps the former canonical name as an alias.
+  const canonical = el("dd");
+  canonical.append(personFieldRow(doc.person.id, "name", doc.person.canonical_name, reopen, pendingEdits));
+  const full = doc.person.full_name || doc.person.canonical_name;
+  if (full === doc.person.canonical_name) {
+    identity.append(el("dt", t("person.name")), canonical);
+  } else {
+    identity.append(el("dt", t("person.name")), el("dd", full), el("dt", t("person.canonical_name")), canonical);
+  }
   const details = el("details");
   details.open = Boolean(previousNameDetails && previousNameDetails.open);
   previousNameDetails = null;
