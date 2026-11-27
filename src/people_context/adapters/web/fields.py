@@ -22,6 +22,7 @@ from typing import Any
 
 from people_context.app.imports.amendment import IMMUTABLE_PATCH_FIELDS
 from people_context.app.records import CORRECTABLE_FIELDS
+from people_context.domain.education import Education
 from people_context.domain.fact import Fact
 from people_context.domain.import_provenance import (
     EVIDENCE_CAPABLE_STAGED_TYPES,
@@ -135,6 +136,7 @@ ALIAS_FIELDS: list[dict[str, Any]] = _fields(StagedAlias, skip=frozenset())
 _RECORD_MODELS: dict[str, Any] = {
     "relationship": Relationship,
     "affiliation": Affiliation,
+    "education": Education,
     "fact": Fact,
     "interaction": Interaction,
     "trait": Trait,

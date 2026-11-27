@@ -21,13 +21,17 @@ reader mistakes a bounded page for a complete personal history.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 from people_context.app.context.guidance import GetCommunicationGuidance
-from people_context.app.context.models import PersonAffiliationContext, PersonRelationshipContext
+from people_context.app.context.models import (
+    PersonAffiliationContext,
+    PersonEducationContext,
+    PersonRelationshipContext,
+)
 from people_context.app.context.query import GetPersonContext, PersonIdentity
 from people_context.app.exports._document import render_json_document
 from people_context.app.insights.timeline import (
@@ -114,6 +118,8 @@ class PersonBriefDocument(BaseModel):
     person: PersonIdentity
     relationships: list[PersonRelationshipContext] = Field(default_factory=list)
     affiliations: list[PersonAffiliationContext] = Field(default_factory=list)
+    # Additive: where the person studied, newest first, kept apart from employment.
+    education: list[PersonEducationContext] = Field(default_factory=list)
     facts: list[Fact] = Field(default_factory=list)
     interactions: list[Interaction] = Field(default_factory=list)
     traits: list[Trait] = Field(default_factory=list)
@@ -199,6 +205,7 @@ class ComposePersonBrief:
             person=context.identity,
             relationships=sorted(context.relationships, key=_relationship_key),
             affiliations=sorted(context.affiliations, key=_affiliation_key),
+            education=sorted(context.education, key=_education_key, reverse=True),
             # Facts and interactions keep the relevance ranking `GetPersonContext` already
             # imposes, which is a total order down to the record id.
             facts=list(context.facts),
@@ -259,6 +266,7 @@ def render_brief_markdown(document: PersonBriefDocument) -> str:
             [f"{record.affiliation.role} at {record.organization_name}" for record in document.affiliations],
         )
     )
+    lines.extend(_section("Education", [_education_line(record) for record in document.education]))
     if document.truncated:
         lines.extend(
             [
@@ -371,6 +379,22 @@ def _affiliation_key(record: PersonAffiliationContext) -> tuple[str, str, str]:
         normalize_name(record.affiliation.role),
         record.affiliation.id,
     )
+
+
+def _education_key(record: PersonEducationContext) -> tuple[date, str]:
+    return (record.education.period.valid_from or date.min, record.education.id)
+
+
+def _education_line(record: PersonEducationContext) -> str:
+    education = record.education
+    study = ", ".join(part for part in (education.degree, education.field_of_study) if part)
+    line = f"{study} at {record.institution_name}" if study else record.institution_name
+    period = education.period
+    start = format_bound(period.valid_from, period.valid_from_precision)
+    end = format_bound(period.valid_to, period.valid_to_precision)
+    if start or end:
+        line += f" ({start or '?'}–{end or 'present'})"
+    return line
 
 
 def _trait_key(trait: Trait) -> tuple[str, str, str]:
