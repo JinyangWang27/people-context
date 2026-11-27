@@ -346,13 +346,13 @@ def test_markdown_labels_both_disclosure_levels_and_keeps_empty_sections() -> No
     assert "- **Context disclosure:** sensitive" in text
     assert "- **Guidance disclosure:** ordinary (never widened)" in text
     assert "outside the server's disclosure controls" in text
-    for heading in ("## Relationships", "## Affiliations", "## Facts", "## Interactions", "## Traits"):
+    for heading in ("## Relationships", "## Affiliations", "## Education", "## Facts", "## Interactions", "## Traits"):
         assert heading in text
     assert "## Reminders" in text
     assert "## Communication guidance (ordinary disclosure)" in text
-    # Relationships, affiliations, facts, interactions, traits, reminders, guidance traits,
-    # and interaction notes all stay visible when empty.
-    assert text.count("_None recorded._") == 8
+    # Relationships, affiliations, education, facts, interactions, traits, reminders, guidance
+    # traits, and interaction notes all stay visible when empty.
+    assert text.count("_None recorded._") == 9
     assert "Philosophy: (none set)" in text
 
 

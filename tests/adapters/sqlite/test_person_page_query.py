@@ -155,10 +155,11 @@ def test_filter_options_list_only_what_has_a_visible_active_member(
     assert [option["name"] for option in elevated["groups"]] == ["Clinic", "MOFT"]
 
 
-def test_organization_names_list_each_person_s_organizations_once_in_name_order(
+def test_organization_names_list_each_person_s_current_organizations_once_in_name_order(
     runtime: ApplicationRuntime, people: dict[str, str]
 ) -> None:
-    # A second role at the same organization, and an ended one elsewhere, for Ana.
+    # A second role at the same organization, and an ended one elsewhere, for Ana: only current
+    # affiliations name an organization, so the ended one at Acme is left out.
     cases = runtime.use_cases
     cases.set_affiliation.execute(SetAffiliationInput(person_id=people["ana"], org="presight", role="lead"))
     cases.set_affiliation.execute(
@@ -167,8 +168,8 @@ def test_organization_names_list_each_person_s_organizations_once_in_name_order(
     index = runtime.use_cases.list_person_index
     names = index.organization_names(index.page())
     assert names == {
-        people["ana"]: ["Acme", "Presight"],
+        people["ana"]: ["Presight"],
         people["bo"]: ["Presight"],
         people["cy"]: ["Alhamitech"],
     }
-    assert runtime.repo.organization_names([]) == {}
+    assert runtime.repo.organization_names([], date(2026, 1, 1)) == {}

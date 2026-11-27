@@ -2287,6 +2287,60 @@ def _correct(client: TestClient, entity_type: str, entity_id: str, fields: dict[
     )
 
 
+def test_the_person_page_shows_corrects_and_removes_education(db_file: Path) -> None:
+    from people_context.app.records import RecordEducationInput
+
+    person_id = _person_with_aliases(db_file)
+    runtime = build_runtime(db_file)
+    try:
+        education = runtime.use_cases.record_education.execute(
+            RecordEducationInput(
+                person_id=person_id, institution="Tsinghua", degree="BSc", valid_from="2008-09", valid_to="2012"
+            )
+        )
+    finally:
+        runtime.close()
+    with _client(db_file) as client:
+        shown = client.get("/api/person", params={"id": person_id}).json()["education"]
+        corrected = _correct(client, "education", education.id, {"field_of_study": "Physics"})
+        after = client.get("/api/person", params={"id": person_id}).json()["education"]
+        removed = client.post("/api/record/remove", json={"entity_type": "education", "entity_id": education.id})
+        gone = client.get("/api/person", params={"id": person_id}).json()["education"]
+    assert [(row["institution_name"], row["education"]["degree"]) for row in shown] == [("Tsinghua", "BSc")]
+    assert shown[0]["education"]["period"]["valid_from_precision"] == "month"
+    assert corrected.json() == {"corrected": ["field_of_study"]}
+    assert after[0]["education"]["field_of_study"] == "Physics"
+    assert removed.json() == {"removed": "education"}
+    assert gone == []
+
+
+_EDUCATION_LABELS = r"""
+(async () => {
+  globalThis.personDoc = { person: { id: "P", canonical_name: "Jordan Lee", aliases: [], emails: [] },
+    disclosure: { context: "ordinary" }, affiliations: [], facts: [], interactions: [], reminders: [],
+    traits: [], alias_kinds: [], alias_details: [], record_fields: {}, education: [
+      { institution_name: "Tsinghua", education: { id: "E1", degree: "BSc", field_of_study: "Physics",
+        period: { valid_from: "2008-09-01", valid_to: "2012-12-31", valid_from_precision: "month",
+          valid_to_precision: "year" } } },
+      { institution_name: "MIT", education: { id: "E2", degree: null, field_of_study: null,
+        period: { valid_from: "2014-01-01", valid_to: null, valid_from_precision: "year",
+          valid_to_precision: "day" } } }] };
+  await showPerson("P", null, []);
+  const card = view.all().find((n) => n.tag === "section" && n.children[0].textContent === "Education");
+  console.log(JSON.stringify(card.all().filter((n) => n.tag === "li")
+    .map((li) => li.children.find((n) => n.tag === "span").textContent)));
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+def test_education_reads_at_the_precision_it_was_stated(db_file: Path, tmp_path: Path) -> None:
+    assert _run_page(db_file, tmp_path, _EDUCATION_LABELS) == [
+        "BSc, Physics at Tsinghua (2008-09–2012)",
+        "MIT (2014–present)",
+    ]
+
+
 def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path) -> None:
     ids = _person_with_records(db_file)
     with _client(db_file) as client:
@@ -2299,7 +2353,15 @@ def test_the_person_page_corrects_facts_and_affiliations_in_place(db_file: Path)
     stored = next(row for row in after["facts"] if row["id"] == ids["fact"])
     assert (stored["value"], stored["period"]["valid_from"]) == ("Head gardener", "2024-03-01")
     assert after["affiliations"][0]["affiliation"]["role"] == "Engineer"
-    assert set(after["record_fields"]) == {"affiliation", "fact", "interaction", "trait", "reminder", "relationship"}
+    assert set(after["record_fields"]) == {
+        "affiliation",
+        "education",
+        "fact",
+        "interaction",
+        "trait",
+        "reminder",
+        "relationship",
+    }
     conn = open_db(db_file)
     try:
         ops = conn.execute("SELECT entity_id FROM audit_log WHERE op = 'correct' AND source = 'browser'").fetchall()
@@ -3676,6 +3738,7 @@ def test_people_get_avatars_and_the_person_view_gets_a_header_and_cards(db_file:
     assert outcome["cards"] == [
         ["card", "Relationships"],
         ["card", "Affiliations"],
+        ["card", "Education"],
         ["card", "Facts"],
         ["card timeline", "Interactions"],
         ["card", "Reminders"],

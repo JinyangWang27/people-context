@@ -171,8 +171,8 @@ class ListPersonIndex:
         return {"organizations": options(organizations), "groups": options(groups)}
 
     def organization_names(self, document: PersonIndexDocument) -> dict[str, list[str]]:
-        """Return the organizations each person on one page is or was affiliated with, by person id."""
-        return self._people.organization_names([entry.id for entry in document.people])
+        """Return the organizations each person on one page is currently affiliated with, by person id."""
+        return self._people.organization_names([entry.id for entry in document.people], self._clock.now().date())
 
     def _anchor(self, cursor: str, sort: str) -> str:
         """Return the id a cursor resumes after, refusing one whose person moved in the order.

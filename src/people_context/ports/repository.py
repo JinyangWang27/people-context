@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal, Protocol, runtime_checkable
 
 from people_context.domain.person import Person
@@ -131,7 +132,7 @@ class PersonIndexReader(Protocol):
         self, *, include_sensitive: bool
     ) -> tuple[list[PersonFilterOption], list[PersonFilterOption]]: ...
 
-    def organization_names(self, person_ids: list[str]) -> dict[str, list[str]]: ...
+    def organization_names(self, person_ids: list[str], as_of: date) -> dict[str, list[str]]: ...
 
 
 @runtime_checkable

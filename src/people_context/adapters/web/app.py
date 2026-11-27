@@ -224,7 +224,7 @@ class _CorrectRecordAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "interaction", "trait", "reminder", "relationship"]
+    entity_type: Literal["affiliation", "education", "fact", "interaction", "trait", "reminder", "relationship"]
     entity_id: _NonBlank
     fields: dict[str, Any]
 
@@ -234,7 +234,7 @@ class _RemoveRecordAction(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    entity_type: Literal["affiliation", "fact", "interaction", "relationship"]
+    entity_type: Literal["affiliation", "education", "fact", "interaction", "relationship"]
     entity_id: _NonBlank
 
 

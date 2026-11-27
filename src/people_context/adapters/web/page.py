@@ -906,7 +906,25 @@ function aliasEditor(personId, doc, reopen, contact) {
 }
 
 // The record types the person view can remove, through the same `Forget` as the `forget` MCP tool.
-const REMOVABLE = new Set(["affiliation", "fact", "interaction", "relationship"]);
+const REMOVABLE = new Set(["affiliation", "education", "fact", "interaction", "relationship"]);
+
+// A stored bound shown to exactly the precision it was stated with: "2015", "2015-11", or a day.
+const BOUND_LENGTH = { year: 4, month: 7, day: 10 };
+function boundText(value, precision) {
+  return value ? String(value).slice(0, BOUND_LENGTH[precision] || 10) : null;
+}
+
+function educationLabel(entry) {
+  const education = entry.education;
+  const study = [education.degree, education.field_of_study].filter((part) => part).join(", ");
+  let label = study ? t("person.education_label", { study, institution: entry.institution_name })
+    : entry.institution_name;
+  const period = education.period || {};
+  const start = boundText(period.valid_from, period.valid_from_precision);
+  const end = boundText(period.valid_to, period.valid_to_precision);
+  if (start || end) label += " (" + (start || "?") + "–" + (end || t("person.education_present")) + ")";
+  return label;
+}
 
 // One stored record with an Edit form built from the fields `CorrectRecord` accepts for its type.
 // Saving corrects the record in place — fixing what was recorded wrongly, with the before and after
@@ -1209,6 +1227,8 @@ async function showPerson(personId, cursor, back, previousNameDetails = null, pe
     editable("affiliation", doc.affiliations.map((a) => [a.affiliation,
       t("person.affiliation_label", { role: a.affiliation.role, organization: a.organization_name })])),
     affiliationAdder(doc.person.id, reopen),
+    el("h3", t("person.education")),
+    editable("education", (doc.education || []).map((entry) => [entry.education, educationLabel(entry)])),
     el("h3", t("person.facts")),
     editable("fact", doc.facts.map((fact) => [fact, fact.predicate + ": " + fact.value])),
     factAdder(doc.person.id, reopen),

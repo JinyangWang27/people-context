@@ -113,6 +113,22 @@ class TenurePeriod(ValidityPeriod):
             raise ValueError("an absent valid_to has no precision")
         return self
 
+    def is_current(self, as_of: date) -> bool:
+        """Return whether the period has started and has not yet ended on ``as_of``.
+
+        An end stated only to a month or a year ("until 2026") says the period ended at some point in
+        that span, not on its last day, so it stops being current once the span begins; an exact
+        end stays current through that day. An absent end is ongoing.
+        """
+        if self.valid_from is not None and self.valid_from > as_of:
+            return False
+        if self.valid_to is None:
+            return True
+        if self.valid_to_precision is DatePrecision.DAY:
+            return self.valid_to >= as_of
+        span_begins = span_start(format_bound(self.valid_to, self.valid_to_precision) or "")[0]
+        return span_begins > as_of
+
     @classmethod
     def from_partial(cls, valid_from: str | date | None, valid_to: str | date | None) -> TenurePeriod:
         """Build the period a source stated, e.g. `from_partial("2015", "2019-06")`."""

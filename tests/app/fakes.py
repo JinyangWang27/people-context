@@ -139,7 +139,7 @@ class FakePeopleRepository:
     ) -> tuple[list[PersonFilterOption], list[PersonFilterOption]]:
         return ([], [])
 
-    def organization_names(self, person_ids: list[str]) -> dict[str, list[str]]:
+    def organization_names(self, person_ids: list[str], as_of: date) -> dict[str, list[str]]:
         return {}
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
