@@ -294,6 +294,76 @@ kbd { display: inline-block; min-width: 1.4em; padding: 1px 6px; font: 12px/1.5 
 .graph-list { margin-top: 16px; }
 @media (max-width: 720px) { .graph { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .graph-node, .graph-edge { transition: none; } }
+/* Calm polish: quieter controls, a segmented nav, consistent fields ---------------------------- */
+:root { accent-color: var(--accent); --field-h: 34px; }
+::selection { background: var(--accent-soft); }
+header h1 { font-size: 17px; font-weight: 650; }
+nav { gap: 2px; padding: 3px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  box-shadow: var(--shadow); }
+nav button { border: none; border-radius: 999px; padding: 5px 14px; color: var(--muted); font-weight: 500; }
+nav button:hover { color: var(--fg); background: var(--hover); }
+nav button[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
+#nav-done { margin-left: 6px; position: relative; }
+#nav-done::before { content: ""; position: absolute; left: -4px; top: 7px; bottom: 7px; width: 1px;
+  background: var(--line); }
+#nav-lang { font-size: 13px; }
+#nav-palette { border-radius: 999px; padding: 5px 12px; }
+button { min-block-size: 30px; }
+button:active:not(:disabled) { scale: 0.97; }
+button.link { min-block-size: 0; }
+button.link:active { scale: none; }
+input, select, textarea { min-block-size: var(--field-h); box-sizing: border-box; padding: 5px 10px;
+  background: var(--surface); border-color: var(--line-strong); border-radius: 8px;
+  transition: border-color 0.12s, box-shadow 0.12s; }
+textarea { resize: vertical; }
+input:hover, select:hover, textarea:hover { border-color: var(--muted); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent); }
+input[type=checkbox], input[type=radio] { min-block-size: 0; }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.8; }
+@supports (appearance: base-select) {
+  select, select::picker(select) { appearance: base-select; }
+  select { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+  select::picker-icon { color: var(--muted); }
+  select::picker(select) { margin-top: 4px; padding: 4px; color: var(--fg); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: var(--shadow-lift); }
+  select option { padding: 6px 10px; border-radius: 6px; }
+  select option:hover, select option:focus-visible { background: var(--hover); }
+  select option:checked { color: var(--accent); }
+  select option::checkmark { color: var(--accent); }
+}
+.filters { gap: 10px; margin-bottom: 16px; }
+/* Per-row Edit and Remove stay out of the way until the row is pointed at or reached by keyboard,
+   and are always shown where there is no hover. */
+button.quiet { font-size: 12px; min-block-size: 24px; padding: 1px 8px; color: var(--muted);
+  border-color: transparent; transition: opacity 0.12s, background-color 0.12s, color 0.12s; }
+button.quiet:hover { color: var(--fg); border-color: var(--line); }
+@media (hover: hover) {
+  button.quiet { opacity: 0; }
+  li:hover button.quiet, li:focus-within button.quiet, .alias:hover button.quiet,
+  .alias:focus-within button.quiet { opacity: 1; }
+}
+.card li button.quiet { color: var(--muted); }
+/* Person page: a section with nothing recorded collapses to one line. */
+.card:has(> p.notice) { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+  padding-block: 10px; box-shadow: none; }
+.card:has(> p.notice) > h3 { margin: 0; }
+.card:has(> p.notice) > p.notice { margin: 0; flex: 1 1 auto; }
+.card:has(> p.notice) > :not(h3, p.notice) { margin: 0; }
+.card > h3 { text-transform: none; font-size: 12px; letter-spacing: 0.06em; }
+main[data-page="person"] > button { justify-self: start; margin-top: 8px; }
+main[data-page="person"] > dl { row-gap: 8px; }
+main[data-page="person"] > dl > dd { min-block-size: 24px; display: flex; flex-direction: column;
+  justify-content: center; }
+main[data-page="person"] > details > summary { padding-block: 2px; }
+.notice { font-style: normal; }
+@media (max-width: 640px) {
+  nav { border-radius: 14px; }
+  #nav-done::before { display: none; }
+}
+@media (forced-colors: active) {
+  button.quiet { opacity: 1; }
+}
 </style>
 </head>
 <body>
@@ -780,8 +850,8 @@ function aliasRow(personId, alias, kinds, reopen) {
   const target = { person_id: personId, value: alias.value };
   const remove = () => aliasWrite("/api/person/alias/remove", target, message, reopen);
   function idle() {
-    row.replaceChildren(el("span", aliasLabel(alias)), button(t("common.edit"), editing),
-      button(t("common.remove"), confirming), message);
+    row.replaceChildren(el("span", aliasLabel(alias)), button(t("common.edit"), editing, "quiet"),
+      button(t("common.remove"), confirming, "quiet"), message);
   }
   function confirming() {
     message.textContent = "";
@@ -849,11 +919,11 @@ function recordRow(type, record, label, descriptors, reopen) {
   const seed = (name) => (name === "valid_from" || name === "valid_to" ? (record.period || {})[name] : record[name]);
   function idle() {
     message.textContent = "";
-    const edit = button(t("common.edit"), editing);
+    const edit = button(t("common.edit"), editing, "quiet");
     edit.setAttribute("aria-label", t("record.edit.aria", { label }));
     const controls = [edit];
     if (REMOVABLE.has(type)) {
-      const remove = button(t("common.remove"), confirming);
+      const remove = button(t("common.remove"), confirming, "quiet");
       remove.setAttribute("aria-label", t("record.remove.aria", { label }));
       controls.push(" ", remove);
     }
@@ -1021,7 +1091,7 @@ function personFieldRow(personId, field, stored, reopen, pendingEdits) {
   function idle() {
     pendingEdits.delete(field);
     message.textContent = "";
-    const edit = button(t("common.edit"), () => editing());
+    const edit = button(t("common.edit"), () => editing(), "quiet");
     edit.setAttribute("aria-label", t("person.edit_" + field));
     row.replaceChildren(el("span", stored || t("common.none")), " ", edit, message);
   }
