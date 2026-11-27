@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 
+from people_context.adapters.sqlite.record_store import tenure_period
 from people_context.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from people_context.domain.person import Alias, AliasKind, Person
 from people_context.domain.shared import Sensitivity, normalize_name
@@ -262,13 +263,15 @@ class SqlitePeopleRepository:
             [PersonFilterOption(id=row["id"], name=row["name"]) for row in groups],
         )
 
-    def organization_names(self, person_ids: list[str]) -> dict[str, list[str]]:
+    def organization_names(self, person_ids: list[str], as_of: date) -> dict[str, list[str]]:
+        """Return each person's organizations with an affiliation current on ``as_of``, by name."""
         if not person_ids:
             return {}
         # A page holds at most MAX_PERSON_PAGE_LIMIT ids, well under SQLite's bound-parameter limit.
         rows = self._conn.execute(
             f"""
-            SELECT DISTINCT f.person_id, o.name FROM affiliations f
+            SELECT f.person_id, o.name, f.valid_from, f.valid_to, f.valid_from_precision, f.valid_to_precision
+            FROM affiliations f
             JOIN organizations o ON o.id = f.org_id
             WHERE f.person_id IN ({", ".join("?" * len(person_ids))})
             ORDER BY lower(o.name), o.name
@@ -277,8 +280,10 @@ class SqlitePeopleRepository:
         ).fetchall()
         names: dict[str, list[str]] = {}
         for row in rows:
-            names.setdefault(row["person_id"], []).append(row["name"])
-        return names
+            held = names.setdefault(row["person_id"], [])
+            if row["name"] not in held and tenure_period(row).is_current(as_of):
+                held.append(row["name"])
+        return {person_id: held for person_id, held in names.items() if held}
 
     def find_by_normalized_name(self, normalized: str) -> list[Person]:
         rows = self._conn.execute(

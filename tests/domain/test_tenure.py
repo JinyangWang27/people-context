@@ -94,3 +94,21 @@ def test_format_renders_only_the_stated_part() -> None:
     assert format_bound(date(2015, 11, 1), DatePrecision.MONTH) == "2015-11"
     assert format_bound(date(2015, 11, 3), DatePrecision.DAY) == "2015-11-03"
     assert format_bound(None, DatePrecision.DAY) is None
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "current"),
+    [
+        (None, None, True),
+        ("2026-09", None, True),
+        ("2027", None, False),  # not started yet
+        ("2024", "2026-11-27", True),  # an exact end is current through that day
+        ("2024", "2026-11-26", False),
+        ("2024", "2026", False),  # "until 2026", read in November 2026, has already ended
+        ("2024", "2026-11", False),  # "until November 2026", read in November 2026
+        ("2024", "2026-12", True),  # December has not begun
+        ("2024", "2027", True),
+    ],
+)
+def test_a_period_is_current_until_its_stated_end_begins(start: str | None, end: str | None, current: bool) -> None:
+    assert TenurePeriod.from_partial(start, end).is_current(date(2026, 11, 27)) is current
